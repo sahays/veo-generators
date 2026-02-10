@@ -10,8 +10,8 @@ The primary goal of this project is to explore techniques for maintaining charac
 AI-generated videos. This includes:
 
 - **Single Scene Consistency**: Ensuring the style and characters remain stable within a shot.
-- **Multi-Scene Consistency**: Using structured prompts and JSON storyboards to bridge transitions between scenes
-  without losing visual identity. (Coming up)
+- **Multi-Scene Consistency**: Using structured prompts and storyboards to bridge transitions between scenes without
+  losing visual identity. (Coming up)
 
 ## My Workflow
 
@@ -25,6 +25,8 @@ The prompts in this repo reflect an iterative journey of optimization:
 4.  **Generation & Selection**: Each prompt was run through **Vertex AI Studio**, generating 2-4 samples. The videos in
     the `outputs/` folder represent the best result from those samples.
     - _Note: Music was not prompted so you can ignore that._
+
+**Remember:** Screenplay is the key -- get that right and generate 2 or more samples then pick the best one
 
 ## Chronology
 
