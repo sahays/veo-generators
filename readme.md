@@ -28,7 +28,7 @@ The prompts in this repo reflect an iterative journey of optimization:
 
 ## Chronology
 
-Below is the progression of prompts and their corresponding video outputs:
+Your creative process may differ but the following is how I arrived at the workflow that gave me decent results.
 
 | Phase                  | Prompt File                                                        | Output Video                                           | Description                                                                                                                                                                                                   |
 | :--------------------- | :----------------------------------------------------------------- | :----------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -41,11 +41,15 @@ Below is the progression of prompts and their corresponding video outputs:
 
 ## Key Takeaways
 
-- **Screenplay is the key**: The quality of your video depends heavily on the quality of the initial screenplay or prompt.
+- **Screenplay is the key**: The quality of your video depends heavily on the quality of the initial screenplay or
+  prompt.
 - **Iterative Generation**: Always generate two or more samples and pick the best one.
-- **Screenplay Critic Workflow**: Use a dedicated "critic" prompt to analyze and refine your screenplays before generation.
-- **Specific Details Matter**: Explicitly name characters, define locations, describe scene composition, and detail camera movements.
-- **Director Personas**: Referencing a specific director's style provides powerful context for the AI, functioning much like analogies or anecdotes to guide the visual output.
+- **Screenplay Critic Workflow**: Use a dedicated "critic" prompt to analyze and refine your screenplays before
+  generation.
+- **Specific Details Matter**: Explicitly name characters, define locations, describe scene composition, and detail
+  camera movements.
+- **Director Personas**: Referencing a specific director's style provides powerful context for the AI, functioning much
+  like analogies or anecdotes to guide the visual output.
 
 ## Workflow Tools
 
