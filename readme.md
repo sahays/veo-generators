@@ -26,8 +26,6 @@ The prompts in this repo reflect an iterative journey of optimization:
     the `outputs/` folder represent the best result from those samples.
     - _Note: Music was not prompted so you can ignore that._
 
-**Remember:** Screenplay is the key -- get that right and generate 2 or more samples then pick the best one
-
 ## Chronology
 
 Below is the progression of prompts and their corresponding video outputs:
@@ -40,6 +38,14 @@ Below is the progression of prompts and their corresponding video outputs:
 | **Refined (Anderson)** | [anderson-prompt.md](prompts/anderson-prompt.md)                   | [anderson.mp4](outputs/anderson.mp4)                   | Whimsical, pastel Wes Anderson aesthetic.                                                                                                                                                                     |
 | **Structured (JSON)**  | [anderson-json-prompt.md](prompts/anderson-json-prompt.md)         | [anderson-json.mp4](outputs/anderson-json.mp4)         | Using JSON storyboard for maximum consistency. _Note: Although it doesn't affect the outcome, JSON provides an opportunity to create more structured prompts (it's a matter of preference, not a necessity)._ |
 | **9:16 Aspect Ratio**  | [anderson-json-916-prompt.md](prompts/anderson-json-916-prompt.md) | [anderson-json-916.mp4](outputs/anderson-json-916.mp4) | 9:16 variant using the same structured approach.                                                                                                                                                              |
+
+## Key Takeaways
+
+- **Screenplay is the key**: The quality of your video depends heavily on the quality of the initial screenplay or prompt.
+- **Iterative Generation**: Always generate two or more samples and pick the best one.
+- **Screenplay Critic Workflow**: Use a dedicated "critic" prompt to analyze and refine your screenplays before generation.
+- **Specific Details Matter**: Explicitly name characters, define locations, describe scene composition, and detail camera movements.
+- **Director Personas**: Referencing a specific director's style provides powerful context for the AI, functioning much like analogies or anecdotes to guide the visual output.
 
 ## Workflow Tools
 
