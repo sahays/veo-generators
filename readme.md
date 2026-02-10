@@ -13,7 +13,7 @@ AI-generated videos. This includes:
 - **Multi-Scene Consistency**: Using structured prompts and JSON storyboards to bridge transitions between scenes
   without losing visual identity. (Coming up)
 
-## My Journey
+## My Workflow
 
 The prompts in this repo reflect an iterative journey of optimization:
 
