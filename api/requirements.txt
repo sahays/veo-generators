@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+google-cloud-firestore
+google-cloud-video-transcoder
+google-cloud-storage
+pydantic
+python-multipart
+python-dotenv
