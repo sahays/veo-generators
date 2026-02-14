@@ -1,15 +1,31 @@
 import { create } from 'zustand'
 
+export type PageId =
+  | 'dashboard'
+  | 'ads-generation'
+  | 'highlights'
+  | 'thumbnails'
+  | 'orientations'
+  | 'config-prompts'
+  | 'config-documents'
+  | 'config-director'
+  | 'config-camera'
+  | 'config-mood'
+  | 'config-location'
+  | 'config-character'
+
 interface LayoutState {
   isSidebarOpen: boolean
   isSidebarCollapsed: boolean
   expandedSubmenus: string[]
   theme: 'light' | 'dark'
+  activePage: PageId
   toggleSidebar: () => void
   toggleCollapse: () => void
   setSidebarOpen: (open: boolean) => void
   toggleSubmenu: (name: string) => void
   toggleTheme: () => void
+  setActivePage: (page: PageId) => void
 }
 
 export const useLayoutStore = create<LayoutState>((set) => ({
@@ -17,6 +33,7 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   isSidebarCollapsed: false,
   expandedSubmenus: [],
   theme: 'dark',
+  activePage: 'dashboard',
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
   toggleCollapse: () => set((state) => ({ isSidebarCollapsed: !state.isSidebarCollapsed, expandedSubmenus: [] })),
   setSidebarOpen: (open: boolean) => set({ isSidebarOpen: open }),
@@ -26,4 +43,5 @@ export const useLayoutStore = create<LayoutState>((set) => ({
       : [...state.expandedSubmenus, name]
   })),
   toggleTheme: () => set((state) => ({ theme: state.theme === 'light' ? 'dark' : 'light' })),
+  setActivePage: (page: PageId) => set({ activePage: page }),
 }))

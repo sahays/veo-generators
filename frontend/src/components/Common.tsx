@@ -1,4 +1,4 @@
-import { motion, Omit } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 

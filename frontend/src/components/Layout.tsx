@@ -1,34 +1,80 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  Menu, X, Megaphone, Zap, Image as ImageIcon, Smartphone, 
-  ChevronLeft, ChevronRight, LogOut, Settings, Terminal, 
-  FileText, Library, ChevronDown, Sun, Moon
+import {
+  Menu, X, Megaphone, Zap, Image as ImageIcon, Smartphone,
+  ChevronLeft, ChevronRight, LogOut, Settings, Terminal,
+  FileText, ChevronDown, Sun, Moon, LayoutDashboard,
+  Clapperboard, Video, Palette, MapPin, User
 } from 'lucide-react'
-import { useLayoutStore } from '@/store/useLayoutStore'
+import { useLayoutStore, type PageId } from '@/store/useLayoutStore'
 import { cn } from '@/lib/utils'
 import { useEffect } from 'react'
 
+const PAGE_TITLES: Record<PageId, string> = {
+  'dashboard': 'Dashboard',
+  'ads-generation': 'Ads Generation',
+  'highlights': 'Highlights',
+  'thumbnails': 'Thumbnails',
+  'orientations': 'Orientations',
+  'config-prompts': 'Prompts',
+  'config-documents': 'Documents',
+  'config-director': 'Director Styles',
+  'config-camera': 'Camera Movements',
+  'config-mood': 'Moods',
+  'config-location': 'Locations',
+  'config-character': 'Character Appearances',
+}
+
+interface SubItem {
+  name: string
+  icon: typeof Terminal
+  pageId: PageId
+}
+
+interface NavItem {
+  name: string
+  icon: typeof Terminal
+  pageId?: PageId
+  subItems?: SubItem[]
+}
+
 export const Sidebar = () => {
-  const { 
-    isSidebarCollapsed, toggleCollapse, isSidebarOpen, 
-    setSidebarOpen, expandedSubmenus, toggleSubmenu 
+  const {
+    isSidebarCollapsed, toggleCollapse, isSidebarOpen,
+    setSidebarOpen, expandedSubmenus, toggleSubmenu,
+    activePage, setActivePage
   } = useLayoutStore()
 
-  const navItems = [
-    { name: 'Ads generation', icon: Megaphone, href: '#' },
-    { name: 'Highlights', icon: Zap, href: '#' },
-    { name: 'Thumbnails', icon: ImageIcon, href: '#' },
-    { name: 'Orientations', icon: Smartphone, href: '#' },
-    { 
-      name: 'Configuration', 
-      icon: Settings, 
+  const navItems: NavItem[] = [
+    { name: 'Dashboard', icon: LayoutDashboard, pageId: 'dashboard' },
+    { name: 'Ads generation', icon: Megaphone, pageId: 'ads-generation' },
+    { name: 'Highlights', icon: Zap, pageId: 'highlights' },
+    { name: 'Thumbnails', icon: ImageIcon, pageId: 'thumbnails' },
+    { name: 'Orientations', icon: Smartphone, pageId: 'orientations' },
+    {
+      name: 'Configuration',
+      icon: Settings,
       subItems: [
-        { name: 'Prompts', icon: Terminal, href: '#' },
-        { name: 'Documents', icon: FileText, href: '#' },
-        { name: 'Assets', icon: Library, href: '#' },
+        { name: 'Prompts', icon: Terminal, pageId: 'config-prompts' },
+        { name: 'Documents', icon: FileText, pageId: 'config-documents' },
+        { name: 'Director', icon: Clapperboard, pageId: 'config-director' },
+        { name: 'Camera', icon: Video, pageId: 'config-camera' },
+        { name: 'Mood', icon: Palette, pageId: 'config-mood' },
+        { name: 'Location', icon: MapPin, pageId: 'config-location' },
+        { name: 'Character', icon: User, pageId: 'config-character' },
       ]
     },
   ]
+
+  const handleNavClick = (pageId?: PageId) => {
+    if (pageId) {
+      setActivePage(pageId)
+      setSidebarOpen(false)
+    }
+  }
+
+  // Check if any config sub-page is active
+  const isConfigSubActive = (subItems?: SubItem[]) =>
+    subItems?.some((s) => s.pageId === activePage) ?? false
 
   return (
     <>
@@ -84,14 +130,23 @@ export const Sidebar = () => {
           {navItems.map((item) => {
             const hasSubItems = !!item.subItems
             const isExpanded = expandedSubmenus.includes(item.name)
+            const isActive = item.pageId === activePage
+            const hasActiveSub = isConfigSubActive(item.subItems)
 
             return (
               <div key={item.name}>
                 <motion.button
-                  onClick={() => hasSubItems && !isSidebarCollapsed && toggleSubmenu(item.name)}
+                  onClick={() => {
+                    if (hasSubItems && !isSidebarCollapsed) {
+                      toggleSubmenu(item.name)
+                    } else {
+                      handleNavClick(item.pageId)
+                    }
+                  }}
                   className={cn(
                     "flex items-center gap-4 w-full px-6 py-3 transition-all duration-200 group cursor-pointer",
                     "hover:bg-accent hover:text-slate-900",
+                    (isActive || hasActiveSub) && "bg-accent/30 text-accent",
                     isSidebarCollapsed && "justify-center px-0"
                   )}
                 >
@@ -120,19 +175,23 @@ export const Sidebar = () => {
                         exit={{ height: 0, opacity: 0 }}
                         className="overflow-hidden bg-white/5"
                       >
-                        {item.subItems.map((sub) => (
-                          <motion.a
-                            key={sub.name}
-                            href={sub.href}
-                            className={cn(
-                              "flex items-center gap-3 pl-12 pr-6 py-2.5 text-xs font-medium transition-all duration-200 cursor-pointer",
-                              "hover:bg-accent/80 hover:text-slate-900"
-                            )}
-                          >
-                            <sub.icon size={16} />
-                            <span>{sub.name}</span>
-                          </motion.a>
-                        ))}
+                        {item.subItems!.map((sub) => {
+                          const subActive = sub.pageId === activePage
+                          return (
+                            <motion.button
+                              key={sub.name}
+                              onClick={() => handleNavClick(sub.pageId)}
+                              className={cn(
+                                "flex items-center gap-3 pl-12 pr-6 py-2.5 text-xs font-medium transition-all duration-200 cursor-pointer w-full",
+                                "hover:bg-accent/80 hover:text-slate-900",
+                                subActive && "bg-accent/20 text-accent"
+                              )}
+                            >
+                              <sub.icon size={16} />
+                              <span>{sub.name}</span>
+                            </motion.button>
+                          )
+                        })}
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -160,7 +219,7 @@ export const Sidebar = () => {
 }
 
 export const Navbar = () => {
-  const { toggleSidebar, theme, toggleTheme } = useLayoutStore()
+  const { toggleSidebar, theme, toggleTheme, activePage } = useLayoutStore()
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -180,9 +239,11 @@ export const Navbar = () => {
           >
             <Menu size={20} />
           </button>
-          <h1 className="text-base font-heading font-semibold text-foreground">Dashboard</h1>
+          <h1 className="text-base font-heading font-semibold text-foreground">
+            {PAGE_TITLES[activePage]}
+          </h1>
         </div>
-        
+
         <div className="flex items-center gap-3">
           <button
             onClick={toggleTheme}
