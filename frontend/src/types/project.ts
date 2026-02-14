@@ -11,7 +11,7 @@ export const projectSchema = z.object({
   mood: z.string().optional(),
   location: z.string().optional(),
   characterAppearance: z.string().optional(),
-  videoLength: z.enum(['16', '24', '32', '48']),
+  videoLength: z.enum(['16', '24', '32', '48', 'custom']),
 })
 
 export type ProjectFormData = z.infer<typeof projectSchema>
@@ -27,7 +27,7 @@ export interface Project {
   mood?: string
   location?: string
   characterAppearance?: string
-  videoLength: '16' | '24' | '32' | '48'
+  videoLength: '16' | '24' | '32' | '48' | 'custom'
   status: ProjectStatus
   mediaFiles: MediaFile[]
   storyboardFrames: StoryboardFrame[]
@@ -114,7 +114,7 @@ export const DEFAULT_OPTIONS: Record<SelectCategory, string[]> = {
   ],
 }
 
-export const VIDEO_LENGTH_OPTIONS = ['16', '24', '32', '48'] as const
+export const VIDEO_LENGTH_OPTIONS = ['16', '24', '32', '48', 'custom'] as const
 
 export const SELECT_LABELS: Record<SelectCategory, string> = {
   directorStyle: 'Director Style',

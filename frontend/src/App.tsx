@@ -1,6 +1,5 @@
 import { AnimatePresence } from 'framer-motion'
 import { Navbar, Sidebar } from './components/Layout'
-import { DashboardPage } from './components/pages/DashboardPage'
 import { AdsGenerationPage } from './components/pages/AdsGenerationPage'
 import { ConfigSettingsPage } from './components/pages/ConfigSettingsPage'
 import { useLayoutStore, type PageId } from './store/useLayoutStore'
@@ -25,7 +24,6 @@ function App() {
         <Navbar />
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-6 md:p-8">
           <AnimatePresence mode="wait">
-            {activePage === 'dashboard' && <DashboardPage key="dashboard" />}
             {activePage === 'ads-generation' && <AdsGenerationPage key="ads-generation" />}
             {configCategory && (
               <ConfigSettingsPage key={activePage} category={configCategory} />

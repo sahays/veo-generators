@@ -45,7 +45,6 @@ export const Sidebar = () => {
   } = useLayoutStore()
 
   const navItems: NavItem[] = [
-    { name: 'Dashboard', icon: LayoutDashboard, pageId: 'dashboard' },
     { name: 'Ads generation', icon: Megaphone, pageId: 'ads-generation' },
     { name: 'Highlights', icon: Zap, pageId: 'highlights' },
     { name: 'Thumbnails', icon: ImageIcon, pageId: 'thumbnails' },
@@ -146,7 +145,7 @@ export const Sidebar = () => {
                   className={cn(
                     "flex items-center gap-4 w-full px-6 py-3 transition-all duration-200 group cursor-pointer",
                     "hover:bg-accent hover:text-slate-900",
-                    (isActive || hasActiveSub) && "bg-accent/30 text-accent",
+                    (isActive || hasActiveSub) && "bg-accent text-slate-900",
                     isSidebarCollapsed && "justify-center px-0"
                   )}
                 >
@@ -184,7 +183,7 @@ export const Sidebar = () => {
                               className={cn(
                                 "flex items-center gap-3 pl-12 pr-6 py-2.5 text-xs font-medium transition-all duration-200 cursor-pointer w-full",
                                 "hover:bg-accent/80 hover:text-slate-900",
-                                subActive && "bg-accent/20 text-accent"
+                                subActive && "bg-accent text-slate-900"
                               )}
                             >
                               <sub.icon size={16} />
@@ -200,19 +199,6 @@ export const Sidebar = () => {
             )
           })}
         </nav>
-
-        <div className="border-t border-white/5">
-          <motion.button
-            className={cn(
-              "flex items-center gap-4 w-full px-6 py-4 transition-all duration-200 cursor-pointer group",
-              "hover:bg-accent hover:text-slate-900",
-              isSidebarCollapsed && "justify-center px-0"
-            )}
-          >
-            <LogOut size={20} className="shrink-0" />
-            {!isSidebarCollapsed && <span className="text-sm font-medium">Logout</span>}
-          </motion.button>
-        </div>
       </motion.aside>
     </>
   )
@@ -251,9 +237,6 @@ export const Navbar = () => {
           >
             {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
           </button>
-          <div className="h-7 w-7 rounded-full bg-accent flex items-center justify-center text-slate-900 text-xs font-bold cursor-pointer">
-            S
-          </div>
         </div>
       </div>
     </header>

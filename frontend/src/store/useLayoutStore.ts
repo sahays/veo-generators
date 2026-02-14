@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 
 export type PageId =
-  | 'dashboard'
   | 'ads-generation'
   | 'highlights'
   | 'thumbnails'
@@ -32,8 +31,8 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   isSidebarOpen: false,
   isSidebarCollapsed: false,
   expandedSubmenus: [],
-  theme: 'dark',
-  activePage: 'dashboard',
+  theme: 'light',
+  activePage: 'ads-generation',
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
   toggleCollapse: () => set((state) => ({ isSidebarCollapsed: !state.isSidebarCollapsed, expandedSubmenus: [] })),
   setSidebarOpen: (open: boolean) => set({ isSidebarOpen: open }),

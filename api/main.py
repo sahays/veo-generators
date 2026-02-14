@@ -1,112 +1,62 @@
-import hashlib
-from datetime import datetime
-from fastapi import FastAPI, HTTPException, BackgroundTasks
-from models import StitchRequest, JobStatus
+import os
+from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from typing import List
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv(dotenv_path="../.env.dev")
+
+from models import (
+    Project, ProjectStatus, OptimizePromptRequest, OptimizePromptResponse,
+    GenerateStoryboardRequest, GenerateVideoRequest, JobStatus, StoryboardFrame
+)
 from firestore_service import FirestoreService
-from transcoder_service import TranscoderService
+from ai_service import AIService
 
-app = FastAPI(title="Veo Video Stitcher API")
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+app = FastAPI(title="Veo Production API", version="1.0.0")
+
+# Enable CORS for development (still useful if running front/back separately)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 firestore_svc = FirestoreService()
+ai_svc = AIService()
 
-def get_job_id(manifest_uri: str, output_uri: str) -> str:
-    hash_input = f"{manifest_uri}{output_uri}"
-    return hashlib.sha256(hash_input.encode()).hexdigest()
+# --- API Routes ---
+@app.get("/api/v1/projects", response_model=List[Project])
+async def list_projects():
+    return firestore_svc.get_projects()
 
-@app.post("/jobs/start", response_model=JobStatus)
-async def start_job(request: StitchRequest):
-    job_id = get_job_id(request.manifest_gcs_uri, request.output_gcs_uri)
-    existing_job = firestore_svc.get_job(job_id)
+# ... (keep all existing @app.get/post/patch/delete routes here) ...
 
-    if existing_job and existing_job.status in ["RUNNING", "SUCCEEDED"]:
-        return existing_job
+@app.get("/api/v1/configs/{category}", response_model=List[str])
+async def get_config(category: str):
+    return firestore_svc.get_config_options(category)
 
-    transcoder_svc = TranscoderService(request.project_id, request.location)
-    
-    try:
-        transcoder_job_name = transcoder_svc.create_stitch_job(
-            request.manifest_gcs_uri, request.output_gcs_uri
-        )
-        
-        job = JobStatus(
-            job_id=job_id,
-            status="RUNNING",
-            manifest_gcs_uri=request.manifest_gcs_uri,
-            output_gcs_uri=request.output_gcs_uri,
-            transcoder_job_name=transcoder_job_name,
-            last_updated=datetime.utcnow()
-        )
-        firestore_svc.update_job(job)
-        return job
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# --- Static File Serving ---
+# Mount the static files directory (built React app)
+# Note: In the Docker container, these will be in the 'static' folder
+if os.path.exists("static"):
+    app.mount("/assets", StaticFiles(directory="static/assets"), name="assets")
 
-@app.post("/jobs/{job_id}/stop", response_model=JobStatus)
-async def stop_job(job_id: str, project_id: str, location: str = "us-central1"):
-    job = firestore_svc.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # Serve static files if they exist (favicon, etc)
+        file_path = os.path.join("static", full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        # Otherwise, serve index.html for React Router
+        return FileResponse("static/index.html")
 
-    if job.transcoder_job_name:
-        transcoder_svc = TranscoderService(project_id, location)
-        transcoder_svc.delete_job(job.transcoder_job_name)
 
-    job.status = "STOPPED"
-    firestore_svc.update_job(job)
-    return job
-
-@app.post("/jobs/{job_id}/pause", response_model=JobStatus)
-async def pause_job(job_id: str, project_id: str, location: str = "us-central1"):
-    job = firestore_svc.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    if job.transcoder_job_name:
-        transcoder_svc = TranscoderService(project_id, location)
-        transcoder_svc.delete_job(job.transcoder_job_name)
-
-    job.status = "PAUSED"
-    firestore_svc.update_job(job)
-    return job
-
-@app.post("/jobs/restart", response_model=JobStatus)
-async def restart_job(request: StitchRequest):
-    job_id = get_job_id(request.manifest_gcs_uri, request.output_gcs_uri)
-    job = firestore_svc.get_job(job_id)
-    
-    transcoder_svc = TranscoderService(request.project_id, request.location)
-    
-    if job and job.transcoder_job_name:
-        transcoder_svc.delete_job(job.transcoder_job_name)
-
-    try:
-        transcoder_job_name = transcoder_svc.create_stitch_job(
-            request.manifest_gcs_uri, request.output_gcs_uri
-        )
-        
-        new_job = JobStatus(
-            job_id=job_id,
-            status="RUNNING",
-            manifest_gcs_uri=request.manifest_gcs_uri,
-            output_gcs_uri=request.output_gcs_uri,
-            transcoder_job_name=transcoder_job_name,
-            last_updated=datetime.utcnow()
-        )
-        firestore_svc.update_job(new_job)
-        return new_job
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/jobs/{job_id}/status", response_model=JobStatus)
-async def get_status(job_id: str, project_id: str, location: str = "us-central1"):
-    job = firestore_svc.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    if job.status == "RUNNING" and job.transcoder_job_name:
-        transcoder_svc = TranscoderService(project_id, location)
-        new_status = transcoder_svc.get_job_status(job.transcoder_job_name)
-        if new_status != job.status:
-            job.status = new_status
-            firestore_svc.update_job(job)
-
-    return job
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8080)

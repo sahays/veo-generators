@@ -3,9 +3,10 @@ import { Plus, FolderOpen, Clock, Loader2, CheckCircle2, AlertCircle } from 'luc
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/Common'
 import { useProjectStore } from '@/store/useProjectStore'
-import type { Project, ProjectStatus } from '@/types/project'
+import { useQuery } from '@tanstack/react-query'
+import { api, type Project } from '@/lib/api'
 
-const STATUS_CONFIG: Record<ProjectStatus, { label: string; color: string; icon: typeof Clock }> = {
+const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
   draft: { label: 'Draft', color: 'text-muted-foreground bg-muted', icon: Clock },
   generating: { label: 'Generating', color: 'text-amber-600 bg-amber-500/10', icon: Loader2 },
   completed: { label: 'Completed', color: 'text-emerald-600 bg-emerald-500/10', icon: CheckCircle2 },
@@ -13,9 +14,9 @@ const STATUS_CONFIG: Record<ProjectStatus, { label: string; color: string; icon:
 }
 
 const ProjectCard = ({ project, onClick }: { project: Project; onClick: () => void }) => {
-  const config = STATUS_CONFIG[project.status]
+  const config = STATUS_CONFIG[project.status] || STATUS_CONFIG.draft
   const StatusIcon = config.icon
-  const timeAgo = getTimeAgo(project.updatedAt)
+  const timeAgo = getTimeAgo(project.updated_at)
 
   return (
     <motion.button
@@ -38,7 +39,7 @@ const ProjectCard = ({ project, onClick }: { project: Project; onClick: () => vo
         {project.prompt}
       </p>
       <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-        <span>{project.videoLength}s · {project.directorStyle || 'No style'}</span>
+        <span>{project.video_length}s · {project.director_style || 'No style'}</span>
         <span>{timeAgo}</span>
       </div>
     </motion.button>
@@ -46,7 +47,13 @@ const ProjectCard = ({ project, onClick }: { project: Project; onClick: () => vo
 }
 
 export const ProjectList = () => {
-  const { projects, setView, setActiveProject } = useProjectStore()
+  const { setView, setActiveProject } = useProjectStore()
+  
+  const { data: projects, isLoading, error } = useQuery({
+    queryKey: ['projects'],
+    queryFn: api.projects.list,
+    refetchInterval: 5000
+  })
 
   const handleNewProject = () => {
     setActiveProject(null)
@@ -58,19 +65,40 @@ export const ProjectList = () => {
     setView('form')
   }
 
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 space-y-4">
+        <Loader2 className="animate-spin text-accent" size={40} />
+        <p className="text-muted-foreground">Loading productions...</p>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 space-y-4">
+        <AlertCircle className="text-red-500" size={40} />
+        <p className="text-muted-foreground text-sm">Connection error. Is the API online?</p>
+        <Button variant="secondary" onClick={() => window.location.reload()}>Retry</Button>
+      </div>
+    )
+  }
+
+  const projectsCount = projects?.length || 0
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="space-y-1">
-          <h2 className="text-xl font-heading text-foreground tracking-tight">Projects</h2>
+          <h2 className="text-xl font-heading text-foreground tracking-tight">Productions</h2>
           <p className="text-xs text-muted-foreground">
-            {projects.length} project{projects.length !== 1 ? 's' : ''}
+            {projectsCount} project{projectsCount !== 1 ? 's' : ''}
           </p>
         </div>
         <Button icon={Plus} onClick={handleNewProject}>New Project</Button>
       </div>
 
-      {projects.length === 0 ? (
+      {!projects || projects.length === 0 ? (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -100,8 +128,9 @@ export const ProjectList = () => {
   )
 }
 
-function getTimeAgo(timestamp: number): string {
-  const diff = Date.now() - timestamp
+function getTimeAgo(timestamp: string): string {
+  const date = new Date(timestamp)
+  const diff = Date.now() - date.getTime()
   const minutes = Math.floor(diff / 60000)
   if (minutes < 1) return 'Just now'
   if (minutes < 60) return `${minutes}m ago`

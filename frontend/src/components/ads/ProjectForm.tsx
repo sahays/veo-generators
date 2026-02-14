@@ -13,7 +13,7 @@ import { projectSchema, type Project, type ProjectFormData, type MediaFile, type
 import { generateStoryboardFrames } from '@/lib/mockData'
 
 export const ProjectForm = () => {
-  const { activeProjectId, projects, addProject, updateProject, setView } = useProjectStore()
+  const { activeProjectId, projects, addProject, updateProject, setView, setTempProjectData } = useProjectStore()
   const existingProject = activeProjectId
     ? projects.find((p) => p.id === activeProjectId)
     : null
@@ -86,28 +86,9 @@ export const ProjectForm = () => {
     setView('list')
   })
 
-  const onGenerate = handleSubmit((data) => {
-    setIsGenerating(true)
-    setStoryboardFrames([])
-
-    const projectId = existingProject?.id || `proj-${Date.now()}`
-
-    if (existingProject) {
-      updateProject(projectId, { ...data, status: 'generating', mediaFiles })
-    } else {
-      addProject(buildProject(data, 'generating', projectId))
-    }
-
-    // Mock generation
-    setTimeout(() => {
-      const frames = generateStoryboardFrames(6, data.name || 'untitled')
-      setStoryboardFrames(frames)
-      setIsGenerating(false)
-      updateProject(projectId, {
-        status: 'completed',
-        storyboardFrames: frames,
-      })
-    }, 3000)
+  const onNext = handleSubmit((data) => {
+    setTempProjectData({ ...data, mediaFiles })
+    setView('review')
   })
 
   return (
@@ -218,12 +199,7 @@ export const ProjectForm = () => {
           />
         </Card>
 
-        {/* Storyboard */}
-        {(isGenerating || storyboardFrames.length > 0) && (
-          <Card title="Storyboard" icon={Clapperboard}>
-            <StoryboardView frames={storyboardFrames} isGenerating={isGenerating} />
-          </Card>
-        )}
+        {/* Storyboard removed from here - moved to review page if needed */}
 
         {/* Action Bar */}
         <div className="flex items-center justify-between pt-2 pb-4">
@@ -245,20 +221,10 @@ export const ProjectForm = () => {
             </Button>
             <Button
               icon={Sparkles}
-              onClick={onGenerate}
+              onClick={onNext}
               type="button"
-              disabled={isGenerating}
             >
-              {isGenerating ? 'Generating...' : 'Start Storyboarding'}
-            </Button>
-            <Button
-              icon={Dices}
-              onClick={onGenerate}
-              type="button"
-              disabled={isGenerating}
-              className="bg-accent-light text-foreground hover:bg-accent/30 shadow-sm"
-            >
-              I'm feeling lucky!
+              Next
             </Button>
           </div>
         </div>

@@ -39,23 +39,44 @@ export const CreativeSettings = ({ values, onChange }: CreativeSettingsProps) =>
         ))}
       </div>
 
-      <div className="space-y-1.5">
+      <div className="space-y-3">
         <label className="text-xs font-medium text-muted-foreground">Video Length</label>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-4">
           {VIDEO_LENGTH_OPTIONS.map((len) => (
-            <button
+            <label
               key={len}
-              type="button"
-              onClick={() => onChange('videoLength', len)}
               className={cn(
-                "flex-1 py-2 rounded-lg text-sm font-medium transition-all duration-200 border",
-                values.videoLength === len
-                  ? "bg-accent text-slate-900 border-accent shadow-sm"
-                  : "bg-card border-border text-muted-foreground hover:border-accent/50 hover:text-foreground"
+                "flex items-center gap-2 cursor-pointer group",
               )}
             >
-              {len}s
-            </button>
+              <div className="relative flex items-center justify-center">
+                <input
+                  type="radio"
+                  name="videoLength"
+                  checked={values.videoLength === len}
+                  onChange={() => onChange('videoLength', len)}
+                  className="sr-only"
+                />
+                <div className={cn(
+                  "w-4 h-4 rounded-full border transition-all duration-200",
+                  values.videoLength === len
+                    ? "border-accent bg-accent"
+                    : "border-muted-foreground/30 bg-transparent group-hover:border-accent/50"
+                )}>
+                  {values.videoLength === len && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-1.5 h-1.5 rounded-full bg-slate-900" />
+                    </div>
+                  )}
+                </div>
+              </div>
+              <span className={cn(
+                "text-sm transition-colors",
+                values.videoLength === len ? "text-foreground font-medium" : "text-muted-foreground group-hover:text-foreground"
+              )}>
+                {len === 'custom' ? 'Custom' : `${len}s`}
+              </span>
+            </label>
           ))}
         </div>
       </div>

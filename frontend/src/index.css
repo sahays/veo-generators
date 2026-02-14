@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Bitter:ital,wght@0,100..900;1,100..900&family=Geist:wght@100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bitter:ital,wght@0,100..900;1,100..900&family=Geist+Mono:wght@100..900&family=Geist:wght@100..900&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -41,17 +41,17 @@
 }
 
 .dark {
-  --background: #020617;
+  --background: #121212; /* Lighter shade of black/charcoal */
   --foreground: #f8fafc;
-  --muted: #0f172a;
+  --muted: #1e1e1e;
   --muted-foreground: #94a3b8;
   --border: rgba(248, 250, 252, 0.1);
-  --card: rgba(15, 23, 42, 0.5);
+  --card: rgba(30, 30, 30, 0.5);
 
-  /* Sidebar Dark Mode - Glass Stealth */
-  --sidebar-grad-1: rgba(0, 0, 0, 0.8);
-  --sidebar-grad-2: rgba(9, 9, 11, 0.8);
-  --sidebar-grad-3: rgba(24, 24, 27, 0.8);
+  /* Sidebar Dark Mode - Deeper shade of black */
+  --sidebar-grad-1: rgba(0, 0, 0, 0.9);
+  --sidebar-grad-2: rgba(5, 5, 5, 0.9);
+  --sidebar-grad-3: rgba(10, 10, 10, 0.9);
   --sidebar-text: #ffffff;
 }
 

@@ -1,15 +1,19 @@
 import { create } from 'zustand'
-import type { Project, SelectCategory, CustomOption } from '@/types/project'
+import type { Project, SelectCategory, CustomOption, ProjectFormData } from '@/types/project'
 import { DEFAULT_OPTIONS } from '@/types/project'
 import { SEED_PROJECTS } from '@/lib/mockData'
+
+export type ProjectView = 'list' | 'form' | 'review'
 
 interface ProjectState {
   projects: Project[]
   activeProjectId: string | null
   customOptions: Record<SelectCategory, CustomOption[]>
-  view: 'list' | 'form'
+  view: ProjectView
+  tempProjectData: Partial<ProjectFormData> & { mediaFiles?: any[] } | null
 
-  setView: (view: 'list' | 'form') => void
+  setView: (view: ProjectView) => void
+  setTempProjectData: (data: Partial<ProjectFormData> & { mediaFiles?: any[] } | null) => void
   setActiveProject: (id: string | null) => void
   addProject: (project: Project) => void
   updateProject: (id: string, updates: Partial<Project>) => void
@@ -31,8 +35,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     characterAppearance: [],
   },
   view: 'list',
+  tempProjectData: null,
 
   setView: (view) => set({ view }),
+  setTempProjectData: (data) => set({ tempProjectData: data }),
 
   setActiveProject: (id) => set({ activeProjectId: id }),
 
