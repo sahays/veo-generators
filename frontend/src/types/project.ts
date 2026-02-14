@@ -1,38 +1,46 @@
 import { z } from 'zod'
 
+export const sceneSchema = z.object({
+  id: z.string(),
+  visual_description: z.string().min(10),
+  timestamp_start: z.string(),
+  timestamp_end: z.string(),
+  metadata: z.object({
+    location: z.string().optional(),
+    character: z.string().optional(),
+    camera_angle: z.string().optional(),
+    lighting: z.string().optional(),
+    style: z.string().optional(),
+    mood: z.string().optional(),
+  }).optional(),
+  thumbnail_url: z.string().optional(),
+  tokens_consumed: z.object({
+    input: z.number().default(0),
+    output: z.number().default(0),
+  }).optional(),
+})
+
+export type Scene = z.infer<typeof sceneSchema>
+
+export type ProjectType = 'movie' | 'advertizement' | 'social'
+
 export const projectSchema = z.object({
   name: z.string().min(1, 'Project name is required'),
-  prompt: z
-    .string()
-    .min(10, 'Prompt must be at least 10 characters')
-    .max(2000, 'Prompt must be under 2000 characters'),
-  directorStyle: z.string().optional(),
-  cameraMovement: z.string().optional(),
-  mood: z.string().optional(),
-  location: z.string().optional(),
-  characterAppearance: z.string().optional(),
-  videoLength: z.enum(['16', '24', '32', '48', 'custom']),
+  type: z.enum(['movie', 'advertizement', 'social']),
+  base_concept: z.string().min(10, 'Concept must be at least 10 characters').max(2000),
+  video_length: z.enum(['16', '24', '32', '48', 'custom']),
+  orientation: z.enum(['16:9', '9:16']),
+  reference_image_url: z.string().optional(),
 })
 
 export type ProjectFormData = z.infer<typeof projectSchema>
 
-export type ProjectStatus = 'draft' | 'generating' | 'completed' | 'failed'
+export type ProjectStatus = 'draft' | 'analyzing' | 'scripted' | 'generating' | 'completed' | 'failed'
 
-export interface Project {
-  id: string
-  name: string
-  prompt: string
-  directorStyle?: string
-  cameraMovement?: string
-  mood?: string
-  location?: string
-  characterAppearance?: string
-  videoLength: '16' | '24' | '32' | '48' | 'custom'
-  status: ProjectStatus
-  mediaFiles: MediaFile[]
-  storyboardFrames: StoryboardFrame[]
-  createdAt: number
-  updatedAt: number
+export interface UsageMetrics {
+  total_input_tokens: number
+  total_output_tokens: number
+  estimated_cost_usd: number
 }
 
 export interface MediaFile {
@@ -55,6 +63,21 @@ export interface CustomOption {
   prompt: string
   category: SelectCategory
   createdAt: number
+}
+
+export interface Project {
+  id: string
+  name: string
+  type: ProjectType
+  base_concept: string
+  video_length: '16' | '24' | '32' | '48' | 'custom'
+  orientation: '16:9' | '9:16'
+  status: ProjectStatus
+  reference_image_url?: string
+  scenes: Scene[]
+  usage: UsageMetrics
+  createdAt: number
+  updatedAt: number
 }
 
 export type SelectCategory =

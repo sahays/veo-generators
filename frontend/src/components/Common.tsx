@@ -42,7 +42,7 @@ export const Button = ({
 }
 
 interface CardProps {
-  title: string
+  title?: string
   icon?: LucideIcon
   children: React.ReactNode
   actions?: React.ReactNode
@@ -60,10 +60,12 @@ export const Card = ({ title, icon: Icon, children, actions, className }: CardPr
         className
       )}
     >
-      <div className="flex items-center gap-2.5 mb-4">
-        {Icon && <Icon className="text-accent-dark" size={20} />}
-        <h3 className="text-base font-heading font-bold text-foreground">{title}</h3>
-      </div>
+      {(title || Icon) && (
+        <div className="flex items-center gap-2.5 mb-4">
+          {Icon && <Icon className="text-accent-dark" size={20} />}
+          {title && <h3 className="text-base font-heading font-bold text-foreground">{title}</h3>}
+        </div>
+      )}
       
       <div className="text-sm text-muted-foreground">
         {children}

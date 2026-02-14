@@ -1,33 +1,30 @@
-import { useState, useCallback } from 'react'
-import { useForm, Controller } from 'react-hook-form'
+import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Save, Sparkles, Dices, FileText, ImageIcon, Sliders, Clapperboard } from 'lucide-react'
+import { ArrowLeft, Sparkles, FileText, ImageIcon, Monitor, Smartphone, Clock, Clapperboard, Megaphone, Share2, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button, Card } from '@/components/Common'
-import { MediaDropZone } from './MediaDropZone'
-import { CreativeSettings } from './CreativeSettings'
-import { StoryboardView } from './StoryboardView'
 import { useProjectStore } from '@/store/useProjectStore'
-import { projectSchema, type Project, type ProjectFormData, type MediaFile, type StoryboardFrame } from '@/types/project'
-import { generateStoryboardFrames } from '@/lib/mockData'
+import { projectSchema, type ProjectFormData, VIDEO_LENGTH_OPTIONS } from '@/types/project'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useEffect } from 'react'
 
 export const ProjectForm = () => {
-  const { activeProjectId, projects, addProject, updateProject, setView, setTempProjectData } = useProjectStore()
-  const existingProject = activeProjectId
-    ? projects.find((p) => p.id === activeProjectId)
-    : null
+  const { setTempProjectData, setActiveProject, projects } = useProjectStore()
+  const navigate = useNavigate()
+  const { id } = useParams<{ id: string }>()
+  
+  const existingProject = id ? projects.find(p => p.id === id) : null
 
-  const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([])
-  const [storyboardFrames, setStoryboardFrames] = useState<StoryboardFrame[]>(
-    existingProject?.storyboardFrames || [],
-  )
-  const [isGenerating, setIsGenerating] = useState(false)
+  useEffect(() => {
+    if (id && existingProject) {
+      setActiveProject(id)
+    }
+  }, [id, existingProject, setActiveProject])
 
   const {
     register,
     handleSubmit,
-    control,
     watch,
     setValue,
     formState: { errors },
@@ -35,60 +32,20 @@ export const ProjectForm = () => {
     resolver: zodResolver(projectSchema),
     defaultValues: {
       name: existingProject?.name || '',
-      prompt: existingProject?.prompt || '',
-      directorStyle: existingProject?.directorStyle || '',
-      cameraMovement: existingProject?.cameraMovement || '',
-      mood: existingProject?.mood || '',
-      location: existingProject?.location || '',
-      characterAppearance: existingProject?.characterAppearance || '',
-      videoLength: existingProject?.videoLength || '16',
+      type: existingProject?.type || 'advertizement',
+      base_concept: existingProject?.base_concept || '',
+      video_length: existingProject?.video_length || '16',
+      orientation: existingProject?.orientation || '16:9',
     },
   })
 
-  const promptValue = watch('prompt') || ''
-  const videoLength = watch('videoLength')
-  const directorStyle = watch('directorStyle')
-  const cameraMovement = watch('cameraMovement')
-  const mood = watch('mood')
-  const location = watch('location')
-  const characterAppearance = watch('characterAppearance')
+  const orientation = watch('orientation')
+  const projectType = watch('type')
+  const concept = watch('base_concept') || ''
 
-  const handleCreativeChange = useCallback(
-    (field: string, value: string) => {
-      setValue(field as keyof ProjectFormData, value, { shouldValidate: true })
-    },
-    [setValue],
-  )
-
-  const buildProject = (data: ProjectFormData, status: Project['status'], id?: string): Project => ({
-    id: id || `proj-${Date.now()}`,
-    name: data.name,
-    prompt: data.prompt,
-    directorStyle: data.directorStyle,
-    cameraMovement: data.cameraMovement,
-    mood: data.mood,
-    location: data.location,
-    characterAppearance: data.characterAppearance,
-    videoLength: data.videoLength,
-    status,
-    mediaFiles,
-    storyboardFrames: [],
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  })
-
-  const onSaveDraft = handleSubmit((data) => {
-    if (existingProject) {
-      updateProject(existingProject.id, { ...data, status: 'draft', mediaFiles })
-    } else {
-      addProject(buildProject(data, 'draft'))
-    }
-    setView('list')
-  })
-
-  const onNext = handleSubmit((data) => {
-    setTempProjectData({ ...data, mediaFiles })
-    setView('review')
+  const onAnalyze = handleSubmit((data) => {
+    setTempProjectData({ ...data, scenes: existingProject?.scenes })
+    navigate(id ? `/productions/${id}/script` : '/productions/new/script')
   })
 
   return (
@@ -96,137 +53,169 @@ export const ProjectForm = () => {
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
-      transition={{ duration: 0.2 }}
-      className="space-y-6"
+      className="space-y-6 max-w-3xl mx-auto"
     >
-      {/* Header */}
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => setView('list')}
-          className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-        >
+        <button onClick={() => navigate('/productions')} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
           <ArrowLeft size={18} />
         </button>
         <div>
           <h2 className="text-xl font-heading text-foreground tracking-tight">
-            {existingProject ? 'Edit Project' : 'New Project'}
+            {existingProject ? 'Edit Production' : 'New Production'}
           </h2>
           <p className="text-xs text-muted-foreground">
-            {existingProject ? 'Update your ad generation settings' : 'Configure your new ad generation'}
+            {existingProject ? 'Update your production settings' : 'Define your core concept and technical constraints.'}
           </p>
         </div>
       </div>
 
       <form className="space-y-6">
-        {/* Project Details */}
-        <Card title="Project Details" icon={FileText}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card title="Production Type" icon={projectType === 'movie' ? Clapperboard : projectType === 'social' ? Share2 : Megaphone} className="md:col-span-3">
+            <div className="flex flex-wrap gap-4">
+              {[
+                { id: 'movie', label: 'Movie', icon: Clapperboard, desc: 'Cinematic storytelling' },
+                { id: 'advertizement', label: 'Ad', icon: Megaphone, desc: 'Brand promotion' },
+                { id: 'social', label: 'Social', icon: Share2, desc: 'Viral short content' }
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setValue('type', opt.id as any)}
+                  className={cn(
+                    "flex-1 flex items-center gap-3 p-3 rounded-xl border transition-all text-left",
+                    projectType === opt.id 
+                      ? "bg-accent/10 border-accent text-accent-dark shadow-sm" 
+                      : "border-border text-muted-foreground hover:border-accent/30"
+                  )}
+                >
+                  <div className={cn(
+                    "p-2 rounded-lg",
+                    projectType === opt.id ? "bg-accent text-slate-900" : "bg-muted"
+                  )}>
+                    <opt.icon size={18} />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider">{opt.label}</p>
+                    <p className="text-[10px] opacity-70">{opt.desc}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </Card>
+        </div>
+
+        <Card title="Concept & Vision" icon={FileText}>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <label htmlFor="name" className="text-xs font-medium text-muted-foreground">
-                Project Name
-              </label>
+              <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Project Name</label>
               <input
-                id="name"
                 {...register('name')}
-                placeholder="My Ad Campaign"
-                className={cn(
-                  "w-full px-3 py-2 rounded-lg text-sm transition-all duration-200 text-foreground",
-                  "glass bg-card border border-border placeholder:text-muted-foreground",
-                  "focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50",
-                  errors.name && "border-red-500/50 focus:ring-red-500/30"
-                )}
+                placeholder="Summer Campaign 2026"
+                className="w-full px-3 py-2 rounded-lg text-sm glass bg-card border border-border focus:ring-2 focus:ring-accent/30 outline-none"
               />
-              {errors.name && (
-                <p className="text-[11px] text-red-500">{errors.name.message}</p>
-              )}
+              {errors.name && <p className="text-[10px] text-red-500">{errors.name.message}</p>}
             </div>
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label htmlFor="prompt" className="text-xs font-medium text-muted-foreground">
-                  Prompt
-                </label>
-                <span className={cn(
-                  "text-[10px] font-mono",
-                  promptValue.length > 1800 ? "text-amber-500" : "text-muted-foreground"
-                )}>
-                  {promptValue.length}/2000
-                </span>
+                <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Base Concept</label>
+                <span className="text-[10px] font-mono text-muted-foreground">{concept.length}/2000</span>
               </div>
               <textarea
-                id="prompt"
-                {...register('prompt')}
-                rows={4}
-                placeholder="Describe the video you want to generate..."
-                className={cn(
-                  "w-full px-3 py-2 rounded-lg text-sm transition-all duration-200 resize-none text-foreground",
-                  "glass bg-card border border-border placeholder:text-muted-foreground",
-                  "focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50",
-                  errors.prompt && "border-red-500/50 focus:ring-red-500/30"
-                )}
+                {...register('base_concept')}
+                rows={5}
+                placeholder="Describe the overall story, vibe, and key message..."
+                className="w-full px-3 py-2 rounded-lg text-sm glass bg-card border border-border focus:ring-2 focus:ring-accent/30 outline-none resize-none"
               />
-              {errors.prompt && (
-                <p className="text-[11px] text-red-500">{errors.prompt.message}</p>
-              )}
+              {errors.base_concept && <p className="text-[10px] text-red-500">{errors.base_concept.message}</p>}
             </div>
           </div>
         </Card>
 
-        {/* Reference Media */}
-        <Card title="Reference Media" icon={ImageIcon}>
-          <Controller
-            name="name" // dummy — media not in schema
-            control={control}
-            render={() => (
-              <MediaDropZone files={mediaFiles} onChange={setMediaFiles} />
-            )}
-          />
-        </Card>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card title="Duration" icon={Clock}>
+            <div className="flex flex-wrap gap-3">
+              {VIDEO_LENGTH_OPTIONS.map((len) => (
+                <label key={len} className="flex items-center gap-2 cursor-pointer group">
+                  <input
+                    type="radio"
+                    value={len}
+                    {...register('video_length')}
+                    className="sr-only"
+                  />
+                  <div className={cn(
+                    "px-3 py-1.5 rounded-md border text-xs font-medium transition-all",
+                    watch('video_length') === len 
+                      ? "bg-accent text-slate-900 border-accent" 
+                      : "border-border hover:border-accent/50 text-muted-foreground"
+                  )}>
+                    {len === 'custom' ? 'Custom' : `${len}s`}
+                  </div>
+                </label>
+              ))}
+            </div>
+          </Card>
 
-        {/* Creative Settings */}
-        <Card title="Creative Settings" icon={Sliders}>
-          <CreativeSettings
-            values={{
-              directorStyle,
-              cameraMovement,
-              mood,
-              location,
-              characterAppearance,
-              videoLength,
-            }}
-            onChange={handleCreativeChange}
-          />
-        </Card>
+          <Card title="Orientation" icon={orientation === '16:9' ? Monitor : Smartphone}>
+            <div className="flex gap-4">
+              {[
+                { id: '16:9', label: 'Landscape', icon: Monitor },
+                { id: '9:16', label: 'Vertical', icon: Smartphone }
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setValue('orientation', opt.id as any)}
+                  className={cn(
+                    "flex-1 flex flex-col items-center gap-2 p-3 rounded-xl border transition-all",
+                    orientation === opt.id 
+                      ? "bg-accent/10 border-accent text-accent-dark" 
+                      : "border-border text-muted-foreground hover:border-accent/30"
+                  )}
+                >
+                  <opt.icon size={20} />
+                  <span className="text-[10px] font-bold uppercase tracking-widest">{opt.label}</span>
+                </button>
+              ))}
+            </div>
+          </Card>
+        </div>
 
-        {/* Storyboard removed from here - moved to review page if needed */}
-
-        {/* Action Bar */}
-        <div className="flex items-center justify-between pt-2 pb-4">
-          <Button
-            variant="ghost"
-            onClick={() => setView('list')}
-            type="button"
-          >
-            Cancel
-          </Button>
-          <div className="flex items-center gap-3">
-            <Button
-              variant="secondary"
-              icon={Save}
-              onClick={onSaveDraft}
-              type="button"
-            >
-              Save Draft
-            </Button>
-            <Button
-              icon={Sparkles}
-              onClick={onNext}
-              type="button"
-            >
-              Next
-            </Button>
+        <Card title="Visual Reference" icon={ImageIcon}>
+          <div className="border-2 border-dashed border-border rounded-xl p-8 flex flex-col items-center justify-center text-center space-y-2 hover:border-accent/50 transition-colors cursor-pointer">
+            <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-muted-foreground">
+              <ImageIcon size={20} />
+            </div>
+            <p className="text-xs font-medium">Upload Key Reference Image</p>
+            <p className="text-[10px] text-muted-foreground">Provide a visual anchor for characters and style.</p>
           </div>
+        </Card>
+
+        {/* Storyboard Preview for existing projects */}
+        {existingProject && existingProject.scenes.length > 0 && (
+          <Card title="Storyboard Preview" icon={Clapperboard}>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {existingProject.scenes.map((scene) => (
+                <div key={scene.id} className="group relative aspect-video rounded-lg overflow-hidden border border-border bg-muted">
+                  <img src={scene.thumbnail_url} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2">
+                    <span className="text-[8px] text-white font-mono">{scene.timestamp_start}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        <div className="flex justify-end pt-4">
+          <Button 
+            onClick={onAnalyze} 
+            icon={existingProject?.scenes.length ? Play : Sparkles} 
+            className="w-full md:w-auto"
+          >
+            {existingProject?.scenes.length ? 'View & Edit Script' : 'Analyze & Script'}
+          </Button>
         </div>
       </form>
     </motion.div>

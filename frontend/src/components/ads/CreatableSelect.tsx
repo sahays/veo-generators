@@ -86,7 +86,7 @@ export const CreatableSelect = ({
                 className="absolute z-50 mt-1 w-full rounded-lg glass bg-card border border-border shadow-xl overflow-hidden"
               >
                 <div className="max-h-52 overflow-y-auto py-1">
-                  {options.map((option) => (
+                  {options.map((option: string) => (
                     <button
                       key={option}
                       type="button"

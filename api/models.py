@@ -24,6 +24,7 @@ class StoryboardFrame(BaseModel):
 class Project(BaseModel):
     id: str
     name: str
+    type: str = "advertizement"
     prompt: str
     refined_prompt: Optional[str] = None
     director_style: Optional[str] = None

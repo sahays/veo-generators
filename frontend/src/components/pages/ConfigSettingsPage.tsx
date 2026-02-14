@@ -12,7 +12,7 @@ interface ConfigSettingsPageProps {
 }
 
 export const ConfigSettingsPage = ({ category }: ConfigSettingsPageProps) => {
-  const { getCustomOptions, addCustomOption, customOptions } = useProjectStore()
+  const { getCustomOptions, addCustomOption } = useProjectStore()
   const [isModalOpen, setIsModalOpen] = useState(false)
 
   const defaults = DEFAULT_OPTIONS[category]
@@ -42,7 +42,7 @@ export const ConfigSettingsPage = ({ category }: ConfigSettingsPageProps) => {
       {/* Default options */}
       <Card title="Defaults" className="overflow-hidden">
         <div className="divide-y divide-border -mx-5 -mb-5 mt-1">
-          {defaults.map((name) => (
+          {defaults.map((name: string) => (
             <div
               key={name}
               className="flex items-center gap-3 px-5 py-3 text-sm text-foreground"
@@ -70,7 +70,7 @@ export const ConfigSettingsPage = ({ category }: ConfigSettingsPageProps) => {
           </div>
         ) : (
           <div className="divide-y divide-border -mx-5 -mb-5 mt-1">
-            {custom.map((opt) => (
+            {custom.map((opt: CustomOption) => (
               <CustomOptionRow key={opt.id} option={opt} category={category} />
             ))}
           </div>
@@ -81,7 +81,7 @@ export const ConfigSettingsPage = ({ category }: ConfigSettingsPageProps) => {
         {isModalOpen && (
           <AddOptionModal
             label={label}
-            existingNames={[...defaults, ...custom.map((o) => o.name)]}
+            existingNames={[...defaults, ...custom.map((o: CustomOption) => o.name)]}
             onConfirm={(name, prompt) => {
               addCustomOption(category, name, prompt)
               setIsModalOpen(false)
