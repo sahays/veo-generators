@@ -1,0 +1,88 @@
+@import url('https://fonts.googleapis.com/css2?family=Bitter:ital,wght@0,100..900;1,100..900&family=Geist:wght@100..900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  /* Typography Scale - Tuned Down */
+  --font-sans: "Geist", ui-sans-serif, system-ui;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular;
+  --font-heading: "Bitter", serif;
+
+  /* Color System */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-card: var(--card);
+  
+  /* Unified Accent System (#A4DDED) */
+  --color-accent: #A4DDED;
+  --color-accent-dark: #86c5d8;
+  --color-accent-light: rgba(164, 221, 237, 0.2);
+  --color-sidebar-text: var(--sidebar-text);
+
+  /* Transitions */
+  --transition-timing: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --muted: #f1f5f9;
+  --muted-foreground: #475569;
+  --border: rgba(15, 23, 42, 0.1);
+  --card: rgba(255, 255, 255, 0.7);
+  
+  /* Sidebar Light Mode - Glass */
+  --sidebar-grad-1: rgba(241, 245, 249, 0.8);
+  --sidebar-grad-2: rgba(226, 232, 240, 0.8);
+  --sidebar-grad-3: rgba(203, 213, 225, 0.8);
+  --sidebar-text: #0f172a;
+}
+
+.dark {
+  --background: #020617;
+  --foreground: #f8fafc;
+  --muted: #0f172a;
+  --muted-foreground: #94a3b8;
+  --border: rgba(248, 250, 252, 0.1);
+  --card: rgba(15, 23, 42, 0.5);
+
+  /* Sidebar Dark Mode - Glass Stealth */
+  --sidebar-grad-1: rgba(0, 0, 0, 0.8);
+  --sidebar-grad-2: rgba(9, 9, 11, 0.8);
+  --sidebar-grad-3: rgba(24, 24, 27, 0.8);
+  --sidebar-text: #ffffff;
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-gradient-stealth {
+  background-size: 200% 200%;
+  background-image: linear-gradient(135deg, var(--sidebar-grad-1), var(--sidebar-grad-2), var(--sidebar-grad-3));
+  animation: gradient-shift 30s ease infinite;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground font-sans antialiased transition-colors duration-300 text-sm;
+  }
+  h1 { @apply font-heading font-bold tracking-tight text-xl; }
+  h2 { @apply font-heading font-bold tracking-tight text-lg; }
+  h3 { @apply font-heading font-bold tracking-tight text-base; }
+  
+  button, a {
+    @apply cursor-pointer;
+  }
+}
+
+.glass {
+  @apply backdrop-blur-xl border border-border;
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

@@ -115,6 +115,13 @@ env.bak/
 venv.bak/
 api/venv/
 
+# Node / Frontend
+node_modules/
+dist/
+.eslintcache
+.stylelintcache
+
+
 
 # Spyder project settings
 .spyderproject
