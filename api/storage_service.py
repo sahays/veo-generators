@@ -31,6 +31,11 @@ class StorageService:
         blob.upload_from_string(content, content_type=content_type)
         return f"gs://{self.bucket_name}/{destination_path}"
 
+    def upload_bytes(self, data: bytes, destination_path: str, content_type: str = "image/png") -> str:
+        blob = self.bucket.blob(destination_path)
+        blob.upload_from_string(data, content_type=content_type)
+        return f"gs://{self.bucket_name}/{destination_path}"
+
     def get_signed_url(self, gcs_uri: str) -> str:
         if not gcs_uri.startswith("gs://"):
             return gcs_uri

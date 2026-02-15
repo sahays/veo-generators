@@ -1,6 +1,7 @@
 import os
 import zlib
 import asyncio
+import uuid
 from typing import List
 from google import genai
 from google.genai import types
@@ -8,22 +9,34 @@ from models import Scene, SceneMetadata, UsageMetrics, AIResponseWrapper
 from google.cloud.video import transcoder_v1
 
 class AIService:
-    def __init__(self):
+    def __init__(self, storage_svc=None):
         self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
-        self.location = os.getenv("GEMINI_REGION", "us-central1")
+        self.location = os.getenv("GEMINI_REGION", "global")
+        self.veo_location = os.getenv("VEO_REGION", "us-central1")
+        
+        # Primary client for Text and Image
         self.client = genai.Client(
             vertexai=True, 
             project=self.project_id, 
             location=self.location
         )
+        
+        # Dedicated client for Video (as Veo may have limited regional availability)
+        self.video_client = genai.Client(
+            vertexai=True,
+            project=self.project_id,
+            location=self.veo_location
+        )
+        
         self.transcoder_client = transcoder_v1.TranscoderServiceClient()
+        self.storage_svc = storage_svc
 
     def _get_project_seed(self, project_id: str) -> int:
         # Generate a deterministic integer seed from the alphanumeric project ID
         return zlib.adler32(project_id.encode()) & 0x7fffffff
 
     async def analyze_brief(self, project_id: str, concept: str, length: str, orientation: str) -> AIResponseWrapper:
-        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-1.5-pro-002")
+        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3-pro-preview")
         
         # We define the schema for Gemini to return a structured list of scenes
         prompt = f"""
@@ -90,50 +103,140 @@ class AIService:
         return AIResponseWrapper(data=scenes, usage=usage)
 
     async def generate_frame(self, project_id: str, description: str, orientation: str) -> AIResponseWrapper:
-        model_id = os.getenv("STORYBOARD_MODEL", "imagen-3.0-generate-001")
-        seed = self._get_project_seed(project_id)
+        model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
         
-        aspect_ratio = "16:9" if orientation == "16:9" else "9:16"
-        
-        response = self.client.models.generate_image(
+        # Gemini 3 Pro Image uses generate_content for image generation
+        response = self.client.models.generate_content(
             model=model_id,
-            prompt=description,
-            config=types.GenerateImageConfig(
-                number_of_images=1,
-                seed=seed,
-                aspect_ratio=aspect_ratio
-            )
+            contents=description,
+            config={
+                "candidate_count": 1,
+            }
         )
         
-        # In a real scenario, we would upload the image bytes to GCS here.
-        # For now, returning the generated image's internal reference or mock.
-        image_url = response.generated_images[0].image_url if response.generated_images else "https://picsum.photos/800/450"
+        image_url = "https://picsum.photos/800/450"
         
-        usage = UsageMetrics(model_name=model_id, cost_usd=0.03) # Fixed cost for Image
+        if response.candidates and response.candidates[0].content.parts:
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, 'inline_data') and part.inline_data:
+                    # Upload the generated image bytes to GCS
+                    if self.storage_svc:
+                        dest = f"generated/{project_id}/{uuid.uuid4()}.png"
+                        gcs_uri = self.storage_svc.upload_bytes(part.inline_data.data, dest)
+                        image_url = self.storage_svc.get_signed_url(gcs_uri)
+                    break
+        
+        usage = UsageMetrics(model_name=model_id, cost_usd=0.03)
         return AIResponseWrapper(data=image_url, usage=usage)
 
-    async def generate_scene_video(self, project_id: str, scene: Scene) -> str:
-        model_id = os.getenv("VIDEO_GEN_MODEL", "veo-2.0-generate-001")
+    async def generate_scene_video(self, project_id: str, scene: Scene, blocking: bool = True):
+        model_id = os.getenv("VIDEO_GEN_MODEL", "veo-3.1-generate-preview")
         seed = self._get_project_seed(project_id)
         
-        operation = self.client.models.generate_video(
+        operation = self.video_client.models.generate_videos(
             model=model_id,
             prompt=scene.visual_description,
-            config=types.GenerateVideoConfig(
-                duration_seconds=8,
-                seed=seed
-            )
+            config={
+                "duration_seconds": 8,
+                "seed": seed,
+                "aspect_ratio": "16:9",
+                "number_of_videos": 1
+            }
         )
         
-        # This is a long running operation. Operation.result() polls until finished.
-        video = operation.result()
-        return video.video_uri # Path to GCS
+        if not blocking:
+            return {"operation_name": operation.name, "status": "processing"}
+        
+        # This is a long running operation. We need to poll for completion.
+        while not operation.done:
+            await asyncio.sleep(10)
+            # In some SDK versions, we might need to verify if the object auto-updates.
+            # If operation.done is a property that calls the API, this works.
+        
+        if operation.result and operation.result.generated_videos:
+             return operation.result.generated_videos[0].video.uri
+        
+        return ""
+
+    async def get_video_generation_status(self, operation_name: str):
+        try:
+            print(f"Checking operation: {operation_name}")
+            
+            # Reconstruct the operation object from the name string
+            # This is necessary because client.operations.get() requires an object, not a string.
+            from google.genai import types
+            operation_wrapper = types.GenerateVideosOperation(name=operation_name)
+            
+            # Fetch the updated operation status
+            operation = self.video_client.operations.get(operation_wrapper)
+            print(f"Operation type: {type(operation)}")
+            
+            # Defensive check for different possible return types (Object vs Dict)
+            is_done = getattr(operation, 'done', None)
+            if is_done is None and isinstance(operation, dict):
+                is_done = operation.get('done')
+            
+            if is_done:
+                error = getattr(operation, 'error', None)
+                if error is None and isinstance(operation, dict):
+                    error = operation.get('error')
+                
+                if error:
+                     print(f"Operation failed: {error}")
+                     return {"status": "failed", "error": str(error)}
+                
+                result = getattr(operation, 'result', None)
+                if result is None and isinstance(operation, dict):
+                    result = operation.get('result')
+
+                if result:
+                    # Handle both object and dict results
+                    videos = getattr(result, 'generated_videos', None)
+                    if videos is None and isinstance(result, dict):
+                        videos = result.get('generated_videos')
+                    
+                    if videos:
+                        # videos might be a list of objects or dicts
+                        first_video = videos[0]
+                        
+                        # Try to get URI first
+                        uri = getattr(first_video.video, 'uri', None) if hasattr(first_video, 'video') else None
+                        
+                        # If no URI, check for video bytes
+                        if not uri:
+                            video_bytes = getattr(first_video.video, 'video_bytes', None) if hasattr(first_video, 'video') else None
+                            if video_bytes and self.storage_svc:
+                                # Upload bytes to GCS
+                                # Use operation name as part of filename to be unique
+                                safe_name = operation_name.replace('/', '_')
+                                filename = f"videos/{safe_name}.mp4"
+                                print(f"Uploading raw video bytes to {filename}...")
+                                uri = self.storage_svc.upload_bytes(video_bytes, filename, content_type="video/mp4")
+                        
+                        # Fallback for dict access if needed
+                        if uri is None and isinstance(first_video, dict):
+                            video_obj = first_video.get('video')
+                            uri = video_obj.get('uri') if isinstance(video_obj, dict) else getattr(video_obj, 'uri', None)
+                        
+                        if uri:
+                            print(f"Video generated: {uri}")
+                            return {"status": "completed", "video_uri": uri}
+                
+                print("Operation complete but no video found in result.")
+                return {"status": "completed", "video_uri": None} 
+            
+            return {"status": "processing"}
+        except Exception as e:
+            print(f"Error checking status: {e}")
+            import traceback
+            traceback.print_exc()
+            return {"status": "error", "message": str(e)}
 
     async def stitch_production(self, project_id: str, scene_uris: List[str]) -> str:
         # Transcoder API usually requires a specific region
         transcoder_loc = os.getenv("GOOGLE_CLOUD_LOCATION", "asia-south1")
         parent = f"projects/{self.project_id}/locations/{transcoder_loc}"
-        output_uri = f"gs://{self.project_id}-veogen-assets/productions/{project_id}/final.mp4"
+        output_uri = f"gs://{os.getenv('GCS_BUCKET')}/productions/{project_id}/final.mp4"
         
         inputs = [transcoder_v1.types.Input(key=f"input{i}", uri=uri) for i, uri in enumerate(scene_uris)]
         edit_list = [
@@ -163,3 +266,4 @@ class AIService:
 
         response = self.transcoder_client.create_job(parent=parent, job=job)
         return output_uri
+

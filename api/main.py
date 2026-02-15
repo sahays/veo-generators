@@ -41,8 +41,8 @@ async def startup_event():
     try:
         logger.info("Initializing services...")
         firestore_svc = FirestoreService()
-        ai_svc = AIService()
         storage_svc = StorageService()
+        ai_svc = AIService(storage_svc=storage_svc)
         logger.info("Services initialized successfully.")
     except Exception as e:
         logger.error(f"Failed to initialize services: {e}")
@@ -171,8 +171,28 @@ async def diagnostic_image(request: dict):
 async def diagnostic_video(request: dict):
     if not ai_svc or not storage_svc: raise HTTPException(status_code=503, detail="Service not initialized")
     scene = Scene(visual_description=request.get("prompt", ""), timestamp_start="0", timestamp_end="8")
-    uri = await ai_svc.generate_scene_video("diag-proj", scene)
-    return {"video_uri": uri, "signed_url": storage_svc.get_signed_url(uri)}
+    
+    # Non-blocking call
+    result = await ai_svc.generate_scene_video("diag-proj", scene, blocking=False)
+    
+    # If it returns a dict with operation_name, we return that.
+    # If it returned a URI directly (if blocking was True or instantaneous), we handle that too.
+    if isinstance(result, dict) and "operation_name" in result:
+        return result
+    
+    # Fallback for sync return (should not happen with blocking=False)
+    return {"video_uri": result, "signed_url": storage_svc.get_signed_url(result) if result else None}
+
+@app.get("/api/v1/diagnostics/operations/{name:path}")
+async def check_operation_status(name: str):
+    if not ai_svc: raise HTTPException(status_code=503, detail="Service not initialized")
+    status = await ai_svc.get_video_generation_status(name)
+    
+    if status.get("status") == "completed" and status.get("video_uri"):
+        # Sign the URL before returning
+        status["signed_url"] = storage_svc.get_signed_url(status["video_uri"])
+        
+    return status
 
 # --- SPA Serving ---
 if os.path.exists("static"):

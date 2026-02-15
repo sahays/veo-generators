@@ -210,15 +210,54 @@ const VideoGenerationTest = () => {
   const [prompt, setPrompt] = useState('A slow tracking shot of coffee being poured.')
   const [result, setResult] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [status, setStatus] = useState<string>('idle')
+
+  const pollStatus = async (operationName: string) => {
+    const interval = setInterval(async () => {
+      try {
+        // Encoding the operation name is crucial as it contains slashes
+        const encodedName = encodeURIComponent(operationName)
+        const response = await fetch(`/api/v1/diagnostics/operations/${operationName}`)
+        const data = await response.json()
+        
+        if (data.status === 'completed') {
+          setResult({ video_uri: data.video_uri, signed_url: data.signed_url })
+          setStatus('completed')
+          setIsLoading(false)
+          clearInterval(interval)
+        } else if (data.status === 'failed' || data.status === 'error') {
+          console.error(data.error || data.message)
+          setStatus('failed')
+          setIsLoading(false)
+          clearInterval(interval)
+        }
+        // If processing, continue polling
+      } catch (err) {
+        console.error("Polling error", err)
+        // Don't stop polling on transient network errors
+      }
+    }, 5000) // Poll every 5 seconds
+  }
 
   const handleTest = async () => {
     setIsLoading(true)
+    setStatus('starting')
+    setResult(null)
     try {
       const data = await api.diagnostics.generateVideo({ prompt })
-      setResult(data)
+      
+      if (data.operation_name) {
+        setStatus('processing')
+        pollStatus(data.operation_name)
+      } else if (data.video_uri) {
+        // Immediate return (unlikely for video but good fallback)
+        setResult(data)
+        setStatus('completed')
+        setIsLoading(false)
+      }
     } catch (err) {
       console.error(err)
-    } finally {
+      setStatus('failed')
       setIsLoading(false)
     }
   }
@@ -229,7 +268,7 @@ const VideoGenerationTest = () => {
       icon={Video}
       actions={
         <Button onClick={handleTest} disabled={isLoading} icon={Video}>
-          {isLoading ? 'Rendering...' : 'Render Scene'}
+          {isLoading ? 'Processing...' : 'Render Scene'}
         </Button>
       }
     >
@@ -239,17 +278,39 @@ const VideoGenerationTest = () => {
           onChange={(e) => setPrompt(e.target.value)}
           className="w-full h-20 p-3 rounded-lg bg-muted/30 border border-border text-xs outline-none focus:ring-2 focus:ring-accent/30 transition-all"
         />
-        {result && (
+        
+        {status === 'processing' && (
+          <div className="flex items-center gap-2 p-3 bg-muted/30 rounded-lg">
+            <Loader2 className="animate-spin text-accent-dark" size={16} />
+            <span className="text-xs text-muted-foreground">Generating video... this may take a minute.</span>
+          </div>
+        )}
+
+        {result && status === 'completed' && (
           <div className="p-3 bg-accent/5 border border-accent/20 rounded-lg">
-            <p className="text-[10px] font-mono break-all mb-2">{result.video_uri}</p>
+            {result.signed_url && (
+              <video 
+                src={result.signed_url} 
+                controls 
+                className="w-full rounded-lg mb-2 shadow-sm aspect-video bg-black"
+              />
+            )}
+            <p className="text-[10px] font-mono break-all mb-2 opacity-70">{result.video_uri}</p>
             <a 
               href={result.signed_url} 
               target="_blank" 
-              className="text-accent-dark text-[10px] font-bold flex items-center gap-1"
+              rel="noreferrer"
+              className="text-accent-dark text-[10px] font-bold flex items-center gap-1 hover:underline"
             >
               Download Scene <ExternalLink size={10} />
             </a>
           </div>
+        )}
+
+        {status === 'failed' && (
+           <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-500">
+             Video generation failed. Check console/logs.
+           </div>
         )}
       </div>
     </Card>
