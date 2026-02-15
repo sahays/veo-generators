@@ -10,10 +10,11 @@ from google.cloud.video import transcoder_v1
 class AIService:
     def __init__(self):
         self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
+        self.location = os.getenv("GEMINI_REGION", "us-central1")
         self.client = genai.Client(
             vertexai=True, 
             project=self.project_id, 
-            location="us-central1"
+            location=self.location
         )
         self.transcoder_client = transcoder_v1.TranscoderServiceClient()
 
@@ -22,7 +23,7 @@ class AIService:
         return zlib.adler32(project_id.encode()) & 0x7fffffff
 
     async def analyze_brief(self, project_id: str, concept: str, length: str, orientation: str) -> AIResponseWrapper:
-        model_id = "gemini-3-pro-preview"
+        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-1.5-pro-002")
         
         # We define the schema for Gemini to return a structured list of scenes
         prompt = f"""
@@ -89,7 +90,7 @@ class AIService:
         return AIResponseWrapper(data=scenes, usage=usage)
 
     async def generate_frame(self, project_id: str, description: str, orientation: str) -> AIResponseWrapper:
-        model_id = "gemini-3-pro-image-preview"
+        model_id = os.getenv("STORYBOARD_MODEL", "imagen-3.0-generate-001")
         seed = self._get_project_seed(project_id)
         
         aspect_ratio = "16:9" if orientation == "16:9" else "9:16"
@@ -112,7 +113,7 @@ class AIService:
         return AIResponseWrapper(data=image_url, usage=usage)
 
     async def generate_scene_video(self, project_id: str, scene: Scene) -> str:
-        model_id = "veo-3.1-generate-preview"
+        model_id = os.getenv("VIDEO_GEN_MODEL", "veo-2.0-generate-001")
         seed = self._get_project_seed(project_id)
         
         operation = self.client.models.generate_video(
@@ -129,7 +130,9 @@ class AIService:
         return video.video_uri # Path to GCS
 
     async def stitch_production(self, project_id: str, scene_uris: List[str]) -> str:
-        parent = f"projects/{self.project_id}/locations/us-central1"
+        # Transcoder API usually requires a specific region
+        transcoder_loc = os.getenv("GOOGLE_CLOUD_LOCATION", "asia-south1")
+        parent = f"projects/{self.project_id}/locations/{transcoder_loc}"
         output_uri = f"gs://{self.project_id}-veogen-assets/productions/{project_id}/final.mp4"
         
         inputs = [transcoder_v1.types.Input(key=f"input{i}", uri=uri) for i, uri in enumerate(scene_uris)]
