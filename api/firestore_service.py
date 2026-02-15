@@ -7,35 +7,44 @@ from models import Project, ProjectStatus
 class FirestoreService:
     def __init__(self):
         project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
-        collection_name = os.getenv("FIRESTORE_COLLECTION", "veogen_projects")
+        collection_name = os.getenv("FIRESTORE_COLLECTION", "productions")
         self.db = firestore.Client(project=project_id)
         self.collection = self.db.collection(collection_name)
 
-    def get_projects(self) -> List[Project]:
-        docs = self.collection.order_by("created_at", direction=firestore.Query.DESCENDING).stream()
+    def get_productions(self) -> List[Project]:
+        docs = self.collection.order_by("createdAt", direction=firestore.Query.DESCENDING).stream()
         return [Project(**doc.to_dict()) for doc in docs]
 
-    def get_project(self, project_id: str) -> Optional[Project]:
-        doc = self.collection.document(project_id).get()
+    def get_production(self, production_id: str) -> Optional[Project]:
+        doc = self.collection.document(production_id).get()
         if doc.exists:
             return Project(**doc.to_dict())
         return None
 
-    def create_project(self, project: Project):
-        self.collection.document(project.id).set(project.dict())
+    def create_production(self, production: Project):
+        self.collection.document(production.id).set(production.dict())
 
-    def update_project(self, project_id: str, updates: dict):
-        updates["updated_at"] = datetime.utcnow()
-        self.collection.document(project_id).update(updates)
+    def update_production(self, production_id: str, updates: dict):
+        updates["updatedAt"] = datetime.utcnow()
+        if "status" in updates and isinstance(updates["status"], ProjectStatus):
+            updates["status"] = updates["status"].value
+        self.collection.document(production_id).update(updates)
 
-    def delete_project(self, project_id: str):
-        self.collection.document(project_id).delete()
+    def delete_production(self, production_id: str):
+        self.collection.document(production_id).delete()
 
-    def set_config_options(self, category: str, options: List[str]):
-        self.db.collection("configs").document(category).set({"options": options})
-
-    def get_config_options(self, category: str) -> List[str]:
-        doc = self.db.collection("configs").document(category).get()
-        if doc.exists:
-            return doc.to_dict().get("options", [])
-        return []
+    def update_scene(self, production_id: str, scene_id: str, updates: dict):
+        production = self.get_production(production_id)
+        if not production:
+            return
+        
+        updated_scenes = []
+        for scene in production.scenes:
+            if scene.id == scene_id:
+                scene_dict = scene.dict()
+                scene_dict.update(updates)
+                updated_scenes.append(scene_dict)
+            else:
+                updated_scenes.append(scene.dict())
+        
+        self.update_production(production_id, {"scenes": updated_scenes})

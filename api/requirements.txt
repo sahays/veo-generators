@@ -1,8 +1,9 @@
 fastapi
 uvicorn
 google-cloud-firestore
-google-cloud-video-transcoder
 google-cloud-storage
+google-cloud-video-transcoder
+google-genai
 pydantic
 python-multipart
 python-dotenv
