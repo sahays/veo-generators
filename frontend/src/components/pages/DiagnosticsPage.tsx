@@ -27,13 +27,17 @@ const StorageTest = () => {
   const [file, setFile] = useState<File | null>(null)
   const [result, setResult] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [uploadSuccess, setUploadSuccess] = useState(false)
 
   const handleUpload = async () => {
     if (!file) return
     setIsLoading(true)
+    setUploadSuccess(false)
+    setResult(null)
     try {
       const data = await api.assets.upload(file)
       setResult(data)
+      setUploadSuccess(true)
     } catch (err) {
       console.error(err)
     } finally {
@@ -59,7 +63,11 @@ const StorageTest = () => {
         <div className="space-y-2">
           <input 
             type="file" 
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
+            onChange={(e) => {
+              setFile(e.target.files?.[0] || null)
+              setUploadSuccess(false)
+              setResult(null)
+            }}
             className="text-xs file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-semibold file:bg-accent/10 file:text-accent-dark hover:file:bg-accent/20 transition-all cursor-pointer"
           />
           {file && (
@@ -68,16 +76,37 @@ const StorageTest = () => {
             </p>
           )}
         </div>
-        {result && (
-          <div className="p-3 bg-accent/5 border border-accent/20 rounded-lg space-y-2">
-            <p className="text-[10px] font-mono break-all">{result.gcs_uri}</p>
-            <a 
-              href={result.signed_url} 
-              target="_blank" 
-              className="text-accent-dark text-[10px] font-bold flex items-center gap-1"
-            >
-              View Uploaded Asset <ExternalLink size={10} />
-            </a>
+
+        {isLoading && (
+           <div className="flex items-center gap-2 p-3 bg-muted/30 rounded-lg">
+             <Loader2 className="animate-spin text-accent-dark" size={16} />
+             <span className="text-xs text-muted-foreground">Uploading to Google Cloud Storage...</span>
+           </div>
+        )}
+
+        {uploadSuccess && result && (
+          <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg space-y-3">
+            <div className="flex items-center gap-2 text-green-600 dark:text-green-400 font-bold text-xs">
+              <Sparkles size={14} /> Upload Successful!
+            </div>
+            
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">GCS URI</p>
+              <p className="text-[10px] font-mono break-all bg-background/50 p-1.5 rounded border border-border/50 select-all">
+                {result.gcs_uri}
+              </p>
+            </div>
+
+            <div className="pt-2">
+              <a 
+                href={result.signed_url} 
+                target="_blank" 
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-accent-foreground text-xs font-bold rounded-md hover:bg-accent/90 transition-colors"
+              >
+                <ExternalLink size={14} /> Download / View File
+              </a>
+            </div>
           </div>
         )}
       </div>
