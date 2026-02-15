@@ -5,6 +5,7 @@ import { ProjectForm } from './components/ads/ProjectForm'
 import { RefinePromptView } from './components/ads/RefinePromptView'
 import { ProductionSummary } from './components/ads/ProductionSummary'
 import { ProjectList } from './components/ads/ProjectList'
+import { DiagnosticsPage } from './components/pages/DiagnosticsPage'
 
 function App() {
   return (
@@ -21,6 +22,9 @@ function App() {
             <Route path="/productions/:id" element={<ProductionSummary />} />
             <Route path="/productions/:id/edit" element={<ProjectForm />} />
             <Route path="/productions/:id/script" element={<RefinePromptView />} />
+
+            {/* Diagnostics */}
+            <Route path="/diagnostics" element={<DiagnosticsPage />} />
 
             {/* Configuration Routes */}
             <Route path="/configuration/:category" element={<ConfigSettingsWrapper />} />

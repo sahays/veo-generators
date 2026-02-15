@@ -83,5 +83,42 @@ export const api = {
       })
       return res.json()
     }
+  },
+  assets: {
+    upload: async (file: File): Promise<{ gcs_uri: string; signed_url: string }> => {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch(`${API_BASE_URL}/assets/upload`, {
+        method: 'POST',
+        body: formData,
+      })
+      return res.json()
+    }
+  },
+  diagnostics: {
+    optimizePrompt: async (data: any) => {
+      const res = await fetch(`${API_BASE_URL}/diagnostics/optimize-prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      return res.json()
+    },
+    generateImage: async (data: any) => {
+      const res = await fetch(`${API_BASE_URL}/diagnostics/generate-image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      return res.json()
+    },
+    generateVideo: async (data: any) => {
+      const res = await fetch(`${API_BASE_URL}/diagnostics/generate-video`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      return res.json()
+    }
   }
 }

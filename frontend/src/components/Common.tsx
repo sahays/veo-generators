@@ -25,11 +25,12 @@ export const Button = ({
 
   return (
     <motion.button
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
+      whileHover={!props.disabled ? { scale: 1.02 } : {}}
+      whileTap={!props.disabled ? { scale: 0.98 } : {}}
       transition={{ type: "spring", stiffness: 400, damping: 17 }}
       className={cn(
-        "flex items-center gap-2 px-4 py-2 rounded-md font-medium transition-all duration-200 disabled:opacity-50 cursor-pointer text-sm",
+        "flex items-center gap-2 px-4 py-2 rounded-md font-medium transition-all duration-200 text-sm",
+        "cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:grayscale-[0.5]",
         variants[variant],
         className
       )}
@@ -56,23 +57,26 @@ export const Card = ({ title, icon: Icon, children, actions, className }: CardPr
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       className={cn(
-        "glass bg-card p-5 rounded-xl shadow-sm transition-all duration-300",
+        "glass bg-card rounded-xl shadow-sm transition-all duration-300 overflow-hidden flex flex-col",
         className
       )}
     >
+      {/* Header */}
       {(title || Icon) && (
-        <div className="flex items-center gap-2.5 mb-4">
+        <div className="px-5 pt-5 pb-3 flex items-center gap-2.5">
           {Icon && <Icon className="text-accent-dark" size={20} />}
           {title && <h3 className="text-base font-heading font-bold text-foreground">{title}</h3>}
         </div>
       )}
       
-      <div className="text-sm text-muted-foreground">
+      {/* Body */}
+      <div className="px-5 py-4 text-sm text-muted-foreground flex-1">
         {children}
       </div>
 
+      {/* Footer */}
       {actions && (
-        <div className="flex justify-end gap-2 pt-4 mt-4 border-t border-border">
+        <div className="px-5 py-4 bg-muted/20 border-t border-border flex justify-end gap-2">
           {actions}
         </div>
       )}

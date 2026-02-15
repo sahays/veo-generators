@@ -3,7 +3,7 @@ import {
   Menu, X, Megaphone, Zap, Image as ImageIcon, Smartphone,
   ChevronLeft, ChevronRight, Settings, Terminal,
   FileText, ChevronDown, Sun, Moon,
-  Clapperboard, Video, Palette, MapPin, User
+  Clapperboard, Video, Palette, MapPin, User, Activity
 } from 'lucide-react'
 import { useLayoutStore } from '@/store/useLayoutStore'
 import { cn } from '@/lib/utils'
@@ -45,6 +45,7 @@ export const Sidebar = () => {
     { name: 'Highlights', icon: Zap, path: '/highlights' },
     { name: 'Thumbnails', icon: ImageIcon, path: '/thumbnails' },
     { name: 'Orientations', icon: Smartphone, path: '/orientations' },
+    { name: 'Diagnostics', icon: Activity, path: '/diagnostics' },
     {
       name: 'Configuration',
       icon: Settings,

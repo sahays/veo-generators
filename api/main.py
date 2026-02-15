@@ -110,6 +110,35 @@ async def upload_asset(file: UploadFile = File(...)):
     gcs_uri = storage_svc.upload_file(content, destination, file.content_type)
     return {"gcs_uri": gcs_uri, "signed_url": storage_svc.get_signed_url(gcs_uri)}
 
+# --- Diagnostic Endpoints ---
+
+@app.post("/api/v1/diagnostics/optimize-prompt")
+async def diagnostic_optimize(request: dict):
+    # Expects {"concept": "...", "length": "16", "orientation": "16:9"}
+    return await ai_svc.analyze_brief(
+        "diag-proj", 
+        request.get("concept", ""), 
+        request.get("length", "16"), 
+        request.get("orientation", "16:9")
+    )
+
+@app.post("/api/v1/diagnostics/generate-image")
+async def diagnostic_image(request: dict):
+    # Expects {"prompt": "...", "orientation": "16:9"}
+    return await ai_svc.generate_frame(
+        "diag-proj", 
+        request.get("prompt", ""), 
+        request.get("orientation", "16:9")
+    )
+
+@app.post("/api/v1/diagnostics/generate-video")
+async def diagnostic_video(request: dict):
+    # Expects {"prompt": "..."}
+    # This is a mock/direct call for a single 8s segment
+    scene = Scene(visual_description=request.get("prompt", ""), timestamp_start="0", timestamp_end="8")
+    uri = await ai_svc.generate_scene_video("diag-proj", scene)
+    return {"video_uri": uri, "signed_url": storage_svc.get_signed_url(uri)}
+
 # --- SPA Serving ---
 if os.path.exists("static"):
     app.mount("/assets", StaticFiles(directory="static/assets"), name="assets")
