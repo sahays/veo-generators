@@ -121,15 +121,24 @@ class AIService:
         )
 
         scenes_data = response.parsed
-        scenes = [
-            Scene(
-                visual_description=s["visual_description"],
-                timestamp_start=s["timestamp_start"],
-                timestamp_end=s["timestamp_end"],
-                metadata=SceneMetadata(**s.get("metadata", {})),
+        if isinstance(scenes_data, dict) and "scenes" in scenes_data:
+            scenes_data = scenes_data["scenes"]
+
+        scenes = []
+        for s in scenes_data:
+            metadata = s.get("metadata", {})
+            # Handle legacy 'character' field by migrating to 'characters' list
+            if "character" in metadata and isinstance(metadata["character"], str):
+                metadata["characters"] = [metadata.pop("character")]
+
+            scenes.append(
+                Scene(
+                    visual_description=s["visual_description"],
+                    timestamp_start=s["timestamp_start"],
+                    timestamp_end=s["timestamp_end"],
+                    metadata=SceneMetadata(**metadata),
+                )
             )
-            for s in scenes_data
-        ]
 
         usage = UsageMetrics(
             input_tokens=response.usage_metadata.prompt_token_count,

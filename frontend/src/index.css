@@ -15,9 +15,9 @@
   --color-border: var(--border);
   --color-card: var(--card);
   
-  /* Unified Accent System (#A4DDED) */
+  /* Unified Accent System (#A4DDED base) */
   --color-accent: #A4DDED;
-  --color-accent-dark: #86c5d8;
+  --color-accent-dark: #0e7490; /* Darker teal for text legibility */
   --color-accent-light: rgba(164, 221, 237, 0.2);
   --color-sidebar-text: var(--sidebar-text);
 

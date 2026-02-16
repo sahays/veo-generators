@@ -14,28 +14,30 @@ function App() {
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-6 md:p-8">
-          <Routes>
-            <Route path="/" element={<Navigate to="/productions" replace />} />
-            
-            {/* Productions Routes */}
-            <Route path="/productions" element={<ProjectList />} />
-            <Route path="/productions/new" element={<ProjectForm />} />
-            <Route path="/productions/:id" element={<ProductionSummary />} />
-            <Route path="/productions/:id/edit" element={<ProjectForm />} />
-            <Route path="/productions/:id/script" element={<RefinePromptView />} />
+          <div className="max-w-4xl mx-auto w-full">
+            <Routes>
+              <Route path="/" element={<Navigate to="/productions" replace />} />
+              
+              {/* Productions Routes */}
+              <Route path="/productions" element={<ProjectList />} />
+              <Route path="/productions/new" element={<ProjectForm />} />
+              <Route path="/productions/:id" element={<ProductionSummary />} />
+              <Route path="/productions/:id/edit" element={<ProjectForm />} />
+              <Route path="/productions/:id/script" element={<RefinePromptView />} />
 
-            {/* System Prompts */}
-            <Route path="/prompts" element={<PromptsPage />} />
+              {/* System Prompts */}
+              <Route path="/prompts" element={<PromptsPage />} />
 
-            {/* Diagnostics */}
-            <Route path="/diagnostics" element={<DiagnosticsPage />} />
+              {/* Diagnostics */}
+              <Route path="/diagnostics" element={<DiagnosticsPage />} />
 
-            {/* Configuration Routes */}
-            <Route path="/configuration/:category" element={<ConfigSettingsWrapper />} />
-            
-            {/* Fallback */}
-            <Route path="*" element={<Navigate to="/productions" replace />} />
-          </Routes>
+              {/* Configuration Routes */}
+              <Route path="/configuration/:category" element={<ConfigSettingsWrapper />} />
+              
+              {/* Fallback */}
+              <Route path="*" element={<Navigate to="/productions" replace />} />
+            </Routes>
+          </div>
         </main>
       </div>
     </div>
