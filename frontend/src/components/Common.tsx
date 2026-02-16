@@ -57,7 +57,7 @@ export const Card = ({ title, icon: Icon, children, actions, className }: CardPr
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       className={cn(
-        "glass bg-card rounded-xl shadow-sm transition-all duration-300 overflow-hidden flex flex-col",
+        "glass bg-card rounded-xl shadow-sm transition-all duration-300 flex flex-col",
         className
       )}
     >
@@ -76,7 +76,7 @@ export const Card = ({ title, icon: Icon, children, actions, className }: CardPr
 
       {/* Footer */}
       {actions && (
-        <div className="px-5 py-4 bg-muted/20 border-t border-border flex justify-end gap-2">
+        <div className="px-5 py-4 bg-muted/20 border-t border-border flex justify-end gap-2 rounded-b-xl">
           {actions}
         </div>
       )}

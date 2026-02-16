@@ -9,6 +9,8 @@ import { projectSchema, type ProjectFormData, VIDEO_LENGTH_OPTIONS, type SystemR
 import { useNavigate, useParams } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
+import { Select } from '@/components/UI'
+import { ResourceModal } from './ResourceModal'
 
 export const ProjectForm = () => {
   const { setTempProjectData, setActiveProject, projects } = useProjectStore()
@@ -17,28 +19,32 @@ export const ProjectForm = () => {
   
   const [prompts, setPrompts] = useState<SystemResource[]>([])
   const [schemas, setSchemas] = useState<SystemResource[]>([])
+  
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [modalType, setModalType] = useState<'prompt' | 'schema'>('prompt')
+
+  const fetchResources = async () => {
+    try {
+      const [pList, sList] = await Promise.all([
+        api.system.listResources('prompt', 'project-prompt'),
+        api.system.listResources('schema', 'project-schema')
+      ])
+      setPrompts(pList)
+      setSchemas(sList)
+
+      // Set default values for new projects
+      if (!id) {
+        const activePrompt = pList.find(p => p.is_active)
+        const activeSchema = sList.find(s => s.is_active)
+        if (activePrompt) setValue('prompt_id', activePrompt.id)
+        if (activeSchema) setValue('schema_id', activeSchema.id)
+      }
+    } catch (err) {
+      console.error("Failed to fetch system resources", err)
+    }
+  }
 
   useEffect(() => {
-    const fetchResources = async () => {
-      try {
-        const [pList, sList] = await Promise.all([
-          api.system.listResources('prompt', 'project-analysis'),
-          api.system.listResources('schema', 'project-analysis')
-        ])
-        setPrompts(pList)
-        setSchemas(sList)
-
-        // Set default values for new projects
-        if (!id) {
-          const activePrompt = pList.find(p => p.is_active)
-          const activeSchema = sList.find(s => s.is_active)
-          if (activePrompt) setValue('prompt_id', activePrompt.id)
-          if (activeSchema) setValue('schema_id', activeSchema.id)
-        }
-      } catch (err) {
-        console.error("Failed to fetch system resources", err)
-      }
-    }
     fetchResources()
   }, [])
 
@@ -161,56 +167,61 @@ export const ProjectForm = () => {
           </div>
         </Card>
 
-        <Card title="System Configuration" icon={Settings}>
+        <Card title="System Configuration" icon={Settings} className="relative z-20">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Analysis Prompt</label>
-              <select
-                {...register('prompt_id')}
-                onChange={(e) => {
-                  if (e.target.value === 'CREATE_NEW') {
-                    navigate('/prompts');
-                  } else {
-                    setValue('prompt_id', e.target.value);
-                  }
-                }}
-                className="w-full px-3 py-2 rounded-lg text-sm glass bg-card border border-border focus:ring-2 focus:ring-accent/30 outline-none appearance-none"
-              >
-                {prompts.map(p => (
-                  <option key={p.id} value={p.id} className="bg-slate-900">
-                    {p.name} {p.is_active ? '(Active)' : `v${p.version}`}
-                  </option>
-                ))}
-                <option value="CREATE_NEW" className="bg-slate-900 text-accent font-bold">
-                  + Create New Prompt...
-                </option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Output Schema</label>
-              <select
-                {...register('schema_id')}
-                onChange={(e) => {
-                  if (e.target.value === 'CREATE_NEW') {
-                    navigate('/prompts');
-                  } else {
-                    setValue('schema_id', e.target.value);
-                  }
-                }}
-                className="w-full px-3 py-2 rounded-lg text-sm glass bg-card border border-border focus:ring-2 focus:ring-accent/30 outline-none appearance-none"
-              >
-                {schemas.map(s => (
-                  <option key={s.id} value={s.id} className="bg-slate-900">
-                    {s.name} {s.is_active ? '(Active)' : `v${s.version}`}
-                  </option>
-                ))}
-                <option value="CREATE_NEW" className="bg-slate-900 text-accent font-bold">
-                  + Create New Schema...
-                </option>
-              </select>
-            </div>
+            <Select
+              label="Analysis Prompt"
+              value={watch('prompt_id') || ''}
+              onChange={(val) => {
+                if (val === 'CREATE_NEW') {
+                  setModalType('prompt')
+                  setIsModalOpen(true)
+                } else {
+                  setValue('prompt_id', val)
+                }
+              }}
+              options={[
+                ...prompts.map(p => ({
+                  value: p.id,
+                  label: p.name,
+                  description: p.is_active ? 'Active Version' : `Version ${p.version}`
+                })),
+                { value: 'CREATE_NEW', label: '+ Create New Prompt...', className: 'text-accent-dark font-bold bg-accent/5' }
+              ]}
+            />
+            <Select
+              label="Output Schema"
+              value={watch('schema_id') || ''}
+              onChange={(val) => {
+                if (val === 'CREATE_NEW') {
+                  setModalType('schema')
+                  setIsModalOpen(true)
+                } else {
+                  setValue('schema_id', val)
+                }
+              }}
+              options={[
+                ...schemas.map(s => ({
+                  value: s.id,
+                  label: s.name,
+                  description: s.is_active ? 'Active Version' : `Version ${s.version}`
+                })),
+                { value: 'CREATE_NEW', label: '+ Create New Schema...', className: 'text-accent-dark font-bold bg-accent/5' }
+              ]}
+            />
           </div>
         </Card>
+
+        <ResourceModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          type={modalType}
+          existingResources={modalType === 'prompt' ? prompts : schemas}
+          onSuccess={(saved) => {
+            fetchResources()
+            setValue(modalType === 'prompt' ? 'prompt_id' : 'schema_id', saved.id)
+          }}
+        />
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Card title="Duration" icon={Clock}>

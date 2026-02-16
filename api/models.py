@@ -52,7 +52,7 @@ class UsageMetrics(BaseModel):
 
 class SceneMetadata(BaseModel):
     location: Optional[str] = None
-    character: Optional[str] = None
+    characters: List[str] = []
     camera_angle: Optional[str] = None
     lighting: Optional[str] = None
     style: Optional[str] = None
