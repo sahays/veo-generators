@@ -81,7 +81,19 @@ const ProjectCard = ({ project, onClick }: { project: Project; onClick: () => vo
       )}
 
       <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-        <span>{project.video_length}s · {project.orientation}</span>
+        <div className="flex items-center gap-2">
+          <span>{project.video_length}s · {project.orientation}</span>
+          {project.prompt_info && (
+            <span className="bg-muted px-1.5 py-0.5 rounded border border-border/50 text-[8px] font-mono">
+              P:v{project.prompt_info.version}
+            </span>
+          )}
+          {project.schema_info && (
+            <span className="bg-muted px-1.5 py-0.5 rounded border border-border/50 text-[8px] font-mono">
+              S:v{project.schema_info.version}
+            </span>
+          )}
+        </div>
         <span>{timeAgo}</span>
       </div>
     </motion.button>

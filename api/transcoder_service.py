@@ -2,6 +2,7 @@ import json
 from google.cloud.video import transcoder_v1
 from google.cloud import storage
 
+
 class TranscoderService:
     def __init__(self, project_id: str, location: str):
         self.client = transcoder_v1.TranscoderServiceClient()
@@ -15,7 +16,7 @@ class TranscoderService:
         parts = gcs_uri.replace("gs://", "").split("/", 1)
         bucket_name = parts[0]
         blob_name = parts[1]
-        
+
         bucket = self.storage_client.bucket(bucket_name)
         blob = bucket.blob(blob_name)
         content = blob.download_as_text()
@@ -35,11 +36,11 @@ class TranscoderService:
         # Create edit list (sequencing)
         edit_list = []
         for i in range(len(video_uris)):
-            edit_list.append(transcoder_v1.types.EditAtom(
-                key=f"atom{i}",
-                inputs=[f"input{i}"],
-                start_time_offset="0s"
-            ))
+            edit_list.append(
+                transcoder_v1.types.EditAtom(
+                    key=f"atom{i}", inputs=[f"input{i}"], start_time_offset="0s"
+                )
+            )
 
         job = transcoder_v1.types.Job()
         job.output_uri = output_uri
@@ -74,8 +75,7 @@ class TranscoderService:
             ],
         )
 
-        response = self.client.create_job(parent=self.parent, job=job)
-        return response.name
+        return self.client.create_job(parent=self.parent, job=job).name
 
     def delete_job(self, job_name: str):
         try:
@@ -87,5 +87,5 @@ class TranscoderService:
         try:
             job = self.client.get_job(name=job_name)
             return str(job.state.name)
-        except Exception as e:
+        except Exception:
             return "UNKNOWN"
