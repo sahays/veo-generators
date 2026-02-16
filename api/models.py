@@ -7,7 +7,7 @@ from enum import Enum
 
 
 def generate_id(prefix: str) -> str:
-    chars = string.ascii_letters + string.digits
+    chars = string.ascii_lowercase + string.digits
     return f"{prefix}{''.join(random.choice(chars) for _ in range(8))}"
 
 

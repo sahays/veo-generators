@@ -1,24 +1,32 @@
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Play, FileText, LayoutGrid, Cpu, CheckCircle2, Plus } from 'lucide-react'
+import { ArrowLeft, Play, FileText, LayoutGrid, Cpu, CheckCircle2, Plus, Loader2 } from 'lucide-react'
 import { Button, Card } from '@/components/Common'
 import { useProjectStore } from '@/store/useProjectStore'
-import type { Scene } from '@/types/project'
+import type { Project, Scene } from '@/types/project'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useEffect } from 'react'
+import { api } from '@/lib/api'
 
 export const ProductionSummary = () => {
-  const { tempProjectData, setTempProjectData, setActiveProject, projects } = useProjectStore()
+  const { tempProjectData, setTempProjectData, setActiveProject } = useProjectStore()
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
+  const [isLoading, setIsLoading] = useState(false)
 
+  // Fetch from API if we don't have tempProjectData
   useEffect(() => {
-    if (id) {
-      const project = projects.find(p => p.id === id)
-      if (project) {
-        setActiveProject(id)
-      }
-    }
-  }, [id, projects, setActiveProject])
+    if (!id || tempProjectData) return
+    setIsLoading(true)
+    api.projects.get(id)
+      .then((project: Project) => {
+        if (project && project.id) {
+          setTempProjectData({ ...project, scenes: project.scenes || [] })
+          setActiveProject(id)
+        }
+      })
+      .catch((err) => console.error('Failed to load production', err))
+      .finally(() => setIsLoading(false))
+  }, [id, tempProjectData, setTempProjectData, setActiveProject])
 
   const handleStartFresh = () => {
     setActiveProject(null)
@@ -26,7 +34,20 @@ export const ProductionSummary = () => {
     navigate('/productions/new')
   }
 
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32 space-y-4">
+        <Loader2 className="animate-spin text-accent" size={32} />
+        <p className="text-sm text-muted-foreground">Loading production...</p>
+      </div>
+    )
+  }
+
   if (!tempProjectData) return null
+
+  const scenes = tempProjectData.scenes || []
+  const totalTokens = scenes.reduce((acc, s) => acc + (s.tokens_consumed?.input || 0) + (s.tokens_consumed?.output || 0), 0)
+  const estimatedCost = (totalTokens / 1000) * 0.015
 
   return (
     <motion.div
@@ -38,7 +59,7 @@ export const ProductionSummary = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <button 
+          <button
             onClick={() => navigate('/productions')}
             className="p-2 hover:bg-muted rounded-xl transition-colors"
           >
@@ -73,7 +94,7 @@ export const ProductionSummary = () => {
                <div className="h-1 flex-1 bg-white/20 rounded-full mr-4 overflow-hidden">
                   <div className="h-full w-1/3 bg-accent" />
                </div>
-               <span className="text-[10px] font-mono text-white">00:08 / 00:24</span>
+               <span className="text-[10px] font-mono text-white">00:08 / 00:{tempProjectData.video_length?.padStart(2, '0') || '00'}</span>
             </div>
           </div>
 
@@ -90,7 +111,7 @@ export const ProductionSummary = () => {
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Total Scenes</p>
-                <p className="text-sm font-medium">{tempProjectData.scenes?.length || 0} segments</p>
+                <p className="text-sm font-medium">{scenes.length} segments</p>
               </div>
             </div>
           </Card>
@@ -102,15 +123,15 @@ export const ProductionSummary = () => {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">Total Tokens</span>
-                <span className="text-sm font-mono font-bold">2,450</span>
+                <span className="text-sm font-mono font-bold">{totalTokens.toLocaleString()}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">Production Cost</span>
-                <span className="text-sm font-mono font-bold text-accent-dark">$0.042</span>
+                <span className="text-sm font-mono font-bold text-accent-dark">${estimatedCost.toFixed(3)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Compute Time</span>
-                <span className="text-sm font-mono font-bold">1m 12s</span>
+                <span className="text-xs text-muted-foreground">Scenes</span>
+                <span className="text-sm font-mono font-bold">{scenes.length}</span>
               </div>
             </div>
           </Card>
@@ -118,12 +139,12 @@ export const ProductionSummary = () => {
           <Card title="Technical Specs" icon={LayoutGrid}>
              <div className="space-y-3">
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-muted-foreground">Resolution</span>
-                  <span className="font-medium">1080x1920 (9:16)</span>
+                  <span className="text-muted-foreground">Orientation</span>
+                  <span className="font-medium">{tempProjectData.orientation || '16:9'}</span>
                 </div>
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-muted-foreground">FPS</span>
-                  <span className="font-medium">30 fps</span>
+                  <span className="text-muted-foreground">Duration</span>
+                  <span className="font-medium">{tempProjectData.video_length}s</span>
                 </div>
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-muted-foreground">AI Models</span>
@@ -135,27 +156,35 @@ export const ProductionSummary = () => {
       </div>
 
       {/* Storyboard View */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <LayoutGrid size={18} className="text-accent-dark" />
-          <h3 className="text-lg font-heading font-bold">Final Storyboard</h3>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {tempProjectData.scenes?.map((scene: Scene, i: number) => (
-            <div key={scene.id} className="glass rounded-xl overflow-hidden group border border-border/40">
-              <div className="aspect-video relative">
-                <img src={scene.thumbnail_url} className="w-full h-full object-cover" />
-                <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] font-mono text-white">
-                  {scene.timestamp_start}
+      {scenes.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <LayoutGrid size={18} className="text-accent-dark" />
+            <h3 className="text-lg font-heading font-bold">Final Storyboard</h3>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            {scenes.map((scene: Scene, i: number) => (
+              <div key={scene.id} className="glass rounded-xl overflow-hidden group border border-border/40">
+                <div className="aspect-video relative">
+                  {scene.thumbnail_url ? (
+                    <img src={scene.thumbnail_url} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-muted flex items-center justify-center">
+                      <LayoutGrid size={16} className="text-muted-foreground/30" />
+                    </div>
+                  )}
+                  <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] font-mono text-white">
+                    {scene.timestamp_start}
+                  </div>
+                </div>
+                <div className="p-2.5">
+                  <p className="text-[10px] text-muted-foreground line-clamp-2">Scene {i + 1}: {scene.visual_description}</p>
                 </div>
               </div>
-              <div className="p-2.5">
-                <p className="text-[10px] text-muted-foreground line-clamp-2">Scene {i + 1}: {scene.visual_description}</p>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </motion.div>
   )
 }

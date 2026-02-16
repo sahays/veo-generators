@@ -8,10 +8,11 @@ from models import Project, ProjectStatus, SystemResource
 class FirestoreService:
     def __init__(self):
         project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
-        collection_name = os.getenv("FIRESTORE_COLLECTION", "productions")
+        service_name = os.getenv("SERVICE_NAME", "veo-generators")
+        prefix = service_name.replace("-", "_")
         self.db = firestore.Client(project=project_id)
-        self.collection = self.db.collection(collection_name)
-        self.resources_collection = self.db.collection("system_resources")
+        self.collection = self.db.collection(f"{prefix}_productions")
+        self.resources_collection = self.db.collection(f"{prefix}_prompts")
 
     def list_resources(
         self, resource_type: Optional[str] = None, category: Optional[str] = None
@@ -22,10 +23,11 @@ class FirestoreService:
         if category:
             query = query.where("category", "==", category)
 
-        docs = query.order_by(
-            "createdAt", direction=firestore.Query.DESCENDING
-        ).stream()
-        return [SystemResource(**doc.to_dict()) for doc in docs]
+        # Avoid composite index requirement — fetch all matching docs and sort in Python
+        docs = query.stream()
+        resources = [SystemResource(**doc.to_dict()) for doc in docs]
+        resources.sort(key=lambda r: r.createdAt or "", reverse=True)
+        return resources
 
     def get_resource(self, resource_id: str) -> Optional[SystemResource]:
         doc = self.resources_collection.document(resource_id).get()

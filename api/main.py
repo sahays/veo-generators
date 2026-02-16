@@ -145,6 +145,7 @@ async def analyze_production(id: str, request: dict = {}):
         p.orientation,
         prompt_id=prompt_id,
         schema_id=schema_id,
+        project_type=p.type,
     )
 
     # Resolve names/versions for badges if IDs were provided

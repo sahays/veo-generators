@@ -1,14 +1,48 @@
 import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  FileText, Code, History, Plus, CheckCircle2, 
-  Copy, Zap, Loader2, MoreVertical, ExternalLink, Eye 
+import { motion } from 'framer-motion'
+import {
+  FileText, Code, Plus,
+  Copy, Loader2, Eye
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Button, Card } from '@/components/Common'
+import { Button } from '@/components/Common'
 import { api } from '@/lib/api'
 import { ResourceModal } from '@/components/ads/ResourceModal'
 import type { SystemResource } from '@/types/project'
+
+const RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    scenes: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          visual_description: { type: "string" },
+          timestamp_start: { type: "string" },
+          timestamp_end: { type: "string" },
+          metadata: {
+            type: "object",
+            properties: {
+              location: { type: "string" },
+              characters: {
+                type: "array",
+                items: { type: "string" },
+                description: "List of all characters, including main actors and background NPCs",
+              },
+              camera_angle: { type: "string" },
+              lighting: { type: "string" },
+              style: { type: "string" },
+              mood: { type: "string" },
+            },
+          },
+        },
+        required: ["visual_description", "timestamp_start", "timestamp_end"],
+      },
+    },
+  },
+  required: ["scenes"],
+}
 
 export const PromptsPage = () => {
   const [resources, setResources] = useState<SystemResource[]>([])
@@ -34,7 +68,7 @@ export const PromptsPage = () => {
     fetchResources()
   }, [])
 
-  const filteredResources = resources.filter(r => r.type === activeTab)
+  const filteredResources = resources.filter(r => r.type === 'prompt')
 
   const handleCreateNew = () => {
     setSelectedInitialData(undefined)
@@ -57,84 +91,139 @@ export const PromptsPage = () => {
     setIsModalOpen(true)
   }
 
-  const handleActivate = async (id: string) => {
-    try {
-      await api.system.activateResource(id)
-      fetchResources()
-    } catch (err) {
-      console.error(err)
-    }
-  }
-
   return (
     <div className="space-y-8">
-      {/* Header Area */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="space-y-1">
-          <h2 className="text-xl font-heading font-bold tracking-tight text-foreground">System Engine</h2>
+          <h2 className="text-xl font-heading font-bold tracking-tight text-foreground">System Prompts</h2>
           <p className="text-xs text-muted-foreground max-w-lg">
-            Manage the core logic of the video generation pipeline through versioned prompts and schemas.
+            Manage the prompts and schemas that power the video generation pipeline.
           </p>
         </div>
         <div className="flex bg-muted/50 p-1 rounded-xl border border-border">
-          <TabButton 
-            active={activeTab === 'prompt'} 
+          <TabButton
+            active={activeTab === 'prompt'}
             onClick={() => setActiveTab('prompt')}
             icon={FileText}
-            label="System Prompts"
+            label="Prompts"
           />
-          <TabButton 
-            active={activeTab === 'schema'} 
+          <TabButton
+            active={activeTab === 'schema'}
             onClick={() => setActiveTab('schema')}
             icon={Code}
-            label="Response Schemas"
+            label="Response Schema"
           />
         </div>
       </div>
 
-      {/* Grid of Cards */}
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-24 gap-4">
-          <Loader2 className="animate-spin text-accent" size={32} />
-          <p className="text-xs font-medium text-muted-foreground animate-pulse">Synchronizing with Firestore...</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Create New Placeholder Card */}
-          <motion.button
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.99 }}
-            onClick={handleCreateNew}
-            className="flex flex-col items-center justify-center gap-3 p-8 border-2 border-dashed border-border rounded-2xl hover:border-accent/40 hover:bg-accent/5 transition-all group"
-          >
-            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-muted-foreground group-hover:bg-accent group-hover:text-slate-900 transition-colors">
-              <Plus size={24} />
-            </div>
-            <div className="text-center">
-              <p className="text-sm font-bold text-foreground">Create New {activeTab === 'prompt' ? 'Prompt' : 'Schema'}</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">Start from a blank slate</p>
-            </div>
-          </motion.button>
+      {activeTab === 'prompt' && (
+        <>
+          {/* Create button */}
+          <div className="flex justify-end">
+            <Button icon={Plus} onClick={handleCreateNew}>
+              Create New Prompt
+            </Button>
+          </div>
 
-          {filteredResources.map((res) => (
-            <ResourceCard 
-              key={res.id} 
-              resource={res} 
-              onIterate={() => handleIterate(res)}
-              onView={() => handleView(res)}
-              onActivate={() => handleActivate(res.id)}
-              allVersions={resources.filter(r => r.category === res.category && r.type === res.type)}
-            />
-          ))}
+          {/* Prompt grid */}
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-24 gap-4">
+              <Loader2 className="animate-spin text-accent" size={32} />
+              <p className="text-xs font-medium text-muted-foreground animate-pulse">Loading prompts...</p>
+            </div>
+          ) : filteredResources.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 gap-4">
+              <FileText className="text-muted-foreground/30" size={40} />
+              <p className="text-sm text-muted-foreground">No prompts yet. Create one to get started.</p>
+            </div>
+          ) : (
+            <div className="border border-border rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/30">
+                    <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Name</th>
+                    <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Category</th>
+                    <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Version</th>
+                    <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Created</th>
+                    <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredResources.map((res) => (
+                    <motion.tr
+                      key={res.id}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="border-b border-border/50 last:border-b-0 hover:bg-muted/20 transition-colors"
+                    >
+                      <td className="px-4 py-3">
+                        <span className="font-medium text-foreground">{res.name}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="bg-muted px-2 py-0.5 rounded text-[10px] font-mono text-muted-foreground capitalize">
+                          {res.category}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="bg-muted px-2 py-0.5 rounded text-[10px] font-mono text-muted-foreground">
+                          v{res.version}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">
+                        {new Date(res.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-1">
+                          <button
+                            onClick={() => handleView(res)}
+                            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                            title="View"
+                          >
+                            <Eye size={15} />
+                          </button>
+                          <button
+                            onClick={() => handleIterate(res)}
+                            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                            title="Iterate"
+                          >
+                            <Copy size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    </motion.tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {activeTab === 'schema' && (
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            The response schema used by Gemini to structure scene analysis output. This schema is fixed to ensure UI compatibility.
+          </p>
+          <div className="relative border border-border rounded-xl overflow-hidden bg-muted/20">
+            <div className="absolute top-3 right-3 z-10">
+              <span className="px-2 py-1 rounded bg-muted text-[10px] font-mono text-accent-dark font-medium border border-border">
+                JSON Schema
+              </span>
+            </div>
+            <pre className="p-6 font-mono text-xs text-foreground/80 leading-relaxed overflow-x-auto">
+{JSON.stringify(RESPONSE_SCHEMA, null, 2)}
+            </pre>
+          </div>
         </div>
       )}
 
-      {/* Modal */}
+      {/* Modal — only used for prompts */}
       <ResourceModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSuccess={fetchResources}
-        type={activeTab}
+        type="prompt"
         initialData={selectedInitialData}
         existingResources={resources}
         readOnly={isReadOnly}
@@ -157,64 +246,3 @@ const TabButton = ({ active, onClick, icon: Icon, label }: any) => (
     {label}
   </button>
 )
-
-const ResourceCard = ({ resource, onIterate, onActivate, onView }: any) => {
-  return (
-    <Card className="p-0 overflow-hidden group">
-      <div className="p-6 space-y-4">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <h4 className="text-base font-bold text-foreground line-clamp-1">{resource.name}</h4>
-              {resource.is_active && (
-                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 text-[8px] font-bold uppercase tracking-wider">
-                  <CheckCircle2 size={8} /> Active
-                </div>
-              )}
-            </div>
-            <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-mono">
-              <span className="bg-muted px-1.5 py-0.5 rounded">v{resource.version}</span>
-              <span className="bg-muted px-1.5 py-0.5 rounded capitalize">{resource.category}</span>
-            </div>
-          </div>
-          <div className="flex gap-1">
-            <button 
-              onClick={onView}
-              className="p-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-              title="View Content"
-            >
-              <Eye size={16} />
-            </button>
-            <button className="p-1 rounded-lg hover:bg-muted text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-              <MoreVertical size={16} />
-            </button>
-          </div>
-        </div>
-
-        <div className="relative aspect-[4/1.5] w-full rounded-xl bg-muted/50 border border-border/50 overflow-hidden">
-          <pre className="p-3 font-mono text-[9px] text-muted-foreground leading-relaxed overflow-hidden">
-            {resource.content}
-          </pre>
-          <div className="absolute inset-0 bg-gradient-to-t from-card/80 to-transparent" />
-        </div>
-
-        <div className="flex items-center justify-between pt-2">
-          <p className="text-[9px] text-muted-foreground">
-            Created {new Date(resource.createdAt).toLocaleDateString()}
-          </p>
-          <div className="flex gap-2">
-            {!resource.is_active && (
-              <Button variant="ghost" className="h-7 px-2 text-[10px]" onClick={onActivate}>
-                Activate
-              </Button>
-            )}
-            <Button variant="secondary" className="h-7 px-2 text-[10px]" icon={Copy} onClick={onIterate}>
-              Iterate
-            </Button>
-          </div>
-        </div>
-      </div>
-    </Card>
-  )
-}
-

@@ -18,8 +18,9 @@ interface ResourceModalProps {
 
 const CATEGORY_OPTIONS = {
   prompt: [
-    { value: 'project-prompt', label: 'Project Analysis Prompt' },
-    { value: 'scene-prompt', label: 'Scene Generation Prompt' }
+    { value: 'production-movie', label: 'Movie Production' },
+    { value: 'production-ad', label: 'Ad Production' },
+    { value: 'production-social', label: 'Social Production' }
   ],
   schema: [
     { value: 'project-schema', label: 'Project Analysis Schema' },
@@ -38,7 +39,7 @@ export const ResourceModal = ({
 }: ResourceModalProps) => {
   const [formData, setFormData] = useState({
     name: '',
-    category: type === 'prompt' ? 'project-prompt' : 'project-schema',
+    category: type === 'prompt' ? 'production-ad' : 'project-schema',
     content: ''
   })
   const [loading, setLoading] = useState(false)
@@ -47,7 +48,7 @@ export const ResourceModal = ({
     if (isOpen) {
       setFormData({
         name: initialData?.name || '',
-        category: initialData?.category || (type === 'prompt' ? 'project-prompt' : 'project-schema'),
+        category: initialData?.category || (type === 'prompt' ? 'production-ad' : 'project-schema'),
         content: initialData?.content || ''
       })
     }

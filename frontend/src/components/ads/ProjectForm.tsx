@@ -1,43 +1,43 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Sparkles, FileText, ImageIcon, Monitor, Smartphone, Clock, Clapperboard, Megaphone, Share2, Play, Settings } from 'lucide-react'
+import { ArrowLeft, Sparkles, FileText, ImageIcon, Monitor, Smartphone, Clock, Clapperboard, Megaphone, Share2, Play, Settings, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button, Card } from '@/components/Common'
 import { useProjectStore } from '@/store/useProjectStore'
-import { projectSchema, type ProjectFormData, VIDEO_LENGTH_OPTIONS, type SystemResource } from '@/types/project'
+import { projectSchema, type ProjectFormData, VIDEO_LENGTH_OPTIONS, type SystemResource, type Scene } from '@/types/project'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
 import { Select } from '@/components/UI'
 import { ResourceModal } from './ResourceModal'
 
+const CATEGORY_MAP: Record<string, string> = {
+  movie: 'production-movie',
+  advertizement: 'production-ad',
+  social: 'production-social',
+}
+
 export const ProjectForm = () => {
-  const { setTempProjectData, setActiveProject, projects } = useProjectStore()
+  const { setTempProjectData, setActiveProject } = useProjectStore()
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
-  
+
   const [prompts, setPrompts] = useState<SystemResource[]>([])
-  const [schemas, setSchemas] = useState<SystemResource[]>([])
-  
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [modalType, setModalType] = useState<'prompt' | 'schema'>('prompt')
+  const [existingProject, setExistingProject] = useState<any>(null)
+  const [isLoadingProject, setIsLoadingProject] = useState(!!id)
 
   const fetchResources = async () => {
     try {
-      const [pList, sList] = await Promise.all([
-        api.system.listResources('prompt', 'project-prompt'),
-        api.system.listResources('schema', 'project-schema')
-      ])
+      const allResources = await api.system.listResources()
+      const pList = allResources.filter((r: SystemResource) => r.type === 'prompt')
       setPrompts(pList)
-      setSchemas(sList)
 
-      // Set default values for new projects
+      // Set default active prompt for new projects
       if (!id) {
         const activePrompt = pList.find(p => p.is_active)
-        const activeSchema = sList.find(s => s.is_active)
         if (activePrompt) setValue('prompt_id', activePrompt.id)
-        if (activeSchema) setValue('schema_id', activeSchema.id)
       }
     } catch (err) {
       console.error("Failed to fetch system resources", err)
@@ -48,39 +48,106 @@ export const ProjectForm = () => {
     fetchResources()
   }, [])
 
-  const existingProject = id ? projects.find(p => p.id === id) : null
-
+  // Fetch existing project from API when editing
   useEffect(() => {
-    if (id && existingProject) {
-      setActiveProject(id)
-    }
-  }, [id, existingProject, setActiveProject])
+    if (!id) return
+    setIsLoadingProject(true)
+    api.projects.get(id)
+      .then((project) => {
+        if (project && project.id) {
+          setExistingProject(project)
+          setActiveProject(id)
+        }
+      })
+      .catch((err) => console.error('Failed to load production', err))
+      .finally(() => setIsLoadingProject(false))
+  }, [id, setActiveProject])
 
   const {
     register,
     handleSubmit,
     watch,
     setValue,
+    reset,
     formState: { errors },
   } = useForm<ProjectFormData>({
     resolver: zodResolver(projectSchema),
     defaultValues: {
-      name: existingProject?.name || '',
-      type: existingProject?.type || 'advertizement',
-      base_concept: existingProject?.base_concept || '',
-      video_length: existingProject?.video_length || '16',
-      orientation: existingProject?.orientation || '16:9',
+      name: '',
+      type: 'advertizement',
+      base_concept: '',
+      video_length: '16',
+      orientation: '16:9',
     },
   })
+
+  // Reset form when existing project loads from API
+  useEffect(() => {
+    if (existingProject) {
+      reset({
+        name: existingProject.name,
+        type: existingProject.type || 'advertizement',
+        base_concept: existingProject.base_concept,
+        video_length: existingProject.video_length || '16',
+        orientation: existingProject.orientation || '16:9',
+      })
+    }
+  }, [existingProject, reset])
 
   const orientation = watch('orientation')
   const projectType = watch('type')
   const concept = watch('base_concept') || ''
 
-  const onAnalyze = handleSubmit((data) => {
-    setTempProjectData({ ...data, scenes: existingProject?.scenes })
-    navigate(id ? `/productions/${id}/script` : '/productions/new/script')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Filter prompts by selected production type
+  const filteredPrompts = prompts.filter(p => p.category === CATEGORY_MAP[projectType])
+
+  // Auto-select first prompt or clear selection when production type changes
+  useEffect(() => {
+    const category = CATEGORY_MAP[projectType]
+    const matching = prompts.filter(p => p.category === category)
+    const currentPromptId = watch('prompt_id')
+    if (!currentPromptId || !matching.find(p => p.id === currentPromptId)) {
+      setValue('prompt_id', matching[0]?.id || '')
+    }
+  }, [projectType, prompts])
+
+  const onAnalyze = handleSubmit(async (data) => {
+    if (existingProject) {
+      // Existing project — just pass through to script page
+      setTempProjectData({ ...data, id, scenes: existingProject.scenes, prompt_id: data.prompt_id })
+      navigate(`/productions/${id}/script`)
+      return
+    }
+
+    // New project — create via API first
+    setIsSubmitting(true)
+    try {
+      const created = await api.projects.create({
+        name: data.name,
+        type: data.type,
+        base_concept: data.base_concept,
+        video_length: data.video_length,
+        orientation: data.orientation,
+      })
+      setTempProjectData({ ...data, id: created.id, prompt_id: data.prompt_id })
+      navigate(`/productions/${created.id}/script`)
+    } catch (err) {
+      console.error('Failed to create production', err)
+    } finally {
+      setIsSubmitting(false)
+    }
   })
+
+  if (isLoadingProject) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32 space-y-4">
+        <Loader2 className="animate-spin text-accent" size={32} />
+        <p className="text-sm text-muted-foreground">Loading production...</p>
+      </div>
+    )
+  }
 
   return (
     <motion.div
@@ -168,58 +235,35 @@ export const ProjectForm = () => {
         </Card>
 
         <Card title="System Configuration" icon={Settings} className="relative z-20">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Select
-              label="Analysis Prompt"
-              value={watch('prompt_id') || ''}
-              onChange={(val) => {
-                if (val === 'CREATE_NEW') {
-                  setModalType('prompt')
-                  setIsModalOpen(true)
-                } else {
-                  setValue('prompt_id', val)
-                }
-              }}
-              options={[
-                ...prompts.map(p => ({
-                  value: p.id,
-                  label: p.name,
-                  description: p.is_active ? 'Active Version' : `Version ${p.version}`
-                })),
-                { value: 'CREATE_NEW', label: '+ Create New Prompt...', className: 'text-accent-dark font-bold bg-accent/5' }
-              ]}
-            />
-            <Select
-              label="Output Schema"
-              value={watch('schema_id') || ''}
-              onChange={(val) => {
-                if (val === 'CREATE_NEW') {
-                  setModalType('schema')
-                  setIsModalOpen(true)
-                } else {
-                  setValue('schema_id', val)
-                }
-              }}
-              options={[
-                ...schemas.map(s => ({
-                  value: s.id,
-                  label: s.name,
-                  description: s.is_active ? 'Active Version' : `Version ${s.version}`
-                })),
-                { value: 'CREATE_NEW', label: '+ Create New Schema...', className: 'text-accent-dark font-bold bg-accent/5' }
-              ]}
-            />
-          </div>
+          <Select
+            label="Prompt"
+            value={watch('prompt_id') || ''}
+            onChange={(val) => {
+              if (val === 'CREATE_NEW') {
+                setIsModalOpen(true)
+              } else {
+                setValue('prompt_id', val)
+              }
+            }}
+            options={[
+              ...filteredPrompts.map(p => ({
+                value: p.id,
+                label: p.name,
+                description: `Version ${p.version}`
+              })),
+              { value: 'CREATE_NEW', label: '+ Create New Prompt...', className: 'text-accent-dark font-bold bg-accent/5' }
+            ]}
+          />
         </Card>
 
         <ResourceModal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
-          type={modalType}
-          existingResources={modalType === 'prompt' ? prompts : schemas}
+          type="prompt"
+          existingResources={prompts}
           onSuccess={(saved) => {
             fetchResources()
-            setValue(modalType === 'prompt' ? 'prompt_id' : 'schema_id', saved.id)
+            setValue('prompt_id', saved.id)
           }}
         />
 
@@ -237,7 +281,7 @@ export const ProjectForm = () => {
                   <div className={cn(
                     "px-3 py-1.5 rounded-md border text-xs font-medium transition-all",
                     watch('video_length') === len 
-                      ? "bg-accent text-slate-900 border-accent" 
+                      ? "bg-accent text-slate-900 border-accent"
                       : "border-border hover:border-accent/50 text-muted-foreground"
                   )}>
                     {len === 'custom' ? 'Custom' : `${len}s`}
@@ -286,7 +330,7 @@ export const ProjectForm = () => {
         {existingProject && existingProject.scenes.length > 0 && (
           <Card title="Storyboard Preview" icon={Clapperboard}>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {existingProject.scenes.map((scene) => (
+              {existingProject.scenes.map((scene: Scene) => (
                 <div key={scene.id} className="group relative aspect-video rounded-lg overflow-hidden border border-border bg-muted">
                   <img src={scene.thumbnail_url} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2">
@@ -299,12 +343,13 @@ export const ProjectForm = () => {
         )}
 
         <div className="flex justify-end pt-4">
-          <Button 
-            onClick={onAnalyze} 
-            icon={existingProject?.scenes.length ? Play : Sparkles} 
+          <Button
+            onClick={onAnalyze}
+            icon={existingProject?.scenes.length ? Play : Sparkles}
             className="w-full md:w-auto"
+            disabled={isSubmitting}
           >
-            {existingProject?.scenes.length ? 'View & Edit Script' : 'Analyze & Script'}
+            {isSubmitting ? 'Creating...' : existingProject?.scenes.length ? 'View & Edit Script' : 'Analyze & Script'}
           </Button>
         </div>
       </form>

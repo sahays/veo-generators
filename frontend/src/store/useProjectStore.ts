@@ -1,20 +1,15 @@
 import { create } from 'zustand'
-import type { Project, Scene, ProjectFormData, SelectCategory, CustomOption } from '@/types/project'
+import type { Scene, ProjectFormData, SelectCategory, CustomOption } from '@/types/project'
 import { DEFAULT_OPTIONS } from '@/types/project'
-import { SEED_PROJECTS } from '@/lib/mockData'
 
 interface ProjectState {
-  projects: Project[]
   activeProjectId: string | null
   customOptions: Record<SelectCategory, CustomOption[]>
   tempProjectData: Partial<ProjectFormData> & { id?: string, scenes?: Scene[], mediaFiles?: any[] } | null
 
   setTempProjectData: (data: Partial<ProjectFormData> & { id?: string, scenes?: Scene[], mediaFiles?: any[] } | null) => void
   setActiveProject: (id: string | null) => void
-  addProject: (project: Project) => void
-  updateProject: (id: string, updates: Partial<Project>) => void
-  deleteProject: (id: string) => void
-  
+
   // Scene actions
   addScene: () => void
   updateScene: (sceneId: string, updates: Partial<Scene>) => void
@@ -27,7 +22,6 @@ interface ProjectState {
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
-  projects: SEED_PROJECTS,
   activeProjectId: null,
   customOptions: {
     directorStyle: [],
@@ -40,30 +34,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   setTempProjectData: (data) => set({ tempProjectData: data }),
 
-  setActiveProject: (id) => {
-    const project = get().projects.find(p => p.id === id)
-    set({ 
-      activeProjectId: id, 
-      tempProjectData: project ? { ...project } : null 
-    })
-  },
-
-  addProject: (project) =>
-    set((state) => ({ projects: [project, ...state.projects] })),
-
-  updateProject: (id, updates) =>
-    set((state) => ({
-      projects: state.projects.map((p) =>
-        p.id === id ? { ...p, ...updates, updatedAt: Date.now() } : p,
-      ),
-    })),
-
-  deleteProject: (id) =>
-    set((state) => ({
-      projects: state.projects.filter((p) => p.id !== id),
-      activeProjectId:
-        state.activeProjectId === id ? null : state.activeProjectId,
-    })),
+  setActiveProject: (id) => set({ activeProjectId: id }),
 
   addScene: () =>
     set((state) => {
@@ -88,7 +59,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   updateScene: (sceneId, updates) =>
     set((state) => {
       if (!state.tempProjectData) return state
-      const updatedScenes = state.tempProjectData.scenes?.map(s => 
+      const updatedScenes = state.tempProjectData.scenes?.map(s =>
         s.id === sceneId ? { ...s, ...updates } : s
       )
       return {

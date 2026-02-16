@@ -1,66 +1,79 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  ArrowLeft, Sparkles, Video, Play, ImageIcon, 
-  RotateCcw, Clock, DollarSign, Cpu, Save, 
-  Loader2, LayoutGrid, List, Plus, Lock
+import {
+  ArrowLeft, Sparkles, Video, Play, ImageIcon,
+  RotateCcw, Clock, DollarSign, Cpu, Save,
+  Loader2, LayoutGrid, List, Plus, Lock, AlertCircle
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button, Card } from '@/components/Common'
 import { useProjectStore } from '@/store/useProjectStore'
 import type { Scene } from '@/types/project'
 import { useNavigate, useParams } from 'react-router-dom'
+import { api } from '@/lib/api'
 
 export const RefinePromptView = () => {
-  const { tempProjectData, updateScene, addScene, setActiveProject, projects } = useProjectStore()
+  const { tempProjectData, updateScene, addScene, setActiveProject, setTempProjectData } = useProjectStore()
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
-  
+
   const [layout, setLayout] = useState<'grid' | 'list'>('list')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
   const [activeAction, setActiveAction] = useState<'storyboard' | 'video' | null>(null)
+  const analyzeCalledRef = useRef(false)
 
+  // On mount: load production from API if we don't have tempProjectData
   useEffect(() => {
     if (id && !tempProjectData) {
-      const project = projects.find(p => p.id === id)
-      if (project) {
-        setActiveProject(id)
-      }
+      api.projects.get(id).then((p) => {
+        if (p && p.id) {
+          setTempProjectData({ ...p, scenes: p.scenes || [] })
+          setActiveProject(id)
+        }
+      }).catch(() => {
+        setAnalysisError('Failed to load production')
+      })
     }
-  }, [id, projects, tempProjectData, setActiveProject])
+  }, [id, tempProjectData, setActiveProject, setTempProjectData])
 
   const isReadOnly = (tempProjectData as any)?.status === 'completed'
   const scenes = tempProjectData?.scenes || []
 
-  // Mock Analysis on mount if no scenes exist
+  // Call real Gemini analysis if no scenes exist
   useEffect(() => {
-    if (scenes.length === 0 && !isAnalyzing && !isReadOnly && tempProjectData) {
-      setIsAnalyzing(true)
-      setTimeout(() => {
-        // This simulates receiving JSON from Gemini
-        const mockScenes: Scene[] = [
-          {
-            id: '1',
-            timestamp_start: '00:00',
-            timestamp_end: '00:05',
-            visual_description: 'Wide shot of a modern kitchen at sunrise. The protagonist is pouring coffee.',
-            metadata: { location: 'Modern Kitchen', lighting: 'Sunrise/Golden Hour', camera_angle: 'Wide Shot' },
-            tokens_consumed: { input: 120, output: 450 }
-          },
-          {
-            id: '2',
-            timestamp_start: '00:05',
-            timestamp_end: '00:12',
-            visual_description: 'Close up on the steam rising from the cup. The logo on the mug is clearly visible.',
-            metadata: { location: 'Kitchen Counter', lighting: 'Soft Interior', camera_angle: 'Close Up' },
-            tokens_consumed: { input: 80, output: 320 }
-          }
-        ]
-        useProjectStore.getState().setTempProjectData({ ...tempProjectData, scenes: mockScenes })
+    if (scenes.length > 0 || isAnalyzing || isReadOnly || !tempProjectData || analyzeCalledRef.current) return
+
+    const productionId = (tempProjectData as any)?.id || id
+    if (!productionId) return
+
+    analyzeCalledRef.current = true
+    setIsAnalyzing(true)
+    setAnalysisError(null)
+
+    const promptId = tempProjectData.prompt_id
+
+    api.projects.analyze(productionId, promptId)
+      .then((result) => {
+        // The analyze endpoint returns AIResponseWrapper: { data: Scene[], usage: UsageMetrics }
+        const newScenes: Scene[] = (result.data || []).map((s: any, i: number) => ({
+          id: s.id || `s-${i}`,
+          visual_description: s.visual_description,
+          timestamp_start: s.timestamp_start,
+          timestamp_end: s.timestamp_end,
+          metadata: s.metadata || {},
+          thumbnail_url: s.thumbnail_url,
+          tokens_consumed: s.usage ? { input: s.usage.input_tokens || 0, output: s.usage.output_tokens || 0 } : undefined,
+        }))
+        setTempProjectData({ ...tempProjectData, scenes: newScenes })
         setIsAnalyzing(false)
-      }, 2000)
-    }
-  }, [scenes.length, isAnalyzing, isReadOnly, tempProjectData])
+      })
+      .catch((err) => {
+        console.error('Analysis failed:', err)
+        setAnalysisError('Gemini analysis failed. Please try again.')
+        setIsAnalyzing(false)
+      })
+  }, [scenes.length, isAnalyzing, isReadOnly, tempProjectData, id, setTempProjectData])
 
   const onGenerate = (type: 'storyboard' | 'video') => {
     setActiveAction(type)
@@ -73,11 +86,28 @@ export const RefinePromptView = () => {
   const totalTokens = scenes.reduce((acc, s) => acc + (s.tokens_consumed?.input || 0) + (s.tokens_consumed?.output || 0), 0)
   const estimatedCost = (totalTokens / 1000) * 0.015
 
+  if (analysisError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32 space-y-6">
+        <div className="w-20 h-20 rounded-full bg-red-500/10 flex items-center justify-center">
+          <AlertCircle className="text-red-500" size={32} />
+        </div>
+        <div className="text-center space-y-2">
+          <h3 className="text-xl font-heading font-bold text-red-500">Analysis Failed</h3>
+          <p className="text-sm text-muted-foreground">{analysisError}</p>
+        </div>
+        <Button onClick={() => navigate(id ? `/productions/${id}/edit` : '/productions/new')} icon={ArrowLeft}>
+          Go Back
+        </Button>
+      </div>
+    )
+  }
+
   if (isAnalyzing) {
     return (
       <div className="flex flex-col items-center justify-center py-32 space-y-6">
         <div className="relative">
-          <motion.div 
+          <motion.div
             animate={{ rotate: 360 }}
             transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
             className="w-20 h-20 border-2 border-accent border-t-transparent rounded-full"
@@ -233,10 +263,14 @@ const SceneItem = ({
     return (
       <Card className="p-0 overflow-hidden group border-border/40 hover:border-accent/50 transition-all">
         <div className="relative aspect-video overflow-hidden">
-          {scene.thumbnail_url || isGeneratingFrame ? (
-            <img 
-              src={isGeneratingFrame ? 'https://picsum.photos/800/450?grayscale' : scene.thumbnail_url} 
-              className={cn("w-full h-full object-cover transition-all duration-700 group-hover:scale-105", isGeneratingFrame && "animate-pulse opacity-50")} 
+          {isGeneratingFrame ? (
+            <div className="w-full h-full bg-muted flex items-center justify-center">
+              <Loader2 className="animate-spin text-accent" size={24} />
+            </div>
+          ) : scene.thumbnail_url ? (
+            <img
+              src={scene.thumbnail_url}
+              className="w-full h-full object-cover transition-all duration-700 group-hover:scale-105"
             />
           ) : (
             <div className="w-full h-full bg-muted flex items-center justify-center">
@@ -331,23 +365,22 @@ const SceneItem = ({
         </div>
 
         <div className="relative lg:col-span-4 aspect-video rounded-xl bg-muted/50 border border-dashed border-border flex items-center justify-center overflow-hidden">
-          {scene.thumbnail_url || isGeneratingFrame ? (
-            <img 
-              src={isGeneratingFrame ? 'https://picsum.photos/800/450?grayscale' : scene.thumbnail_url} 
-              className={cn("w-full h-full object-cover transition-all duration-500", isGeneratingFrame && "animate-pulse opacity-50")} 
+          {isGeneratingFrame ? (
+            <div className="absolute inset-0 bg-muted flex items-center justify-center">
+              <div className="flex flex-col items-center gap-1">
+                <Loader2 className="animate-spin text-accent" size={20} />
+                <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Generating...</span>
+              </div>
+            </div>
+          ) : scene.thumbnail_url ? (
+            <img
+              src={scene.thumbnail_url}
+              className="w-full h-full object-cover transition-all duration-500"
             />
           ) : (
             <div className="flex flex-col items-center gap-2 text-muted-foreground">
               <ImageIcon size={24} strokeWidth={1.5} />
               <span className="text-[9px] font-bold uppercase tracking-widest">No frame yet</span>
-            </div>
-          )}
-          {isGeneratingFrame && (
-            <div className="absolute inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center">
-              <div className="flex flex-col items-center gap-1">
-                <Loader2 className="animate-spin text-white" size={20} />
-                <span className="text-[9px] font-bold text-white uppercase tracking-widest">Painting...</span>
-              </div>
             </div>
           )}
         </div>
