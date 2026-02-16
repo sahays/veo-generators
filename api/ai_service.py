@@ -2,6 +2,7 @@ import os
 import zlib
 import asyncio
 import uuid
+from collections import defaultdict
 from typing import List, Optional
 from google import genai
 from google.genai import types
@@ -43,21 +44,19 @@ class AIService:
         orientation: str,
         prompt_id: Optional[str] = None,
         schema_id: Optional[str] = None,
+        project_type: Optional[str] = None,
     ) -> AIResponseWrapper:
         model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3-pro-preview")
 
         # 1. Resolve Prompt
-        system_prompt_text = """
-        Act as a professional film director and scriptwriter. 
-        Break the following creative brief into a scene-by-scene cinematic script.
-        Total length: {length} seconds.
-        Orientation: {orientation}.
-        Each scene must be between 4 and 8 seconds.
-        
-        Creative Brief: {concept}
-        
-        Return a JSON list of scenes following the requested structure.
-        """
+        system_prompt_text = """Act as a professional film director and scriptwriter.
+Break the following creative brief into a scene-by-scene cinematic script.
+Total length: {length} seconds.
+Each scene must be between 2 and 8 seconds.
+
+Creative Brief: {concept}
+
+Return a JSON list of scenes following the requested structure."""
 
         if self.firestore_svc:
             fs = self.firestore_svc
@@ -66,37 +65,58 @@ class AIService:
                 if res:
                     system_prompt_text = res.content
             else:
-                res = fs.get_active_resource("prompt", "project-analysis")
+                type_to_category = {
+                    "movie": "production-movie",
+                    "advertizement": "production-ad",
+                    "social": "production-social",
+                }
+                category = type_to_category.get(project_type or "", "production-ad")
+                res = fs.get_active_resource("prompt", category)
                 if res:
                     system_prompt_text = res.content
 
-        prompt = system_prompt_text.format(
-            length=length, orientation=orientation, concept=concept
+        # Safe substitution: missing placeholders resolve to empty string
+        prompt = system_prompt_text.format_map(
+            defaultdict(str, length=length, orientation=orientation, concept=concept)
         )
 
         # 2. Resolve Schema
         response_schema = {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "visual_description": {"type": "string"},
-                    "timestamp_start": {"type": "string"},
-                    "timestamp_end": {"type": "string"},
-                    "metadata": {
+            "type": "object",
+            "properties": {
+                "scenes": {
+                    "type": "array",
+                    "items": {
                         "type": "object",
                         "properties": {
-                            "location": {"type": "string"},
-                            "character": {"type": "string"},
-                            "camera_angle": {"type": "string"},
-                            "lighting": {"type": "string"},
-                            "style": {"type": "string"},
-                            "mood": {"type": "string"},
+                            "visual_description": {"type": "string"},
+                            "timestamp_start": {"type": "string"},
+                            "timestamp_end": {"type": "string"},
+                            "metadata": {
+                                "type": "object",
+                                "properties": {
+                                    "location": {"type": "string"},
+                                    "characters": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "List of all characters, including main actors and background NPCs",
+                                    },
+                                    "camera_angle": {"type": "string"},
+                                    "lighting": {"type": "string"},
+                                    "style": {"type": "string"},
+                                    "mood": {"type": "string"},
+                                },
+                            },
                         },
+                        "required": [
+                            "visual_description",
+                            "timestamp_start",
+                            "timestamp_end",
+                        ],
                     },
-                },
-                "required": ["visual_description", "timestamp_start", "timestamp_end"],
+                }
             },
+            "required": ["scenes"],
         }
 
         if self.firestore_svc:
@@ -164,12 +184,11 @@ class AIService:
             },
         )
 
-        image_url = "https://picsum.photos/800/450"
+        image_url = None
 
         if response.candidates and response.candidates[0].content.parts:
             for part in response.candidates[0].content.parts:
                 if hasattr(part, "inline_data") and part.inline_data:
-                    # Upload the generated image bytes to GCS
                     if self.storage_svc:
                         dest = f"generated/{project_id}/{uuid.uuid4()}.png"
                         gcs_uri = self.storage_svc.upload_bytes(
@@ -181,17 +200,32 @@ class AIService:
         usage = UsageMetrics(model_name=model_id, cost_usd=0.03)
         return AIResponseWrapper(data=image_url, usage=usage)
 
+    def _parse_timestamp(self, ts: str) -> float:
+        """Parse '00:05' or '5' to seconds."""
+        if ":" in ts:
+            parts = ts.split(":")
+            return int(parts[0]) * 60 + float(parts[1])
+        return float(ts)
+
     async def generate_scene_video(
         self, project_id: str, scene: Scene, blocking: bool = True
     ):
         model_id = os.getenv("VIDEO_GEN_MODEL", "veo-3.1-generate-preview")
         seed = self._get_project_seed(project_id)
 
+        # Compute duration from scene timestamps, clamped to Veo's 2-8s range
+        try:
+            start = self._parse_timestamp(scene.timestamp_start)
+            end = self._parse_timestamp(scene.timestamp_end)
+            duration = min(max(int(end - start), 2), 8)
+        except (ValueError, IndexError):
+            duration = 8
+
         operation = self.video_client.models.generate_videos(
             model=model_id,
             prompt=scene.visual_description,
             config={
-                "duration_seconds": 8,
+                "duration_seconds": duration,
                 "seed": seed,
                 "aspect_ratio": "16:9",
                 "number_of_videos": 1,

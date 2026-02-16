@@ -1,11 +1,12 @@
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Plus, FolderOpen, Clock, Loader2, CheckCircle2, AlertCircle, Image as ImageIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/Common'
 import { useProjectStore } from '@/store/useProjectStore'
-import { SEED_PROJECTS } from '@/lib/mockData'
 import type { Project } from '@/types/project'
 import { useNavigate } from 'react-router-dom'
+import { api } from '@/lib/api'
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
   draft: { label: 'Draft', color: 'text-muted-foreground bg-muted', icon: Clock },
@@ -59,8 +60,8 @@ const ProjectCard = ({ project, onClick }: { project: Project; onClick: () => vo
       {project.scenes.length > 0 && (
         <div className="flex gap-2 mb-4 overflow-hidden">
           {project.scenes.slice(0, 4).map((scene) => (
-            <div 
-              key={scene.id} 
+            <div
+              key={scene.id}
               className="relative aspect-video w-20 shrink-0 rounded-md overflow-hidden bg-muted border border-border/50"
             >
               {scene.thumbnail_url ? (
@@ -101,20 +102,27 @@ const ProjectCard = ({ project, onClick }: { project: Project; onClick: () => vo
 }
 
 export const ProjectList = () => {
-  const { setActiveProject, projects } = useProjectStore()
+  const { setActiveProject, setTempProjectData } = useProjectStore()
   const navigate = useNavigate()
-  
-  // Use projects from store which is initialized with SEED_PROJECTS
-  const displayProjects = projects.length > 0 ? projects : SEED_PROJECTS
+  const [projects, setProjects] = useState<Project[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    api.projects.list()
+      .then((data) => setProjects(data))
+      .catch((err) => console.error('Failed to fetch productions', err))
+      .finally(() => setIsLoading(false))
+  }, [])
 
   const handleNewProject = () => {
     setActiveProject(null)
+    setTempProjectData(null)
     navigate('/productions/new')
   }
 
   const handleOpenProject = (id: string) => {
     setActiveProject(id)
-    const project = displayProjects.find(p => p.id === id)
+    const project = projects.find(p => p.id === id)
     if (project?.status === 'completed') {
       navigate(`/productions/${id}`)
     } else if (project?.status === 'scripted' || project?.status === 'generating') {
@@ -124,7 +132,14 @@ export const ProjectList = () => {
     }
   }
 
-  const projectsCount = displayProjects.length
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32 space-y-4">
+        <Loader2 className="animate-spin text-accent" size={32} />
+        <p className="text-sm text-muted-foreground">Loading productions...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -132,13 +147,13 @@ export const ProjectList = () => {
         <div className="space-y-1">
           <h2 className="text-xl font-heading text-foreground tracking-tight">Productions</h2>
           <p className="text-xs text-muted-foreground">
-            {projectsCount} project{projectsCount !== 1 ? 's' : ''}
+            {projects.length} project{projects.length !== 1 ? 's' : ''}
           </p>
         </div>
         <Button icon={Plus} onClick={handleNewProject}>New Production</Button>
       </div>
 
-      {projectsCount === 0 ? (
+      {projects.length === 0 ? (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -154,8 +169,8 @@ export const ProjectList = () => {
           <Button icon={Plus} onClick={handleNewProject}>Create First Production</Button>
         </motion.div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {displayProjects.map((project) => (
+        <div className="grid grid-cols-1 gap-4">
+          {projects.map((project) => (
             <ProjectCard
               key={project.id}
               project={project}

@@ -129,7 +129,7 @@ export const Select = ({
           onClick={handleToggle}
           className={cn(
             "w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm transition-all duration-200 border text-left",
-            "glass bg-card/50 hover:bg-muted/50",
+            "bg-card hover:bg-muted/80",
             isOpen ? "border-accent ring-2 ring-accent/20" : "border-border",
             error && "border-red-500/50 ring-red-500/20"
           )}
@@ -150,7 +150,7 @@ export const Select = ({
               animate={{ opacity: 1, y: openUpwards ? -4 : 4, scale: 1 }}
               exit={{ opacity: 0, y: openUpwards ? 10 : -10, scale: 0.98 }}
               className={cn(
-                "absolute z-[60] w-full glass bg-card border border-border rounded-xl shadow-2xl overflow-hidden py-1",
+                "absolute z-[60] w-full bg-card border border-border rounded-xl shadow-2xl overflow-hidden py-1",
                 openUpwards ? "bottom-full mb-1" : "top-full mt-1"
               )}
             >

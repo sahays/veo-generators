@@ -7,7 +7,7 @@ export const sceneSchema = z.object({
   timestamp_end: z.string(),
   metadata: z.object({
     location: z.string().optional(),
-    character: z.string().optional(),
+    characters: z.array(z.string()).optional(),
     camera_angle: z.string().optional(),
     lighting: z.string().optional(),
     style: z.string().optional(),
