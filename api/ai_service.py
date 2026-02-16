@@ -1,40 +1,31 @@
 import os
-import zlib
-import asyncio
+import json
 import uuid
 from collections import defaultdict
-from typing import List, Optional
+from pathlib import Path
+from typing import Optional
 from google import genai
 from google.genai import types
-from models import Scene, SceneMetadata, UsageMetrics, AIResponseWrapper
-from google.cloud.video import transcoder_v1
+from models import Scene, SceneMetadata, UsageMetrics, AIResponseWrapper, Project
+
+
+def _load_default_schema():
+    schema_path = Path(__file__).parent / "schemas" / "production-schema.json"
+    return json.loads(schema_path.read_text())
 
 
 class AIService:
     def __init__(self, storage_svc=None, firestore_svc=None):
         self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
         self.location = os.getenv("GEMINI_REGION", "global")
-        self.veo_location = os.getenv("VEO_REGION", "us-central1")
 
         self.storage_svc = storage_svc
         self.firestore_svc = firestore_svc
 
-        # Primary client for Text and Image
+        # Client for Text and Image
         self.client = genai.Client(
             vertexai=True, project=self.project_id, location=self.location
         )
-
-        # Dedicated client for Video (as Veo may have limited regional availability)
-        self.video_client = genai.Client(
-            vertexai=True, project=self.project_id, location=self.veo_location
-        )
-
-        self.transcoder_client = transcoder_v1.TranscoderServiceClient()
-        self.storage_svc = storage_svc
-
-    def _get_project_seed(self, project_id: str) -> int:
-        # Generate a deterministic integer seed from the alphanumeric project ID
-        return zlib.adler32(project_id.encode()) & 0x7FFFFFFF
 
     async def analyze_brief(
         self,
@@ -81,48 +72,10 @@ Return a JSON list of scenes following the requested structure."""
         )
 
         # 2. Resolve Schema
-        response_schema = {
-            "type": "object",
-            "properties": {
-                "scenes": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "visual_description": {"type": "string"},
-                            "timestamp_start": {"type": "string"},
-                            "timestamp_end": {"type": "string"},
-                            "metadata": {
-                                "type": "object",
-                                "properties": {
-                                    "location": {"type": "string"},
-                                    "characters": {
-                                        "type": "array",
-                                        "items": {"type": "string"},
-                                        "description": "List of all characters, including main actors and background NPCs",
-                                    },
-                                    "camera_angle": {"type": "string"},
-                                    "lighting": {"type": "string"},
-                                    "style": {"type": "string"},
-                                    "mood": {"type": "string"},
-                                },
-                            },
-                        },
-                        "required": [
-                            "visual_description",
-                            "timestamp_start",
-                            "timestamp_end",
-                        ],
-                    },
-                }
-            },
-            "required": ["scenes"],
-        }
+        response_schema = _load_default_schema()
 
         if self.firestore_svc:
             fs = self.firestore_svc
-            import json
-
             if schema_id:
                 res = fs.get_resource(schema_id)
                 if res:
@@ -141,8 +94,16 @@ Return a JSON list of scenes following the requested structure."""
         )
 
         scenes_data = response.parsed
-        if isinstance(scenes_data, dict) and "scenes" in scenes_data:
-            scenes_data = scenes_data["scenes"]
+        global_style = None
+        continuity = None
+
+        if isinstance(scenes_data, dict):
+            global_style = scenes_data.get("global_style")
+            continuity = scenes_data.get("continuity")
+            scenes_data = scenes_data.get("scenes", scenes_data)
+
+        if not isinstance(scenes_data, list):
+            scenes_data = []
 
         scenes = []
         for s in scenes_data:
@@ -168,20 +129,69 @@ Return a JSON list of scenes following the requested structure."""
             + (response.usage_metadata.candidates_token_count * 0.00000375),
         )
 
-        return AIResponseWrapper(data=scenes, usage=usage)
+        return AIResponseWrapper(
+            data={
+                "scenes": scenes,
+                "global_style": global_style,
+                "continuity": continuity,
+                "analysis_prompt": prompt,
+            },
+            usage=usage,
+        )
+
+    def _build_scene_prompt(self, scene: Scene, project: Optional[Project]) -> str:
+        """Build a rich prompt with production context for image generation."""
+        parts = []
+        if project and project.global_style:
+            gs = project.global_style
+            parts.append(
+                f"Style: {gs.look}. Mood: {gs.mood}. "
+                f"Colors: {gs.color_grading}. Lighting: {gs.lighting_style}."
+            )
+        if project and project.continuity and project.continuity.characters:
+            char_descs = []
+            for c in project.continuity.characters:
+                char_descs.append(f"{c.id}: {c.description}, wearing {c.wardrobe}")
+            parts.append(f"Characters: {'; '.join(char_descs)}.")
+        if project and project.continuity and project.continuity.setting_notes:
+            parts.append(f"Setting: {project.continuity.setting_notes}.")
+        parts.append(scene.visual_description)
+        return " ".join(parts)
 
     async def generate_frame(
-        self, project_id: str, description: str, orientation: str
+        self,
+        project_id: str,
+        scene: Scene,
+        orientation: str,
+        project: Optional[Project] = None,
     ) -> AIResponseWrapper:
         model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
 
-        # Gemini 3 Pro Image uses generate_content for image generation
+        enriched_prompt = self._build_scene_prompt(scene, project)
+
+        # Build multimodal content: text prompt + optional reference image
+        contents = []
+        if project and project.reference_image_url:
+            ref_url = project.reference_image_url
+            if ref_url.startswith("gs://"):
+                contents.append(
+                    types.Part.from_uri(file_uri=ref_url, mime_type="image/png")
+                )
+            contents.append(
+                f"Use the above reference image as a style guide. {enriched_prompt}"
+            )
+        else:
+            contents.append(enriched_prompt)
+
         response = self.client.models.generate_content(
             model=model_id,
-            contents=description,
-            config={
-                "candidate_count": 1,
-            },
+            contents=contents,
+            config=types.GenerateContentConfig(
+                response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(
+                    aspect_ratio=orientation,
+                ),
+            ),
         )
 
         image_url = None
@@ -191,194 +201,16 @@ Return a JSON list of scenes following the requested structure."""
                 if hasattr(part, "inline_data") and part.inline_data:
                     if self.storage_svc:
                         dest = f"generated/{project_id}/{uuid.uuid4()}.png"
-                        gcs_uri = self.storage_svc.upload_bytes(
+                        image_url = self.storage_svc.upload_bytes(
                             part.inline_data.data, dest
                         )
-                        image_url = self.storage_svc.get_signed_url(gcs_uri)
                     break
 
+        if not image_url:
+            raise ValueError("Frame generation produced no image")
+
         usage = UsageMetrics(model_name=model_id, cost_usd=0.03)
-        return AIResponseWrapper(data=image_url, usage=usage)
-
-    def _parse_timestamp(self, ts: str) -> float:
-        """Parse '00:05' or '5' to seconds."""
-        if ":" in ts:
-            parts = ts.split(":")
-            return int(parts[0]) * 60 + float(parts[1])
-        return float(ts)
-
-    async def generate_scene_video(
-        self, project_id: str, scene: Scene, blocking: bool = True
-    ):
-        model_id = os.getenv("VIDEO_GEN_MODEL", "veo-3.1-generate-preview")
-        seed = self._get_project_seed(project_id)
-
-        # Compute duration from scene timestamps, clamped to Veo's 2-8s range
-        try:
-            start = self._parse_timestamp(scene.timestamp_start)
-            end = self._parse_timestamp(scene.timestamp_end)
-            duration = min(max(int(end - start), 2), 8)
-        except (ValueError, IndexError):
-            duration = 8
-
-        operation = self.video_client.models.generate_videos(
-            model=model_id,
-            prompt=scene.visual_description,
-            config={
-                "duration_seconds": duration,
-                "seed": seed,
-                "aspect_ratio": "16:9",
-                "number_of_videos": 1,
-            },
+        return AIResponseWrapper(
+            data={"image_url": image_url, "generated_prompt": enriched_prompt},
+            usage=usage,
         )
-
-        if not blocking:
-            return {"operation_name": operation.name, "status": "processing"}
-
-        # This is a long running operation. We need to poll for completion.
-        while not operation.done:
-            await asyncio.sleep(10)
-            # In some SDK versions, we might need to verify if the object auto-updates.
-            # If operation.done is a property that calls the API, this works.
-
-        if operation.result and operation.result.generated_videos:
-            return operation.result.generated_videos[0].video.uri
-
-        return ""
-
-    async def get_video_generation_status(self, operation_name: str):
-        try:
-            print(f"Checking operation: {operation_name}")
-
-            # Reconstruct the operation object from the name string
-            # This is necessary because client.operations.get() requires an object, not a string.
-            from google.genai import types
-
-            operation_wrapper = types.GenerateVideosOperation(name=operation_name)
-
-            # Fetch the updated operation status
-            operation = self.video_client.operations.get(operation_wrapper)
-            print(f"Operation type: {type(operation)}")
-
-            # Defensive check for different possible return types (Object vs Dict)
-            is_done = getattr(operation, "done", None)
-            if is_done is None and isinstance(operation, dict):
-                is_done = operation.get("done")
-
-            if is_done:
-                error = getattr(operation, "error", None)
-                if error is None and isinstance(operation, dict):
-                    error = operation.get("error")
-
-                if error:
-                    print(f"Operation failed: {error}")
-                    return {"status": "failed", "error": str(error)}
-
-                result = getattr(operation, "result", None)
-                if result is None and isinstance(operation, dict):
-                    result = operation.get("result")
-
-                if result:
-                    # Handle both object and dict results
-                    videos = getattr(result, "generated_videos", None)
-                    if videos is None and isinstance(result, dict):
-                        videos = result.get("generated_videos")
-
-                    if videos:
-                        # videos might be a list of objects or dicts
-                        first_video = videos[0]
-
-                        # Try to get URI first
-                        uri = (
-                            getattr(first_video.video, "uri", None)
-                            if hasattr(first_video, "video")
-                            else None
-                        )
-
-                        # If no URI, check for video bytes
-                        if not uri:
-                            video_bytes = (
-                                getattr(first_video.video, "video_bytes", None)
-                                if hasattr(first_video, "video")
-                                else None
-                            )
-                            if video_bytes and self.storage_svc:
-                                # Upload bytes to GCS
-                                # Use operation name as part of filename to be unique
-                                safe_name = operation_name.replace("/", "_")
-                                filename = f"videos/{safe_name}.mp4"
-                                print(f"Uploading raw video bytes to {filename}...")
-                                uri = self.storage_svc.upload_bytes(
-                                    video_bytes, filename, content_type="video/mp4"
-                                )
-
-                        # Fallback for dict access if needed
-                        if uri is None and isinstance(first_video, dict):
-                            video_obj = first_video.get("video")
-                            uri = (
-                                video_obj.get("uri")
-                                if isinstance(video_obj, dict)
-                                else getattr(video_obj, "uri", None)
-                            )
-
-                        if uri:
-                            print(f"Video generated: {uri}")
-                            return {"status": "completed", "video_uri": uri}
-
-                print("Operation complete but no video found in result.")
-                return {"status": "completed", "video_uri": None}
-
-            return {"status": "processing"}
-        except Exception as e:
-            print(f"Error checking status: {e}")
-            import traceback
-
-            traceback.print_exc()
-            return {"status": "error", "message": str(e)}
-
-    async def stitch_production(self, project_id: str, scene_uris: List[str]) -> str:
-        # Transcoder API usually requires a specific region
-        transcoder_loc = os.getenv("GOOGLE_CLOUD_LOCATION", "asia-south1")
-        parent = f"projects/{self.project_id}/locations/{transcoder_loc}"
-        output_uri = (
-            f"gs://{os.getenv('GCS_BUCKET')}/productions/{project_id}/final.mp4"
-        )
-
-        inputs = [
-            transcoder_v1.types.Input(key=f"input{i}", uri=uri)
-            for i, uri in enumerate(scene_uris)
-        ]
-        edit_list = [
-            transcoder_v1.types.EditAtom(
-                key=f"atom{i}", inputs=[f"input{i}"], start_time_offset="0s"
-            )
-            for i in range(len(scene_uris))
-        ]
-
-        job = transcoder_v1.types.Job()
-        job.output_uri = output_uri
-        job.config = transcoder_v1.types.JobConfig(
-            inputs=inputs,
-            edit_list=edit_list,
-            elementary_streams=[
-                transcoder_v1.types.ElementaryStream(
-                    key="v1",
-                    video_stream=transcoder_v1.types.VideoStream(
-                        h264=transcoder_v1.types.VideoStream.H264CodecSettings(
-                            bitrate_bps=5000000,
-                            frame_rate=30,
-                            height_pixels=720,
-                            width_pixels=1280,
-                        )
-                    ),
-                )
-            ],
-            mux_streams=[
-                transcoder_v1.types.MuxStream(
-                    key="final", container="mp4", elementary_streams=["v1"]
-                )
-            ],
-        )
-
-        self.transcoder_client.create_job(parent=parent, job=job)
-        return output_uri
