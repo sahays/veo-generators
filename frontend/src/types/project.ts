@@ -31,11 +31,33 @@ export const projectSchema = z.object({
   video_length: z.enum(['16', '24', '32', '48', 'custom']),
   orientation: z.enum(['16:9', '9:16']),
   reference_image_url: z.string().optional(),
+  prompt_id: z.string().optional(),
+  schema_id: z.string().optional(),
 })
 
-export type ProjectFormData = z.infer<typeof projectSchema>
+export type ProjectFormData = z.infer<typeof projectSchema> & {
+  prompt_id?: string
+  schema_id?: string
+}
 
 export type ProjectStatus = 'draft' | 'analyzing' | 'scripted' | 'generating' | 'completed' | 'failed'
+
+export interface SystemResourceInfo {
+  id: string
+  name: string
+  version: number
+}
+
+export interface SystemResource {
+  id: string
+  type: 'prompt' | 'schema'
+  category: string
+  name: string
+  version: number
+  content: string
+  is_active: boolean
+  createdAt: string
+}
 
 export interface UsageMetrics {
   total_input_tokens: number
@@ -73,6 +95,8 @@ export interface Project {
   video_length: '16' | '24' | '32' | '48' | 'custom'
   orientation: '16:9' | '9:16'
   status: ProjectStatus
+  prompt_info?: SystemResourceInfo
+  schema_info?: SystemResourceInfo
   reference_image_url?: string
   scenes: Scene[]
   usage: UsageMetrics

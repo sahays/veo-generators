@@ -5,9 +5,11 @@ from typing import List, Optional, Any
 from datetime import datetime
 from enum import Enum
 
+
 def generate_id(prefix: str) -> str:
     chars = string.ascii_letters + string.digits
     return f"{prefix}{''.join(random.choice(chars) for _ in range(8))}"
+
 
 class ProjectStatus(str, Enum):
     DRAFT = "draft"
@@ -18,11 +20,35 @@ class ProjectStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
 
+
+class SystemResourceType(str, Enum):
+    PROMPT = "prompt"
+    SCHEMA = "schema"
+
+
+class SystemResourceInfo(BaseModel):
+    id: str
+    name: str
+    version: int
+
+
+class SystemResource(BaseModel):
+    id: str = Field(default_factory=lambda: generate_id("res-"))
+    type: SystemResourceType
+    category: str  # e.g. project-analysis
+    name: str
+    version: int = 1
+    content: str
+    is_active: bool = False
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+
+
 class UsageMetrics(BaseModel):
     input_tokens: int = 0
     output_tokens: int = 0
     model_name: str = ""
     cost_usd: float = 0.0
+
 
 class SceneMetadata(BaseModel):
     location: Optional[str] = None
@@ -32,6 +58,7 @@ class SceneMetadata(BaseModel):
     style: Optional[str] = None
     mood: Optional[str] = None
 
+
 class Scene(BaseModel):
     id: str = Field(default_factory=lambda: generate_id("s-"))
     visual_description: str
@@ -40,23 +67,27 @@ class Scene(BaseModel):
     metadata: SceneMetadata = Field(default_factory=SceneMetadata)
     thumbnail_url: Optional[str] = None
     video_url: Optional[str] = None
-    status: str = "pending" # pending, generating, completed, failed
+    status: str = "pending"  # pending, generating, completed, failed
     usage: UsageMetrics = Field(default_factory=UsageMetrics)
+
 
 class Project(BaseModel):
     id: str = Field(default_factory=lambda: generate_id("p-"))
     name: str
-    type: str = "advertizement" # movie, advertizement, social
+    type: str = "advertizement"  # movie, advertizement, social
     base_concept: str
     video_length: str = "16"
-    orientation: str = "16:9" # 16:9, 9:16
+    orientation: str = "16:9"  # 16:9, 9:16
     status: ProjectStatus = ProjectStatus.DRAFT
+    prompt_info: Optional[SystemResourceInfo] = None
+    schema_info: Optional[SystemResourceInfo] = None
     reference_image_url: Optional[str] = None
     final_video_url: Optional[str] = None
     scenes: List[Scene] = []
     total_usage: UsageMetrics = Field(default_factory=UsageMetrics)
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
+
 
 class AIResponseWrapper(BaseModel):
     data: Any

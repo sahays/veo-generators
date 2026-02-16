@@ -1,19 +1,47 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Sparkles, FileText, ImageIcon, Monitor, Smartphone, Clock, Clapperboard, Megaphone, Share2, Play } from 'lucide-react'
+import { ArrowLeft, Sparkles, FileText, ImageIcon, Monitor, Smartphone, Clock, Clapperboard, Megaphone, Share2, Play, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button, Card } from '@/components/Common'
 import { useProjectStore } from '@/store/useProjectStore'
-import { projectSchema, type ProjectFormData, VIDEO_LENGTH_OPTIONS } from '@/types/project'
+import { projectSchema, type ProjectFormData, VIDEO_LENGTH_OPTIONS, type SystemResource } from '@/types/project'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { api } from '@/lib/api'
 
 export const ProjectForm = () => {
   const { setTempProjectData, setActiveProject, projects } = useProjectStore()
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   
+  const [prompts, setPrompts] = useState<SystemResource[]>([])
+  const [schemas, setSchemas] = useState<SystemResource[]>([])
+
+  useEffect(() => {
+    const fetchResources = async () => {
+      try {
+        const [pList, sList] = await Promise.all([
+          api.system.listResources('prompt', 'project-analysis'),
+          api.system.listResources('schema', 'project-analysis')
+        ])
+        setPrompts(pList)
+        setSchemas(sList)
+
+        // Set default values for new projects
+        if (!id) {
+          const activePrompt = pList.find(p => p.is_active)
+          const activeSchema = sList.find(s => s.is_active)
+          if (activePrompt) setValue('prompt_id', activePrompt.id)
+          if (activeSchema) setValue('schema_id', activeSchema.id)
+        }
+      } catch (err) {
+        console.error("Failed to fetch system resources", err)
+      }
+    }
+    fetchResources()
+  }, [])
+
   const existingProject = id ? projects.find(p => p.id === id) : null
 
   useEffect(() => {
@@ -129,6 +157,57 @@ export const ProjectForm = () => {
                 className="w-full px-3 py-2 rounded-lg text-sm glass bg-card border border-border focus:ring-2 focus:ring-accent/30 outline-none resize-none"
               />
               {errors.base_concept && <p className="text-[10px] text-red-500">{errors.base_concept.message}</p>}
+            </div>
+          </div>
+        </Card>
+
+        <Card title="System Configuration" icon={Settings}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Analysis Prompt</label>
+              <select
+                {...register('prompt_id')}
+                onChange={(e) => {
+                  if (e.target.value === 'CREATE_NEW') {
+                    navigate('/prompts');
+                  } else {
+                    setValue('prompt_id', e.target.value);
+                  }
+                }}
+                className="w-full px-3 py-2 rounded-lg text-sm glass bg-card border border-border focus:ring-2 focus:ring-accent/30 outline-none appearance-none"
+              >
+                {prompts.map(p => (
+                  <option key={p.id} value={p.id} className="bg-slate-900">
+                    {p.name} {p.is_active ? '(Active)' : `v${p.version}`}
+                  </option>
+                ))}
+                <option value="CREATE_NEW" className="bg-slate-900 text-accent font-bold">
+                  + Create New Prompt...
+                </option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Output Schema</label>
+              <select
+                {...register('schema_id')}
+                onChange={(e) => {
+                  if (e.target.value === 'CREATE_NEW') {
+                    navigate('/prompts');
+                  } else {
+                    setValue('schema_id', e.target.value);
+                  }
+                }}
+                className="w-full px-3 py-2 rounded-lg text-sm glass bg-card border border-border focus:ring-2 focus:ring-accent/30 outline-none appearance-none"
+              >
+                {schemas.map(s => (
+                  <option key={s.id} value={s.id} className="bg-slate-900">
+                    {s.name} {s.is_active ? '(Active)' : `v${s.version}`}
+                  </option>
+                ))}
+                <option value="CREATE_NEW" className="bg-slate-900 text-accent font-bold">
+                  + Create New Schema...
+                </option>
+              </select>
             </div>
           </div>
         </Card>

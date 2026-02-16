@@ -1,8 +1,8 @@
-# Veo Production Suite
+# Veo Generators
 
 ## Project Overview
 
-The **Veo Production Suite** is a full-stack web application designed to streamline the creation of AI-generated videos. It leverages Google's **Gemini** models for scriptwriting and storyboard analysis, and **Veo** (and Imagen) models for video and image generation. The application allows users to define a video concept, which is then automatically broken down into scenes, visualized with thumbnails, and rendered into a final stitched video.
+The **Veo Generators** is a full-stack web application designed to streamline the creation of AI-generated videos. It leverages Google's **Gemini** models for scriptwriting and storyboard analysis, and **Veo** (and Imagen) models for video and image generation. The application allows users to define a video concept, which is then automatically broken down into scenes, visualized with thumbnails, and rendered into a final stitched video.
 
 ### Tech Stack
 
@@ -104,8 +104,8 @@ The **Veo Production Suite** is a full-stack web application designed to streaml
 To build the unified image (frontend built and served as static files by backend):
 
 ```bash
-docker build -t veo-production-suite .
-docker run -p 8080:8080 --env-file .env.dev veo-production-suite
+docker build -t veo-generators .
+docker run -p 8080:8080 --env-file .env.dev veo-generators
 ```
 
 ### Deployment
@@ -116,7 +116,7 @@ The `deploy.sh` script handles deployment to Google Cloud Run:
 ./deploy.sh
 ```
 
-**Deployed Application:** [https://veo-production-suite-265936284692.asia-south1.run.app](https://veo-production-suite-265936284692.asia-south1.run.app)
+**Deployed Application:** [https://veo-generators-265936284692.asia-south1.run.app](https://veo-generators-265936284692.asia-south1.run.app)
 
 **Note:** Ensure you have permissions to push to GCR/Artifact Registry and deploy to Cloud Run. The script assumes specific project ID and region variables which may need editing.
 

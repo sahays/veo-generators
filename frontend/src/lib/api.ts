@@ -20,27 +20,37 @@ export interface Project {
 
 export const api = {
   projects: {
-    list: async (): Promise<Project[]> => {
-      const res = await fetch(`${API_BASE_URL}/projects`)
+    list: async (): Promise<any[]> => {
+      const res = await fetch(`${API_BASE_URL}/productions`)
       return res.json()
     },
-    create: async (project: any): Promise<Project> => {
-      const res = await fetch(`${API_BASE_URL}/projects`, {
+    get: async (id: string): Promise<any> => {
+      const res = await fetch(`${API_BASE_URL}/productions/${id}`)
+      return res.json()
+    },
+    create: async (project: any): Promise<any> => {
+      const res = await fetch(`${API_BASE_URL}/productions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(project),
       })
       return res.json()
     },
-    update: async (id: string, updates: any): Promise<void> => {
-      await fetch(`${API_BASE_URL}/projects/${id}`, {
-        method: 'PATCH',
+    analyze: async (id: string, prompt_id?: string, schema_id?: string): Promise<any> => {
+      const res = await fetch(`${API_BASE_URL}/productions/${id}/analyze`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
+        body: JSON.stringify({ prompt_id, schema_id }),
+      })
+      return res.json()
+    },
+    render: async (id: string): Promise<void> => {
+      await fetch(`${API_BASE_URL}/productions/${id}/render`, {
+        method: 'POST',
       })
     },
     delete: async (id: string): Promise<void> => {
-      await fetch(`${API_BASE_URL}/projects/${id}`, {
+      await fetch(`${API_BASE_URL}/productions/${id}`, {
         method: 'DELETE',
       })
     }
@@ -93,6 +103,28 @@ export const api = {
         body: formData,
       })
       return res.json()
+    }
+  },
+  system: {
+    listResources: async (type?: string, category?: string): Promise<any[]> => {
+      const params = new URLSearchParams()
+      if (type) params.append('type', type)
+      if (category) params.append('category', category)
+      const res = await fetch(`${API_BASE_URL}/system/resources?${params.toString()}`)
+      return res.json()
+    },
+    createResource: async (resource: any): Promise<any> => {
+      const res = await fetch(`${API_BASE_URL}/system/resources`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(resource),
+      })
+      return res.json()
+    },
+    activateResource: async (id: string): Promise<void> => {
+      await fetch(`${API_BASE_URL}/system/resources/${id}/activate`, {
+        method: 'POST',
+      })
     }
   },
   diagnostics: {

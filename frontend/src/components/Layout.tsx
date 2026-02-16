@@ -45,6 +45,7 @@ export const Sidebar = () => {
     { name: 'Highlights', icon: Zap, path: '/highlights' },
     { name: 'Thumbnails', icon: ImageIcon, path: '/thumbnails' },
     { name: 'Orientations', icon: Smartphone, path: '/orientations' },
+    { name: 'System Prompts', icon: FileText, path: '/prompts' },
     { name: 'Diagnostics', icon: Activity, path: '/diagnostics' },
     {
       name: 'Configuration',
