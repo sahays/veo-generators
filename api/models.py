@@ -50,6 +50,24 @@ class UsageMetrics(BaseModel):
     cost_usd: float = 0.0
 
 
+class GlobalStyle(BaseModel):
+    look: Optional[str] = None
+    mood: Optional[str] = None
+    color_grading: Optional[str] = None
+    lighting_style: Optional[str] = None
+
+
+class CharacterProfile(BaseModel):
+    id: str
+    description: str
+    wardrobe: Optional[str] = None
+
+
+class Continuity(BaseModel):
+    characters: List[CharacterProfile] = []
+    setting_notes: Optional[str] = None
+
+
 class SceneMetadata(BaseModel):
     location: Optional[str] = None
     characters: List[str] = []
@@ -67,6 +85,10 @@ class Scene(BaseModel):
     metadata: SceneMetadata = Field(default_factory=SceneMetadata)
     thumbnail_url: Optional[str] = None
     video_url: Optional[str] = None
+    generated_prompt: Optional[str] = None
+    image_prompt: Optional[str] = None
+    video_prompt: Optional[str] = None
+    operation_name: Optional[str] = None
     status: str = "pending"  # pending, generating, completed, failed
     usage: UsageMetrics = Field(default_factory=UsageMetrics)
 
@@ -83,7 +105,11 @@ class Project(BaseModel):
     schema_info: Optional[SystemResourceInfo] = None
     reference_image_url: Optional[str] = None
     final_video_url: Optional[str] = None
+    global_style: Optional[GlobalStyle] = None
+    continuity: Optional[Continuity] = None
+    analysis_prompt: Optional[str] = None
     scenes: List[Scene] = []
+    archived: bool = False
     total_usage: UsageMetrics = Field(default_factory=UsageMetrics)
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)

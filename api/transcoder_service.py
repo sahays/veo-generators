@@ -83,6 +83,61 @@ class TranscoderService:
         except Exception as e:
             print(f"Error deleting job: {e}")
 
+    def stitch_from_uris(
+        self, production_id: str, scene_uris: list, orientation: str = "16:9"
+    ) -> str:
+        """Stitch a list of GCS video URIs into a single final video."""
+        import os
+
+        bucket = os.getenv("GCS_BUCKET")
+        # Transcoder writes to {output_uri}/{mux_key}.mp4
+        output_uri = f"gs://{bucket}/productions/{production_id}/stitched/"
+
+        if orientation == "9:16":
+            width, height = 720, 1280
+        else:
+            width, height = 1280, 720
+
+        inputs = [
+            transcoder_v1.types.Input(key=f"input{i}", uri=uri)
+            for i, uri in enumerate(scene_uris)
+        ]
+        edit_list = [
+            transcoder_v1.types.EditAtom(
+                key=f"atom{i}", inputs=[f"input{i}"], start_time_offset="0s"
+            )
+            for i in range(len(scene_uris))
+        ]
+
+        job = transcoder_v1.types.Job()
+        job.output_uri = output_uri
+        job.config = transcoder_v1.types.JobConfig(
+            inputs=inputs,
+            edit_list=edit_list,
+            elementary_streams=[
+                transcoder_v1.types.ElementaryStream(
+                    key="v1",
+                    video_stream=transcoder_v1.types.VideoStream(
+                        h264=transcoder_v1.types.VideoStream.H264CodecSettings(
+                            bitrate_bps=5000000,
+                            frame_rate=30,
+                            height_pixels=height,
+                            width_pixels=width,
+                        )
+                    ),
+                )
+            ],
+            mux_streams=[
+                transcoder_v1.types.MuxStream(
+                    key="final", container="mp4", elementary_streams=["v1"]
+                )
+            ],
+        )
+
+        self.client.create_job(parent=self.parent, job=job)
+        # Actual file is at {output_uri}{mux_key}.mp4
+        return f"{output_uri}final.mp4"
+
     def get_job_status(self, job_name: str) -> str:
         try:
             job = self.client.get_job(name=job_name)

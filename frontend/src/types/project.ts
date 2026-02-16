@@ -14,6 +14,11 @@ export const sceneSchema = z.object({
     mood: z.string().optional(),
   }).optional(),
   thumbnail_url: z.string().optional(),
+  video_url: z.string().optional(),
+  generated_prompt: z.string().optional(),
+  image_prompt: z.string().optional(),
+  video_prompt: z.string().optional(),
+  operation_name: z.string().optional(),
   tokens_consumed: z.object({
     input: z.number().default(0),
     output: z.number().default(0),
@@ -40,7 +45,7 @@ export type ProjectFormData = z.infer<typeof projectSchema> & {
   schema_id?: string
 }
 
-export type ProjectStatus = 'draft' | 'analyzing' | 'scripted' | 'generating' | 'completed' | 'failed'
+export type ProjectStatus = 'draft' | 'analyzing' | 'scripted' | 'generating' | 'stitching' | 'completed' | 'failed'
 
 export interface SystemResourceInfo {
   id: string
@@ -87,6 +92,24 @@ export interface CustomOption {
   createdAt: number
 }
 
+export interface GlobalStyle {
+  look: string
+  mood: string
+  color_grading: string
+  lighting_style: string
+}
+
+export interface CharacterProfile {
+  id: string
+  description: string
+  wardrobe?: string
+}
+
+export interface Continuity {
+  characters: CharacterProfile[]
+  setting_notes?: string
+}
+
 export interface Project {
   id: string
   name: string
@@ -98,7 +121,12 @@ export interface Project {
   prompt_info?: SystemResourceInfo
   schema_info?: SystemResourceInfo
   reference_image_url?: string
+  global_style?: GlobalStyle
+  continuity?: Continuity
+  analysis_prompt?: string
+  final_video_url?: string
   scenes: Scene[]
+  archived?: boolean
   usage: UsageMetrics
   createdAt: number
   updatedAt: number

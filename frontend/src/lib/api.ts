@@ -20,12 +20,15 @@ export interface Project {
 
 export const api = {
   projects: {
-    list: async (): Promise<any[]> => {
-      const res = await fetch(`${API_BASE_URL}/productions`)
+    list: async (params?: { archived?: boolean }): Promise<any[]> => {
+      const query = params?.archived ? '?archived=true' : ''
+      const res = await fetch(`${API_BASE_URL}/productions${query}`)
+      if (!res.ok) throw new Error(`Failed to list productions: ${res.status}`)
       return res.json()
     },
     get: async (id: string): Promise<any> => {
       const res = await fetch(`${API_BASE_URL}/productions/${id}`)
+      if (!res.ok) throw new Error(`Failed to get production: ${res.status}`)
       return res.json()
     },
     create: async (project: any): Promise<any> => {
@@ -34,6 +37,7 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(project),
       })
+      if (!res.ok) throw new Error(`Failed to create production: ${res.status}`)
       return res.json()
     },
     analyze: async (id: string, prompt_id?: string, schema_id?: string): Promise<any> => {
@@ -42,16 +46,59 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt_id, schema_id }),
       })
+      if (!res.ok) throw new Error(`Analysis failed: ${res.status}`)
       return res.json()
     },
-    render: async (id: string): Promise<void> => {
-      await fetch(`${API_BASE_URL}/productions/${id}/render`, {
+    generateFrame: async (id: string, sceneId: string): Promise<any> => {
+      const res = await fetch(`${API_BASE_URL}/productions/${id}/scenes/${sceneId}/frame`, {
         method: 'POST',
       })
+      if (!res.ok) throw new Error(`Frame generation failed: ${res.status}`)
+      return res.json()
+    },
+    generateSceneVideo: async (id: string, sceneId: string): Promise<any> => {
+      const res = await fetch(`${API_BASE_URL}/productions/${id}/scenes/${sceneId}/video`, {
+        method: 'POST',
+      })
+      if (!res.ok) throw new Error(`Video generation failed: ${res.status}`)
+      return res.json()
+    },
+    checkOperation: async (operationName: string, productionId?: string, sceneId?: string): Promise<any> => {
+      const params = new URLSearchParams()
+      if (productionId) params.append('production_id', productionId)
+      if (sceneId) params.append('scene_id', sceneId)
+      const qs = params.toString() ? `?${params.toString()}` : ''
+      const res = await fetch(`${API_BASE_URL}/diagnostics/operations/${operationName}${qs}`)
+      if (!res.ok) throw new Error(`Operation check failed: ${res.status}`)
+      return res.json()
+    },
+    render: async (id: string): Promise<any> => {
+      const res = await fetch(`${API_BASE_URL}/productions/${id}/render`, {
+        method: 'POST',
+      })
+      if (!res.ok) throw new Error(`Render failed: ${res.status}`)
+      return res.json()
+    },
+    stitch: async (id: string): Promise<any> => {
+      const res = await fetch(`${API_BASE_URL}/productions/${id}/stitch`, {
+        method: 'POST',
+      })
+      if (!res.ok) throw new Error(`Stitch failed: ${res.status}`)
+      return res.json()
     },
     delete: async (id: string): Promise<void> => {
       await fetch(`${API_BASE_URL}/productions/${id}`, {
         method: 'DELETE',
+      })
+    },
+    archive: async (id: string): Promise<void> => {
+      await fetch(`${API_BASE_URL}/productions/${id}/archive`, {
+        method: 'POST',
+      })
+    },
+    unarchive: async (id: string): Promise<void> => {
+      await fetch(`${API_BASE_URL}/productions/${id}/unarchive`, {
+        method: 'POST',
       })
     }
   },
@@ -125,6 +172,10 @@ export const api = {
       await fetch(`${API_BASE_URL}/system/resources/${id}/activate`, {
         method: 'POST',
       })
+    },
+    getDefaultSchema: async (): Promise<any> => {
+      const res = await fetch(`${API_BASE_URL}/system/default-schema`)
+      return res.json()
     }
   },
   diagnostics: {
