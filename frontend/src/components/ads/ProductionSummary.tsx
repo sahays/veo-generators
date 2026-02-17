@@ -16,9 +16,9 @@ export const ProductionSummary = () => {
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null)
   const [showAnalysisPrompt, setShowAnalysisPrompt] = useState(false)
 
-  // Fetch from API if we don't have tempProjectData
+  // Always fetch fresh data when the route id changes
   useEffect(() => {
-    if (!id || tempProjectData) return
+    if (!id) return
     setIsLoading(true)
     api.projects.get(id)
       .then((project: Project) => {
@@ -29,7 +29,7 @@ export const ProductionSummary = () => {
       })
       .catch((err) => console.error('Failed to load production', err))
       .finally(() => setIsLoading(false))
-  }, [id, tempProjectData, setTempProjectData, setActiveProject])
+  }, [id])
 
   const handleStartFresh = () => {
     setActiveProject(null)

@@ -3,6 +3,10 @@ import { z } from 'zod'
 export const sceneSchema = z.object({
   id: z.string(),
   visual_description: z.string().min(10),
+  narration: z.string().optional(),
+  narration_enabled: z.boolean().optional(),
+  music_description: z.string().optional(),
+  music_enabled: z.boolean().optional(),
   timestamp_start: z.string(),
   timestamp_end: z.string(),
   metadata: z.object({
@@ -99,6 +103,7 @@ export interface GlobalStyle {
   mood: string
   color_grading: string
   lighting_style: string
+  soundtrack_style?: string
 }
 
 export interface CharacterProfile {

@@ -4,7 +4,7 @@ import {
   ArrowLeft, Sparkles, Video, Play, ImageIcon,
   RotateCcw, Clock, DollarSign, Cpu, Save,
   Loader2, LayoutGrid, List, Plus, Lock, AlertCircle,
-  Pencil, CheckCircle2
+  Pencil, CheckCircle2, Mic, Music
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button, Card } from '@/components/Common'
@@ -64,6 +64,10 @@ export const RefinePromptView = () => {
         const newScenes: Scene[] = scenesData.map((s: any, i: number) => ({
           id: s.id || `s-${i}`,
           visual_description: s.visual_description,
+          narration: s.narration,
+          narration_enabled: !!s.narration,
+          music_description: s.music_description,
+          music_enabled: !!s.music_description,
           timestamp_start: s.timestamp_start,
           timestamp_end: s.timestamp_end,
           metadata: s.metadata || {},
@@ -660,6 +664,43 @@ const SceneItem = ({
               )}
               placeholder="Scene description..."
             />
+
+            {/* Audio toggles (inline for grid) */}
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-1 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={!!scene.narration_enabled}
+                  onChange={(e) => onUpdate({ narration_enabled: e.target.checked })}
+                  disabled={isReadOnly}
+                  className="accent-accent w-3 h-3"
+                />
+                <Mic size={10} className="text-accent-dark" />
+                <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Voice</span>
+              </label>
+              <label className="flex items-center gap-1 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={!!scene.music_enabled}
+                  onChange={(e) => onUpdate({ music_enabled: e.target.checked })}
+                  disabled={isReadOnly}
+                  className="accent-accent w-3 h-3"
+                />
+                <Music size={10} className="text-accent-dark" />
+                <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Music</span>
+              </label>
+            </div>
+            {scene.narration_enabled && scene.narration && (
+              <p className="text-[10px] italic text-muted-foreground truncate" title={scene.narration}>
+                {scene.narration}
+              </p>
+            )}
+            {scene.music_enabled && scene.music_description && (
+              <p className="text-[10px] text-muted-foreground truncate" title={scene.music_description}>
+                {scene.music_description}
+              </p>
+            )}
+
             {error && <p className="text-[10px] text-red-500">{error}</p>}
             <div className="flex items-center justify-between pt-2 border-t border-border/50">
               <span className="text-[10px] font-bold uppercase text-muted-foreground flex items-center gap-1.5">
@@ -741,6 +782,61 @@ const SceneItem = ({
               )}
               placeholder="Scene visual description..."
             />
+
+            {/* Audio controls */}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={!!scene.narration_enabled}
+                    onChange={(e) => onUpdate({ narration_enabled: e.target.checked })}
+                    disabled={isReadOnly}
+                    className="accent-accent w-3.5 h-3.5"
+                  />
+                  <Mic size={12} className="text-accent-dark" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Voice-Over</span>
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={!!scene.music_enabled}
+                    onChange={(e) => onUpdate({ music_enabled: e.target.checked })}
+                    disabled={isReadOnly}
+                    className="accent-accent w-3.5 h-3.5"
+                  />
+                  <Music size={12} className="text-accent-dark" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Music</span>
+                </label>
+              </div>
+
+              {scene.narration_enabled && (
+                <textarea
+                  value={scene.narration || ''}
+                  onChange={(e) => onUpdate({ narration: e.target.value })}
+                  readOnly={isReadOnly}
+                  className={cn(
+                    "w-full min-h-[60px] p-3 rounded-xl text-sm leading-relaxed italic bg-muted/20 border border-border/50 focus:ring-2 focus:ring-accent/30 outline-none resize-none transition-all",
+                    isReadOnly && "cursor-default bg-transparent"
+                  )}
+                  placeholder="Voice-over narration text..."
+                />
+              )}
+
+              {scene.music_enabled && (
+                <input
+                  type="text"
+                  value={scene.music_description || ''}
+                  onChange={(e) => onUpdate({ music_description: e.target.value })}
+                  readOnly={isReadOnly}
+                  className={cn(
+                    "w-full p-2.5 rounded-xl text-sm bg-muted/20 border border-border/50 focus:ring-2 focus:ring-accent/30 outline-none transition-all",
+                    isReadOnly && "cursor-default bg-transparent"
+                  )}
+                  placeholder="Background music: genre, tempo, instruments, mood..."
+                />
+              )}
+            </div>
 
             <div className="flex flex-wrap gap-2">
               {Object.entries(scene.metadata || {}).map(([key, value]) => (

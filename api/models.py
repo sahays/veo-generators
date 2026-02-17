@@ -56,6 +56,7 @@ class GlobalStyle(BaseModel):
     color_grading: Optional[str] = None
     lighting_style: Optional[str] = None
     pace: Optional[str] = None
+    soundtrack_style: Optional[str] = None
 
 
 class CharacterProfile(BaseModel):
@@ -84,6 +85,10 @@ class SceneMetadata(BaseModel):
 class Scene(BaseModel):
     id: str = Field(default_factory=lambda: generate_id("s-"))
     visual_description: str
+    narration: Optional[str] = None
+    narration_enabled: bool = False
+    music_description: Optional[str] = None
+    music_enabled: bool = False
     timestamp_start: str
     timestamp_end: str
     metadata: SceneMetadata = Field(default_factory=SceneMetadata)
