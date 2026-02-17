@@ -108,10 +108,13 @@ class VideoService:
             "model": model_id,
             "prompt": enriched_prompt,
             "config": types.GenerateVideosConfig(
-                durationSeconds=duration,
+                duration_seconds=duration,
                 seed=seed,
-                aspectRatio=project.orientation if project else "16:9",
-                numberOfVideos=1,
+                aspect_ratio=project.orientation if project else "16:9",
+                number_of_videos=1,
+                generate_audio=True,
+                person_generation="allow_all",
+                resolution="720p",
             ),
         }
 

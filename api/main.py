@@ -19,6 +19,8 @@ from models import (
     ThumbnailScreenshot,
     UploadRecord,
     CompressedVariant,
+    UploadInitRequest,
+    UploadCompleteRequest,
 )
 from firestore_service import FirestoreService
 from ai_service import AIService
@@ -132,6 +134,17 @@ def _sign_production_urls(production: Project, thumbnails_only: bool = False) ->
     # Don't leak the cache to the client
     data.pop("signed_urls", None)
     return data
+
+
+def _accumulate_cost(production_id: str, cost_usd: float):
+    """Add cost to the production's total_usage."""
+    production = firestore_svc.get_production(production_id)
+    if not production:
+        return
+    current = production.total_usage.cost_usd if production.total_usage else 0.0
+    firestore_svc.update_production(
+        production_id, {"total_usage": {"cost_usd": current + cost_usd}}
+    )
 
 
 # --- Prompt Building Helpers ---
@@ -394,6 +407,30 @@ async def build_scene_prompt(id: str, scene_id: str):
     return _build_prompt_data(scene, production)
 
 
+@app.patch("/api/v1/productions/{id}/scenes/{scene_id}")
+async def update_scene(id: str, scene_id: str, updates: dict):
+    if not firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    production = firestore_svc.get_production(id)
+    if not production:
+        raise HTTPException(status_code=404)
+    scene = next((s for s in production.scenes if s.id == scene_id), None)
+    if not scene:
+        raise HTTPException(status_code=404)
+
+    ALLOWED = {
+        "visual_description",
+        "narration",
+        "narration_enabled",
+        "music_description",
+        "music_enabled",
+    }
+    filtered = {k: v for k, v in updates.items() if k in ALLOWED}
+    if filtered:
+        firestore_svc.update_scene(id, scene_id, filtered)
+    return {"ok": True}
+
+
 @app.post(
     "/api/v1/productions/{id}/scenes/{scene_id}/frame",
     response_model=AIResponseWrapper,
@@ -442,6 +479,7 @@ async def generate_scene_frame(id: str, scene_id: str, request: dict = {}):
         scene_updates["generated_prompt"] = result.data["generated_prompt"]
         scene_updates["image_prompt"] = result.data["generated_prompt"]
     firestore_svc.update_scene(id, scene_id, scene_updates)
+    _accumulate_cost(id, result.usage.cost_usd)
     # Return signed URL for immediate display
     result.data["image_url"] = storage_svc.get_signed_url(gcs_uri)
     return result
@@ -471,6 +509,16 @@ async def generate_scene_video(id: str, scene_id: str, request: dict = {}):
     result = await video_svc.generate_scene_video(
         id, scene, blocking=False, project=production, prompt_override=prompt_override
     )
+
+    # Calculate Veo cost: $0.40/second
+    try:
+        veo_start = _parse_timestamp(scene.timestamp_start)
+        veo_end = _parse_timestamp(scene.timestamp_end)
+        veo_duration = max(4, min(8, int(veo_end - veo_start)))
+    except (ValueError, IndexError):
+        veo_duration = 8
+    veo_cost = veo_duration * 0.40
+    _accumulate_cost(id, veo_cost)
 
     if isinstance(result, dict) and "operation_name" in result:
         if result.get("generated_prompt"):
@@ -622,6 +670,71 @@ async def get_stitch_status(id: str):
         return {"status": "failed", "error": f"Transcoder job {job_state}"}
     else:
         return {"status": "stitching", "job_state": job_state}
+
+
+@app.post("/api/v1/assets/upload/init")
+async def upload_init(request: UploadInitRequest):
+    """Generate a signed PUT URL for direct-to-GCS upload."""
+    if not storage_svc or not firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    mime = request.content_type or ""
+    if mime.startswith("video/"):
+        file_type = "video"
+    elif mime.startswith("image/"):
+        file_type = "image"
+    else:
+        file_type = "other"
+
+    destination = f"uploads/{uuid.uuid4()}-{request.filename}"
+    signed = storage_svc.generate_upload_signed_url(destination, request.content_type)
+
+    record = UploadRecord(
+        filename=request.filename,
+        mime_type=request.content_type,
+        file_type=file_type,
+        gcs_uri=signed["gcs_uri"],
+        file_size_bytes=request.file_size_bytes,
+        status="pending",
+    )
+    firestore_svc.create_upload_record(record)
+
+    return {
+        "record_id": record.id,
+        "upload_url": signed["upload_url"],
+        "gcs_uri": signed["gcs_uri"],
+        "content_type": request.content_type,
+        "expires_at": signed["expires_at"],
+    }
+
+
+@app.post("/api/v1/assets/upload/complete")
+async def upload_complete(request: UploadCompleteRequest):
+    """Verify a direct upload landed in GCS and finalize the record."""
+    if not storage_svc or not firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    record = firestore_svc.get_upload_record(request.record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Upload record not found")
+
+    if not storage_svc.blob_exists(record.gcs_uri):
+        firestore_svc.update_upload_record(request.record_id, {"status": "failed"})
+        raise HTTPException(status_code=400, detail="File not found in GCS")
+
+    actual_size = storage_svc.get_file_size(record.gcs_uri)
+    firestore_svc.update_upload_record(
+        request.record_id,
+        {"status": "completed", "file_size_bytes": actual_size},
+    )
+
+    signed_url = storage_svc.get_signed_url(record.gcs_uri)
+    return {
+        "id": record.id,
+        "gcs_uri": record.gcs_uri,
+        "signed_url": signed_url,
+        "file_type": record.file_type,
+    }
 
 
 @app.post("/api/v1/assets/upload")

@@ -146,8 +146,8 @@ Return a JSON list of scenes following the requested structure."""
             input_tokens=response.usage_metadata.prompt_token_count,
             output_tokens=response.usage_metadata.candidates_token_count,
             model_name=model_id,
-            cost_usd=(response.usage_metadata.prompt_token_count * 0.00000125)
-            + (response.usage_metadata.candidates_token_count * 0.00000375),
+            cost_usd=(response.usage_metadata.prompt_token_count * 0.000002)
+            + (response.usage_metadata.candidates_token_count * 0.000012),
         )
 
         return AIResponseWrapper(
@@ -231,7 +231,7 @@ Return a JSON list of scenes following the requested structure."""
         if not image_url:
             raise ValueError("Frame generation produced no image")
 
-        usage = UsageMetrics(model_name=model_id, cost_usd=0.03)
+        usage = UsageMetrics(model_name=model_id, cost_usd=0.134)
         return AIResponseWrapper(
             data={"image_url": image_url, "generated_prompt": enriched_prompt},
             usage=usage,
@@ -289,8 +289,8 @@ Return a JSON list of scenes following the requested structure."""
             input_tokens=response.usage_metadata.prompt_token_count,
             output_tokens=response.usage_metadata.candidates_token_count,
             model_name=model_id,
-            cost_usd=(response.usage_metadata.prompt_token_count * 0.00000125)
-            + (response.usage_metadata.candidates_token_count * 0.00000375),
+            cost_usd=(response.usage_metadata.prompt_token_count * 0.000002)
+            + (response.usage_metadata.candidates_token_count * 0.000012),
         )
 
         return AIResponseWrapper(data=data, usage=usage)
@@ -334,8 +334,8 @@ Return a JSON list of scenes following the requested structure."""
             input_tokens=response.usage_metadata.prompt_token_count,
             output_tokens=response.usage_metadata.candidates_token_count,
             model_name=model_id,
-            cost_usd=(response.usage_metadata.prompt_token_count * 0.00000125)
-            + (response.usage_metadata.candidates_token_count * 0.00000375),
+            cost_usd=(response.usage_metadata.prompt_token_count * 0.000002)
+            + (response.usage_metadata.candidates_token_count * 0.000012),
         )
 
         return AIResponseWrapper(data=data, usage=usage)
@@ -384,5 +384,5 @@ Return a JSON list of scenes following the requested structure."""
         if not image_url:
             raise ValueError("Collage generation produced no image")
 
-        usage = UsageMetrics(model_name=model_id, cost_usd=0.03)
+        usage = UsageMetrics(model_name=model_id, cost_usd=0.134)
         return AIResponseWrapper(data={"thumbnail_url": image_url}, usage=usage)

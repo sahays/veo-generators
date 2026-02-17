@@ -125,11 +125,17 @@ class TranscoderService:
                             width_pixels=width,
                         )
                     ),
-                )
+                ),
+                transcoder_v1.types.ElementaryStream(
+                    key="a1",
+                    audio_stream=transcoder_v1.types.AudioStream(
+                        codec="aac", bitrate_bps=128000
+                    ),
+                ),
             ],
             mux_streams=[
                 transcoder_v1.types.MuxStream(
-                    key="final", container="mp4", elementary_streams=["v1"]
+                    key="final", container="mp4", elementary_streams=["v1", "a1"]
                 )
             ],
         )
@@ -146,8 +152,8 @@ class TranscoderService:
         output_uri = f"gs://{bucket}/uploads/compressed/{upload_id}/{resolution}/"
 
         presets = {
-            "480p": {"width": 854, "height": 480, "crf": 26},
-            "720p": {"width": 1280, "height": 720, "crf": 23},
+            "480p": {"width": 854, "height": 480, "crf": 26, "bitrate_bps": 2000000},
+            "720p": {"width": 1280, "height": 720, "crf": 23, "bitrate_bps": 5000000},
         }
         preset = presets[resolution]
 
@@ -162,11 +168,12 @@ class TranscoderService:
                         h264=transcoder_v1.types.VideoStream.H264CodecSettings(
                             height_pixels=preset["height"],
                             width_pixels=preset["width"],
+                            bitrate_bps=preset["bitrate_bps"],
+                            frame_rate=30,
                             crf_level=preset["crf"],
                             rate_control_mode="crf",
                             profile="high",
                             preset="slow",
-                            enable_two_pass=True,
                             b_frame_count=3,
                             entropy_coder="cabac",
                         )
