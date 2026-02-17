@@ -154,6 +154,58 @@ class KeyMomentsRecord(BaseModel):
     createdAt: datetime = Field(default_factory=datetime.utcnow)
 
 
+class ThumbnailScreenshot(BaseModel):
+    timestamp: str
+    title: str
+    description: str
+    visual_characteristics: str = ""
+    category: Optional[str] = None
+    tags: List[str] = []
+    gcs_uri: str = ""
+
+
+class ThumbnailRecord(BaseModel):
+    id: str = Field(default_factory=lambda: generate_id("th-"))
+    video_gcs_uri: str
+    video_filename: str = ""
+    video_source: str = "upload"  # "upload" | "production"
+    production_id: Optional[str] = None
+    mime_type: str = "video/mp4"
+    analysis_prompt_id: str = ""
+    collage_prompt_id: str = ""
+    video_summary: Optional[str] = None
+    screenshots: List[ThumbnailScreenshot] = []
+    thumbnail_gcs_uri: Optional[str] = None
+    status: str = "analyzing"  # analyzing | screenshots_ready | generating | completed
+    usage: UsageMetrics = Field(default_factory=UsageMetrics)
+    signed_urls: dict = Field(default_factory=dict)
+    archived: bool = False
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+
+
+class CompressedVariant(BaseModel):
+    resolution: str  # "480p" | "720p"
+    gcs_uri: str = ""
+    job_name: str = ""
+    status: str = "pending"  # pending | processing | succeeded | failed
+    child_upload_id: Optional[str] = None
+
+
+class UploadRecord(BaseModel):
+    id: str = Field(default_factory=lambda: generate_id("up-"))
+    filename: str
+    mime_type: str
+    file_type: str = "other"  # "video" | "image" | "other"
+    gcs_uri: str
+    file_size_bytes: int = 0
+    compressed_variants: List[CompressedVariant] = []
+    parent_upload_id: Optional[str] = None
+    resolution_label: Optional[str] = None
+    signed_urls: dict = Field(default_factory=dict)
+    archived: bool = False
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+
+
 class AIResponseWrapper(BaseModel):
     data: Any
     usage: UsageMetrics

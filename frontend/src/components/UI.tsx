@@ -150,7 +150,7 @@ export const Select = ({
               animate={{ opacity: 1, y: openUpwards ? -4 : 4, scale: 1 }}
               exit={{ opacity: 0, y: openUpwards ? 10 : -10, scale: 0.98 }}
               className={cn(
-                "absolute z-[60] w-full bg-card border border-border rounded-xl shadow-2xl overflow-hidden py-1",
+                "absolute z-[60] w-full bg-background border border-border rounded-xl shadow-2xl overflow-hidden py-1",
                 openUpwards ? "bottom-full mb-1" : "top-full mt-1"
               )}
             >
@@ -165,14 +165,14 @@ export const Select = ({
                     }}
                     className={cn(
                       "w-full flex items-center justify-between px-3 py-2 text-xs transition-colors hover:bg-accent hover:text-slate-900 group",
-                      value === opt.value ? "bg-accent/10 text-accent-dark font-medium" : "text-foreground/80",
+                      value === opt.value ? "bg-accent/10 text-accent-dark font-medium" : "text-foreground",
                       opt.className
                     )}
                   >
                     <div className="flex flex-col">
                       <span>{opt.label}</span>
                       {opt.description && (
-                        <span className="text-[10px] opacity-60 group-hover:text-slate-900/70">
+                        <span className="text-[10px] text-muted-foreground group-hover:text-slate-900/70">
                           {opt.description}
                         </span>
                       )}

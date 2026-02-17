@@ -169,6 +169,60 @@ export interface KeyMomentsRecord {
   createdAt: string
 }
 
+export interface ThumbnailScreenshot {
+  timestamp: string
+  title: string
+  description: string
+  visual_characteristics: string
+  category?: string
+  tags?: string[]
+  gcs_uri: string
+  signed_url?: string
+}
+
+export interface ThumbnailRecord {
+  id: string
+  video_gcs_uri: string
+  video_filename: string
+  video_source: 'upload' | 'production'
+  production_id?: string
+  mime_type: string
+  analysis_prompt_id: string
+  collage_prompt_id: string
+  video_summary?: string
+  screenshots: ThumbnailScreenshot[]
+  thumbnail_gcs_uri?: string
+  thumbnail_signed_url?: string
+  video_signed_url?: string
+  status: 'analyzing' | 'screenshots_ready' | 'generating' | 'completed'
+  archived: boolean
+  createdAt: string
+}
+
+export interface CompressedVariant {
+  resolution: string
+  gcs_uri: string
+  job_name: string
+  status: 'pending' | 'processing' | 'succeeded' | 'failed'
+  signed_url?: string
+  child_upload_id?: string
+}
+
+export interface UploadRecord {
+  id: string
+  filename: string
+  mime_type: string
+  file_type: 'video' | 'image' | 'other'
+  gcs_uri: string
+  file_size_bytes: number
+  compressed_variants: CompressedVariant[]
+  parent_upload_id?: string
+  resolution_label?: string
+  signed_url?: string
+  archived: boolean
+  createdAt: string
+}
+
 export interface CompletedProductionSource {
   id: string
   name: string

@@ -83,7 +83,7 @@ export const CreatableSelect = ({
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -4, scale: 0.98 }}
                 transition={{ duration: 0.15 }}
-                className="absolute z-50 mt-1 w-full rounded-lg glass bg-card border border-border shadow-xl overflow-hidden"
+                className="absolute z-50 mt-1 w-full rounded-lg bg-background border border-border shadow-xl overflow-hidden"
               >
                 <div className="max-h-52 overflow-y-auto py-1">
                   {options.map((option: string) => (

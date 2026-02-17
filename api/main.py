@@ -1,4 +1,5 @@
 import os
+import uuid
 import logging
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,10 @@ from models import (
     AIResponseWrapper,
     SystemResource,
     KeyMomentsRecord,
+    ThumbnailRecord,
+    ThumbnailScreenshot,
+    UploadRecord,
+    CompressedVariant,
 )
 from firestore_service import FirestoreService
 from ai_service import AIService
@@ -626,7 +631,222 @@ async def upload_asset(file: UploadFile = File(...)):
     content = await file.read()
     destination = f"uploads/{uuid.uuid4()}-{file.filename}"
     gcs_uri = storage_svc.upload_file(content, destination, file.content_type)
-    return {"gcs_uri": gcs_uri, "signed_url": storage_svc.get_signed_url(gcs_uri)}
+    signed_url = storage_svc.get_signed_url(gcs_uri)
+
+    # Derive file_type from MIME prefix
+    mime = file.content_type or ""
+    if mime.startswith("video/"):
+        file_type = "video"
+    elif mime.startswith("image/"):
+        file_type = "image"
+    else:
+        file_type = "other"
+
+    # Persist to Firestore
+    record = UploadRecord(
+        filename=file.filename or "unknown",
+        mime_type=mime,
+        file_type=file_type,
+        gcs_uri=gcs_uri,
+        file_size_bytes=len(content),
+    )
+    if firestore_svc:
+        firestore_svc.create_upload_record(record)
+
+    return {
+        "id": record.id,
+        "gcs_uri": gcs_uri,
+        "signed_url": signed_url,
+        "file_type": file_type,
+    }
+
+
+# --- Upload Management Endpoints ---
+
+
+def _sign_upload_urls(record: UploadRecord) -> dict:
+    """Return record dict with signed URLs for the file and compressed variants."""
+    data = record.dict()
+    if not storage_svc:
+        return data
+
+    # Backfill file size if missing (e.g. compressed children created before fix)
+    if record.file_size_bytes == 0 and record.gcs_uri:
+        size = storage_svc.get_file_size(record.gcs_uri)
+        if size > 0:
+            data["file_size_bytes"] = size
+            if firestore_svc:
+                firestore_svc.update_upload_record(record.id, {"file_size_bytes": size})
+
+    cache = data.get("signed_urls") or {}
+    dirty = False
+
+    def _resolve(gcs_uri: str) -> str:
+        nonlocal dirty
+        if not gcs_uri or not gcs_uri.startswith("gs://"):
+            return gcs_uri
+        url, changed = storage_svc.resolve_cached_url(gcs_uri, cache)
+        if changed:
+            dirty = True
+        return url
+
+    # Sign main file
+    data["signed_url"] = _resolve(record.gcs_uri)
+
+    # Sign compressed variants
+    for variant in data.get("compressed_variants", []):
+        if variant.get("gcs_uri") and variant.get("status") == "succeeded":
+            variant["signed_url"] = _resolve(variant["gcs_uri"])
+
+    if dirty and firestore_svc:
+        firestore_svc.update_upload_record(record.id, {"signed_urls": cache})
+
+    data.pop("signed_urls", None)
+    return data
+
+
+@app.get("/api/v1/uploads")
+async def list_uploads(archived: bool = False, file_type: Optional[str] = None):
+    if not firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    records = firestore_svc.get_upload_records(
+        include_archived=archived, file_type=file_type
+    )
+    return [_sign_upload_urls(r) for r in records]
+
+
+@app.get("/api/v1/uploads/{record_id}")
+async def get_upload(record_id: str):
+    if not firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    record = firestore_svc.get_upload_record(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Upload not found")
+    return _sign_upload_urls(record)
+
+
+@app.post("/api/v1/uploads/{record_id}/compress")
+async def compress_upload(record_id: str, request: dict):
+    if not firestore_svc or not transcoder_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    record = firestore_svc.get_upload_record(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Upload not found")
+    if record.file_type != "video":
+        raise HTTPException(
+            status_code=400, detail="Only video files can be compressed"
+        )
+
+    resolution = request.get("resolution")
+    if resolution not in ("480p", "720p"):
+        raise HTTPException(
+            status_code=400, detail="Resolution must be '480p' or '720p'"
+        )
+
+    # Check if variant already exists and is processing/succeeded
+    for v in record.compressed_variants:
+        if v.resolution == resolution and v.status in ("processing", "succeeded"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{resolution} variant already {v.status}",
+            )
+
+    try:
+        job_name, output_uri = transcoder_svc.compress_video(
+            record_id, record.gcs_uri, resolution
+        )
+        new_variant = CompressedVariant(
+            resolution=resolution,
+            gcs_uri=output_uri,
+            job_name=job_name,
+            status="processing",
+        )
+        # Remove any failed variant with same resolution, then append new one
+        updated_variants = [
+            v.dict() for v in record.compressed_variants if v.resolution != resolution
+        ]
+        updated_variants.append(new_variant.dict())
+        firestore_svc.update_upload_record(
+            record_id, {"compressed_variants": updated_variants}
+        )
+        return {"status": "processing", "job_name": job_name, "resolution": resolution}
+    except Exception as e:
+        logger.error(f"Compression failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/uploads/{record_id}/compress-status")
+async def get_compress_status(record_id: str):
+    if not firestore_svc or not transcoder_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    record = firestore_svc.get_upload_record(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Upload not found")
+
+    updated = False
+    variants = [v.dict() for v in record.compressed_variants]
+    for v in variants:
+        if v["status"] == "processing" and v["job_name"]:
+            job_state = transcoder_svc.get_job_status(v["job_name"])
+            if job_state == "SUCCEEDED":
+                v["status"] = "succeeded"
+                updated = True
+                # Create a child UploadRecord if not already created
+                if not v.get("child_upload_id"):
+                    resolution = v["resolution"]
+                    base, ext = os.path.splitext(record.filename)
+                    child_filename = f"{base}-{resolution}{ext}"
+                    child_size = (
+                        storage_svc.get_file_size(v["gcs_uri"]) if storage_svc else 0
+                    )
+                    child_record = UploadRecord(
+                        filename=child_filename,
+                        mime_type=record.mime_type,
+                        file_type="video",
+                        gcs_uri=v["gcs_uri"],
+                        file_size_bytes=child_size,
+                        parent_upload_id=record_id,
+                        resolution_label=resolution,
+                    )
+                    firestore_svc.create_upload_record(child_record)
+                    v["child_upload_id"] = child_record.id
+            elif job_state in ("FAILED", "UNKNOWN"):
+                v["status"] = "failed"
+                updated = True
+
+    if updated:
+        firestore_svc.update_upload_record(record_id, {"compressed_variants": variants})
+
+    # Sign URLs for succeeded variants
+    result_variants = []
+    for v in variants:
+        if v["status"] == "succeeded" and v["gcs_uri"] and storage_svc:
+            v["signed_url"] = storage_svc.get_signed_url(v["gcs_uri"])
+        result_variants.append(v)
+
+    return {"variants": result_variants}
+
+
+@app.post("/api/v1/uploads/{record_id}/archive")
+async def archive_upload(record_id: str):
+    if not firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    record = firestore_svc.get_upload_record(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Upload not found")
+    firestore_svc.update_upload_record(record_id, {"archived": True})
+    return {"status": "archived"}
+
+
+@app.delete("/api/v1/uploads/{record_id}")
+async def delete_upload(record_id: str):
+    if not firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    record = firestore_svc.get_upload_record(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Upload not found")
+    firestore_svc.delete_upload_record(record_id)
+    return {"status": "deleted"}
 
 
 # --- Key Moments Endpoints ---
@@ -765,6 +985,239 @@ async def delete_key_moments_analysis(record_id: str):
     if not record:
         raise HTTPException(status_code=404, detail="Analysis not found")
     firestore_svc.delete_key_moments_analysis(record_id)
+    return {"status": "deleted"}
+
+
+# --- Thumbnail Endpoints ---
+
+
+def _sign_thumbnail_urls(record: ThumbnailRecord) -> dict:
+    """Return record dict with signed URLs for video, screenshots, and thumbnail."""
+    data = record.dict()
+    if not storage_svc:
+        return data
+    cache = data.get("signed_urls") or {}
+    dirty = False
+
+    def _resolve(gcs_uri: str) -> str:
+        nonlocal dirty
+        if not gcs_uri:
+            return ""
+        if not gcs_uri.startswith("gs://"):
+            return gcs_uri
+        url, changed = storage_svc.resolve_cached_url(gcs_uri, cache)
+        if changed:
+            dirty = True
+        return url
+
+    # Sign video URL
+    if record.video_gcs_uri:
+        data["video_signed_url"] = _resolve(record.video_gcs_uri)
+
+    # Sign screenshot URLs
+    for screenshot in data.get("screenshots", []):
+        if screenshot.get("gcs_uri"):
+            screenshot["signed_url"] = _resolve(screenshot["gcs_uri"])
+
+    # Sign thumbnail URL
+    if record.thumbnail_gcs_uri:
+        data["thumbnail_signed_url"] = _resolve(record.thumbnail_gcs_uri)
+
+    if dirty and firestore_svc:
+        firestore_svc.update_thumbnail_record(record.id, {"signed_urls": cache})
+
+    data.pop("signed_urls", None)
+    return data
+
+
+@app.get("/api/v1/thumbnails")
+async def list_thumbnails(archived: bool = False):
+    if not firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    records = firestore_svc.get_thumbnail_records(include_archived=archived)
+    return [_sign_thumbnail_urls(r) for r in records]
+
+
+@app.get("/api/v1/thumbnails/sources/productions")
+async def list_thumbnail_production_sources():
+    """List completed productions with signed final video URLs."""
+    if not firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    productions = firestore_svc.get_productions()
+    completed = [
+        p
+        for p in productions
+        if p.status == ProjectStatus.COMPLETED and p.final_video_url
+    ]
+    results = []
+    for p in completed:
+        signed_url = ""
+        if storage_svc and p.final_video_url:
+            if p.final_video_url.startswith("gs://"):
+                signed_url = storage_svc.get_signed_url(p.final_video_url)
+            else:
+                signed_url = p.final_video_url
+        results.append(
+            {
+                "id": p.id,
+                "name": p.name,
+                "type": p.type,
+                "final_video_url": p.final_video_url,
+                "video_signed_url": signed_url,
+                "createdAt": p.createdAt.isoformat() if p.createdAt else None,
+            }
+        )
+    return results
+
+
+@app.get("/api/v1/thumbnails/{record_id}")
+async def get_thumbnail_record(record_id: str):
+    if not firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    record = firestore_svc.get_thumbnail_record(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Thumbnail record not found")
+    return _sign_thumbnail_urls(record)
+
+
+@app.post("/api/v1/thumbnails/analyze")
+async def analyze_video_for_thumbnails(request: dict):
+    if not ai_svc or not firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    gcs_uri = request.get("gcs_uri")
+    prompt_id = request.get("prompt_id")
+    if not gcs_uri or not prompt_id:
+        raise HTTPException(
+            status_code=400, detail="gcs_uri and prompt_id are required"
+        )
+    mime_type = request.get("mime_type", "video/mp4")
+    video_filename = request.get("video_filename", "")
+    video_source = request.get("video_source", "upload")
+    production_id = request.get("production_id")
+    try:
+        result = await ai_svc.analyze_video_for_thumbnails(
+            gcs_uri=gcs_uri,
+            mime_type=mime_type,
+            prompt_id=prompt_id,
+        )
+        analysis_data = result.data if hasattr(result, "data") else result.get("data")
+        moments = analysis_data.get("key_moments", []) if analysis_data else []
+        screenshots = [
+            ThumbnailScreenshot(
+                timestamp=f"{m.get('timestamp_start', '0:00')}-{m.get('timestamp_end', '0:00')}",
+                title=m.get("title", ""),
+                description=m.get("description", ""),
+                visual_characteristics=m.get("visual_characteristics", ""),
+                category=m.get("category"),
+                tags=m.get("tags", []),
+            )
+            for m in moments
+        ]
+        record = ThumbnailRecord(
+            video_gcs_uri=gcs_uri,
+            video_filename=video_filename,
+            video_source=video_source,
+            production_id=production_id,
+            mime_type=mime_type,
+            analysis_prompt_id=prompt_id,
+            video_summary=analysis_data.get("video_summary") if analysis_data else None,
+            screenshots=screenshots,
+            status="screenshots_ready",
+            usage=result.usage if hasattr(result, "usage") else result.get("usage", {}),
+        )
+        firestore_svc.create_thumbnail_record(record)
+        return {"id": record.id, "data": analysis_data, "usage": record.usage.dict()}
+    except Exception as e:
+        logger.error(f"Thumbnail analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/thumbnails/{record_id}/screenshots")
+async def save_thumbnail_screenshots(record_id: str, request: dict):
+    if not firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    record = firestore_svc.get_thumbnail_record(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Thumbnail record not found")
+    incoming = request.get("screenshots", [])
+    updated_screenshots = [s.dict() for s in record.screenshots]
+    for item in incoming:
+        idx = item.get("index")
+        gcs_uri = item.get("gcs_uri")
+        if idx is not None and 0 <= idx < len(updated_screenshots) and gcs_uri:
+            updated_screenshots[idx]["gcs_uri"] = gcs_uri
+    firestore_svc.update_thumbnail_record(
+        record_id,
+        {"screenshots": updated_screenshots, "status": "screenshots_ready"},
+    )
+    return {"status": "screenshots_saved"}
+
+
+@app.post("/api/v1/thumbnails/{record_id}/collage")
+async def generate_thumbnail_collage(record_id: str, request: dict):
+    if not ai_svc or not firestore_svc or not storage_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    record = firestore_svc.get_thumbnail_record(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Thumbnail record not found")
+    prompt_id = request.get("prompt_id")
+    if not prompt_id:
+        raise HTTPException(status_code=400, detail="prompt_id is required")
+    screenshot_uris = [s.gcs_uri for s in record.screenshots if s.gcs_uri]
+    if not screenshot_uris:
+        raise HTTPException(
+            status_code=400, detail="No screenshots with GCS URIs found"
+        )
+    firestore_svc.update_thumbnail_record(
+        record_id, {"status": "generating", "collage_prompt_id": prompt_id}
+    )
+    try:
+        result = await ai_svc.generate_thumbnail_collage(
+            screenshot_uris=screenshot_uris,
+            prompt_id=prompt_id,
+        )
+        thumbnail_gcs_uri = result.data.get("thumbnail_url")
+        signed_url = (
+            storage_svc.get_signed_url(thumbnail_gcs_uri) if thumbnail_gcs_uri else None
+        )
+        firestore_svc.update_thumbnail_record(
+            record_id,
+            {
+                "thumbnail_gcs_uri": thumbnail_gcs_uri,
+                "status": "completed",
+            },
+        )
+        return {
+            "thumbnail_gcs_uri": thumbnail_gcs_uri,
+            "thumbnail_signed_url": signed_url,
+        }
+    except Exception as e:
+        logger.error(f"Collage generation failed: {e}")
+        firestore_svc.update_thumbnail_record(
+            record_id, {"status": "screenshots_ready"}
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/thumbnails/{record_id}/archive")
+async def archive_thumbnail(record_id: str):
+    if not firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    record = firestore_svc.get_thumbnail_record(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Thumbnail record not found")
+    firestore_svc.update_thumbnail_record(record_id, {"archived": True})
+    return {"status": "archived"}
+
+
+@app.delete("/api/v1/thumbnails/{record_id}")
+async def delete_thumbnail(record_id: str):
+    if not firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    record = firestore_svc.get_thumbnail_record(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Thumbnail record not found")
+    firestore_svc.delete_thumbnail_record(record_id)
     return {"status": "deleted"}
 
 
@@ -915,7 +1368,6 @@ if os.path.exists("static"):
 
 if __name__ == "__main__":
     import uvicorn
-    import uuid
 
     port = int(os.environ.get("PORT", 8080))
     uvicorn.run(app, host="0.0.0.0", port=port)
