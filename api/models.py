@@ -128,6 +128,32 @@ class Project(BaseModel):
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
 
 
+class KeyMomentModel(BaseModel):
+    title: str
+    description: str
+    timestamp_start: str
+    timestamp_end: str
+    category: Optional[str] = None
+    tags: List[str] = []
+
+
+class KeyMomentsRecord(BaseModel):
+    id: str = Field(default_factory=lambda: generate_id("km-"))
+    video_gcs_uri: str
+    video_filename: str = ""
+    video_source: str = "upload"  # "upload" | "production"
+    production_id: Optional[str] = None
+    mime_type: str = "video/mp4"
+    prompt_id: str = ""
+    video_summary: Optional[str] = None
+    key_moments: List[KeyMomentModel] = []
+    moment_count: int = 0
+    usage: UsageMetrics = Field(default_factory=UsageMetrics)
+    signed_urls: dict = Field(default_factory=dict)
+    archived: bool = False
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+
+
 class AIResponseWrapper(BaseModel):
     data: Any
     usage: UsageMetrics

@@ -153,6 +153,31 @@ export interface KeyMomentsAnalysis {
   video_summary?: string
 }
 
+export interface KeyMomentsRecord {
+  id: string
+  video_gcs_uri: string
+  video_filename: string
+  video_source: 'upload' | 'production'
+  production_id?: string
+  mime_type: string
+  prompt_id: string
+  video_summary?: string
+  key_moments: KeyMoment[]
+  moment_count: number
+  usage: { input_tokens: number; output_tokens: number; model_name: string; cost_usd: number }
+  video_signed_url?: string
+  createdAt: string
+}
+
+export interface CompletedProductionSource {
+  id: string
+  name: string
+  type: string
+  final_video_url: string
+  video_signed_url: string
+  createdAt: string
+}
+
 export type SelectCategory =
   | 'directorStyle'
   | 'cameraMovement'
