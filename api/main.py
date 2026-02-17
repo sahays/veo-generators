@@ -7,7 +7,14 @@ from fastapi.responses import FileResponse
 from typing import List, Optional
 from dotenv import load_dotenv
 
-from models import Project, ProjectStatus, Scene, AIResponseWrapper, SystemResource
+from models import (
+    Project,
+    ProjectStatus,
+    Scene,
+    AIResponseWrapper,
+    SystemResource,
+    KeyMomentsRecord,
+)
 from firestore_service import FirestoreService
 from ai_service import AIService
 from video_service import VideoService
@@ -625,9 +632,75 @@ async def upload_asset(file: UploadFile = File(...)):
 # --- Key Moments Endpoints ---
 
 
-@app.post("/api/v1/key-moments/analyze", response_model=AIResponseWrapper)
+def _sign_key_moments_url(record: KeyMomentsRecord) -> dict:
+    """Return record dict with a signed video URL."""
+    data = record.dict()
+    if not storage_svc or not record.video_gcs_uri:
+        return data
+    cache = data.get("signed_urls") or {}
+    url, changed = storage_svc.resolve_cached_url(record.video_gcs_uri, cache)
+    data["video_signed_url"] = url
+    if changed and firestore_svc:
+        firestore_svc.key_moments_collection.document(record.id).update(
+            {"signed_urls": cache}
+        )
+    data.pop("signed_urls", None)
+    return data
+
+
+@app.get("/api/v1/key-moments")
+async def list_key_moments(archived: bool = False):
+    if not firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    records = firestore_svc.get_key_moments_analyses(include_archived=archived)
+    return [_sign_key_moments_url(r) for r in records]
+
+
+@app.get("/api/v1/key-moments/sources/productions")
+async def list_production_sources():
+    """List completed productions with signed final video URLs."""
+    if not firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    productions = firestore_svc.get_productions()
+    completed = [
+        p
+        for p in productions
+        if p.status == ProjectStatus.COMPLETED and p.final_video_url
+    ]
+    results = []
+    for p in completed:
+        signed_url = ""
+        if storage_svc and p.final_video_url:
+            if p.final_video_url.startswith("gs://"):
+                signed_url = storage_svc.get_signed_url(p.final_video_url)
+            else:
+                signed_url = p.final_video_url
+        results.append(
+            {
+                "id": p.id,
+                "name": p.name,
+                "type": p.type,
+                "final_video_url": p.final_video_url,
+                "video_signed_url": signed_url,
+                "createdAt": p.createdAt.isoformat() if p.createdAt else None,
+            }
+        )
+    return results
+
+
+@app.get("/api/v1/key-moments/{record_id}")
+async def get_key_moments_analysis(record_id: str):
+    if not firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    record = firestore_svc.get_key_moments_analysis(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    return _sign_key_moments_url(record)
+
+
+@app.post("/api/v1/key-moments/analyze")
 async def analyze_key_moments(request: dict):
-    if not ai_svc:
+    if not ai_svc or not firestore_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
     gcs_uri = request.get("gcs_uri")
     prompt_id = request.get("prompt_id")
@@ -637,16 +710,62 @@ async def analyze_key_moments(request: dict):
         )
     mime_type = request.get("mime_type", "video/mp4")
     schema_id = request.get("schema_id")
+    video_filename = request.get("video_filename", "")
+    video_source = request.get("video_source", "upload")
+    production_id = request.get("production_id")
     try:
-        return await ai_svc.analyze_video_key_moments(
+        result = await ai_svc.analyze_video_key_moments(
             gcs_uri=gcs_uri,
             mime_type=mime_type,
             prompt_id=prompt_id,
             schema_id=schema_id,
         )
+        # Persist to Firestore
+        analysis_data = result.data if hasattr(result, "data") else result.get("data")
+        record = KeyMomentsRecord(
+            video_gcs_uri=gcs_uri,
+            video_filename=video_filename,
+            video_source=video_source,
+            production_id=production_id,
+            mime_type=mime_type,
+            prompt_id=prompt_id,
+            video_summary=analysis_data.get("video_summary") if analysis_data else None,
+            key_moments=[
+                m
+                for m in (analysis_data.get("key_moments", []) if analysis_data else [])
+            ],
+            moment_count=len(
+                analysis_data.get("key_moments", []) if analysis_data else []
+            ),
+            usage=result.usage if hasattr(result, "usage") else result.get("usage", {}),
+        )
+        firestore_svc.create_key_moments_analysis(record)
+        return {"id": record.id, "data": analysis_data, "usage": record.usage.dict()}
     except Exception as e:
         logger.error(f"Key moments analysis failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/key-moments/{record_id}/archive")
+async def archive_key_moments_analysis(record_id: str):
+    if not firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    record = firestore_svc.get_key_moments_analysis(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    firestore_svc.key_moments_collection.document(record_id).update({"archived": True})
+    return {"status": "archived"}
+
+
+@app.delete("/api/v1/key-moments/{record_id}")
+async def delete_key_moments_analysis(record_id: str):
+    if not firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    record = firestore_svc.get_key_moments_analysis(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    firestore_svc.delete_key_moments_analysis(record_id)
+    return {"status": "deleted"}
 
 
 # --- System Resource Endpoints ---

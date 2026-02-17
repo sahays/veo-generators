@@ -160,7 +160,17 @@ export const api = {
     }
   },
   keyMoments: {
-    analyze: async (data: { gcs_uri: string; mime_type?: string; prompt_id: string; schema_id?: string }): Promise<any> => {
+    list: async (): Promise<any[]> => {
+      const res = await fetch(`${API_BASE_URL}/key-moments`)
+      if (!res.ok) throw new Error(`Failed to list key moments: ${res.status}`)
+      return res.json()
+    },
+    get: async (id: string): Promise<any> => {
+      const res = await fetch(`${API_BASE_URL}/key-moments/${id}`)
+      if (!res.ok) throw new Error(`Failed to get key moments analysis: ${res.status}`)
+      return res.json()
+    },
+    analyze: async (data: { gcs_uri: string; mime_type?: string; prompt_id: string; schema_id?: string; video_filename?: string; video_source?: string; production_id?: string }): Promise<any> => {
       const res = await fetch(`${API_BASE_URL}/key-moments/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -168,7 +178,20 @@ export const api = {
       })
       if (!res.ok) throw new Error(`Key moments analysis failed: ${res.status}`)
       return res.json()
-    }
+    },
+    delete: async (id: string): Promise<void> => {
+      const res = await fetch(`${API_BASE_URL}/key-moments/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`Failed to delete key moments analysis: ${res.status}`)
+    },
+    archive: async (id: string): Promise<void> => {
+      const res = await fetch(`${API_BASE_URL}/key-moments/${id}/archive`, { method: 'POST' })
+      if (!res.ok) throw new Error(`Failed to archive key moments analysis: ${res.status}`)
+    },
+    listProductionSources: async (): Promise<any[]> => {
+      const res = await fetch(`${API_BASE_URL}/key-moments/sources/productions`)
+      if (!res.ok) throw new Error(`Failed to list production sources: ${res.status}`)
+      return res.json()
+    },
   },
   assets: {
     upload: async (file: File): Promise<{ gcs_uri: string; signed_url: string }> => {

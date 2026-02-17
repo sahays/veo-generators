@@ -2,7 +2,7 @@ import os
 from typing import List, Optional
 from google.cloud import firestore
 from datetime import datetime
-from models import Project, ProjectStatus, SystemResource
+from models import Project, ProjectStatus, SystemResource, KeyMomentsRecord
 
 
 class FirestoreService:
@@ -13,6 +13,7 @@ class FirestoreService:
         self.db = firestore.Client(project=project_id)
         self.collection = self.db.collection(f"{prefix}_productions")
         self.resources_collection = self.db.collection(f"{prefix}_prompts")
+        self.key_moments_collection = self.db.collection(f"{prefix}_key_moments")
 
     def _all_resources(self) -> List[SystemResource]:
         docs = self.resources_collection.stream()
@@ -111,3 +112,27 @@ class FirestoreService:
                 updated_scenes.append(scene.dict())
 
         self.update_production(production_id, {"scenes": updated_scenes})
+
+    # --- Key Moments ---
+
+    def get_key_moments_analyses(
+        self, include_archived: bool = False
+    ) -> List[KeyMomentsRecord]:
+        docs = self.key_moments_collection.stream()
+        records = [KeyMomentsRecord(**doc.to_dict()) for doc in docs]
+        records.sort(key=lambda r: r.createdAt or "", reverse=True)
+        if not include_archived:
+            records = [r for r in records if not r.archived]
+        return records
+
+    def get_key_moments_analysis(self, record_id: str) -> Optional[KeyMomentsRecord]:
+        doc = self.key_moments_collection.document(record_id).get()
+        if doc.exists:
+            return KeyMomentsRecord(**doc.to_dict())
+        return None
+
+    def create_key_moments_analysis(self, record: KeyMomentsRecord):
+        self.key_moments_collection.document(record.id).set(record.dict())
+
+    def delete_key_moments_analysis(self, record_id: str):
+        self.key_moments_collection.document(record_id).delete()

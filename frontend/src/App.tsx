@@ -7,7 +7,8 @@ import { ProductionSummary } from './components/ads/ProductionSummary'
 import { ProjectList } from './components/ads/ProjectList'
 import { DiagnosticsPage } from './components/pages/DiagnosticsPage'
 import { PromptsPage } from './components/pages/PromptsPage'
-import { KeyMomentsPage } from './components/pages/KeyMomentsPage'
+import { KeyMomentsLandingPage } from './components/pages/KeyMomentsLandingPage'
+import { KeyMomentsAnalyzePage } from './components/pages/KeyMomentsAnalyzePage'
 
 function App() {
   return (
@@ -27,7 +28,9 @@ function App() {
               <Route path="/productions/:id/script" element={<RefinePromptView />} />
 
               {/* Key Moments */}
-              <Route path="/key-moments" element={<KeyMomentsPage />} />
+              <Route path="/key-moments" element={<KeyMomentsLandingPage />} />
+              <Route path="/key-moments/analyze" element={<KeyMomentsAnalyzePage />} />
+              <Route path="/key-moments/:id" element={<KeyMomentsAnalyzePage />} />
 
               {/* System Prompts */}
               <Route path="/prompts" element={<PromptsPage />} />
