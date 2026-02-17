@@ -29,9 +29,15 @@ VIDEO_GEN_MODEL=${VIDEO_GEN_MODEL:-veo-3.1-generate-001}
 
 echo "🚀 Starting deployment for $SERVICE_NAME..."
 
-# 1. Build and Push with Cloud Build
-echo "📦 Building and Pushing with Cloud Build..."
-gcloud builds submit --tag $IMAGE_NAME --project $PROJECT_ID .
+# Ensure Docker is authenticated with Artifact Registry
+gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
+
+# 1. Build locally and push to Artifact Registry
+echo "📦 Building locally..."
+docker build -t $IMAGE_NAME .
+
+echo "📤 Pushing to Artifact Registry..."
+docker push $IMAGE_NAME
 
 # 2. Deploy to Cloud Run
 echo "🚀 Deploying to Cloud Run..."

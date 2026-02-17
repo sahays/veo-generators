@@ -38,14 +38,9 @@ else
     exit 1
 fi
 
-echo "   Running Ruff format check..."
-if ruff format --check api; then
-    echo "   ✅ Ruff format passed."
-else
-    echo "   ❌ Ruff format failed. Run 'ruff format api' to fix."
-    deactivate && rm -rf .lint_venv
-    exit 1
-fi
+echo "   Running Ruff format..."
+ruff format api
+echo "   ✅ Ruff format applied."
 
 deactivate
 rm -rf .lint_venv

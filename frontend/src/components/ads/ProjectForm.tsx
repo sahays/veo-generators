@@ -349,7 +349,7 @@ export const ProjectForm = () => {
             className="w-full md:w-auto"
             disabled={isSubmitting}
           >
-            {isSubmitting ? 'Creating...' : existingProject?.scenes.length ? 'View & Edit Script' : 'Analyze & Script'}
+            {isSubmitting ? 'Creating...' : existingProject?.scenes.length ? 'View & Edit Script' : 'Generate Scenes'}
           </Button>
         </div>
       </form>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, FolderOpen, Clock, Loader2, CheckCircle2, AlertCircle, Image as ImageIcon } from 'lucide-react'
+import { Plus, FolderOpen, Clock, Loader2, CheckCircle2, AlertCircle, Image as ImageIcon, Archive } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/Common'
 import { useProjectStore } from '@/store/useProjectStore'
@@ -17,7 +17,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }>
   failed: { label: 'Failed', color: 'text-red-500 bg-red-500/10', icon: AlertCircle },
 }
 
-const ProjectCard = ({ project, onClick }: { project: Project; onClick: () => void }) => {
+const ProjectCard = ({ project, onClick, onArchive }: { project: Project; onClick: () => void; onArchive: (e: React.MouseEvent) => void }) => {
   const config = STATUS_CONFIG[project.status] || STATUS_CONFIG.draft
   const StatusIcon = config.icon
   const timeAgo = getTimeAgo(project.updatedAt)
@@ -95,6 +95,13 @@ const ProjectCard = ({ project, onClick }: { project: Project; onClick: () => vo
             </span>
           )}
         </div>
+        <button
+          onClick={onArchive}
+          className="p-1 -m-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+          title="Archive"
+        >
+          <Archive size={12} />
+        </button>
         <span>{timeAgo}</span>
       </div>
     </motion.button>
@@ -118,6 +125,15 @@ export const ProjectList = () => {
     setActiveProject(null)
     setTempProjectData(null)
     navigate('/productions/new')
+  }
+
+  const handleArchive = async (id: string) => {
+    try {
+      await api.projects.archive(id)
+      setProjects(projects.filter(p => p.id !== id))
+    } catch (err) {
+      console.error('Failed to archive production', err)
+    }
   }
 
   const handleOpenProject = (id: string) => {
@@ -175,6 +191,7 @@ export const ProjectList = () => {
               key={project.id}
               project={project}
               onClick={() => handleOpenProject(project.id)}
+              onArchive={(e) => { e.stopPropagation(); handleArchive(project.id) }}
             />
           ))}
         </div>
@@ -183,8 +200,10 @@ export const ProjectList = () => {
   )
 }
 
-function getTimeAgo(timestamp: number): string {
-  const diff = Date.now() - timestamp
+function getTimeAgo(timestamp: string | number): string {
+  const ms = typeof timestamp === 'string' ? new Date(timestamp).getTime() : timestamp
+  if (isNaN(ms)) return ''
+  const diff = Date.now() - ms
   const minutes = Math.floor(diff / 60000)
   if (minutes < 1) return 'Just now'
   if (minutes < 60) return `${minutes}m ago`

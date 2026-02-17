@@ -1,100 +1,144 @@
-import { useState } from 'react'
-import { ImageIcon, Video, Copy, Check } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { useState, useEffect } from 'react'
+import { ImageIcon, Video, Loader2 } from 'lucide-react'
 import { Modal } from '@/components/Modal'
+import { Button } from '@/components/Common'
+import { api } from '@/lib/api'
 import type { Scene } from '@/types/project'
+
+interface PromptModalProps {
+  scene: Scene
+  productionId: string
+  isReadOnly?: boolean
+  onClose: () => void
+  onGenerateFrame: (promptData: any) => Promise<void>
+  onGenerateVideo: (promptData: any) => Promise<void>
+  onDescriptionChange: (newDescription: string) => void
+}
 
 export const PromptModal = ({
   scene,
+  productionId,
+  isReadOnly,
   onClose,
-}: {
-  scene: Scene
-  onClose: () => void
-}) => {
-  const [activeTab, setActiveTab] = useState<'image' | 'video'>('image')
-  const [copied, setCopied] = useState(false)
+  onGenerateFrame,
+  onGenerateVideo,
+  onDescriptionChange,
+}: PromptModalProps) => {
+  const [promptJson, setPromptJson] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
+  const [isGeneratingFrame, setIsGeneratingFrame] = useState(false)
+  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [originalDescription, setOriginalDescription] = useState('')
 
-  const imagePrompt = scene.image_prompt
-  const videoPrompt = scene.video_prompt
-  const currentPrompt = activeTab === 'image' ? imagePrompt : videoPrompt
+  useEffect(() => {
+    setIsLoading(true)
+    api.projects.buildPrompt(productionId, scene.id)
+      .then((data) => {
+        setPromptJson(JSON.stringify(data, null, 2))
+        setOriginalDescription(data.visual_description || '')
+        setIsLoading(false)
+      })
+      .catch(() => {
+        setError('Failed to load prompt data')
+        setIsLoading(false)
+      })
+  }, [productionId, scene.id])
 
-  const handleCopy = () => {
-    if (!currentPrompt) return
-    navigator.clipboard.writeText(currentPrompt)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  const getParsedData = () => {
+    try {
+      return JSON.parse(promptJson)
+    } catch {
+      setError('Invalid JSON')
+      return null
+    }
   }
+
+  const syncDescription = (data: any) => {
+    if (data.visual_description && data.visual_description !== originalDescription) {
+      onDescriptionChange(data.visual_description)
+    }
+  }
+
+  const handleGenerateFrame = async () => {
+    const data = getParsedData()
+    if (!data) return
+    setError(null)
+    setIsGeneratingFrame(true)
+    syncDescription(data)
+    try {
+      await onGenerateFrame(data)
+      onClose()
+    } catch {
+      setError('Frame generation failed')
+    } finally {
+      setIsGeneratingFrame(false)
+    }
+  }
+
+  const handleGenerateVideo = async () => {
+    const data = getParsedData()
+    if (!data) return
+    setError(null)
+    setIsGeneratingVideo(true)
+    syncDescription(data)
+    try {
+      await onGenerateVideo(data)
+      onClose()
+    } catch {
+      setError('Video generation failed')
+    } finally {
+      setIsGeneratingVideo(false)
+    }
+  }
+
+  const isBusy = isGeneratingFrame || isGeneratingVideo
 
   return (
     <Modal
       isOpen={true}
       onClose={onClose}
-      title="Generated Prompts"
-      subtitle="The enriched prompt sent to the AI model."
-      maxWidth="max-w-lg"
+      title="Edit Scene Prompt"
+      subtitle="Full enriched prompt with all production context. Edit and regenerate."
+      maxWidth="max-w-2xl"
+      footer={
+        !isReadOnly ? (
+          <>
+            <Button
+              variant="secondary"
+              icon={isGeneratingFrame ? Loader2 : ImageIcon}
+              onClick={handleGenerateFrame}
+              disabled={isBusy || isLoading}
+            >
+              {isGeneratingFrame ? 'Generating...' : 'Generate Frame'}
+            </Button>
+            <Button
+              icon={isGeneratingVideo ? Loader2 : Video}
+              onClick={handleGenerateVideo}
+              disabled={isBusy || isLoading}
+            >
+              {isGeneratingVideo ? 'Generating...' : 'Generate Video'}
+            </Button>
+          </>
+        ) : undefined
+      }
     >
-      <div className="-mx-6 -mt-6">
-        <div className="flex border-b border-border">
-          <button
-            onClick={() => setActiveTab('image')}
-            className={cn(
-              "flex-1 px-4 py-3 text-xs font-bold uppercase tracking-wider transition-colors",
-              activeTab === 'image'
-                ? "text-accent-dark border-b-2 border-accent bg-accent/5"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            )}
-          >
-            <span className="flex items-center justify-center gap-1.5">
-              <ImageIcon size={12} /> Image Prompt
-            </span>
-          </button>
-          <button
-            onClick={() => setActiveTab('video')}
-            className={cn(
-              "flex-1 px-4 py-3 text-xs font-bold uppercase tracking-wider transition-colors",
-              activeTab === 'video'
-                ? "text-accent-dark border-b-2 border-accent bg-accent/5"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            )}
-          >
-            <span className="flex items-center justify-center gap-1.5">
-              <Video size={12} /> Video Prompt
-            </span>
-          </button>
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="animate-spin text-accent" size={24} />
         </div>
-
-        <div className="p-6">
-          {currentPrompt ? (
-            <div className="relative group">
-              <pre className="text-sm leading-relaxed text-foreground bg-background rounded-xl p-4 whitespace-pre-wrap break-words max-h-72 overflow-y-auto border border-border">
-                {currentPrompt}
-              </pre>
-              <button
-                onClick={handleCopy}
-                className={cn(
-                  "absolute top-3 right-3 p-1.5 rounded-lg border transition-all",
-                  copied
-                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-500"
-                    : "bg-background border-border text-muted-foreground hover:text-foreground hover:border-accent/50 opacity-0 group-hover:opacity-100"
-                )}
-                title="Copy to clipboard"
-              >
-                {copied ? <Check size={14} /> : <Copy size={14} />}
-              </button>
-            </div>
-          ) : (
-            <div className="text-center py-10 rounded-xl border border-dashed border-border bg-muted/30">
-              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center mx-auto mb-3">
-                {activeTab === 'image' ? <ImageIcon size={18} className="text-muted-foreground" /> : <Video size={18} className="text-muted-foreground" />}
-              </div>
-              <p className="text-sm font-medium text-foreground">Not generated yet</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Generate a {activeTab === 'image' ? 'frame' : 'video'} first to see its prompt.
-              </p>
-            </div>
-          )}
+      ) : (
+        <div className="space-y-3">
+          {error && <p className="text-xs text-red-500">{error}</p>}
+          <textarea
+            value={promptJson}
+            onChange={(e) => { setPromptJson(e.target.value); setError(null) }}
+            readOnly={isReadOnly}
+            className="w-full min-h-[400px] p-4 rounded-xl text-xs font-mono leading-relaxed bg-muted/30 border border-border focus:ring-2 focus:ring-accent/30 outline-none resize-y"
+            spellCheck={false}
+          />
         </div>
-      </div>
+      )}
     </Modal>
   )
 }

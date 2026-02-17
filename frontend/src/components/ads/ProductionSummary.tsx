@@ -224,7 +224,15 @@ export const ProductionSummary = () => {
       )}
 
       {selectedScene && (
-        <PromptModal scene={selectedScene} onClose={() => setSelectedScene(null)} />
+        <PromptModal
+          scene={selectedScene}
+          productionId={id || ''}
+          isReadOnly
+          onClose={() => setSelectedScene(null)}
+          onGenerateFrame={async () => {}}
+          onGenerateVideo={async () => {}}
+          onDescriptionChange={() => {}}
+        />
       )}
     </motion.div>
   )

@@ -33,8 +33,21 @@ class VideoService:
         """Build a video-specific prompt with duration and camera movement."""
         parts = []
         parts.append(f"{duration}-second video clip.")
-        if scene.metadata and scene.metadata.camera_angle:
-            parts.append(f"Camera: {scene.metadata.camera_angle}.")
+        if scene.metadata:
+            md = scene.metadata
+            if md.camera_angle:
+                parts.append(f"Camera angle: {md.camera_angle}.")
+            if md.camera_movement:
+                parts.append(f"Camera movement: {md.camera_movement}.")
+            if md.cinematic_style:
+                parts.append(f"Cinematic style: {md.cinematic_style}.")
+            pace = md.pace or (
+                project.global_style.pace if project and project.global_style else None
+            )
+            if pace:
+                parts.append(f"Pace: {pace}.")
+        elif project and project.global_style and project.global_style.pace:
+            parts.append(f"Pace: {project.global_style.pace}.")
         if project and project.global_style:
             gs = project.global_style
             parts.append(
@@ -57,6 +70,7 @@ class VideoService:
         scene: Scene,
         blocking: bool = True,
         project: Optional[Project] = None,
+        prompt_override: Optional[str] = None,
     ):
         model_id = os.getenv("VIDEO_GEN_MODEL", "veo-3.1-generate-preview")
         seed = self._get_project_seed(project_id)
@@ -70,7 +84,9 @@ class VideoService:
         except (ValueError, IndexError):
             duration = 8
 
-        enriched_prompt = self._build_video_prompt(scene, project, duration)
+        enriched_prompt = prompt_override or self._build_video_prompt(
+            scene, project, duration
+        )
 
         generate_kwargs = {
             "model": model_id,

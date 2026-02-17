@@ -134,9 +134,9 @@ class TranscoderService:
             ],
         )
 
-        self.client.create_job(parent=self.parent, job=job)
+        created_job = self.client.create_job(parent=self.parent, job=job)
         # Actual file is at {output_uri}{mux_key}.mp4
-        return f"{output_uri}final.mp4"
+        return (created_job.name, f"{output_uri}final.mp4")
 
     def get_job_status(self, job_name: str) -> str:
         try:

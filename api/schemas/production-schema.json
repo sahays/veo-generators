@@ -1,0 +1,103 @@
+{
+  "type": "object",
+  "properties": {
+    "scenes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "visual_description": {
+            "type": "string",
+            "description": "Detailed visual description of the scene for video generation"
+          },
+          "timestamp_start": {
+            "type": "string",
+            "description": "Start time in MM:SS format"
+          },
+          "timestamp_end": {
+            "type": "string",
+            "description": "End time in MM:SS format"
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "location": {
+                "type": "string",
+                "description": "Scene location or setting"
+              },
+              "characters": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Characters appearing in the scene"
+              },
+              "camera_angle": {
+                "type": "string",
+                "description": "Camera angle description"
+              },
+              "camera_movement": {
+                "type": "string",
+                "description": "Camera movement such as pan, tilt, dolly, tracking, steadicam, handheld, crane, static"
+              },
+              "lighting": {
+                "type": "string",
+                "description": "Lighting setup for the scene"
+              },
+              "cinematic_style": {
+                "type": "string",
+                "description": "Cinematic style reference, e.g. a director's name (Wes Anderson, Christopher Nolan) or style description (noir, documentary, ethereal)"
+              },
+              "pace": {
+                "type": "string",
+                "description": "Scene-specific pace override when different from the global pace, e.g. slow, fast, energetic, contemplative, frenetic, steady"
+              },
+              "style": {
+                "type": "string",
+                "description": "Visual style for the scene"
+              },
+              "mood": {
+                "type": "string",
+                "description": "Emotional mood of the scene"
+              }
+            },
+            "required": ["location", "camera_angle", "camera_movement", "cinematic_style"]
+          }
+        },
+        "required": ["visual_description", "timestamp_start", "timestamp_end", "metadata"]
+      }
+    },
+    "global_style": {
+      "type": "object",
+      "properties": {
+        "look": { "type": "string", "description": "Overall visual look" },
+        "mood": { "type": "string", "description": "Overall mood" },
+        "color_grading": { "type": "string", "description": "Color grading direction" },
+        "lighting_style": { "type": "string", "description": "Lighting approach" },
+        "pace": { "type": "string", "description": "Overall pace and rhythm of the production, e.g. slow, fast, energetic, contemplative, frenetic, steady" }
+      },
+      "required": ["look", "mood", "color_grading", "lighting_style", "pace"]
+    },
+    "continuity": {
+      "type": "object",
+      "properties": {
+        "characters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string", "description": "Character identifier" },
+              "description": { "type": "string", "description": "Physical appearance" },
+              "wardrobe": { "type": "string", "description": "Clothing description" }
+            },
+            "required": ["id", "description", "wardrobe"]
+          }
+        },
+        "setting_notes": {
+          "type": "string",
+          "description": "Recurring setting and environment details for continuity"
+        }
+      },
+      "required": ["characters", "setting_notes"]
+    }
+  },
+  "required": ["scenes", "global_style", "continuity"]
+}

@@ -4,7 +4,7 @@ import {
   ArrowLeft, Sparkles, Video, Play, ImageIcon,
   RotateCcw, Clock, DollarSign, Cpu, Save,
   Loader2, LayoutGrid, List, Plus, Lock, AlertCircle,
-  Eye
+  Pencil, CheckCircle2
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button, Card } from '@/components/Common'
@@ -23,13 +23,15 @@ export const RefinePromptView = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const [activeAction, setActiveAction] = useState<'storyboard' | 'video' | null>(null)
+  const [generateError, setGenerateError] = useState<string | null>(null)
   const analyzeCalledRef = useRef(false)
 
-  // On mount: load production from API if we don't have tempProjectData
+  // On mount: load production from API if we don't have matching tempProjectData
   useEffect(() => {
-    if (id && !tempProjectData) {
+    if (id && (!tempProjectData || (tempProjectData as any)?.id !== id)) {
       api.projects.get(id).then((p) => {
         if (p && p.id) {
+          analyzeCalledRef.current = false
           setTempProjectData({ ...p, scenes: p.scenes || [] })
           setActiveProject(id)
         }
@@ -37,7 +39,7 @@ export const RefinePromptView = () => {
         setAnalysisError('Failed to load production')
       })
     }
-  }, [id, tempProjectData, setActiveProject, setTempProjectData])
+  }, [id])
 
   const isReadOnly = ['completed', 'generating', 'stitching'].includes((tempProjectData as any)?.status)
   const scenes = tempProjectData?.scenes || []
@@ -82,6 +84,7 @@ export const RefinePromptView = () => {
     const productionId = (tempProjectData as any)?.id || id
     if (!productionId) return
     setActiveAction(type)
+    setGenerateError(null)
     try {
       await api.projects.render(productionId)
       if (tempProjectData) {
@@ -89,12 +92,14 @@ export const RefinePromptView = () => {
       }
     } catch (err) {
       console.error('Render failed:', err)
+      setGenerateError(err instanceof Error ? err.message : 'Render failed')
     } finally {
       setActiveAction(null)
     }
   }
 
   // Poll scene operations while generating — check each scene's Veo operation and auto-stitch
+  // When stitching, poll the stitch job status instead
   useEffect(() => {
     const productionId = (tempProjectData as any)?.id || id
     const status = (tempProjectData as any)?.status
@@ -102,13 +107,30 @@ export const RefinePromptView = () => {
 
     const pollInterval = setInterval(async () => {
       try {
-        // Re-fetch production to get latest scene states
+        if (status === 'stitching') {
+          // Poll stitch job status
+          const stitchResult = await api.projects.checkStitchStatus(productionId)
+          if (stitchResult.status === 'completed' || stitchResult.status === 'failed') {
+            const final = await api.projects.get(productionId)
+            setTempProjectData({ ...final, scenes: final.scenes || [] })
+            if (stitchResult.status === 'failed') {
+              setGenerateError(stitchResult.error || 'Stitching failed')
+            }
+            clearInterval(pollInterval)
+          }
+          return
+        }
+
+        // status === 'generating': poll scene operations
         const prod = await api.projects.get(productionId)
         if (!prod) return
 
         // If backend already moved to completed/failed, stop polling
         if (prod.status === 'completed' || prod.status === 'failed') {
           setTempProjectData({ ...prod, scenes: prod.scenes || [] })
+          if (prod.status === 'failed') {
+            setGenerateError(prod.error_message || 'Generation failed')
+          }
           clearInterval(pollInterval)
           return
         }
@@ -135,13 +157,16 @@ export const RefinePromptView = () => {
           (s: any) => s.status === 'completed'
         )
         if (allDone && updated.status === 'generating') {
-          clearInterval(pollInterval)
           try {
             await api.projects.stitch(productionId)
-            const final = await api.projects.get(productionId)
-            setTempProjectData({ ...final, scenes: final.scenes || [] })
+            // Don't clear interval — next tick will detect 'stitching' status
+            // and switch to stitch polling
+            const stitching = await api.projects.get(productionId)
+            setTempProjectData({ ...stitching, scenes: stitching.scenes || [] })
           } catch (err) {
             console.error('Stitch failed:', err)
+            setGenerateError(err instanceof Error ? err.message : 'Stitch failed')
+            clearInterval(pollInterval)
           }
         }
       } catch (err) {
@@ -248,13 +273,65 @@ export const RefinePromptView = () => {
             <span className="text-sm font-mono font-bold text-accent-dark">${estimatedCost.toFixed(3)}</span>
           </div>
           
-          {!isReadOnly && (
-            <Button icon={Play} onClick={() => onGenerate('video')} disabled={!!activeAction}>
-              {activeAction === 'video' ? 'Generating...' : 'Generate Video'}
-            </Button>
-          )}
+          {(() => {
+            const s = (tempProjectData as any)?.status
+            const completedScenes = scenes.filter((sc: any) => sc.status === 'completed').length
+            if (s === 'generating') {
+              return (
+                <div className="flex items-center gap-2 text-sm text-accent-dark font-medium">
+                  <Loader2 className="animate-spin" size={16} />
+                  Generating Videos... {completedScenes}/{scenes.length} scenes
+                </div>
+              )
+            }
+            if (s === 'stitching') {
+              return (
+                <div className="flex items-center gap-2 text-sm text-accent-dark font-medium">
+                  <Loader2 className="animate-spin" size={16} />
+                  Stitching Final Video...
+                </div>
+              )
+            }
+            if (s === 'completed') {
+              return (
+                <Button icon={Play} onClick={() => navigate(`/productions/${id}`)}>
+                  View Final Video
+                </Button>
+              )
+            }
+            if (s === 'failed') {
+              return (
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-red-500">{generateError || (tempProjectData as any)?.error_message || 'Generation failed'}</span>
+                  <Button icon={RotateCcw} onClick={() => onGenerate('video')} disabled={!!activeAction}>
+                    Retry
+                  </Button>
+                </div>
+              )
+            }
+            return (
+              <Button icon={Play} onClick={() => onGenerate('video')} disabled={!!activeAction}>
+                {activeAction === 'video' ? 'Generating...' : 'Generate Full Video'}
+              </Button>
+            )
+          })()}
         </div>
       </div>
+
+      {(tempProjectData as any)?.status === 'completed' && (tempProjectData as any)?.final_video_url && (
+        <Card className="p-0 overflow-hidden">
+          <div className="relative aspect-video max-w-3xl mx-auto">
+            <video
+              src={(tempProjectData as any).final_video_url}
+              controls
+              className="w-full h-full object-contain bg-black"
+            />
+          </div>
+          <div className="p-4 text-center">
+            <span className="text-xs font-bold uppercase text-muted-foreground tracking-widest">Final Video</span>
+          </div>
+        </Card>
+      )}
 
       <div className={cn(
         "grid gap-6 transition-all duration-500",
@@ -470,12 +547,12 @@ const SceneItem = ({
   const [error, setError] = useState<string | null>(null)
   const [showPromptModal, setShowPromptModal] = useState(false)
 
-  const handleGenerateFrame = async () => {
+  const handleGenerateFrame = async (promptData?: any) => {
     if (!productionId || !scene.id) return
     setIsGeneratingFrame(true)
     setError(null)
     try {
-      const result = await api.projects.generateFrame(productionId, scene.id)
+      const result = await api.projects.generateFrame(productionId, scene.id, promptData)
       const imageUrl = result.data?.image_url || result.data
       const updates: Partial<Scene> = {}
       if (imageUrl && typeof imageUrl === 'string') {
@@ -496,12 +573,12 @@ const SceneItem = ({
     }
   }
 
-  const handleGenerateVideo = async () => {
+  const handleGenerateVideo = async (promptData?: any) => {
     if (!productionId || !scene.id) return
     setIsGeneratingVideo(true)
     setError(null)
     try {
-      const result = await api.projects.generateSceneVideo(productionId, scene.id)
+      const result = await api.projects.generateSceneVideo(productionId, scene.id, promptData)
       if (result.status === 'completed' && result.signed_url) {
         // Re-fetch production to get video_prompt stored by backend
         const prod = await api.projects.get(productionId)
@@ -543,7 +620,6 @@ const SceneItem = ({
     }
   }
 
-  const hasAnyPrompt = !!(scene.image_prompt || scene.video_prompt)
   const isBusy = isGeneratingFrame || isGeneratingVideo
 
   if (layout === 'grid') {
@@ -586,17 +662,20 @@ const SceneItem = ({
             />
             {error && <p className="text-[10px] text-red-500">{error}</p>}
             <div className="flex items-center justify-between pt-2 border-t border-border/50">
-              <span className="text-[10px] font-bold uppercase text-muted-foreground">Scene {index + 1}</span>
+              <span className="text-[10px] font-bold uppercase text-muted-foreground flex items-center gap-1.5">
+                Scene {index + 1}
+                {scene.status === 'generating' && <Loader2 size={10} className="animate-spin text-amber-500" />}
+                {scene.status === 'completed' && <CheckCircle2 size={10} className="text-emerald-500" />}
+                {scene.status === 'failed' && <AlertCircle size={10} className="text-red-500" />}
+              </span>
               <div className="flex gap-2">
-                {hasAnyPrompt && (
-                  <button
-                    onClick={() => setShowPromptModal(true)}
-                    className="p-1.5 hover:bg-accent/10 rounded-md text-muted-foreground hover:text-accent-dark transition-colors"
-                    title="View Generated Prompts"
-                  >
-                    <Eye size={14} />
-                  </button>
-                )}
+                <button
+                  onClick={() => setShowPromptModal(true)}
+                  className="p-1.5 hover:bg-accent/10 rounded-md text-muted-foreground hover:text-accent-dark transition-colors"
+                  title="Edit Prompt"
+                >
+                  <Pencil size={14} />
+                </button>
                 {!isReadOnly && (
                   <>
                     <button
@@ -621,7 +700,17 @@ const SceneItem = ({
             </div>
           </div>
         </Card>
-        {showPromptModal && <PromptModal scene={scene} onClose={() => setShowPromptModal(false)} />}
+        {showPromptModal && (
+          <PromptModal
+            scene={scene}
+            productionId={productionId}
+            isReadOnly={isReadOnly}
+            onClose={() => setShowPromptModal(false)}
+            onGenerateFrame={handleGenerateFrame}
+            onGenerateVideo={handleGenerateVideo}
+            onDescriptionChange={(desc) => onUpdate({ visual_description: desc })}
+          />
+        )}
       </>
     )
   }
@@ -629,9 +718,14 @@ const SceneItem = ({
   return (
     <>
       <Card
-        title={`Scene ${index + 1}: ${scene.timestamp_start} - ${scene.timestamp_end}`}
         className="p-4 overflow-hidden group transition-all duration-300"
       >
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-base font-heading font-bold text-foreground">Scene {index + 1}: {scene.timestamp_start} - {scene.timestamp_end}</span>
+          {scene.status === 'generating' && <span className="flex items-center gap-1 text-[9px] font-bold uppercase text-amber-500"><Loader2 size={10} className="animate-spin" /> Generating</span>}
+          {scene.status === 'completed' && <span className="flex items-center gap-1 text-[9px] font-bold uppercase text-emerald-500"><CheckCircle2 size={10} /> Done</span>}
+          {scene.status === 'failed' && <span className="flex items-center gap-1 text-[9px] font-bold uppercase text-red-500"><AlertCircle size={10} /> Failed</span>}
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className={cn(
             "space-y-4",
@@ -682,15 +776,13 @@ const SceneItem = ({
                   </Button>
                 </>
               )}
-              {hasAnyPrompt && (
-                <button
-                  onClick={() => setShowPromptModal(true)}
-                  className="h-7 px-2 flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground hover:text-accent-dark hover:bg-accent/10 rounded-md transition-colors"
-                  title="View Generated Prompts"
-                >
-                  <Eye size={12} /> Prompts
-                </button>
-              )}
+              <button
+                onClick={() => setShowPromptModal(true)}
+                className="h-7 px-2 flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground hover:text-accent-dark hover:bg-accent/10 rounded-md transition-colors"
+                title="Edit Prompt"
+              >
+                <Pencil size={12} /> Edit Prompt
+              </button>
             </div>
           </div>
 
@@ -704,7 +796,17 @@ const SceneItem = ({
           </div>
         </div>
       </Card>
-      {showPromptModal && <PromptModal scene={scene} onClose={() => setShowPromptModal(false)} />}
+      {showPromptModal && (
+        <PromptModal
+          scene={scene}
+          productionId={productionId}
+          isReadOnly={isReadOnly}
+          onClose={() => setShowPromptModal(false)}
+          onGenerateFrame={handleGenerateFrame}
+          onGenerateVideo={handleGenerateVideo}
+          onDescriptionChange={(desc) => onUpdate({ visual_description: desc })}
+        />
+      )}
     </>
   )
 }
