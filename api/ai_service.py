@@ -14,6 +14,11 @@ def _load_default_schema():
     return json.loads(schema_path.read_text())
 
 
+def _load_key_moments_schema():
+    schema_path = Path(__file__).parent / "schemas" / "key-moments-schema.json"
+    return json.loads(schema_path.read_text())
+
+
 class AIService:
     def __init__(self, storage_svc=None, firestore_svc=None):
         self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
@@ -226,3 +231,61 @@ Return a JSON list of scenes following the requested structure."""
             data={"image_url": image_url, "generated_prompt": enriched_prompt},
             usage=usage,
         )
+
+    async def analyze_video_key_moments(
+        self,
+        gcs_uri: str,
+        mime_type: str,
+        prompt_id: str,
+        schema_id: Optional[str] = None,
+    ) -> AIResponseWrapper:
+        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3-pro-preview")
+
+        # 1. Resolve Prompt (required)
+        if not self.firestore_svc:
+            raise ValueError("Firestore service not available")
+        res = self.firestore_svc.get_resource(prompt_id)
+        if not res:
+            raise ValueError(f"Prompt resource not found: {prompt_id}")
+        prompt_text = res.content
+
+        # 2. Resolve Schema
+        response_schema = _load_key_moments_schema()
+        if schema_id:
+            res = self.firestore_svc.get_resource(schema_id)
+            if res:
+                response_schema = json.loads(res.content)
+        else:
+            res = self.firestore_svc.get_active_resource("schema", "key-moments")
+            if res:
+                response_schema = json.loads(res.content)
+
+        # 3. Build multimodal content
+        contents = [
+            types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type),
+            prompt_text,
+        ]
+
+        # 4. Call Gemini
+        response = self.client.models.generate_content(
+            model=model_id,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=response_schema,
+            ),
+        )
+
+        data = response.parsed
+        if not isinstance(data, dict):
+            data = {"key_moments": [], "video_summary": ""}
+
+        usage = UsageMetrics(
+            input_tokens=response.usage_metadata.prompt_token_count,
+            output_tokens=response.usage_metadata.candidates_token_count,
+            model_name=model_id,
+            cost_usd=(response.usage_metadata.prompt_token_count * 0.00000125)
+            + (response.usage_metadata.candidates_token_count * 0.00000375),
+        )
+
+        return AIResponseWrapper(data=data, usage=usage)

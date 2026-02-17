@@ -7,6 +7,7 @@ import { ProductionSummary } from './components/ads/ProductionSummary'
 import { ProjectList } from './components/ads/ProjectList'
 import { DiagnosticsPage } from './components/pages/DiagnosticsPage'
 import { PromptsPage } from './components/pages/PromptsPage'
+import { KeyMomentsPage } from './components/pages/KeyMomentsPage'
 
 function App() {
   return (
@@ -24,6 +25,9 @@ function App() {
               <Route path="/productions/:id" element={<ProductionSummary />} />
               <Route path="/productions/:id/edit" element={<ProjectForm />} />
               <Route path="/productions/:id/script" element={<RefinePromptView />} />
+
+              {/* Key Moments */}
+              <Route path="/key-moments" element={<KeyMomentsPage />} />
 
               {/* System Prompts */}
               <Route path="/prompts" element={<PromptsPage />} />

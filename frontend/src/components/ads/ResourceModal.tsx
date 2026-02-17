@@ -20,11 +20,13 @@ const CATEGORY_OPTIONS = {
   prompt: [
     { value: 'production-movie', label: 'Movie Production' },
     { value: 'production-ad', label: 'Ad Production' },
-    { value: 'production-social', label: 'Social Production' }
+    { value: 'production-social', label: 'Social Production' },
+    { value: 'key-moments', label: 'Key Moments Analysis' }
   ],
   schema: [
     { value: 'project-schema', label: 'Project Analysis Schema' },
-    { value: 'scene-schema', label: 'Scene Generation Schema' }
+    { value: 'scene-schema', label: 'Scene Generation Schema' },
+    { value: 'key-moments', label: 'Key Moments Analysis' }
   ]
 }
 

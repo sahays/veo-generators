@@ -1,0 +1,44 @@
+{
+  "type": "object",
+  "properties": {
+    "key_moments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Short title for the key moment"
+          },
+          "description": {
+            "type": "string",
+            "description": "Detailed description of what happens in this moment"
+          },
+          "timestamp_start": {
+            "type": "string",
+            "description": "Start time in MM:SS or HH:MM:SS format"
+          },
+          "timestamp_end": {
+            "type": "string",
+            "description": "End time in MM:SS or HH:MM:SS format"
+          },
+          "category": {
+            "type": "string",
+            "description": "Category of the moment, e.g. action, dialogue, transition, reveal"
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Relevant tags for the moment"
+          }
+        },
+        "required": ["title", "description", "timestamp_start", "timestamp_end"]
+      }
+    },
+    "video_summary": {
+      "type": "string",
+      "description": "Overall summary of the video content"
+    }
+  },
+  "required": ["key_moments"]
+}
