@@ -40,6 +40,13 @@ export const api = {
       if (!res.ok) throw new Error(`Failed to create production: ${res.status}`)
       return res.json()
     },
+    updateScene: async (id: string, sceneId: string, updates: Record<string, any>): Promise<void> => {
+      await fetch(`${API_BASE_URL}/productions/${id}/scenes/${sceneId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      })
+    },
     analyze: async (id: string, prompt_id?: string, schema_id?: string): Promise<any> => {
       const res = await fetch(`${API_BASE_URL}/productions/${id}/analyze`, {
         method: 'POST',
@@ -255,7 +262,75 @@ export const api = {
       })
       if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
       return res.json()
-    }
+    },
+    initUpload: async (file: File): Promise<{ record_id: string; upload_url: string; gcs_uri: string; content_type: string; expires_at: string }> => {
+      const res = await fetch(`${API_BASE_URL}/assets/upload/init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: file.name,
+          content_type: file.type || 'application/octet-stream',
+          file_size_bytes: file.size,
+        }),
+      })
+      if (!res.ok) throw new Error(`Upload init failed: ${res.status}`)
+      return res.json()
+    },
+    completeUpload: async (recordId: string): Promise<{ id: string; gcs_uri: string; signed_url: string; file_type: string }> => {
+      const res = await fetch(`${API_BASE_URL}/assets/upload/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ record_id: recordId }),
+      })
+      if (!res.ok) throw new Error(`Upload complete failed: ${res.status}`)
+      return res.json()
+    },
+    directUpload: (
+      file: File,
+      onProgress?: (pct: number) => void,
+    ): { promise: Promise<{ id: string; gcs_uri: string; signed_url: string; file_type: string }>; abort: () => void } => {
+      let xhr: XMLHttpRequest | null = null
+      const promise = (async () => {
+        const init = await api.assets.initUpload(file)
+        onProgress?.(5)
+
+        await new Promise<void>((resolve, reject) => {
+          xhr = new XMLHttpRequest()
+          xhr.open('PUT', init.upload_url)
+          xhr.setRequestHeader('Content-Type', init.content_type)
+
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+              // Map XHR progress to 5-90% range (init=0-5%, complete=90-100%)
+              const pct = Math.round(5 + (e.loaded / e.total) * 85)
+              onProgress?.(pct)
+            }
+          }
+
+          xhr.onload = () => {
+            if (xhr!.status >= 200 && xhr!.status < 300) {
+              resolve()
+            } else {
+              reject(new Error(`GCS upload failed: ${xhr!.status}`))
+            }
+          }
+          xhr.onerror = () => reject(new Error('Network error during upload'))
+          xhr.onabort = () => reject(new Error('Upload aborted'))
+
+          xhr.send(file)
+        })
+
+        onProgress?.(92)
+        const result = await api.assets.completeUpload(init.record_id)
+        onProgress?.(100)
+        return result
+      })()
+
+      return {
+        promise,
+        abort: () => xhr?.abort(),
+      }
+    },
   },
   uploads: {
     list: async (params?: { file_type?: string; archived?: boolean }): Promise<any[]> => {

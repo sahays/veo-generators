@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Sparkles, Video, Play, ImageIcon,
@@ -181,8 +181,9 @@ export const RefinePromptView = () => {
     return () => clearInterval(pollInterval)
   }, [(tempProjectData as any)?.status, (tempProjectData as any)?.id, id])
 
-  const totalTokens = scenes.reduce((acc, s) => acc + (s.tokens_consumed?.input || 0) + (s.tokens_consumed?.output || 0), 0)
-  const estimatedCost = (totalTokens / 1000) * 0.015
+  const totalUsage = (tempProjectData as any)?.total_usage
+  const totalTokens = (totalUsage?.input_tokens || 0) + (totalUsage?.output_tokens || 0)
+  const estimatedCost = totalUsage?.cost_usd || 0
 
   if (analysisError) {
     return (
@@ -480,9 +481,7 @@ const SceneMediaCarousel = ({
           <motion.video
             key="video"
             src={videoUrl}
-            autoPlay
-            loop
-            muted
+            controls
             playsInline
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -550,6 +549,26 @@ const SceneItem = ({
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showPromptModal, setShowPromptModal] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Persist scene field changes to Firestore
+  const persistScene = useCallback((updates: Partial<Scene>) => {
+    if (!productionId || !scene.id || isReadOnly) return
+    api.projects.updateScene(productionId, scene.id, updates).catch(() => {})
+  }, [productionId, scene.id, isReadOnly])
+
+  // Immediate persist (toggles) + local update
+  const handleToggle = (updates: Partial<Scene>) => {
+    onUpdate(updates)
+    persistScene(updates)
+  }
+
+  // Debounced persist (text fields) + local update
+  const handleTextChange = (updates: Partial<Scene>) => {
+    onUpdate(updates)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => persistScene(updates), 800)
+  }
 
   const handleGenerateFrame = async (promptData?: any) => {
     if (!productionId || !scene.id) return
@@ -656,7 +675,7 @@ const SceneItem = ({
           <div className="p-4 space-y-3 bg-card/50">
             <textarea
               value={scene.visual_description}
-              onChange={(e) => onUpdate({ visual_description: e.target.value })}
+              onChange={(e) => handleTextChange({ visual_description: e.target.value })}
               readOnly={isReadOnly}
               className={cn(
                 "w-full text-xs leading-relaxed bg-transparent border-none focus:ring-0 outline-none resize-none p-0 min-h-[60px]",
@@ -671,7 +690,7 @@ const SceneItem = ({
                 <input
                   type="checkbox"
                   checked={!!scene.narration_enabled}
-                  onChange={(e) => onUpdate({ narration_enabled: e.target.checked })}
+                  onChange={(e) => handleToggle({ narration_enabled: e.target.checked })}
                   disabled={isReadOnly}
                   className="accent-accent w-3 h-3"
                 />
@@ -682,7 +701,7 @@ const SceneItem = ({
                 <input
                   type="checkbox"
                   checked={!!scene.music_enabled}
-                  onChange={(e) => onUpdate({ music_enabled: e.target.checked })}
+                  onChange={(e) => handleToggle({ music_enabled: e.target.checked })}
                   disabled={isReadOnly}
                   className="accent-accent w-3 h-3"
                 />
@@ -720,7 +739,7 @@ const SceneItem = ({
                 {!isReadOnly && (
                   <>
                     <button
-                      onClick={handleGenerateFrame}
+                      onClick={() => handleGenerateFrame()}
                       disabled={isBusy}
                       className="p-1.5 hover:bg-accent/10 rounded-md text-accent-dark transition-colors disabled:opacity-40"
                       title="Generate Frame"
@@ -728,7 +747,7 @@ const SceneItem = ({
                       {isGeneratingFrame ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />}
                     </button>
                     <button
-                      onClick={handleGenerateVideo}
+                      onClick={() => handleGenerateVideo()}
                       disabled={isBusy}
                       className="p-1.5 hover:bg-accent/10 rounded-md text-accent-dark transition-colors disabled:opacity-40"
                       title="Generate Video"
@@ -774,7 +793,7 @@ const SceneItem = ({
           )}>
             <textarea
               value={scene.visual_description}
-              onChange={(e) => onUpdate({ visual_description: e.target.value })}
+              onChange={(e) => handleTextChange({ visual_description: e.target.value })}
               readOnly={isReadOnly}
               className={cn(
                 "w-full min-h-[100px] p-3 rounded-xl text-sm leading-relaxed bg-muted/30 border border-border focus:ring-2 focus:ring-accent/30 outline-none resize-none transition-all",
@@ -790,7 +809,7 @@ const SceneItem = ({
                   <input
                     type="checkbox"
                     checked={!!scene.narration_enabled}
-                    onChange={(e) => onUpdate({ narration_enabled: e.target.checked })}
+                    onChange={(e) => handleToggle({ narration_enabled: e.target.checked })}
                     disabled={isReadOnly}
                     className="accent-accent w-3.5 h-3.5"
                   />
@@ -801,7 +820,7 @@ const SceneItem = ({
                   <input
                     type="checkbox"
                     checked={!!scene.music_enabled}
-                    onChange={(e) => onUpdate({ music_enabled: e.target.checked })}
+                    onChange={(e) => handleToggle({ music_enabled: e.target.checked })}
                     disabled={isReadOnly}
                     className="accent-accent w-3.5 h-3.5"
                   />
@@ -813,7 +832,7 @@ const SceneItem = ({
               {scene.narration_enabled && (
                 <textarea
                   value={scene.narration || ''}
-                  onChange={(e) => onUpdate({ narration: e.target.value })}
+                  onChange={(e) => handleTextChange({ narration: e.target.value })}
                   readOnly={isReadOnly}
                   className={cn(
                     "w-full min-h-[60px] p-3 rounded-xl text-sm leading-relaxed italic bg-muted/20 border border-border/50 focus:ring-2 focus:ring-accent/30 outline-none resize-none transition-all",
@@ -827,7 +846,7 @@ const SceneItem = ({
                 <input
                   type="text"
                   value={scene.music_description || ''}
-                  onChange={(e) => onUpdate({ music_description: e.target.value })}
+                  onChange={(e) => handleTextChange({ music_description: e.target.value })}
                   readOnly={isReadOnly}
                   className={cn(
                     "w-full p-2.5 rounded-xl text-sm bg-muted/20 border border-border/50 focus:ring-2 focus:ring-accent/30 outline-none transition-all",
@@ -856,7 +875,7 @@ const SceneItem = ({
                     variant="secondary"
                     className="h-7 px-2.5 text-[10px]"
                     icon={isGeneratingFrame ? Loader2 : ImageIcon}
-                    onClick={handleGenerateFrame}
+                    onClick={() => handleGenerateFrame()}
                     disabled={isBusy}
                   >
                     {isGeneratingFrame ? 'Generating...' : 'Generate Frame'}
@@ -865,7 +884,7 @@ const SceneItem = ({
                     variant="ghost"
                     className="h-7 px-2.5 text-[10px]"
                     icon={isGeneratingVideo ? Loader2 : Video}
-                    onClick={handleGenerateVideo}
+                    onClick={() => handleGenerateVideo()}
                     disabled={isBusy}
                   >
                     {isGeneratingVideo ? 'Generating...' : 'Generate Video'}
