@@ -74,32 +74,142 @@ async def health_check():
 # --- URL Signing Helpers ---
 
 
-def _resolve_media_url(url: str) -> str:
-    """Turn a GCS URI or expired signed URL into a fresh signed URL."""
-    if not url or not storage_svc:
-        return url or ""
-    if url.startswith("gs://"):
-        return storage_svc.get_signed_url(url)
-    # Attempt to recover GCS URI from an expired signed URL
-    gcs_uri = storage_svc.recover_gcs_uri(url)
-    if gcs_uri:
-        return storage_svc.get_signed_url(gcs_uri)
-    return url
+def _sign_production_urls(production: Project, thumbnails_only: bool = False) -> dict:
+    """Return a dict with media URLs resolved from cache. Re-signs only near expiry.
 
+    When thumbnails_only=True, only sign scene thumbnails (for list views).
+    Persists updated signed URL cache back to Firestore when any URL was refreshed.
+    """
+    if not storage_svc:
+        return production.dict()
 
-def _sign_production_urls(production: Project) -> dict:
-    """Return a dict representation of the production with all media URLs re-signed."""
     data = production.dict()
+    cache = data.get("signed_urls") or {}
+    dirty = False
+
+    def _resolve(gcs_uri: str) -> str:
+        nonlocal dirty
+        if not gcs_uri:
+            return ""
+        # Recover GCS URI from expired signed URLs
+        if not gcs_uri.startswith("gs://"):
+            recovered = storage_svc.recover_gcs_uri(gcs_uri)
+            if recovered:
+                gcs_uri = recovered
+            else:
+                return gcs_uri
+        url, changed = storage_svc.resolve_cached_url(gcs_uri, cache)
+        if changed:
+            dirty = True
+        return url
+
     for scene in data.get("scenes", []):
         if scene.get("thumbnail_url"):
-            scene["thumbnail_url"] = _resolve_media_url(scene["thumbnail_url"])
-        if scene.get("video_url"):
-            scene["video_url"] = _resolve_media_url(scene["video_url"])
-    if data.get("final_video_url"):
-        data["final_video_url"] = _resolve_media_url(data["final_video_url"])
-    if data.get("reference_image_url"):
-        data["reference_image_url"] = _resolve_media_url(data["reference_image_url"])
+            scene["thumbnail_url"] = _resolve(scene["thumbnail_url"])
+        if not thumbnails_only and scene.get("video_url"):
+            scene["video_url"] = _resolve(scene["video_url"])
+    if not thumbnails_only:
+        if data.get("final_video_url"):
+            data["final_video_url"] = _resolve(data["final_video_url"])
+        if data.get("reference_image_url"):
+            data["reference_image_url"] = _resolve(data["reference_image_url"])
+
+    if dirty and firestore_svc:
+        firestore_svc.update_production(production.id, {"signed_urls": cache})
+
+    # Don't leak the cache to the client
+    data.pop("signed_urls", None)
     return data
+
+
+# --- Prompt Building Helpers ---
+
+
+def _parse_timestamp(ts: str) -> float:
+    """Parse '00:05' or '5' to seconds."""
+    if ":" in ts:
+        parts = ts.split(":")
+        return int(parts[0]) * 60 + float(parts[1])
+    return float(ts)
+
+
+def _build_prompt_data(scene: Scene, project: Project) -> dict:
+    """Build structured prompt data for a scene including all production context."""
+    SUPPORTED_DURATIONS = [4, 6, 8]
+    try:
+        start = _parse_timestamp(scene.timestamp_start)
+        end = _parse_timestamp(scene.timestamp_end)
+        raw = int(end - start)
+        duration = min(SUPPORTED_DURATIONS, key=lambda d: abs(d - raw))
+    except (ValueError, IndexError):
+        duration = 8
+
+    data = {
+        "visual_description": scene.visual_description,
+        "metadata": scene.metadata.dict() if scene.metadata else {},
+        "global_style": project.global_style.dict() if project.global_style else None,
+        "continuity": project.continuity.dict() if project.continuity else None,
+        "duration": duration,
+    }
+    data["image_prompt"] = _build_flat_image_prompt(data)
+    data["video_prompt"] = _build_flat_video_prompt(data)
+    return data
+
+
+def _build_flat_image_prompt(data: dict) -> str:
+    """Build a flat text prompt for image generation from structured data."""
+    parts = []
+    gs = data.get("global_style")
+    if gs:
+        parts.append(
+            f"Style: {gs.get('look', '')}. Mood: {gs.get('mood', '')}. "
+            f"Colors: {gs.get('color_grading', '')}. Lighting: {gs.get('lighting_style', '')}."
+        )
+    cont = data.get("continuity")
+    if cont and cont.get("characters"):
+        char_descs = [
+            f"{c['id']}: {c['description']}, wearing {c.get('wardrobe', '')}"
+            for c in cont["characters"]
+        ]
+        parts.append(f"Characters: {'; '.join(char_descs)}.")
+    if cont and cont.get("setting_notes"):
+        parts.append(f"Setting: {cont['setting_notes']}.")
+    parts.append(data.get("visual_description", ""))
+    return " ".join(parts)
+
+
+def _build_flat_video_prompt(data: dict) -> str:
+    """Build a flat text prompt for video generation from structured data."""
+    parts = []
+    duration = data.get("duration", 8)
+    parts.append(f"{duration}-second video clip.")
+    md = data.get("metadata", {})
+    if md.get("camera_angle"):
+        parts.append(f"Camera angle: {md['camera_angle']}.")
+    if md.get("camera_movement"):
+        parts.append(f"Camera movement: {md['camera_movement']}.")
+    if md.get("cinematic_style"):
+        parts.append(f"Cinematic style: {md['cinematic_style']}.")
+    gs = data.get("global_style")
+    pace = md.get("pace") or (gs.get("pace") if gs else None)
+    if pace:
+        parts.append(f"Pace: {pace}.")
+    if gs:
+        parts.append(
+            f"Style: {gs.get('look', '')}. Mood: {gs.get('mood', '')}. "
+            f"Colors: {gs.get('color_grading', '')}. Lighting: {gs.get('lighting_style', '')}."
+        )
+    cont = data.get("continuity")
+    if cont and cont.get("characters"):
+        char_descs = [
+            f"{c['id']}: {c['description']}, wearing {c.get('wardrobe', '')}"
+            for c in cont["characters"]
+        ]
+        parts.append(f"Characters: {'; '.join(char_descs)}.")
+    if cont and cont.get("setting_notes"):
+        parts.append(f"Setting: {cont['setting_notes']}.")
+    parts.append(data.get("visual_description", ""))
+    return " ".join(parts)
 
 
 # --- Background Tasks ---
@@ -158,7 +268,7 @@ async def list_productions(archived: bool = False):
     if not firestore_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
     productions = firestore_svc.get_productions(include_archived=archived)
-    return [_sign_production_urls(p) for p in productions]
+    return [_sign_production_urls(p, thumbnails_only=True) for p in productions]
 
 
 @app.post("/api/v1/productions", response_model=Project)
@@ -238,10 +348,24 @@ async def analyze_production(id: str, request: dict = {}):
     return result
 
 
+@app.post("/api/v1/productions/{id}/scenes/{scene_id}/build-prompt")
+async def build_scene_prompt(id: str, scene_id: str):
+    if not firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    production = firestore_svc.get_production(id)
+    if not production:
+        raise HTTPException(status_code=404)
+    scene = next((s for s in production.scenes if s.id == scene_id), None)
+    if not scene:
+        raise HTTPException(status_code=404)
+    return _build_prompt_data(scene, production)
+
+
 @app.post(
-    "/api/v1/productions/{id}/scenes/{scene_id}/frame", response_model=AIResponseWrapper
+    "/api/v1/productions/{id}/scenes/{scene_id}/frame",
+    response_model=AIResponseWrapper,
 )
-async def generate_scene_frame(id: str, scene_id: str):
+async def generate_scene_frame(id: str, scene_id: str, request: dict = {}):
     if not firestore_svc or not ai_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
     production = firestore_svc.get_production(id)
@@ -252,9 +376,33 @@ async def generate_scene_frame(id: str, scene_id: str):
     if not scene:
         raise HTTPException(status_code=404)
 
-    result = await ai_svc.generate_frame(
-        id, scene, production.orientation, project=production
-    )
+    prompt_override = None
+    prompt_data = request.get("prompt_data") if request else None
+    if prompt_data:
+        prompt_override = _build_flat_image_prompt(prompt_data)
+        new_desc = prompt_data.get("visual_description")
+        if new_desc and new_desc != scene.visual_description:
+            firestore_svc.update_scene(id, scene_id, {"visual_description": new_desc})
+
+    try:
+        result = await ai_svc.generate_frame(
+            id,
+            scene,
+            production.orientation,
+            project=production,
+            prompt_override=prompt_override,
+        )
+    except Exception as e:
+        logger.error(f"Frame generation failed for scene {scene_id}: {e}")
+        error_msg = f"Image generation failed for scene {scene_id}: {e}"
+        firestore_svc.update_scene(
+            id, scene_id, {"status": "failed", "error_message": str(e)}
+        )
+        firestore_svc.update_production(
+            id, {"status": ProjectStatus.FAILED, "error_message": error_msg}
+        )
+        raise HTTPException(status_code=500, detail=error_msg)
+
     gcs_uri = result.data["image_url"]
     scene_updates = {"thumbnail_url": gcs_uri}
     if result.data.get("generated_prompt"):
@@ -262,12 +410,12 @@ async def generate_scene_frame(id: str, scene_id: str):
         scene_updates["image_prompt"] = result.data["generated_prompt"]
     firestore_svc.update_scene(id, scene_id, scene_updates)
     # Return signed URL for immediate display
-    result.data["image_url"] = _resolve_media_url(gcs_uri)
+    result.data["image_url"] = storage_svc.get_signed_url(gcs_uri)
     return result
 
 
 @app.post("/api/v1/productions/{id}/scenes/{scene_id}/video")
-async def generate_scene_video(id: str, scene_id: str):
+async def generate_scene_video(id: str, scene_id: str, request: dict = {}):
     if not firestore_svc or not video_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
     production = firestore_svc.get_production(id)
@@ -278,9 +426,17 @@ async def generate_scene_video(id: str, scene_id: str):
     if not scene:
         raise HTTPException(status_code=404)
 
+    prompt_override = None
+    prompt_data = request.get("prompt_data") if request else None
+    if prompt_data:
+        prompt_override = _build_flat_video_prompt(prompt_data)
+        new_desc = prompt_data.get("visual_description")
+        if new_desc and new_desc != scene.visual_description:
+            firestore_svc.update_scene(id, scene_id, {"visual_description": new_desc})
+
     firestore_svc.update_scene(id, scene_id, {"status": "generating"})
     result = await video_svc.generate_scene_video(
-        id, scene, blocking=False, project=production
+        id, scene, blocking=False, project=production, prompt_override=prompt_override
     )
 
     if isinstance(result, dict) and "operation_name" in result:
@@ -314,8 +470,14 @@ async def generate_scene_video(id: str, scene_id: str):
             "signed_url": signed_url,
         }
 
-    firestore_svc.update_scene(id, scene_id, {"status": "failed"})
-    return {"status": "failed"}
+    error_msg = f"Video generation failed for scene {scene_id}"
+    firestore_svc.update_scene(
+        id, scene_id, {"status": "failed", "error_message": error_msg}
+    )
+    firestore_svc.update_production(
+        id, {"status": ProjectStatus.FAILED, "error_message": error_msg}
+    )
+    return {"status": "failed", "error_message": error_msg}
 
 
 @app.post("/api/v1/productions/{id}/archive")
@@ -372,21 +534,61 @@ async def stitch_production(id: str):
 
     firestore_svc.update_production(id, {"status": ProjectStatus.STITCHING})
     try:
-        final_uri = transcoder_svc.stitch_from_uris(
+        job_name, final_uri = transcoder_svc.stitch_from_uris(
             id, scene_uris, orientation=production.orientation
         )
         firestore_svc.update_production(
             id,
-            {"status": ProjectStatus.COMPLETED, "final_video_url": final_uri},
+            {
+                "stitch_job_name": job_name,
+                "final_video_url": final_uri,
+            },
         )
-        signed_url = storage_svc.get_signed_url(final_uri)
-        return {"status": "completed", "final_video_url": signed_url}
+        return {"status": "stitching", "job_name": job_name}
     except Exception as e:
         logger.error(f"Stitching failed: {e}")
         firestore_svc.update_production(
             id, {"status": ProjectStatus.FAILED, "error_message": str(e)}
         )
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/productions/{id}/stitch-status")
+async def get_stitch_status(id: str):
+    """Check the status of a running stitch (Transcoder) job."""
+    if not firestore_svc or not transcoder_svc or not storage_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    production = firestore_svc.get_production(id)
+    if not production:
+        raise HTTPException(status_code=404)
+
+    if not production.stitch_job_name:
+        return {"status": str(production.status.value)}
+
+    job_state = transcoder_svc.get_job_status(production.stitch_job_name)
+
+    if job_state == "SUCCEEDED":
+        firestore_svc.update_production(id, {"status": ProjectStatus.COMPLETED})
+        signed_url = (
+            storage_svc.get_signed_url(production.final_video_url)
+            if production.final_video_url
+            else None
+        )
+        return {
+            "status": "completed",
+            "final_video_url": signed_url,
+        }
+    elif job_state in ("FAILED", "UNKNOWN"):
+        firestore_svc.update_production(
+            id,
+            {
+                "status": ProjectStatus.FAILED,
+                "error_message": f"Transcoder job {job_state}",
+            },
+        )
+        return {"status": "failed", "error": f"Transcoder job {job_state}"}
+    else:
+        return {"status": "stitching", "job_state": job_state}
 
 
 @app.post("/api/v1/assets/upload")
@@ -508,6 +710,26 @@ async def check_operation_status(
                     "video_url": status["video_uri"],
                 },
             )
+
+    elif (
+        status.get("status") in ("failed", "error") and production_id and firestore_svc
+    ):
+        error_msg = (
+            status.get("error") or status.get("message") or "Video generation failed"
+        )
+        if scene_id:
+            firestore_svc.update_scene(
+                production_id,
+                scene_id,
+                {"status": "failed", "error_message": str(error_msg)},
+            )
+        firestore_svc.update_production(
+            production_id,
+            {
+                "status": ProjectStatus.FAILED,
+                "error_message": f"Video generation failed for scene {scene_id or 'unknown'}: {error_msg}",
+            },
+        )
 
     return status
 

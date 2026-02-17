@@ -1,7 +1,10 @@
 import os
 import google.auth
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from google.cloud import storage
+
+SIGN_DURATION = timedelta(hours=48)
+REFRESH_THRESHOLD = timedelta(minutes=5)
 
 
 class StorageService:
@@ -15,8 +18,6 @@ class StorageService:
         try:
             self.bucket = self.client.get_bucket(self.bucket_name)
         except Exception as e:
-            # Only try to create if it doesn't exist, not if we lack permissions
-            # If the error is 'Not Found', try creating. Otherwise, raise.
             if "404" in str(e):
                 try:
                     self.bucket = self.client.create_bucket(self.bucket_name)
@@ -43,23 +44,57 @@ class StorageService:
         blob.upload_from_string(data, content_type=content_type)
         return f"gs://{self.bucket_name}/{destination_path}"
 
-    def get_signed_url(self, gcs_uri: str) -> str:
-        if not gcs_uri.startswith("gs://"):
-            return gcs_uri
-
+    def _generate_signed_url(self, gcs_uri: str) -> dict:
+        """Generate a signed URL and return it with expiration metadata."""
         path = gcs_uri.replace(f"gs://{self.bucket_name}/", "")
         blob = self.bucket.blob(path)
 
-        # Refresh credentials to ensure we have a valid token
         from google.auth.transport import requests
 
         request = requests.Request()
         self.credentials.refresh(request)
 
-        return blob.generate_signed_url(
+        expires_at = datetime.now(timezone.utc) + SIGN_DURATION
+        url = blob.generate_signed_url(
             version="v4",
-            expiration=timedelta(minutes=60),
+            expiration=SIGN_DURATION,
             method="GET",
             service_account_email=self.credentials.service_account_email,
             access_token=self.credentials.token,
         )
+        return {"url": url, "expires_at": expires_at.isoformat()}
+
+    def get_signed_url(self, gcs_uri: str) -> str:
+        if not gcs_uri.startswith("gs://"):
+            return gcs_uri
+        return self._generate_signed_url(gcs_uri)["url"]
+
+    def recover_gcs_uri(self, url: str) -> str | None:
+        """Try to extract a gs:// URI from an expired signed URL."""
+        if not url or url.startswith("gs://"):
+            return url
+        if self.bucket_name in url:
+            try:
+                path = url.split(f"/{self.bucket_name}/")[1].split("?")[0]
+                return f"gs://{self.bucket_name}/{path}"
+            except (IndexError, ValueError):
+                pass
+        return None
+
+    def resolve_cached_url(self, gcs_uri: str, cache: dict) -> tuple[str, bool]:
+        """Return (signed_url, changed) using cache. Only re-signs if close to expiry."""
+        if not gcs_uri or not gcs_uri.startswith("gs://"):
+            return gcs_uri or "", False
+
+        cached = cache.get(gcs_uri)
+        if cached and cached.get("expires_at"):
+            try:
+                expires_at = datetime.fromisoformat(cached["expires_at"])
+                if expires_at - datetime.now(timezone.utc) > REFRESH_THRESHOLD:
+                    return cached["url"], False
+            except (ValueError, TypeError):
+                pass
+
+        entry = self._generate_signed_url(gcs_uri)
+        cache[gcs_uri] = entry
+        return entry["url"], True

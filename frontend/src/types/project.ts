@@ -19,6 +19,8 @@ export const sceneSchema = z.object({
   image_prompt: z.string().optional(),
   video_prompt: z.string().optional(),
   operation_name: z.string().optional(),
+  status: z.string().optional(),
+  error_message: z.string().optional(),
   tokens_consumed: z.object({
     input: z.number().default(0),
     output: z.number().default(0),

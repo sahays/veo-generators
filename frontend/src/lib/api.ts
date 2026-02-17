@@ -49,17 +49,30 @@ export const api = {
       if (!res.ok) throw new Error(`Analysis failed: ${res.status}`)
       return res.json()
     },
-    generateFrame: async (id: string, sceneId: string): Promise<any> => {
-      const res = await fetch(`${API_BASE_URL}/productions/${id}/scenes/${sceneId}/frame`, {
+    buildPrompt: async (id: string, sceneId: string): Promise<any> => {
+      const res = await fetch(`${API_BASE_URL}/productions/${id}/scenes/${sceneId}/build-prompt`, {
         method: 'POST',
       })
+      if (!res.ok) throw new Error(`Build prompt failed: ${res.status}`)
+      return res.json()
+    },
+    generateFrame: async (id: string, sceneId: string, promptData?: any): Promise<any> => {
+      const opts: RequestInit = { method: 'POST' }
+      if (promptData) {
+        opts.headers = { 'Content-Type': 'application/json' }
+        opts.body = JSON.stringify({ prompt_data: promptData })
+      }
+      const res = await fetch(`${API_BASE_URL}/productions/${id}/scenes/${sceneId}/frame`, opts)
       if (!res.ok) throw new Error(`Frame generation failed: ${res.status}`)
       return res.json()
     },
-    generateSceneVideo: async (id: string, sceneId: string): Promise<any> => {
-      const res = await fetch(`${API_BASE_URL}/productions/${id}/scenes/${sceneId}/video`, {
-        method: 'POST',
-      })
+    generateSceneVideo: async (id: string, sceneId: string, promptData?: any): Promise<any> => {
+      const opts: RequestInit = { method: 'POST' }
+      if (promptData) {
+        opts.headers = { 'Content-Type': 'application/json' }
+        opts.body = JSON.stringify({ prompt_data: promptData })
+      }
+      const res = await fetch(`${API_BASE_URL}/productions/${id}/scenes/${sceneId}/video`, opts)
       if (!res.ok) throw new Error(`Video generation failed: ${res.status}`)
       return res.json()
     },
@@ -84,6 +97,11 @@ export const api = {
         method: 'POST',
       })
       if (!res.ok) throw new Error(`Stitch failed: ${res.status}`)
+      return res.json()
+    },
+    checkStitchStatus: async (id: string): Promise<any> => {
+      const res = await fetch(`${API_BASE_URL}/productions/${id}/stitch-status`)
+      if (!res.ok) throw new Error(`Stitch status check failed: ${res.status}`)
       return res.json()
     },
     delete: async (id: string): Promise<void> => {

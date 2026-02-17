@@ -14,19 +14,20 @@ class FirestoreService:
         self.collection = self.db.collection(f"{prefix}_productions")
         self.resources_collection = self.db.collection(f"{prefix}_prompts")
 
+    def _all_resources(self) -> List[SystemResource]:
+        docs = self.resources_collection.stream()
+        resources = [SystemResource(**doc.to_dict()) for doc in docs]
+        resources.sort(key=lambda r: r.createdAt or "", reverse=True)
+        return resources
+
     def list_resources(
         self, resource_type: Optional[str] = None, category: Optional[str] = None
     ) -> List[SystemResource]:
-        query = self.resources_collection
+        resources = self._all_resources()
         if resource_type:
-            query = query.where("type", "==", resource_type)
+            resources = [r for r in resources if r.type == resource_type]
         if category:
-            query = query.where("category", "==", category)
-
-        # Avoid composite index requirement — fetch all matching docs and sort in Python
-        docs = query.stream()
-        resources = [SystemResource(**doc.to_dict()) for doc in docs]
-        resources.sort(key=lambda r: r.createdAt or "", reverse=True)
+            resources = [r for r in resources if r.category == category]
         return resources
 
     def get_resource(self, resource_id: str) -> Optional[SystemResource]:
@@ -38,16 +39,10 @@ class FirestoreService:
     def get_active_resource(
         self, resource_type: str, category: str
     ) -> Optional[SystemResource]:
-        query = (
-            self.resources_collection.where("type", "==", resource_type)
-            .where("category", "==", category)
-            .where("is_active", "==", True)
-            .limit(1)
-        )
-
-        docs = list(query.stream())
-        if docs:
-            return SystemResource(**docs[0].to_dict())
+        resources = self._all_resources()
+        for r in resources:
+            if r.type == resource_type and r.category == category and r.is_active:
+                return r
         return None
 
     def create_resource(self, resource: SystemResource):
@@ -58,29 +53,30 @@ class FirestoreService:
         if not resource:
             return
 
-        # Deactivate current active in same type/category
-        actives = (
-            self.resources_collection.where("type", "==", resource.type)
-            .where("category", "==", resource.category)
-            .where("is_active", "==", True)
-            .stream()
-        )
-
+        # Deactivate current active in same type/category, activate target
+        all_resources = self._all_resources()
         batch = self.db.batch()
-        for doc in actives:
-            batch.update(doc.reference, {"is_active": False})
-
-        # Activate target
+        for r in all_resources:
+            if (
+                r.type == resource.type
+                and r.category == resource.category
+                and r.is_active
+            ):
+                batch.update(
+                    self.resources_collection.document(r.id), {"is_active": False}
+                )
         batch.update(
             self.resources_collection.document(resource_id), {"is_active": True}
         )
         batch.commit()
 
-    def get_productions(self) -> List[Project]:
-        docs = self.collection.order_by(
-            "createdAt", direction=firestore.Query.DESCENDING
-        ).stream()
-        return [Project(**doc.to_dict()) for doc in docs]
+    def get_productions(self, include_archived: bool = False) -> List[Project]:
+        docs = self.collection.stream()
+        productions = [Project(**doc.to_dict()) for doc in docs]
+        productions.sort(key=lambda p: p.createdAt or "", reverse=True)
+        if not include_archived:
+            productions = [p for p in productions if not p.archived]
+        return productions
 
     def get_production(self, production_id: str) -> Optional[Project]:
         doc = self.collection.document(production_id).get()

@@ -164,10 +164,11 @@ Return a JSON list of scenes following the requested structure."""
         scene: Scene,
         orientation: str,
         project: Optional[Project] = None,
+        prompt_override: Optional[str] = None,
     ) -> AIResponseWrapper:
         model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
 
-        enriched_prompt = self._build_scene_prompt(scene, project)
+        enriched_prompt = prompt_override or self._build_scene_prompt(scene, project)
 
         # Build multimodal content: text prompt + optional reference image
         contents = []

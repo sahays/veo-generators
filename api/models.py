@@ -55,6 +55,7 @@ class GlobalStyle(BaseModel):
     mood: Optional[str] = None
     color_grading: Optional[str] = None
     lighting_style: Optional[str] = None
+    pace: Optional[str] = None
 
 
 class CharacterProfile(BaseModel):
@@ -72,7 +73,10 @@ class SceneMetadata(BaseModel):
     location: Optional[str] = None
     characters: List[str] = []
     camera_angle: Optional[str] = None
+    camera_movement: Optional[str] = None
     lighting: Optional[str] = None
+    cinematic_style: Optional[str] = None
+    pace: Optional[str] = None
     style: Optional[str] = None
     mood: Optional[str] = None
 
@@ -90,6 +94,7 @@ class Scene(BaseModel):
     video_prompt: Optional[str] = None
     operation_name: Optional[str] = None
     status: str = "pending"  # pending, generating, completed, failed
+    error_message: Optional[str] = None
     usage: UsageMetrics = Field(default_factory=UsageMetrics)
 
 
@@ -105,9 +110,12 @@ class Project(BaseModel):
     schema_info: Optional[SystemResourceInfo] = None
     reference_image_url: Optional[str] = None
     final_video_url: Optional[str] = None
+    stitch_job_name: Optional[str] = None
     global_style: Optional[GlobalStyle] = None
     continuity: Optional[Continuity] = None
     analysis_prompt: Optional[str] = None
+    error_message: Optional[str] = None
+    signed_urls: dict = Field(default_factory=dict)
     scenes: List[Scene] = []
     archived: bool = False
     total_usage: UsageMetrics = Field(default_factory=UsageMetrics)
