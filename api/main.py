@@ -622,6 +622,33 @@ async def upload_asset(file: UploadFile = File(...)):
     return {"gcs_uri": gcs_uri, "signed_url": storage_svc.get_signed_url(gcs_uri)}
 
 
+# --- Key Moments Endpoints ---
+
+
+@app.post("/api/v1/key-moments/analyze", response_model=AIResponseWrapper)
+async def analyze_key_moments(request: dict):
+    if not ai_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    gcs_uri = request.get("gcs_uri")
+    prompt_id = request.get("prompt_id")
+    if not gcs_uri or not prompt_id:
+        raise HTTPException(
+            status_code=400, detail="gcs_uri and prompt_id are required"
+        )
+    mime_type = request.get("mime_type", "video/mp4")
+    schema_id = request.get("schema_id")
+    try:
+        return await ai_svc.analyze_video_key_moments(
+            gcs_uri=gcs_uri,
+            mime_type=mime_type,
+            prompt_id=prompt_id,
+            schema_id=schema_id,
+        )
+    except Exception as e:
+        logger.error(f"Key moments analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # --- System Resource Endpoints ---
 
 

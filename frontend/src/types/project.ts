@@ -139,6 +139,20 @@ export interface Project {
   updatedAt: number
 }
 
+export interface KeyMoment {
+  title: string
+  description: string
+  timestamp_start: string
+  timestamp_end: string
+  category?: string
+  tags?: string[]
+}
+
+export interface KeyMomentsAnalysis {
+  key_moments: KeyMoment[]
+  video_summary?: string
+}
+
 export type SelectCategory =
   | 'directorStyle'
   | 'cameraMovement'

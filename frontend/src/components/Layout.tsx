@@ -42,7 +42,7 @@ export const Sidebar = () => {
 
   const navItems: NavItem[] = [
     { name: 'Movie Productions', icon: Megaphone, path: '/productions' },
-    { name: 'Highlights', icon: Zap, path: '/highlights' },
+    { name: 'Key Moments', icon: Zap, path: '/key-moments' },
     { name: 'Thumbnails', icon: ImageIcon, path: '/thumbnails' },
     { name: 'Orientations', icon: Smartphone, path: '/orientations' },
     { name: 'System Prompts', icon: FileText, path: '/prompts' },

@@ -159,6 +159,17 @@ export const api = {
       return res.json()
     }
   },
+  keyMoments: {
+    analyze: async (data: { gcs_uri: string; mime_type?: string; prompt_id: string; schema_id?: string }): Promise<any> => {
+      const res = await fetch(`${API_BASE_URL}/key-moments/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error(`Key moments analysis failed: ${res.status}`)
+      return res.json()
+    }
+  },
   assets: {
     upload: async (file: File): Promise<{ gcs_uri: string; signed_url: string }> => {
       const formData = new FormData()
