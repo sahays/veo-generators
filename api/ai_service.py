@@ -45,6 +45,13 @@ Break the following creative brief into a scene-by-scene cinematic script.
 Total length: {length} seconds.
 Each scene must be between 2 and 8 seconds.
 
+For each scene, provide:
+- A detailed visual description for video generation
+- Voice-over narration text spoken during the scene
+- A music description for background music (genre, tempo, instruments, mood)
+
+Also define a global soundtrack_style for the production's overall musical direction.
+
 Creative Brief: {concept}
 
 Return a JSON list of scenes following the requested structure."""
@@ -118,6 +125,10 @@ Return a JSON list of scenes following the requested structure."""
                     timestamp_start=s["timestamp_start"],
                     timestamp_end=s["timestamp_end"],
                     metadata=SceneMetadata(**metadata),
+                    narration=s.get("narration"),
+                    narration_enabled=bool(s.get("narration")),
+                    music_description=s.get("music_description"),
+                    music_enabled=bool(s.get("music_description")),
                 )
             )
 

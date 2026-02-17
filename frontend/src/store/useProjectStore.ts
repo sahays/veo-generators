@@ -43,6 +43,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const newScene: Scene = {
         id: `s-${Date.now()}`,
         visual_description: '',
+        narration: '',
+        narration_enabled: false,
+        music_description: '',
+        music_enabled: false,
         timestamp_start: '00:00',
         timestamp_end: '00:05',
         metadata: { location: 'New Set' },

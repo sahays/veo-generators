@@ -18,6 +18,14 @@
             "type": "string",
             "description": "End time in MM:SS format"
           },
+          "narration": {
+            "type": "string",
+            "description": "Voice-over narration text spoken during this scene. Natural, conversational tone matching the scene duration."
+          },
+          "music_description": {
+            "type": "string",
+            "description": "Background music description: genre, tempo, instruments, mood. E.g. 'upbeat electronic with synth pads, 120 BPM'"
+          },
           "metadata": {
             "type": "object",
             "properties": {
@@ -72,7 +80,8 @@
         "mood": { "type": "string", "description": "Overall mood" },
         "color_grading": { "type": "string", "description": "Color grading direction" },
         "lighting_style": { "type": "string", "description": "Lighting approach" },
-        "pace": { "type": "string", "description": "Overall pace and rhythm of the production, e.g. slow, fast, energetic, contemplative, frenetic, steady" }
+        "pace": { "type": "string", "description": "Overall pace and rhythm of the production, e.g. slow, fast, energetic, contemplative, frenetic, steady" },
+        "soundtrack_style": { "type": "string", "description": "Overall soundtrack direction. E.g. 'orchestral cinematic score', 'lo-fi ambient beats'" }
       },
       "required": ["look", "mood", "color_grading", "lighting_style", "pace"]
     },

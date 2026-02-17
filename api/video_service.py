@@ -62,6 +62,22 @@ class VideoService:
         if project and project.continuity and project.continuity.setting_notes:
             parts.append(f"Setting: {project.continuity.setting_notes}.")
         parts.append(scene.visual_description)
+
+        if scene.narration_enabled and scene.narration:
+            parts.append(f'Voice-over narration: "{scene.narration}"')
+
+        if scene.music_enabled:
+            music = scene.music_description
+            if (
+                not music
+                and project
+                and project.global_style
+                and project.global_style.soundtrack_style
+            ):
+                music = project.global_style.soundtrack_style
+            if music:
+                parts.append(f"Background music: {music}.")
+
         return " ".join(parts)
 
     async def generate_scene_video(

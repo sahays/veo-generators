@@ -150,6 +150,10 @@ def _build_prompt_data(scene: Scene, project: Project) -> dict:
         "global_style": project.global_style.dict() if project.global_style else None,
         "continuity": project.continuity.dict() if project.continuity else None,
         "duration": duration,
+        "narration": scene.narration,
+        "narration_enabled": scene.narration_enabled,
+        "music_description": scene.music_description,
+        "music_enabled": scene.music_enabled,
     }
     data["image_prompt"] = _build_flat_image_prompt(data)
     data["video_prompt"] = _build_flat_video_prompt(data)
@@ -209,6 +213,23 @@ def _build_flat_video_prompt(data: dict) -> str:
     if cont and cont.get("setting_notes"):
         parts.append(f"Setting: {cont['setting_notes']}.")
     parts.append(data.get("visual_description", ""))
+
+    # Narration (only if enabled)
+    if data.get("narration_enabled"):
+        narration = data.get("narration")
+        if narration:
+            parts.append(f'Voice-over narration: "{narration}"')
+
+    # Music (only if enabled; scene-level falls back to global soundtrack_style)
+    if data.get("music_enabled"):
+        music = data.get("music_description")
+        if not music:
+            gs = data.get("global_style")
+            if gs and gs.get("soundtrack_style"):
+                music = gs["soundtrack_style"]
+        if music:
+            parts.append(f"Background music: {music}.")
+
     return " ".join(parts)
 
 
