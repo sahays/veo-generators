@@ -1,6 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Sidebar } from './components/Layout'
-import { ConfigSettingsPage } from './components/pages/ConfigSettingsPage'
 import { ProjectForm } from './components/ads/ProjectForm'
 import { RefinePromptView } from './components/ads/RefinePromptView'
 import { ProductionSummary } from './components/ads/ProductionSummary'
@@ -9,6 +8,9 @@ import { DiagnosticsPage } from './components/pages/DiagnosticsPage'
 import { PromptsPage } from './components/pages/PromptsPage'
 import { KeyMomentsLandingPage } from './components/pages/KeyMomentsLandingPage'
 import { KeyMomentsAnalyzePage } from './components/pages/KeyMomentsAnalyzePage'
+import { ThumbnailsLandingPage } from './components/pages/ThumbnailsLandingPage'
+import { ThumbnailsWorkPage } from './components/pages/ThumbnailsWorkPage'
+import { UploadsPage } from './components/pages/UploadsPage'
 
 function App() {
   return (
@@ -19,7 +21,7 @@ function App() {
           <div className="max-w-4xl mx-auto w-full">
             <Routes>
               <Route path="/" element={<Navigate to="/productions" replace />} />
-              
+
               {/* Productions Routes */}
               <Route path="/productions" element={<ProjectList />} />
               <Route path="/productions/new" element={<ProjectForm />} />
@@ -32,15 +34,21 @@ function App() {
               <Route path="/key-moments/analyze" element={<KeyMomentsAnalyzePage />} />
               <Route path="/key-moments/:id" element={<KeyMomentsAnalyzePage />} />
 
+              {/* Thumbnails */}
+              <Route path="/thumbnails" element={<ThumbnailsLandingPage />} />
+              <Route path="/thumbnails/create" element={<ThumbnailsWorkPage />} />
+              <Route path="/thumbnails/:id" element={<ThumbnailsWorkPage />} />
+
+              {/* Uploads */}
+              <Route path="/uploads" element={<UploadsPage />} />
+              <Route path="/uploads/:id" element={<UploadsPage />} />
+
               {/* System Prompts */}
               <Route path="/prompts" element={<PromptsPage />} />
 
               {/* Diagnostics */}
               <Route path="/diagnostics" element={<DiagnosticsPage />} />
 
-              {/* Configuration Routes */}
-              <Route path="/configuration/:category" element={<ConfigSettingsWrapper />} />
-              
               {/* Fallback */}
               <Route path="*" element={<Navigate to="/productions" replace />} />
             </Routes>
@@ -49,15 +57,6 @@ function App() {
       </div>
     </div>
   )
-}
-
-// Wrapper to handle the category param for the existing component
-import { useParams } from 'react-router-dom'
-import { SelectCategory } from './types/project'
-
-const ConfigSettingsWrapper = () => {
-  const { category } = useParams<{ category: string }>()
-  return <ConfigSettingsPage category={category as SelectCategory} />
 }
 
 export default App

@@ -19,6 +19,11 @@ def _load_key_moments_schema():
     return json.loads(schema_path.read_text())
 
 
+def _load_thumbnail_schema():
+    schema_path = Path(__file__).parent / "schemas" / "thumbnail-analysis-schema.json"
+    return json.loads(schema_path.read_text())
+
+
 class AIService:
     def __init__(self, storage_svc=None, firestore_svc=None):
         self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
@@ -289,3 +294,95 @@ Return a JSON list of scenes following the requested structure."""
         )
 
         return AIResponseWrapper(data=data, usage=usage)
+
+    async def analyze_video_for_thumbnails(
+        self,
+        gcs_uri: str,
+        mime_type: str,
+        prompt_id: str,
+    ) -> AIResponseWrapper:
+        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3-pro-preview")
+
+        if not self.firestore_svc:
+            raise ValueError("Firestore service not available")
+        res = self.firestore_svc.get_resource(prompt_id)
+        if not res:
+            raise ValueError(f"Prompt resource not found: {prompt_id}")
+        prompt_text = res.content
+
+        response_schema = _load_thumbnail_schema()
+
+        contents = [
+            types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type),
+            prompt_text,
+        ]
+
+        response = self.client.models.generate_content(
+            model=model_id,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=response_schema,
+            ),
+        )
+
+        data = response.parsed
+        if not isinstance(data, dict):
+            data = {"key_moments": [], "video_summary": ""}
+
+        usage = UsageMetrics(
+            input_tokens=response.usage_metadata.prompt_token_count,
+            output_tokens=response.usage_metadata.candidates_token_count,
+            model_name=model_id,
+            cost_usd=(response.usage_metadata.prompt_token_count * 0.00000125)
+            + (response.usage_metadata.candidates_token_count * 0.00000375),
+        )
+
+        return AIResponseWrapper(data=data, usage=usage)
+
+    async def generate_thumbnail_collage(
+        self,
+        screenshot_uris: list[str],
+        prompt_id: str,
+    ) -> AIResponseWrapper:
+        model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
+
+        if not self.firestore_svc:
+            raise ValueError("Firestore service not available")
+        res = self.firestore_svc.get_resource(prompt_id)
+        if not res:
+            raise ValueError(f"Prompt resource not found: {prompt_id}")
+        prompt_text = res.content
+
+        contents = []
+        for uri in screenshot_uris:
+            contents.append(types.Part.from_uri(file_uri=uri, mime_type="image/png"))
+        contents.append(prompt_text)
+
+        response = self.client.models.generate_content(
+            model=model_id,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(
+                    aspect_ratio="16:9",
+                ),
+            ),
+        )
+
+        image_url = None
+        if response.candidates and response.candidates[0].content.parts:
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, "inline_data") and part.inline_data:
+                    if self.storage_svc:
+                        dest = f"thumbnails/{uuid.uuid4()}.png"
+                        image_url = self.storage_svc.upload_bytes(
+                            part.inline_data.data, dest
+                        )
+                    break
+
+        if not image_url:
+            raise ValueError("Collage generation produced no image")
+
+        usage = UsageMetrics(model_name=model_id, cost_usd=0.03)
+        return AIResponseWrapper(data={"thumbnail_url": image_url}, usage=usage)

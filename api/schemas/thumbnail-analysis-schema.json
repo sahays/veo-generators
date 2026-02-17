@@ -1,0 +1,45 @@
+{
+  "type": "object",
+  "properties": {
+    "video_summary": {
+      "type": "string",
+      "description": "Brief summary of the video"
+    },
+    "key_moments": {
+      "type": "array",
+      "description": "Top 3-4 most visually striking moments for thumbnail creation",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "timestamp_start": {
+            "type": "string",
+            "description": "MM:SS or HH:MM:SS"
+          },
+          "timestamp_end": {
+            "type": "string",
+            "description": "MM:SS or HH:MM:SS"
+          },
+          "visual_characteristics": {
+            "type": "string",
+            "description": "Key visual elements that make this moment thumbnail-worthy"
+          },
+          "category": { "type": "string" },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "timestamp_start",
+          "timestamp_end",
+          "visual_characteristics"
+        ]
+      }
+    }
+  },
+  "required": ["key_moments", "video_summary"]
+}

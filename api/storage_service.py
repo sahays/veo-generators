@@ -69,6 +69,18 @@ class StorageService:
             return gcs_uri
         return self._generate_signed_url(gcs_uri)["url"]
 
+    def get_file_size(self, gcs_uri: str) -> int:
+        """Return the size in bytes of a GCS object, or 0 if not found."""
+        if not gcs_uri or not gcs_uri.startswith("gs://"):
+            return 0
+        try:
+            path = gcs_uri.replace(f"gs://{self.bucket_name}/", "")
+            blob = self.bucket.blob(path)
+            blob.reload()
+            return blob.size or 0
+        except Exception:
+            return 0
+
     def recover_gcs_uri(self, url: str) -> str | None:
         """Try to extract a gs:// URI from an expired signed URL."""
         if not url or url.startswith("gs://"):

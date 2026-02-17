@@ -193,16 +193,107 @@ export const api = {
       return res.json()
     },
   },
+  thumbnails: {
+    list: async (): Promise<any[]> => {
+      const res = await fetch(`${API_BASE_URL}/thumbnails`)
+      if (!res.ok) throw new Error(`Failed to list thumbnails: ${res.status}`)
+      return res.json()
+    },
+    get: async (id: string): Promise<any> => {
+      const res = await fetch(`${API_BASE_URL}/thumbnails/${id}`)
+      if (!res.ok) throw new Error(`Failed to get thumbnail record: ${res.status}`)
+      return res.json()
+    },
+    analyze: async (data: { gcs_uri: string; mime_type?: string; prompt_id: string; video_filename?: string; video_source?: string; production_id?: string }): Promise<any> => {
+      const res = await fetch(`${API_BASE_URL}/thumbnails/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error(`Thumbnail analysis failed: ${res.status}`)
+      return res.json()
+    },
+    saveScreenshots: async (id: string, screenshots: { index: number; gcs_uri: string }[]): Promise<any> => {
+      const res = await fetch(`${API_BASE_URL}/thumbnails/${id}/screenshots`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ screenshots }),
+      })
+      if (!res.ok) throw new Error(`Failed to save screenshots: ${res.status}`)
+      return res.json()
+    },
+    generateCollage: async (id: string, prompt_id: string): Promise<any> => {
+      const res = await fetch(`${API_BASE_URL}/thumbnails/${id}/collage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt_id }),
+      })
+      if (!res.ok) throw new Error(`Collage generation failed: ${res.status}`)
+      return res.json()
+    },
+    archive: async (id: string): Promise<void> => {
+      const res = await fetch(`${API_BASE_URL}/thumbnails/${id}/archive`, { method: 'POST' })
+      if (!res.ok) throw new Error(`Failed to archive thumbnail: ${res.status}`)
+    },
+    delete: async (id: string): Promise<void> => {
+      const res = await fetch(`${API_BASE_URL}/thumbnails/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`Failed to delete thumbnail: ${res.status}`)
+    },
+    listProductionSources: async (): Promise<any[]> => {
+      const res = await fetch(`${API_BASE_URL}/thumbnails/sources/productions`)
+      if (!res.ok) throw new Error(`Failed to list production sources: ${res.status}`)
+      return res.json()
+    },
+  },
   assets: {
-    upload: async (file: File): Promise<{ gcs_uri: string; signed_url: string }> => {
+    upload: async (file: File): Promise<{ id: string; gcs_uri: string; signed_url: string; file_type: string }> => {
       const formData = new FormData()
       formData.append('file', file)
       const res = await fetch(`${API_BASE_URL}/assets/upload`, {
         method: 'POST',
         body: formData,
       })
+      if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
       return res.json()
     }
+  },
+  uploads: {
+    list: async (params?: { file_type?: string; archived?: boolean }): Promise<any[]> => {
+      const qs = new URLSearchParams()
+      if (params?.file_type) qs.append('file_type', params.file_type)
+      if (params?.archived) qs.append('archived', 'true')
+      const query = qs.toString() ? `?${qs.toString()}` : ''
+      const res = await fetch(`${API_BASE_URL}/uploads${query}`)
+      if (!res.ok) throw new Error(`Failed to list uploads: ${res.status}`)
+      return res.json()
+    },
+    get: async (id: string): Promise<any> => {
+      const res = await fetch(`${API_BASE_URL}/uploads/${id}`)
+      if (!res.ok) throw new Error(`Failed to get upload: ${res.status}`)
+      return res.json()
+    },
+    compress: async (id: string, resolution: string): Promise<any> => {
+      const res = await fetch(`${API_BASE_URL}/uploads/${id}/compress`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolution }),
+      })
+      if (!res.ok) throw new Error(`Compression failed: ${res.status}`)
+      return res.json()
+    },
+    compressStatus: async (id: string): Promise<any> => {
+      const res = await fetch(`${API_BASE_URL}/uploads/${id}/compress-status`)
+      if (!res.ok) throw new Error(`Compress status check failed: ${res.status}`)
+      return res.json()
+    },
+    archive: async (id: string): Promise<void> => {
+      const res = await fetch(`${API_BASE_URL}/uploads/${id}/archive`, { method: 'POST' })
+      if (!res.ok) throw new Error(`Failed to archive upload: ${res.status}`)
+    },
+    delete: async (id: string): Promise<void> => {
+      const res = await fetch(`${API_BASE_URL}/uploads/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`Failed to delete upload: ${res.status}`)
+    },
   },
   system: {
     listResources: async (type?: string, category?: string): Promise<any[]> => {

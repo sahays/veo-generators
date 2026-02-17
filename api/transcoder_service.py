@@ -138,6 +138,59 @@ class TranscoderService:
         # Actual file is at {output_uri}{mux_key}.mp4
         return (created_job.name, f"{output_uri}final.mp4")
 
+    def compress_video(self, upload_id: str, input_uri: str, resolution: str) -> tuple:
+        """Compress a video to a lower resolution. Returns (job_name, output_gcs_uri)."""
+        import os
+
+        bucket = os.getenv("GCS_BUCKET")
+        output_uri = f"gs://{bucket}/uploads/compressed/{upload_id}/{resolution}/"
+
+        presets = {
+            "480p": {"width": 854, "height": 480, "crf": 26},
+            "720p": {"width": 1280, "height": 720, "crf": 23},
+        }
+        preset = presets[resolution]
+
+        job = transcoder_v1.types.Job()
+        job.input_uri = input_uri
+        job.output_uri = output_uri
+        job.config = transcoder_v1.types.JobConfig(
+            elementary_streams=[
+                transcoder_v1.types.ElementaryStream(
+                    key="video_stream",
+                    video_stream=transcoder_v1.types.VideoStream(
+                        h264=transcoder_v1.types.VideoStream.H264CodecSettings(
+                            height_pixels=preset["height"],
+                            width_pixels=preset["width"],
+                            crf_level=preset["crf"],
+                            rate_control_mode="crf",
+                            profile="high",
+                            preset="slow",
+                            enable_two_pass=True,
+                            b_frame_count=3,
+                            entropy_coder="cabac",
+                        )
+                    ),
+                ),
+                transcoder_v1.types.ElementaryStream(
+                    key="audio_stream",
+                    audio_stream=transcoder_v1.types.AudioStream(
+                        codec="aac", bitrate_bps=128000
+                    ),
+                ),
+            ],
+            mux_streams=[
+                transcoder_v1.types.MuxStream(
+                    key="compressed",
+                    container="mp4",
+                    elementary_streams=["video_stream", "audio_stream"],
+                )
+            ],
+        )
+
+        created_job = self.client.create_job(parent=self.parent, job=job)
+        return (created_job.name, f"{output_uri}compressed.mp4")
+
     def get_job_status(self, job_name: str) -> str:
         try:
             job = self.client.get_job(name=job_name)

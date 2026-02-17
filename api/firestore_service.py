@@ -2,7 +2,14 @@ import os
 from typing import List, Optional
 from google.cloud import firestore
 from datetime import datetime
-from models import Project, ProjectStatus, SystemResource, KeyMomentsRecord
+from models import (
+    Project,
+    ProjectStatus,
+    SystemResource,
+    KeyMomentsRecord,
+    ThumbnailRecord,
+    UploadRecord,
+)
 
 
 class FirestoreService:
@@ -14,6 +21,8 @@ class FirestoreService:
         self.collection = self.db.collection(f"{prefix}_productions")
         self.resources_collection = self.db.collection(f"{prefix}_prompts")
         self.key_moments_collection = self.db.collection(f"{prefix}_key_moments")
+        self.thumbnails_collection = self.db.collection(f"{prefix}_thumbnails")
+        self.uploads_collection = self.db.collection(f"{prefix}_uploads")
 
     def _all_resources(self) -> List[SystemResource]:
         docs = self.resources_collection.stream()
@@ -136,3 +145,59 @@ class FirestoreService:
 
     def delete_key_moments_analysis(self, record_id: str):
         self.key_moments_collection.document(record_id).delete()
+
+    # --- Thumbnails ---
+
+    def get_thumbnail_records(
+        self, include_archived: bool = False
+    ) -> List[ThumbnailRecord]:
+        docs = self.thumbnails_collection.stream()
+        records = [ThumbnailRecord(**doc.to_dict()) for doc in docs]
+        records.sort(key=lambda r: r.createdAt or "", reverse=True)
+        if not include_archived:
+            records = [r for r in records if not r.archived]
+        return records
+
+    def get_thumbnail_record(self, record_id: str) -> Optional[ThumbnailRecord]:
+        doc = self.thumbnails_collection.document(record_id).get()
+        if doc.exists:
+            return ThumbnailRecord(**doc.to_dict())
+        return None
+
+    def create_thumbnail_record(self, record: ThumbnailRecord):
+        self.thumbnails_collection.document(record.id).set(record.dict())
+
+    def update_thumbnail_record(self, record_id: str, updates: dict):
+        self.thumbnails_collection.document(record_id).update(updates)
+
+    def delete_thumbnail_record(self, record_id: str):
+        self.thumbnails_collection.document(record_id).delete()
+
+    # --- Uploads ---
+
+    def get_upload_records(
+        self, include_archived: bool = False, file_type: Optional[str] = None
+    ) -> List[UploadRecord]:
+        docs = self.uploads_collection.stream()
+        records = [UploadRecord(**doc.to_dict()) for doc in docs]
+        records.sort(key=lambda r: r.createdAt or "", reverse=True)
+        if not include_archived:
+            records = [r for r in records if not r.archived]
+        if file_type:
+            records = [r for r in records if r.file_type == file_type]
+        return records
+
+    def get_upload_record(self, record_id: str) -> Optional[UploadRecord]:
+        doc = self.uploads_collection.document(record_id).get()
+        if doc.exists:
+            return UploadRecord(**doc.to_dict())
+        return None
+
+    def create_upload_record(self, record: UploadRecord):
+        self.uploads_collection.document(record.id).set(record.dict())
+
+    def update_upload_record(self, record_id: str, updates: dict):
+        self.uploads_collection.document(record_id).update(updates)
+
+    def delete_upload_record(self, record_id: str):
+        self.uploads_collection.document(record_id).delete()

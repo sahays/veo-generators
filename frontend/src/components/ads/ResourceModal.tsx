@@ -21,7 +21,9 @@ const CATEGORY_OPTIONS = {
     { value: 'production-movie', label: 'Movie Production' },
     { value: 'production-ad', label: 'Ad Production' },
     { value: 'production-social', label: 'Social Production' },
-    { value: 'key-moments', label: 'Key Moments Analysis' }
+    { value: 'key-moments', label: 'Key Moments Analysis' },
+    { value: 'thumbnails', label: 'Thumbnail Analysis' },
+    { value: 'collage', label: 'Thumbnail Collage' },
   ],
   schema: [
     { value: 'project-schema', label: 'Project Analysis Schema' },
