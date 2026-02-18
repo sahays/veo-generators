@@ -137,13 +137,13 @@ def _sign_production_urls(production: Project, thumbnails_only: bool = False) ->
 
 
 def _accumulate_cost(production_id: str, cost_usd: float):
-    """Add cost to the production's total_usage."""
+    """Add cost to the production's total_usage without clobbering token data."""
     production = firestore_svc.get_production(production_id)
     if not production:
         return
     current = production.total_usage.cost_usd if production.total_usage else 0.0
     firestore_svc.update_production(
-        production_id, {"total_usage": {"cost_usd": current + cost_usd}}
+        production_id, {"total_usage.cost_usd": current + cost_usd}
     )
 
 
@@ -175,19 +175,37 @@ def _build_prompt_data(scene: Scene, project: Project) -> dict:
         "global_style": project.global_style.dict() if project.global_style else None,
         "continuity": project.continuity.dict() if project.continuity else None,
         "duration": duration,
+        "orientation": project.orientation,
         "narration": scene.narration,
         "narration_enabled": scene.narration_enabled,
         "music_description": scene.music_description,
         "music_enabled": scene.music_enabled,
+        "enter_transition": scene.enter_transition,
+        "exit_transition": scene.exit_transition,
+        "music_transition": scene.music_transition,
     }
     data["image_prompt"] = _build_flat_image_prompt(data)
     data["video_prompt"] = _build_flat_video_prompt(data)
     return data
 
 
+def _orientation_directive(orientation: Optional[str]) -> str:
+    """Return a text directive reinforcing the desired aspect ratio."""
+    if orientation == "9:16":
+        return "Aspect ratio: 9:16 (portrait/vertical)."
+    if orientation == "16:9":
+        return "Aspect ratio: 16:9 (landscape/horizontal)."
+    if orientation:
+        return f"Aspect ratio: {orientation}."
+    return ""
+
+
 def _build_flat_image_prompt(data: dict) -> str:
     """Build a flat text prompt for image generation from structured data."""
     parts = []
+    orientation = _orientation_directive(data.get("orientation"))
+    if orientation:
+        parts.append(orientation)
     gs = data.get("global_style")
     if gs:
         parts.append(
@@ -212,6 +230,9 @@ def _build_flat_video_prompt(data: dict) -> str:
     parts = []
     duration = data.get("duration", 8)
     parts.append(f"{duration}-second video clip.")
+    orientation = _orientation_directive(data.get("orientation"))
+    if orientation:
+        parts.append(orientation)
     md = data.get("metadata", {})
     if md.get("camera_angle"):
         parts.append(f"Camera angle: {md['camera_angle']}.")
@@ -238,6 +259,13 @@ def _build_flat_video_prompt(data: dict) -> str:
     if cont and cont.get("setting_notes"):
         parts.append(f"Setting: {cont['setting_notes']}.")
     parts.append(data.get("visual_description", ""))
+
+    if data.get("enter_transition"):
+        parts.append(data["enter_transition"])
+    if data.get("exit_transition"):
+        parts.append(data["exit_transition"])
+    if data.get("music_transition"):
+        parts.append(f"Music transition: {data['music_transition']}")
 
     # Narration (only if enabled)
     if data.get("narration_enabled"):
@@ -347,15 +375,23 @@ async def analyze_production(id: str, request: dict = {}):
     schema_id = request.get("schema_id")
 
     firestore_svc.update_production(id, {"status": ProjectStatus.ANALYZING})
-    result = await ai_svc.analyze_brief(
-        id,
-        p.base_concept,
-        p.video_length,
-        p.orientation,
-        prompt_id=prompt_id,
-        schema_id=schema_id,
-        project_type=p.type,
-    )
+    try:
+        result = await ai_svc.analyze_brief(
+            id,
+            p.base_concept,
+            p.video_length,
+            p.orientation,
+            prompt_id=prompt_id,
+            schema_id=schema_id,
+            project_type=p.type,
+            project=p,
+        )
+    except Exception as e:
+        logger.error(f"Analysis failed for production {id}: {e}")
+        firestore_svc.update_production(
+            id, {"status": ProjectStatus.FAILED, "error_message": str(e)}
+        )
+        raise HTTPException(status_code=500, detail=str(e))
 
     result_data = (
         result.data

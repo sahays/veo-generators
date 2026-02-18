@@ -92,6 +92,9 @@ class Scene(BaseModel):
     timestamp_start: str
     timestamp_end: str
     metadata: SceneMetadata = Field(default_factory=SceneMetadata)
+    enter_transition: Optional[str] = None
+    exit_transition: Optional[str] = None
+    music_transition: Optional[str] = None
     thumbnail_url: Optional[str] = None
     video_url: Optional[str] = None
     generated_prompt: Optional[str] = None
@@ -198,12 +201,23 @@ class UploadRecord(BaseModel):
     file_type: str = "other"  # "video" | "image" | "other"
     gcs_uri: str
     file_size_bytes: int = 0
+    status: str = "completed"  # "pending" | "completed" | "failed"
     compressed_variants: List[CompressedVariant] = []
     parent_upload_id: Optional[str] = None
     resolution_label: Optional[str] = None
     signed_urls: dict = Field(default_factory=dict)
     archived: bool = False
     createdAt: datetime = Field(default_factory=datetime.utcnow)
+
+
+class UploadInitRequest(BaseModel):
+    filename: str
+    content_type: str
+    file_size_bytes: int = 0
+
+
+class UploadCompleteRequest(BaseModel):
+    record_id: str
 
 
 class AIResponseWrapper(BaseModel):

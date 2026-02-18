@@ -176,13 +176,18 @@ class FirestoreService:
     # --- Uploads ---
 
     def get_upload_records(
-        self, include_archived: bool = False, file_type: Optional[str] = None
+        self,
+        include_archived: bool = False,
+        file_type: Optional[str] = None,
+        include_pending: bool = False,
     ) -> List[UploadRecord]:
         docs = self.uploads_collection.stream()
         records = [UploadRecord(**doc.to_dict()) for doc in docs]
         records.sort(key=lambda r: r.createdAt or "", reverse=True)
         if not include_archived:
             records = [r for r in records if not r.archived]
+        if not include_pending:
+            records = [r for r in records if r.status != "pending"]
         if file_type:
             records = [r for r in records if r.file_type == file_type]
         return records

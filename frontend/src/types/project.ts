@@ -17,6 +17,9 @@ export const sceneSchema = z.object({
     style: z.string().optional(),
     mood: z.string().optional(),
   }).optional(),
+  enter_transition: z.string().optional(),
+  exit_transition: z.string().optional(),
+  music_transition: z.string().optional(),
   thumbnail_url: z.string().optional(),
   video_url: z.string().optional(),
   generated_prompt: z.string().optional(),
@@ -71,9 +74,10 @@ export interface SystemResource {
 }
 
 export interface UsageMetrics {
-  total_input_tokens: number
-  total_output_tokens: number
-  estimated_cost_usd: number
+  input_tokens: number
+  output_tokens: number
+  model_name: string
+  cost_usd: number
 }
 
 export interface MediaFile {
@@ -134,7 +138,7 @@ export interface Project {
   final_video_url?: string
   scenes: Scene[]
   archived?: boolean
-  usage: UsageMetrics
+  total_usage: UsageMetrics
   createdAt: number
   updatedAt: number
 }
@@ -215,6 +219,7 @@ export interface UploadRecord {
   file_type: 'video' | 'image' | 'other'
   gcs_uri: string
   file_size_bytes: number
+  status?: 'pending' | 'completed' | 'failed'
   compressed_variants: CompressedVariant[]
   parent_upload_id?: string
   resolution_label?: string

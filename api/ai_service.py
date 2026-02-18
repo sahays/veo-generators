@@ -46,6 +46,7 @@ class AIService:
         prompt_id: Optional[str] = None,
         schema_id: Optional[str] = None,
         project_type: Optional[str] = None,
+        project: Optional[Project] = None,
     ) -> AIResponseWrapper:
         model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3-pro-preview")
 
@@ -59,6 +60,11 @@ For each scene, provide:
 - A detailed visual description for video generation
 - Voice-over narration text spoken during the scene
 - A music description for background music (genre, tempo, instruments, mood)
+
+For each scene, also provide:
+- An enter_transition: how the visuals begin, connecting from the previous scene (omit for the first scene)
+- An exit_transition: how the visuals end, leading into the next scene (omit for the last scene)
+- A music_transition: how background music should flow from the previous scene — prefer continuing the same track with gradual shifts in intensity/tempo rather than abrupt changes. Use crossfades, dynamic builds, or drops to silence only for dramatic effect. Omit for the first scene.
 
 Also define a global soundtrack_style for the production's overall musical direction.
 
@@ -84,8 +90,20 @@ Return a JSON list of scenes following the requested structure."""
                     system_prompt_text = res.content
 
         # Safe substitution: missing placeholders resolve to empty string
+        ref_url = project.reference_image_url if project else None
+        ref_images_note = (
+            "A reference image is attached above — use it as a visual style guide."
+            if ref_url and ref_url.startswith("gs://")
+            else ""
+        )
         prompt = system_prompt_text.format_map(
-            defaultdict(str, length=length, orientation=orientation, concept=concept)
+            defaultdict(
+                str,
+                length=length,
+                orientation=orientation,
+                concept=concept,
+                ref_images=ref_images_note,
+            )
         )
 
         # 2. Resolve Schema
@@ -102,9 +120,17 @@ Return a JSON list of scenes following the requested structure."""
                 if res:
                     response_schema = json.loads(res.content)
 
+        # Build multimodal content: optional reference image + text prompt
+        contents = []
+        if ref_url and ref_url.startswith("gs://"):
+            contents.append(
+                types.Part.from_uri(file_uri=ref_url, mime_type="image/png")
+            )
+        contents.append(prompt)
+
         response = self.client.models.generate_content(
             model=model_id,
-            contents=prompt,
+            contents=contents,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json", response_schema=response_schema
             ),
@@ -139,6 +165,9 @@ Return a JSON list of scenes following the requested structure."""
                     narration_enabled=bool(s.get("narration")),
                     music_description=s.get("music_description"),
                     music_enabled=bool(s.get("music_description")),
+                    enter_transition=s.get("enter_transition"),
+                    exit_transition=s.get("exit_transition"),
+                    music_transition=s.get("music_transition"),
                 )
             )
 
@@ -160,9 +189,20 @@ Return a JSON list of scenes following the requested structure."""
             usage=usage,
         )
 
-    def _build_scene_prompt(self, scene: Scene, project: Optional[Project]) -> str:
+    def _build_scene_prompt(
+        self,
+        scene: Scene,
+        project: Optional[Project],
+        orientation: Optional[str] = None,
+    ) -> str:
         """Build a rich prompt with production context for image generation."""
         parts = []
+        if orientation == "9:16":
+            parts.append("Aspect ratio: 9:16 (portrait/vertical).")
+        elif orientation == "16:9":
+            parts.append("Aspect ratio: 16:9 (landscape/horizontal).")
+        elif orientation:
+            parts.append(f"Aspect ratio: {orientation}.")
         if project and project.global_style:
             gs = project.global_style
             parts.append(
@@ -189,7 +229,9 @@ Return a JSON list of scenes following the requested structure."""
     ) -> AIResponseWrapper:
         model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
 
-        enriched_prompt = prompt_override or self._build_scene_prompt(scene, project)
+        enriched_prompt = prompt_override or self._build_scene_prompt(
+            scene, project, orientation=orientation
+        )
 
         # Build multimodal content: text prompt + optional reference image
         contents = []

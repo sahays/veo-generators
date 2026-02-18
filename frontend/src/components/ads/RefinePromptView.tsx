@@ -2,13 +2,14 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Sparkles, Video, Play, ImageIcon,
-  RotateCcw, Clock, DollarSign, Cpu, Save,
+  RotateCcw, Clock, Save,
   Loader2, LayoutGrid, List, Plus, Lock, AlertCircle,
   Pencil, CheckCircle2, Mic, Music
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button, Card } from '@/components/Common'
 import { PromptModal } from '@/components/ads/PromptModal'
+import { CostBreakdownPill } from '@/components/ads/CostBreakdownPill'
 import { useProjectStore } from '@/store/useProjectStore'
 import type { Scene } from '@/types/project'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -79,7 +80,8 @@ export const RefinePromptView = () => {
       })
       .catch((err) => {
         console.error('Analysis failed:', err)
-        setAnalysisError('Gemini analysis failed. Please try again.')
+        const detail = err instanceof Error ? err.message : String(err)
+        setAnalysisError(`Gemini analysis failed: ${detail}`)
         setIsAnalyzing(false)
       })
   }, [scenes.length, isAnalyzing, isReadOnly, tempProjectData, id, setTempProjectData])
@@ -182,7 +184,8 @@ export const RefinePromptView = () => {
   }, [(tempProjectData as any)?.status, (tempProjectData as any)?.id, id])
 
   const totalUsage = (tempProjectData as any)?.total_usage
-  const totalTokens = (totalUsage?.input_tokens || 0) + (totalUsage?.output_tokens || 0)
+  const inputTokens = totalUsage?.input_tokens || 0
+  const outputTokens = totalUsage?.output_tokens || 0
   const estimatedCost = totalUsage?.cost_usd || 0
 
   if (analysisError) {
@@ -273,9 +276,12 @@ export const RefinePromptView = () => {
             </button>
           </div>
 
-          <div className="hidden md:flex flex-col items-end px-4 border-r border-border">
-            <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Est. Cost</span>
-            <span className="text-sm font-mono font-bold text-accent-dark">${estimatedCost.toFixed(3)}</span>
+          <div className="hidden md:flex items-center px-4 border-r border-border">
+            <CostBreakdownPill
+              inputTokens={inputTokens}
+              outputTokens={outputTokens}
+              totalCost={estimatedCost}
+            />
           </div>
           
           {(() => {
@@ -325,7 +331,10 @@ export const RefinePromptView = () => {
 
       {(tempProjectData as any)?.status === 'completed' && (tempProjectData as any)?.final_video_url && (
         <Card className="p-0 overflow-hidden">
-          <div className="relative aspect-video max-w-3xl mx-auto">
+          <div className={cn(
+            "relative mx-auto",
+            (tempProjectData as any)?.orientation === '9:16' ? "aspect-[9/16] max-w-sm" : "aspect-video max-w-3xl"
+          )}>
             <video
               src={(tempProjectData as any).final_video_url}
               controls
@@ -358,6 +367,7 @@ export const RefinePromptView = () => {
                 layout={layout}
                 isReadOnly={isReadOnly}
                 productionId={(tempProjectData as any)?.id || id || ''}
+                orientation={(tempProjectData as any)?.orientation || '16:9'}
                 onUpdate={(updates) => updateScene(scene.id, updates)}
               />
             </motion.div>
@@ -371,26 +381,17 @@ export const RefinePromptView = () => {
         </div>
       )}
 
-      <motion.div 
-        initial={{ y: 100 }} 
+      <motion.div
+        initial={{ y: 100 }}
         animate={{ y: 0 }}
-        className="fixed bottom-6 left-1/2 -translate-x-1/2 glass bg-card/90 px-6 py-3 rounded-full shadow-2xl flex items-center gap-8 z-50 border-accent/20"
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50"
       >
-        <div className="flex items-center gap-2">
-          <Cpu className="text-accent-dark" size={16} />
-          <div className="flex flex-col">
-            <span className="text-[9px] uppercase font-bold text-muted-foreground leading-none">Usage</span>
-            <span className="text-xs font-mono font-bold">{totalTokens.toLocaleString()} tokens</span>
-          </div>
-        </div>
-        <div className="w-px h-6 bg-border" />
-        <div className="flex items-center gap-2">
-          <DollarSign className="text-accent-dark" size={16} />
-          <div className="flex flex-col">
-            <span className="text-[9px] uppercase font-bold text-muted-foreground leading-none">Cost</span>
-            <span className="text-xs font-mono font-bold">${estimatedCost.toFixed(3)}</span>
-          </div>
-        </div>
+        <CostBreakdownPill
+          inputTokens={inputTokens}
+          outputTokens={outputTokens}
+          totalCost={estimatedCost}
+          className="glass bg-card/90 shadow-2xl rounded-full border-accent/20 [&>button]:px-4 [&>button]:py-2.5 [&>button]:text-xs"
+        />
       </motion.div>
     </motion.div>
   )
@@ -536,6 +537,7 @@ const SceneItem = ({
   layout,
   isReadOnly,
   productionId,
+  orientation,
   onUpdate
 }: {
   scene: Scene,
@@ -543,8 +545,11 @@ const SceneItem = ({
   layout: 'grid' | 'list',
   isReadOnly: boolean,
   productionId: string,
+  orientation: string,
   onUpdate: (updates: Partial<Scene>) => void
 }) => {
+  const isPortrait = orientation === '9:16'
+  const aspectClass = isPortrait ? 'aspect-[9/16]' : 'aspect-video'
   const [isGeneratingFrame, setIsGeneratingFrame] = useState(false)
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -649,7 +654,7 @@ const SceneItem = ({
     return (
       <>
         <Card className="p-0 overflow-hidden group border-border/40 hover:border-accent/50 transition-all">
-          <div className="relative aspect-video overflow-hidden">
+          <div className={cn("relative overflow-hidden", aspectClass)}>
             <SceneMediaCarousel
               thumbnailUrl={scene.thumbnail_url}
               videoUrl={scene.video_url}
@@ -901,7 +906,7 @@ const SceneItem = ({
             </div>
           </div>
 
-          <div className="relative lg:col-span-4 aspect-video rounded-xl bg-muted/50 border border-dashed border-border flex items-center justify-center overflow-hidden">
+          <div className={cn("relative lg:col-span-4 rounded-xl bg-muted/50 border border-dashed border-border flex items-center justify-center overflow-hidden", aspectClass)}>
             <SceneMediaCarousel
               thumbnailUrl={scene.thumbnail_url}
               videoUrl={scene.video_url}

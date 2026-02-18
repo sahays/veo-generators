@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Play, FileText, LayoutGrid, Cpu, CheckCircle2, Plus, Loader2, Eye, ChevronDown } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { Button, Card } from '@/components/Common'
 import { PromptModal } from '@/components/ads/PromptModal'
+import { CostBreakdownPill } from '@/components/ads/CostBreakdownPill'
 import { useProjectStore } from '@/store/useProjectStore'
 import type { Project, Scene } from '@/types/project'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -50,8 +52,12 @@ export const ProductionSummary = () => {
 
   const project = tempProjectData as unknown as Project
   const scenes = tempProjectData.scenes || []
-  const totalTokens = scenes.reduce((acc, s) => acc + (s.tokens_consumed?.input || 0) + (s.tokens_consumed?.output || 0), 0)
-  const estimatedCost = (totalTokens / 1000) * 0.015
+  const totalUsage = project.total_usage
+  const inputTokens = totalUsage?.input_tokens || 0
+  const outputTokens = totalUsage?.output_tokens || 0
+  const totalCost = totalUsage?.cost_usd || 0
+  const isPortrait = tempProjectData.orientation === '9:16'
+  const aspectClass = isPortrait ? 'aspect-[9/16]' : 'aspect-video'
 
   return (
     <motion.div
@@ -89,7 +95,7 @@ export const ProductionSummary = () => {
         {/* Hero: Video Player */}
         <div className="lg:col-span-2 space-y-6">
           {project.final_video_url ? (
-            <div className="aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/5">
+            <div className={cn("bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/5", isPortrait ? "aspect-[9/16] max-w-sm mx-auto" : "aspect-video")}>
               <video
                 controls
                 className="w-full h-full"
@@ -98,7 +104,7 @@ export const ProductionSummary = () => {
               />
             </div>
           ) : (
-            <div className="aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl relative group border border-white/5">
+            <div className={cn("bg-black rounded-2xl overflow-hidden shadow-2xl relative group border border-white/5", isPortrait ? "aspect-[9/16] max-w-sm mx-auto" : "aspect-video")}>
               <div className="absolute inset-0 flex items-center justify-center bg-accent/5">
                 <div className="w-20 h-20 rounded-full bg-accent/20 backdrop-blur-md flex items-center justify-center border border-accent/30">
                   <Play className="text-accent-dark fill-accent-dark ml-1" size={32} />
@@ -150,16 +156,23 @@ export const ProductionSummary = () => {
           <Card title="Resource Usage" icon={Cpu}>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Total Tokens</span>
-                <span className="text-sm font-mono font-bold">{totalTokens.toLocaleString()}</span>
+                <span className="text-xs text-muted-foreground">Input Tokens</span>
+                <span className="text-sm font-mono font-bold">{inputTokens.toLocaleString()}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Production Cost</span>
-                <span className="text-sm font-mono font-bold text-accent-dark">${estimatedCost.toFixed(3)}</span>
+                <span className="text-xs text-muted-foreground">Output Tokens</span>
+                <span className="text-sm font-mono font-bold">{outputTokens.toLocaleString()}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">Scenes</span>
                 <span className="text-sm font-mono font-bold">{scenes.length}</span>
+              </div>
+              <div className="pt-3 border-t border-border/50">
+                <CostBreakdownPill
+                  inputTokens={inputTokens}
+                  outputTokens={outputTokens}
+                  totalCost={totalCost}
+                />
               </div>
             </div>
           </Card>
@@ -193,7 +206,7 @@ export const ProductionSummary = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {scenes.map((scene: Scene, i: number) => (
               <div key={scene.id} className="glass rounded-xl overflow-hidden group border border-border/40">
-                <div className="aspect-video relative">
+                <div className={cn("relative", aspectClass)}>
                   {scene.thumbnail_url ? (
                     <img src={scene.thumbnail_url} className="w-full h-full object-cover" />
                   ) : (
