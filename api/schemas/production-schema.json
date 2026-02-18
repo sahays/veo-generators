@@ -68,6 +68,18 @@
               }
             },
             "required": ["location", "camera_angle", "camera_movement", "cinematic_style"]
+          },
+          "enter_transition": {
+            "type": "string",
+            "description": "How this scene visually begins, connecting from the previous scene (omit for the first scene)"
+          },
+          "exit_transition": {
+            "type": "string",
+            "description": "How this scene visually ends, leading into the next scene (omit for the last scene)"
+          },
+          "music_transition": {
+            "type": "string",
+            "description": "How background music flows into this scene from the previous (e.g. continue same track, crossfade to new theme, drop to silence). Omit for the first scene."
           }
         },
         "required": ["visual_description", "timestamp_start", "timestamp_end", "metadata"]

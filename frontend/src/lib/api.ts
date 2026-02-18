@@ -53,7 +53,10 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt_id, schema_id }),
       })
-      if (!res.ok) throw new Error(`Analysis failed: ${res.status}`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.detail || `Analysis failed: ${res.status}`)
+      }
       return res.json()
     },
     buildPrompt: async (id: string, sceneId: string): Promise<any> => {

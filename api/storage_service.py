@@ -93,6 +93,38 @@ class StorageService:
                 pass
         return None
 
+    def generate_upload_signed_url(
+        self, destination_path: str, content_type: str
+    ) -> dict:
+        """Generate a v4 signed PUT URL for direct-to-GCS uploads (30-min expiry)."""
+        blob = self.bucket.blob(destination_path)
+
+        from google.auth.transport import requests
+
+        request = requests.Request()
+        self.credentials.refresh(request)
+
+        upload_expiry = timedelta(minutes=30)
+        expires_at = datetime.now(timezone.utc) + upload_expiry
+        url = blob.generate_signed_url(
+            version="v4",
+            expiration=upload_expiry,
+            method="PUT",
+            content_type=content_type,
+            service_account_email=self.credentials.service_account_email,
+            access_token=self.credentials.token,
+        )
+        return {
+            "upload_url": url,
+            "gcs_uri": f"gs://{self.bucket_name}/{destination_path}",
+            "expires_at": expires_at.isoformat(),
+        }
+
+    def blob_exists(self, gcs_uri: str) -> bool:
+        """Check whether a blob exists in GCS."""
+        path = gcs_uri.replace(f"gs://{self.bucket_name}/", "")
+        return self.bucket.blob(path).exists()
+
     def resolve_cached_url(self, gcs_uri: str, cache: dict) -> tuple[str, bool]:
         """Return (signed_url, changed) using cache. Only re-signs if close to expiry."""
         if not gcs_uri or not gcs_uri.startswith("gs://"):

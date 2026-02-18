@@ -33,6 +33,13 @@ class VideoService:
         """Build a video-specific prompt with duration and camera movement."""
         parts = []
         parts.append(f"{duration}-second video clip.")
+        orientation = project.orientation if project else None
+        if orientation == "9:16":
+            parts.append("Aspect ratio: 9:16 (portrait/vertical).")
+        elif orientation == "16:9":
+            parts.append("Aspect ratio: 16:9 (landscape/horizontal).")
+        elif orientation:
+            parts.append(f"Aspect ratio: {orientation}.")
         if scene.metadata:
             md = scene.metadata
             if md.camera_angle:
@@ -62,6 +69,13 @@ class VideoService:
         if project and project.continuity and project.continuity.setting_notes:
             parts.append(f"Setting: {project.continuity.setting_notes}.")
         parts.append(scene.visual_description)
+
+        if scene.enter_transition:
+            parts.append(scene.enter_transition)
+        if scene.exit_transition:
+            parts.append(scene.exit_transition)
+        if scene.music_transition:
+            parts.append(f"Music transition: {scene.music_transition}")
 
         if scene.narration_enabled and scene.narration:
             parts.append(f'Voice-over narration: "{scene.narration}"')

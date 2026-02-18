@@ -51,32 +51,31 @@ const ThumbnailCard = ({
       onClick={onClick}
       className="glass bg-card p-5 rounded-xl text-left transition-all duration-200 hover:border-accent/40 group w-full"
     >
-      <div className="flex items-start justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <span className={cn(
-            "px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border",
-            record.video_source === 'production'
-              ? "bg-indigo-500/10 text-indigo-600 border-indigo-500/20"
-              : "bg-accent/10 text-accent-dark border-accent/20"
-          )}>
-            {record.video_source === 'production' ? (
-              <span className="flex items-center gap-1"><Film size={8} /> Production</span>
-            ) : (
-              <span className="flex items-center gap-1"><Upload size={8} /> Upload</span>
-            )}
-          </span>
-          <h4 className="text-sm font-heading font-bold text-foreground group-hover:text-accent-dark transition-colors line-clamp-1">
-            {record.video_filename || 'Untitled video'}
-          </h4>
-        </div>
+      <div className="flex items-center gap-1.5 mb-1.5">
         <span className={cn(
-          "flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0",
+          "px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border shrink-0",
+          record.video_source === 'production'
+            ? "bg-indigo-500/10 text-indigo-600 border-indigo-500/20"
+            : "bg-accent/10 text-accent-dark border-accent/20"
+        )}>
+          {record.video_source === 'production' ? (
+            <span className="flex items-center gap-1"><Film size={8} /> Production</span>
+          ) : (
+            <span className="flex items-center gap-1"><Upload size={8} /> Upload</span>
+          )}
+        </span>
+        <span className={cn(
+          "flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-medium shrink-0",
           STATUS_STYLES[record.status] || STATUS_STYLES.analyzing
         )}>
           {record.status === 'completed' ? <Image size={10} /> : <Camera size={10} />}
           {STATUS_LABELS[record.status] || record.status}
         </span>
       </div>
+
+      <h4 className="text-sm font-heading font-bold text-foreground group-hover:text-accent-dark transition-colors line-clamp-1 mb-2">
+        {record.video_filename || 'Untitled video'}
+      </h4>
 
       {record.thumbnail_signed_url && (
         <div className="mb-3 rounded-lg overflow-hidden border border-border aspect-video bg-black">
@@ -170,7 +169,7 @@ export const ThumbnailsLandingPage = () => {
           <Button icon={Image} onClick={() => navigate('/thumbnails/create')}>Create Thumbnail</Button>
         </motion.div>
       ) : (
-        <div className="grid grid-cols-1 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {records.map((record) => (
             <ThumbnailCard
               key={record.id}

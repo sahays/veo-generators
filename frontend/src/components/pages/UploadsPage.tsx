@@ -509,14 +509,13 @@ const UploadsLandingView = () => {
 
     const results = await Promise.allSettled(
       files.map(async (file, i) => {
-        setUploading(prev => prev.map((e, j) =>
-          j === baseIdx + i ? { ...e, progress: 30 } : e
-        ))
         try {
-          const result = await api.assets.upload(file)
-          setUploading(prev => prev.map((e, j) =>
-            j === baseIdx + i ? { ...e, progress: 100 } : e
-          ))
+          const { promise } = api.assets.directUpload(file, (pct) => {
+            setUploading(prev => prev.map((e, j) =>
+              j === baseIdx + i ? { ...e, progress: pct } : e
+            ))
+          })
+          const result = await promise
           return result
         } catch (err) {
           setUploading(prev => prev.map((e, j) =>

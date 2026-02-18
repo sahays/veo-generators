@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Plus, FolderOpen, Clock, Loader2, CheckCircle2, AlertCircle, Image as ImageIcon, Archive } from 'lucide-react'
+import { CostBreakdownPill } from '@/components/ads/CostBreakdownPill'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/Common'
 import { useProjectStore } from '@/store/useProjectStore'
@@ -62,7 +63,7 @@ const ProjectCard = ({ project, onClick, onArchive }: { project: Project; onClic
           {project.scenes.slice(0, 4).map((scene) => (
             <div
               key={scene.id}
-              className="relative aspect-video w-20 shrink-0 rounded-md overflow-hidden bg-muted border border-border/50"
+              className={cn("relative w-20 shrink-0 rounded-md overflow-hidden bg-muted border border-border/50", project.orientation === '9:16' ? 'aspect-[9/16]' : 'aspect-video')}
             >
               {scene.thumbnail_url ? (
                 <img src={scene.thumbnail_url} className="w-full h-full object-cover" />
@@ -74,7 +75,7 @@ const ProjectCard = ({ project, onClick, onArchive }: { project: Project; onClic
             </div>
           ))}
           {project.scenes.length > 4 && (
-            <div className="aspect-video w-10 shrink-0 rounded-md bg-accent/10 flex items-center justify-center text-[10px] font-bold text-accent-dark border border-accent/20">
+            <div className={cn("w-10 shrink-0 rounded-md bg-accent/10 flex items-center justify-center text-[10px] font-bold text-accent-dark border border-accent/20", project.orientation === '9:16' ? 'aspect-[9/16]' : 'aspect-video')}>
               +{project.scenes.length - 4}
             </div>
           )}
@@ -93,6 +94,13 @@ const ProjectCard = ({ project, onClick, onArchive }: { project: Project; onClic
             <span className="bg-muted px-1.5 py-0.5 rounded border border-border/50 text-[8px] font-mono">
               S:v{project.schema_info.version}
             </span>
+          )}
+          {project.total_usage?.cost_usd > 0 && (
+            <CostBreakdownPill
+              inputTokens={project.total_usage.input_tokens || 0}
+              outputTokens={project.total_usage.output_tokens || 0}
+              totalCost={project.total_usage.cost_usd}
+            />
           )}
         </div>
         <button
