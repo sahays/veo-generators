@@ -24,7 +24,16 @@ def get_rate_limit_key(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-limiter = Limiter(key_func=get_rate_limit_key, default_limits=["60/minute"])
+def _exempt_health_check(request: Request) -> bool:
+    """Return True to skip rate limiting for health probes."""
+    return request.url.path == "/health"
+
+
+limiter = Limiter(
+    key_func=get_rate_limit_key,
+    default_limits=["60/minute"],
+    request_filters=[_exempt_health_check],
+)
 
 # Global service instances (initialized on startup)
 firestore_svc: FirestoreService | None = None

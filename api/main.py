@@ -37,13 +37,6 @@ app = FastAPI(title="Veo Production API", version="1.0.0")
 app.state.limiter = deps.limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-
-# Exempt health check from rate limiting
-@deps.limiter.request_filter
-def _health_check_filter(request: Request) -> bool:
-    return request.url.path == "/health"
-
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
