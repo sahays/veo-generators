@@ -1,3 +1,5 @@
+import { useAuthStore } from '@/store/useAuthStore'
+
 const API_BASE_URL = '/api/v1'
 
 export interface Project {
@@ -18,21 +20,82 @@ export interface Project {
   updated_at: string
 }
 
+function getInviteCode(): string {
+  return useAuthStore.getState().inviteCode || ''
+}
+
+function handleAuthError(res: Response) {
+  if (res.status === 403) {
+    useAuthStore.getState().logout()
+  }
+}
+
+async function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const code = getInviteCode()
+  const headers = new Headers(init?.headers)
+  if (code) {
+    headers.set('X-Invite-Code', code)
+  }
+  const res = await fetch(input, { ...init, headers })
+  handleAuthError(res)
+  return res
+}
+
 export const api = {
+  auth: {
+    validate: async (code: string): Promise<{ valid: boolean; is_master: boolean }> => {
+      const res = await fetch(`${API_BASE_URL}/auth/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      })
+      if (!res.ok) throw new Error(`Validation failed: ${res.status}`)
+      return res.json()
+    },
+    listCodes: async (): Promise<any[]> => {
+      const res = await authFetch(`${API_BASE_URL}/auth/codes`)
+      if (!res.ok) throw new Error(`Failed to list codes: ${res.status}`)
+      return res.json()
+    },
+    createCode: async (data: { code: string; label?: string; expires_at?: string }): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/auth/codes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.detail || `Failed to create code: ${res.status}`)
+      }
+      return res.json()
+    },
+    revokeCode: async (id: string): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/auth/codes/${id}/revoke`, { method: 'POST' })
+      if (!res.ok) throw new Error(`Failed to revoke code: ${res.status}`)
+    },
+    activateCode: async (id: string): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/auth/codes/${id}/activate`, { method: 'POST' })
+      if (!res.ok) throw new Error(`Failed to activate code: ${res.status}`)
+    },
+    deleteCode: async (id: string): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/auth/codes/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`Failed to delete code: ${res.status}`)
+    },
+  },
   projects: {
     list: async (params?: { archived?: boolean }): Promise<any[]> => {
       const query = params?.archived ? '?archived=true' : ''
-      const res = await fetch(`${API_BASE_URL}/productions${query}`)
+      const res = await authFetch(`${API_BASE_URL}/productions${query}`)
       if (!res.ok) throw new Error(`Failed to list productions: ${res.status}`)
       return res.json()
     },
     get: async (id: string): Promise<any> => {
-      const res = await fetch(`${API_BASE_URL}/productions/${id}`)
+      const res = await authFetch(`${API_BASE_URL}/productions/${id}`)
       if (!res.ok) throw new Error(`Failed to get production: ${res.status}`)
       return res.json()
     },
     create: async (project: any): Promise<any> => {
-      const res = await fetch(`${API_BASE_URL}/productions`, {
+      const res = await authFetch(`${API_BASE_URL}/productions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(project),
@@ -41,14 +104,14 @@ export const api = {
       return res.json()
     },
     updateScene: async (id: string, sceneId: string, updates: Record<string, any>): Promise<void> => {
-      await fetch(`${API_BASE_URL}/productions/${id}/scenes/${sceneId}`, {
+      await authFetch(`${API_BASE_URL}/productions/${id}/scenes/${sceneId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       })
     },
     analyze: async (id: string, prompt_id?: string, schema_id?: string): Promise<any> => {
-      const res = await fetch(`${API_BASE_URL}/productions/${id}/analyze`, {
+      const res = await authFetch(`${API_BASE_URL}/productions/${id}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt_id, schema_id }),
@@ -60,7 +123,7 @@ export const api = {
       return res.json()
     },
     buildPrompt: async (id: string, sceneId: string): Promise<any> => {
-      const res = await fetch(`${API_BASE_URL}/productions/${id}/scenes/${sceneId}/build-prompt`, {
+      const res = await authFetch(`${API_BASE_URL}/productions/${id}/scenes/${sceneId}/build-prompt`, {
         method: 'POST',
       })
       if (!res.ok) throw new Error(`Build prompt failed: ${res.status}`)
@@ -72,7 +135,7 @@ export const api = {
         opts.headers = { 'Content-Type': 'application/json' }
         opts.body = JSON.stringify({ prompt_data: promptData })
       }
-      const res = await fetch(`${API_BASE_URL}/productions/${id}/scenes/${sceneId}/frame`, opts)
+      const res = await authFetch(`${API_BASE_URL}/productions/${id}/scenes/${sceneId}/frame`, opts)
       if (!res.ok) throw new Error(`Frame generation failed: ${res.status}`)
       return res.json()
     },
@@ -82,7 +145,7 @@ export const api = {
         opts.headers = { 'Content-Type': 'application/json' }
         opts.body = JSON.stringify({ prompt_data: promptData })
       }
-      const res = await fetch(`${API_BASE_URL}/productions/${id}/scenes/${sceneId}/video`, opts)
+      const res = await authFetch(`${API_BASE_URL}/productions/${id}/scenes/${sceneId}/video`, opts)
       if (!res.ok) throw new Error(`Video generation failed: ${res.status}`)
       return res.json()
     },
@@ -91,41 +154,41 @@ export const api = {
       if (productionId) params.append('production_id', productionId)
       if (sceneId) params.append('scene_id', sceneId)
       const qs = params.toString() ? `?${params.toString()}` : ''
-      const res = await fetch(`${API_BASE_URL}/diagnostics/operations/${operationName}${qs}`)
+      const res = await authFetch(`${API_BASE_URL}/diagnostics/operations/${operationName}${qs}`)
       if (!res.ok) throw new Error(`Operation check failed: ${res.status}`)
       return res.json()
     },
     render: async (id: string): Promise<any> => {
-      const res = await fetch(`${API_BASE_URL}/productions/${id}/render`, {
+      const res = await authFetch(`${API_BASE_URL}/productions/${id}/render`, {
         method: 'POST',
       })
       if (!res.ok) throw new Error(`Render failed: ${res.status}`)
       return res.json()
     },
     stitch: async (id: string): Promise<any> => {
-      const res = await fetch(`${API_BASE_URL}/productions/${id}/stitch`, {
+      const res = await authFetch(`${API_BASE_URL}/productions/${id}/stitch`, {
         method: 'POST',
       })
       if (!res.ok) throw new Error(`Stitch failed: ${res.status}`)
       return res.json()
     },
     checkStitchStatus: async (id: string): Promise<any> => {
-      const res = await fetch(`${API_BASE_URL}/productions/${id}/stitch-status`)
+      const res = await authFetch(`${API_BASE_URL}/productions/${id}/stitch-status`)
       if (!res.ok) throw new Error(`Stitch status check failed: ${res.status}`)
       return res.json()
     },
     delete: async (id: string): Promise<void> => {
-      await fetch(`${API_BASE_URL}/productions/${id}`, {
+      await authFetch(`${API_BASE_URL}/productions/${id}`, {
         method: 'DELETE',
       })
     },
     archive: async (id: string): Promise<void> => {
-      await fetch(`${API_BASE_URL}/productions/${id}/archive`, {
+      await authFetch(`${API_BASE_URL}/productions/${id}/archive`, {
         method: 'POST',
       })
     },
     unarchive: async (id: string): Promise<void> => {
-      await fetch(`${API_BASE_URL}/productions/${id}/unarchive`, {
+      await authFetch(`${API_BASE_URL}/productions/${id}/unarchive`, {
         method: 'POST',
       })
     }
@@ -138,7 +201,7 @@ export const api = {
       location?: string
       camera_movement?: string
     }): Promise<{ refined_prompt: string }> => {
-      const res = await fetch(`${API_BASE_URL}/ai/optimize-prompt`, {
+      const res = await authFetch(`${API_BASE_URL}/ai/optimize-prompt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -149,7 +212,7 @@ export const api = {
       project_id: string
       refined_prompt: string
     }): Promise<any[]> => {
-      const res = await fetch(`${API_BASE_URL}/ai/generate-storyboard`, {
+      const res = await authFetch(`${API_BASE_URL}/ai/generate-storyboard`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -161,7 +224,7 @@ export const api = {
       refined_prompt: string
       video_length: string
     }): Promise<{ job_id: string; status: string }> => {
-      const res = await fetch(`${API_BASE_URL}/ai/generate-video`, {
+      const res = await authFetch(`${API_BASE_URL}/ai/generate-video`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -171,17 +234,17 @@ export const api = {
   },
   keyMoments: {
     list: async (): Promise<any[]> => {
-      const res = await fetch(`${API_BASE_URL}/key-moments`)
+      const res = await authFetch(`${API_BASE_URL}/key-moments`)
       if (!res.ok) throw new Error(`Failed to list key moments: ${res.status}`)
       return res.json()
     },
     get: async (id: string): Promise<any> => {
-      const res = await fetch(`${API_BASE_URL}/key-moments/${id}`)
+      const res = await authFetch(`${API_BASE_URL}/key-moments/${id}`)
       if (!res.ok) throw new Error(`Failed to get key moments analysis: ${res.status}`)
       return res.json()
     },
     analyze: async (data: { gcs_uri: string; mime_type?: string; prompt_id: string; schema_id?: string; video_filename?: string; video_source?: string; production_id?: string }): Promise<any> => {
-      const res = await fetch(`${API_BASE_URL}/key-moments/analyze`, {
+      const res = await authFetch(`${API_BASE_URL}/key-moments/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -190,32 +253,32 @@ export const api = {
       return res.json()
     },
     delete: async (id: string): Promise<void> => {
-      const res = await fetch(`${API_BASE_URL}/key-moments/${id}`, { method: 'DELETE' })
+      const res = await authFetch(`${API_BASE_URL}/key-moments/${id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error(`Failed to delete key moments analysis: ${res.status}`)
     },
     archive: async (id: string): Promise<void> => {
-      const res = await fetch(`${API_BASE_URL}/key-moments/${id}/archive`, { method: 'POST' })
+      const res = await authFetch(`${API_BASE_URL}/key-moments/${id}/archive`, { method: 'POST' })
       if (!res.ok) throw new Error(`Failed to archive key moments analysis: ${res.status}`)
     },
     listProductionSources: async (): Promise<any[]> => {
-      const res = await fetch(`${API_BASE_URL}/key-moments/sources/productions`)
+      const res = await authFetch(`${API_BASE_URL}/key-moments/sources/productions`)
       if (!res.ok) throw new Error(`Failed to list production sources: ${res.status}`)
       return res.json()
     },
   },
   thumbnails: {
     list: async (): Promise<any[]> => {
-      const res = await fetch(`${API_BASE_URL}/thumbnails`)
+      const res = await authFetch(`${API_BASE_URL}/thumbnails`)
       if (!res.ok) throw new Error(`Failed to list thumbnails: ${res.status}`)
       return res.json()
     },
     get: async (id: string): Promise<any> => {
-      const res = await fetch(`${API_BASE_URL}/thumbnails/${id}`)
+      const res = await authFetch(`${API_BASE_URL}/thumbnails/${id}`)
       if (!res.ok) throw new Error(`Failed to get thumbnail record: ${res.status}`)
       return res.json()
     },
     analyze: async (data: { gcs_uri: string; mime_type?: string; prompt_id: string; video_filename?: string; video_source?: string; production_id?: string }): Promise<any> => {
-      const res = await fetch(`${API_BASE_URL}/thumbnails/analyze`, {
+      const res = await authFetch(`${API_BASE_URL}/thumbnails/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -224,7 +287,7 @@ export const api = {
       return res.json()
     },
     saveScreenshots: async (id: string, screenshots: { index: number; gcs_uri: string }[]): Promise<any> => {
-      const res = await fetch(`${API_BASE_URL}/thumbnails/${id}/screenshots`, {
+      const res = await authFetch(`${API_BASE_URL}/thumbnails/${id}/screenshots`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ screenshots }),
@@ -233,7 +296,7 @@ export const api = {
       return res.json()
     },
     generateCollage: async (id: string, prompt_id: string): Promise<any> => {
-      const res = await fetch(`${API_BASE_URL}/thumbnails/${id}/collage`, {
+      const res = await authFetch(`${API_BASE_URL}/thumbnails/${id}/collage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt_id }),
@@ -242,15 +305,15 @@ export const api = {
       return res.json()
     },
     archive: async (id: string): Promise<void> => {
-      const res = await fetch(`${API_BASE_URL}/thumbnails/${id}/archive`, { method: 'POST' })
+      const res = await authFetch(`${API_BASE_URL}/thumbnails/${id}/archive`, { method: 'POST' })
       if (!res.ok) throw new Error(`Failed to archive thumbnail: ${res.status}`)
     },
     delete: async (id: string): Promise<void> => {
-      const res = await fetch(`${API_BASE_URL}/thumbnails/${id}`, { method: 'DELETE' })
+      const res = await authFetch(`${API_BASE_URL}/thumbnails/${id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error(`Failed to delete thumbnail: ${res.status}`)
     },
     listProductionSources: async (): Promise<any[]> => {
-      const res = await fetch(`${API_BASE_URL}/thumbnails/sources/productions`)
+      const res = await authFetch(`${API_BASE_URL}/thumbnails/sources/productions`)
       if (!res.ok) throw new Error(`Failed to list production sources: ${res.status}`)
       return res.json()
     },
@@ -259,7 +322,7 @@ export const api = {
     upload: async (file: File): Promise<{ id: string; gcs_uri: string; signed_url: string; file_type: string }> => {
       const formData = new FormData()
       formData.append('file', file)
-      const res = await fetch(`${API_BASE_URL}/assets/upload`, {
+      const res = await authFetch(`${API_BASE_URL}/assets/upload`, {
         method: 'POST',
         body: formData,
       })
@@ -267,7 +330,7 @@ export const api = {
       return res.json()
     },
     initUpload: async (file: File): Promise<{ record_id: string; upload_url: string; gcs_uri: string; content_type: string; expires_at: string }> => {
-      const res = await fetch(`${API_BASE_URL}/assets/upload/init`, {
+      const res = await authFetch(`${API_BASE_URL}/assets/upload/init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -280,7 +343,7 @@ export const api = {
       return res.json()
     },
     completeUpload: async (recordId: string): Promise<{ id: string; gcs_uri: string; signed_url: string; file_type: string }> => {
-      const res = await fetch(`${API_BASE_URL}/assets/upload/complete`, {
+      const res = await authFetch(`${API_BASE_URL}/assets/upload/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ record_id: recordId }),
@@ -301,6 +364,11 @@ export const api = {
           xhr = new XMLHttpRequest()
           xhr.open('PUT', init.upload_url)
           xhr.setRequestHeader('Content-Type', init.content_type)
+
+          const code = getInviteCode()
+          if (code) {
+            xhr.setRequestHeader('X-Invite-Code', code)
+          }
 
           xhr.upload.onprogress = (e) => {
             if (e.lengthComputable) {
@@ -341,17 +409,17 @@ export const api = {
       if (params?.file_type) qs.append('file_type', params.file_type)
       if (params?.archived) qs.append('archived', 'true')
       const query = qs.toString() ? `?${qs.toString()}` : ''
-      const res = await fetch(`${API_BASE_URL}/uploads${query}`)
+      const res = await authFetch(`${API_BASE_URL}/uploads${query}`)
       if (!res.ok) throw new Error(`Failed to list uploads: ${res.status}`)
       return res.json()
     },
     get: async (id: string): Promise<any> => {
-      const res = await fetch(`${API_BASE_URL}/uploads/${id}`)
+      const res = await authFetch(`${API_BASE_URL}/uploads/${id}`)
       if (!res.ok) throw new Error(`Failed to get upload: ${res.status}`)
       return res.json()
     },
     compress: async (id: string, resolution: string): Promise<any> => {
-      const res = await fetch(`${API_BASE_URL}/uploads/${id}/compress`, {
+      const res = await authFetch(`${API_BASE_URL}/uploads/${id}/compress`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resolution }),
@@ -360,16 +428,16 @@ export const api = {
       return res.json()
     },
     compressStatus: async (id: string): Promise<any> => {
-      const res = await fetch(`${API_BASE_URL}/uploads/${id}/compress-status`)
+      const res = await authFetch(`${API_BASE_URL}/uploads/${id}/compress-status`)
       if (!res.ok) throw new Error(`Compress status check failed: ${res.status}`)
       return res.json()
     },
     archive: async (id: string): Promise<void> => {
-      const res = await fetch(`${API_BASE_URL}/uploads/${id}/archive`, { method: 'POST' })
+      const res = await authFetch(`${API_BASE_URL}/uploads/${id}/archive`, { method: 'POST' })
       if (!res.ok) throw new Error(`Failed to archive upload: ${res.status}`)
     },
     delete: async (id: string): Promise<void> => {
-      const res = await fetch(`${API_BASE_URL}/uploads/${id}`, { method: 'DELETE' })
+      const res = await authFetch(`${API_BASE_URL}/uploads/${id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error(`Failed to delete upload: ${res.status}`)
     },
   },
@@ -378,11 +446,11 @@ export const api = {
       const params = new URLSearchParams()
       if (type) params.append('type', type)
       if (category) params.append('category', category)
-      const res = await fetch(`${API_BASE_URL}/system/resources?${params.toString()}`)
+      const res = await authFetch(`${API_BASE_URL}/system/resources?${params.toString()}`)
       return res.json()
     },
     createResource: async (resource: any): Promise<any> => {
-      const res = await fetch(`${API_BASE_URL}/system/resources`, {
+      const res = await authFetch(`${API_BASE_URL}/system/resources`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(resource),
@@ -390,18 +458,18 @@ export const api = {
       return res.json()
     },
     activateResource: async (id: string): Promise<void> => {
-      await fetch(`${API_BASE_URL}/system/resources/${id}/activate`, {
+      await authFetch(`${API_BASE_URL}/system/resources/${id}/activate`, {
         method: 'POST',
       })
     },
     getDefaultSchema: async (): Promise<any> => {
-      const res = await fetch(`${API_BASE_URL}/system/default-schema`)
+      const res = await authFetch(`${API_BASE_URL}/system/default-schema`)
       return res.json()
     }
   },
   diagnostics: {
     optimizePrompt: async (data: any) => {
-      const res = await fetch(`${API_BASE_URL}/diagnostics/optimize-prompt`, {
+      const res = await authFetch(`${API_BASE_URL}/diagnostics/optimize-prompt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -409,7 +477,7 @@ export const api = {
       return res.json()
     },
     generateImage: async (data: any) => {
-      const res = await fetch(`${API_BASE_URL}/diagnostics/generate-image`, {
+      const res = await authFetch(`${API_BASE_URL}/diagnostics/generate-image`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -417,7 +485,7 @@ export const api = {
       return res.json()
     },
     generateVideo: async (data: any) => {
-      const res = await fetch(`${API_BASE_URL}/diagnostics/generate-video`, {
+      const res = await authFetch(`${API_BASE_URL}/diagnostics/generate-video`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),

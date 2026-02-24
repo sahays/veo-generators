@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Sidebar } from './components/Layout'
 import { ProjectForm } from './components/ads/ProjectForm'
@@ -11,8 +12,27 @@ import { KeyMomentsAnalyzePage } from './components/pages/KeyMomentsAnalyzePage'
 import { ThumbnailsLandingPage } from './components/pages/ThumbnailsLandingPage'
 import { ThumbnailsWorkPage } from './components/pages/ThumbnailsWorkPage'
 import { UploadsPage } from './components/pages/UploadsPage'
+import { InviteCodesPage } from './components/pages/InviteCodesPage'
+import { InviteCodeGate } from './components/InviteCodeGate'
+import { useAuthStore } from './store/useAuthStore'
+import { api } from './lib/api'
 
 function App() {
+  const { isAuthenticated, isMaster, inviteCode, logout } = useAuthStore()
+
+  useEffect(() => {
+    if (!isAuthenticated || !inviteCode) return
+    api.auth.validate(inviteCode).then((result) => {
+      if (!result.valid) logout()
+    }).catch(() => {
+      // Network error — don't logout, let subsequent API calls handle it
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!isAuthenticated) {
+    return <InviteCodeGate />
+  }
+
   return (
     <div className="flex h-screen bg-background">
       <Sidebar />
@@ -48,6 +68,11 @@ function App() {
 
               {/* Diagnostics */}
               <Route path="/diagnostics" element={<DiagnosticsPage />} />
+
+              {/* Invite Codes (master only) */}
+              {isMaster && (
+                <Route path="/invite-codes" element={<InviteCodesPage />} />
+              )}
 
               {/* Fallback */}
               <Route path="*" element={<Navigate to="/productions" replace />} />

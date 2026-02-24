@@ -2,9 +2,10 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Menu, X, Megaphone, Zap, Image as ImageIcon, Smartphone,
   ChevronLeft, ChevronRight, Terminal,
-  FileText, Sun, Moon, Activity, Upload
+  FileText, Sun, Moon, Activity, Upload, Shield, LogOut
 } from 'lucide-react'
 import { useLayoutStore } from '@/store/useLayoutStore'
+import { useAuthStore } from '@/store/useAuthStore'
 import { cn } from '@/lib/utils'
 import { useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
@@ -35,6 +36,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/prompts': 'System Prompts',
   '/diagnostics': 'Diagnostics',
   '/orientations': 'Orientations',
+  '/invite-codes': 'Invite Codes',
 }
 
 function getPageTitle(pathname: string): string {
@@ -56,6 +58,7 @@ export const Sidebar = () => {
     setSidebarOpen,
     theme, toggleTheme
   } = useLayoutStore()
+  const { isMaster, logout } = useAuthStore()
 
   const location = useLocation()
   const pageTitle = getPageTitle(location.pathname)
@@ -80,6 +83,7 @@ export const Sidebar = () => {
     { name: 'Orientations', icon: Smartphone, path: '/orientations' },
     { name: 'System Prompts', icon: FileText, path: '/prompts' },
     { name: 'Diagnostics', icon: Activity, path: '/diagnostics' },
+    ...(isMaster ? [{ name: 'Invite Codes', icon: Shield, path: '/invite-codes' }] : []),
   ]
 
   return (
@@ -167,6 +171,17 @@ export const Sidebar = () => {
           >
             {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
             {!isSidebarCollapsed && <span className="text-sm font-medium">{theme === 'light' ? 'Dark Mode' : 'Light Mode'}</span>}
+          </motion.button>
+          <motion.button
+            onClick={logout}
+            whileTap={{ scale: 0.95 }}
+            className={cn(
+              "flex items-center gap-4 w-full p-3 rounded-xl transition-all duration-200 cursor-pointer group hover:bg-red-500/20 hover:text-red-500",
+              isSidebarCollapsed && "justify-center px-0"
+            )}
+          >
+            <LogOut size={20} />
+            {!isSidebarCollapsed && <span className="text-sm font-medium">Sign Out</span>}
           </motion.button>
         </div>
       </motion.aside>

@@ -220,6 +220,25 @@ class UploadCompleteRequest(BaseModel):
     record_id: str
 
 
+class InviteCode(BaseModel):
+    id: str = Field(default_factory=lambda: generate_id("inv-"))
+    code: str
+    label: str = ""
+    is_active: bool = True
+    expires_at: Optional[datetime] = None
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+
+
+class CreateInviteCodeRequest(BaseModel):
+    code: str
+    label: str = ""
+    expires_at: Optional[datetime] = None
+
+
+class ValidateCodeRequest(BaseModel):
+    code: str
+
+
 class AIResponseWrapper(BaseModel):
     data: Any
     usage: UsageMetrics

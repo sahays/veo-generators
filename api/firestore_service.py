@@ -9,6 +9,7 @@ from models import (
     KeyMomentsRecord,
     ThumbnailRecord,
     UploadRecord,
+    InviteCode,
 )
 
 
@@ -23,6 +24,7 @@ class FirestoreService:
         self.key_moments_collection = self.db.collection(f"{prefix}_key_moments")
         self.thumbnails_collection = self.db.collection(f"{prefix}_thumbnails")
         self.uploads_collection = self.db.collection(f"{prefix}_uploads")
+        self.invite_codes_collection = self.db.collection(f"{prefix}_invite_codes")
 
     def _all_resources(self) -> List[SystemResource]:
         docs = self.resources_collection.stream()
@@ -206,3 +208,36 @@ class FirestoreService:
 
     def delete_upload_record(self, record_id: str):
         self.uploads_collection.document(record_id).delete()
+
+    # --- Invite Codes ---
+
+    def get_invite_codes(self) -> List[InviteCode]:
+        docs = self.invite_codes_collection.stream()
+        codes = [InviteCode(**doc.to_dict()) for doc in docs]
+        codes.sort(key=lambda c: c.createdAt or "", reverse=True)
+        return codes
+
+    def get_invite_code(self, code_id: str) -> Optional[InviteCode]:
+        doc = self.invite_codes_collection.document(code_id).get()
+        if doc.exists:
+            return InviteCode(**doc.to_dict())
+        return None
+
+    def get_invite_code_by_value(self, code_str: str) -> Optional[InviteCode]:
+        from google.cloud.firestore_v1.base_query import FieldFilter
+
+        docs = self.invite_codes_collection.where(
+            filter=FieldFilter("code", "==", code_str)
+        ).stream()
+        for doc in docs:
+            return InviteCode(**doc.to_dict())
+        return None
+
+    def create_invite_code(self, invite_code: InviteCode):
+        self.invite_codes_collection.document(invite_code.id).set(invite_code.dict())
+
+    def update_invite_code(self, code_id: str, updates: dict):
+        self.invite_codes_collection.document(code_id).update(updates)
+
+    def delete_invite_code(self, code_id: str):
+        self.invite_codes_collection.document(code_id).delete()

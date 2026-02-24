@@ -1,0 +1,246 @@
+import logging
+
+from fastapi import APIRouter, HTTPException
+
+import deps
+from models import ThumbnailRecord, ThumbnailScreenshot, ProjectStatus
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/v1/thumbnails", tags=["thumbnails"])
+
+
+def _sign_thumbnail_urls(record: ThumbnailRecord) -> dict:
+    """Return record dict with signed URLs for video, screenshots, and thumbnail."""
+    data = record.dict()
+    if not deps.storage_svc:
+        return data
+    cache = data.get("signed_urls") or {}
+    dirty = False
+
+    def _resolve(gcs_uri: str) -> str:
+        nonlocal dirty
+        if not gcs_uri:
+            return ""
+        if not gcs_uri.startswith("gs://"):
+            return gcs_uri
+        url, changed = deps.storage_svc.resolve_cached_url(gcs_uri, cache)
+        if changed:
+            dirty = True
+        return url
+
+    # Sign video URL
+    if record.video_gcs_uri:
+        data["video_signed_url"] = _resolve(record.video_gcs_uri)
+
+    # Sign screenshot URLs
+    for screenshot in data.get("screenshots", []):
+        if screenshot.get("gcs_uri"):
+            screenshot["signed_url"] = _resolve(screenshot["gcs_uri"])
+
+    # Sign thumbnail URL
+    if record.thumbnail_gcs_uri:
+        data["thumbnail_signed_url"] = _resolve(record.thumbnail_gcs_uri)
+
+    if dirty and deps.firestore_svc:
+        deps.firestore_svc.update_thumbnail_record(record.id, {"signed_urls": cache})
+
+    data.pop("signed_urls", None)
+    return data
+
+
+@router.get("")
+async def list_thumbnails(archived: bool = False):
+    if not deps.firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    records = deps.firestore_svc.get_thumbnail_records(include_archived=archived)
+    return [_sign_thumbnail_urls(r) for r in records]
+
+
+@router.get("/sources/productions")
+async def list_thumbnail_production_sources():
+    """List completed productions with signed final video URLs."""
+    if not deps.firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    productions = deps.firestore_svc.get_productions()
+    completed = [
+        p
+        for p in productions
+        if p.status == ProjectStatus.COMPLETED and p.final_video_url
+    ]
+    results = []
+    for p in completed:
+        signed_url = ""
+        if deps.storage_svc and p.final_video_url:
+            if p.final_video_url.startswith("gs://"):
+                signed_url = deps.storage_svc.get_signed_url(p.final_video_url)
+            else:
+                signed_url = p.final_video_url
+        results.append(
+            {
+                "id": p.id,
+                "name": p.name,
+                "type": p.type,
+                "final_video_url": p.final_video_url,
+                "video_signed_url": signed_url,
+                "createdAt": p.createdAt.isoformat() if p.createdAt else None,
+            }
+        )
+    return results
+
+
+@router.get("/{record_id}")
+async def get_thumbnail_record(record_id: str):
+    if not deps.firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    record = deps.firestore_svc.get_thumbnail_record(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Thumbnail record not found")
+    return _sign_thumbnail_urls(record)
+
+
+@router.post("/analyze")
+async def analyze_video_for_thumbnails(request: dict):
+    if not deps.ai_svc or not deps.firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    gcs_uri = request.get("gcs_uri")
+    prompt_id = request.get("prompt_id")
+    if not gcs_uri or not prompt_id:
+        raise HTTPException(
+            status_code=400, detail="gcs_uri and prompt_id are required"
+        )
+    mime_type = request.get("mime_type", "video/mp4")
+    video_filename = request.get("video_filename", "")
+    video_source = request.get("video_source", "upload")
+    production_id = request.get("production_id")
+    try:
+        result = await deps.ai_svc.analyze_video_for_thumbnails(
+            gcs_uri=gcs_uri,
+            mime_type=mime_type,
+            prompt_id=prompt_id,
+        )
+        analysis_data = result.data if hasattr(result, "data") else result.get("data")
+        moments = analysis_data.get("key_moments", []) if analysis_data else []
+        screenshots = [
+            ThumbnailScreenshot(
+                timestamp=f"{m.get('timestamp_start', '0:00')}-{m.get('timestamp_end', '0:00')}",
+                title=m.get("title", ""),
+                description=m.get("description", ""),
+                visual_characteristics=m.get("visual_characteristics", ""),
+                category=m.get("category"),
+                tags=m.get("tags", []),
+            )
+            for m in moments
+        ]
+        record = ThumbnailRecord(
+            video_gcs_uri=gcs_uri,
+            video_filename=video_filename,
+            video_source=video_source,
+            production_id=production_id,
+            mime_type=mime_type,
+            analysis_prompt_id=prompt_id,
+            video_summary=(
+                analysis_data.get("video_summary") if analysis_data else None
+            ),
+            screenshots=screenshots,
+            status="screenshots_ready",
+            usage=(
+                result.usage if hasattr(result, "usage") else result.get("usage", {})
+            ),
+        )
+        deps.firestore_svc.create_thumbnail_record(record)
+        return {"id": record.id, "data": analysis_data, "usage": record.usage.dict()}
+    except Exception as e:
+        logger.error(f"Thumbnail analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{record_id}/screenshots")
+async def save_thumbnail_screenshots(record_id: str, request: dict):
+    if not deps.firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    record = deps.firestore_svc.get_thumbnail_record(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Thumbnail record not found")
+    incoming = request.get("screenshots", [])
+    updated_screenshots = [s.dict() for s in record.screenshots]
+    for item in incoming:
+        idx = item.get("index")
+        gcs_uri = item.get("gcs_uri")
+        if idx is not None and 0 <= idx < len(updated_screenshots) and gcs_uri:
+            updated_screenshots[idx]["gcs_uri"] = gcs_uri
+    deps.firestore_svc.update_thumbnail_record(
+        record_id,
+        {"screenshots": updated_screenshots, "status": "screenshots_ready"},
+    )
+    return {"status": "screenshots_saved"}
+
+
+@router.post("/{record_id}/collage")
+async def generate_thumbnail_collage(record_id: str, request: dict):
+    if not deps.ai_svc or not deps.firestore_svc or not deps.storage_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    record = deps.firestore_svc.get_thumbnail_record(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Thumbnail record not found")
+    prompt_id = request.get("prompt_id")
+    if not prompt_id:
+        raise HTTPException(status_code=400, detail="prompt_id is required")
+    screenshot_uris = [s.gcs_uri for s in record.screenshots if s.gcs_uri]
+    if not screenshot_uris:
+        raise HTTPException(
+            status_code=400, detail="No screenshots with GCS URIs found"
+        )
+    deps.firestore_svc.update_thumbnail_record(
+        record_id, {"status": "generating", "collage_prompt_id": prompt_id}
+    )
+    try:
+        result = await deps.ai_svc.generate_thumbnail_collage(
+            screenshot_uris=screenshot_uris,
+            prompt_id=prompt_id,
+        )
+        thumbnail_gcs_uri = result.data.get("thumbnail_url")
+        signed_url = (
+            deps.storage_svc.get_signed_url(thumbnail_gcs_uri)
+            if thumbnail_gcs_uri
+            else None
+        )
+        deps.firestore_svc.update_thumbnail_record(
+            record_id,
+            {
+                "thumbnail_gcs_uri": thumbnail_gcs_uri,
+                "status": "completed",
+            },
+        )
+        return {
+            "thumbnail_gcs_uri": thumbnail_gcs_uri,
+            "thumbnail_signed_url": signed_url,
+        }
+    except Exception as e:
+        logger.error(f"Collage generation failed: {e}")
+        deps.firestore_svc.update_thumbnail_record(
+            record_id, {"status": "screenshots_ready"}
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{record_id}/archive")
+async def archive_thumbnail(record_id: str):
+    if not deps.firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    record = deps.firestore_svc.get_thumbnail_record(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Thumbnail record not found")
+    deps.firestore_svc.update_thumbnail_record(record_id, {"archived": True})
+    return {"status": "archived"}
+
+
+@router.delete("/{record_id}")
+async def delete_thumbnail(record_id: str):
+    if not deps.firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    record = deps.firestore_svc.get_thumbnail_record(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Thumbnail record not found")
+    deps.firestore_svc.delete_thumbnail_record(record_id)
+    return {"status": "deleted"}
