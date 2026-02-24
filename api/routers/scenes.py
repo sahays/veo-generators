@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 import deps
 from helpers import (
@@ -58,7 +58,10 @@ async def update_scene(id: str, scene_id: str, updates: dict):
     "/{id}/scenes/{scene_id}/frame",
     response_model=AIResponseWrapper,
 )
-async def generate_scene_frame(id: str, scene_id: str, request: dict = {}):
+@deps.limiter.limit("10/minute")
+async def generate_scene_frame(
+    request: Request, id: str, scene_id: str, body: dict = {}
+):
     if not deps.firestore_svc or not deps.ai_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
     production = deps.firestore_svc.get_production(id)
@@ -70,7 +73,7 @@ async def generate_scene_frame(id: str, scene_id: str, request: dict = {}):
         raise HTTPException(status_code=404)
 
     prompt_override = None
-    prompt_data = request.get("prompt_data") if request else None
+    prompt_data = body.get("prompt_data") if body else None
     if prompt_data:
         prompt_override = build_flat_image_prompt(prompt_data)
         new_desc = prompt_data.get("visual_description")
@@ -111,7 +114,10 @@ async def generate_scene_frame(id: str, scene_id: str, request: dict = {}):
 
 
 @router.post("/{id}/scenes/{scene_id}/video")
-async def generate_scene_video(id: str, scene_id: str, request: dict = {}):
+@deps.limiter.limit("10/minute")
+async def generate_scene_video(
+    request: Request, id: str, scene_id: str, body: dict = {}
+):
     if not deps.firestore_svc or not deps.video_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
     production = deps.firestore_svc.get_production(id)
@@ -123,7 +129,7 @@ async def generate_scene_video(id: str, scene_id: str, request: dict = {}):
         raise HTTPException(status_code=404)
 
     prompt_override = None
-    prompt_data = request.get("prompt_data") if request else None
+    prompt_data = body.get("prompt_data") if body else None
     if prompt_data:
         prompt_override = build_flat_video_prompt(prompt_data)
         new_desc = prompt_data.get("visual_description")

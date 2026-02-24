@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 import deps
 from models import Scene, ProjectStatus
@@ -9,37 +9,40 @@ router = APIRouter(prefix="/api/v1/diagnostics", tags=["diagnostics"])
 
 
 @router.post("/optimize-prompt")
-async def diagnostic_optimize(request: dict):
+@deps.limiter.limit("10/minute")
+async def diagnostic_optimize(request: Request, body: dict):
     if not deps.ai_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
     return await deps.ai_svc.analyze_brief(
         "diag-proj",
-        request.get("concept", ""),
-        request.get("length", "16"),
-        request.get("orientation", "16:9"),
+        body.get("concept", ""),
+        body.get("length", "16"),
+        body.get("orientation", "16:9"),
     )
 
 
 @router.post("/generate-image")
-async def diagnostic_image(request: dict):
+@deps.limiter.limit("10/minute")
+async def diagnostic_image(request: Request, body: dict):
     if not deps.ai_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
     scene = Scene(
-        visual_description=request.get("prompt", ""),
+        visual_description=body.get("prompt", ""),
         timestamp_start="0",
         timestamp_end="8",
     )
     return await deps.ai_svc.generate_frame(
-        "diag-proj", scene, request.get("orientation", "16:9")
+        "diag-proj", scene, body.get("orientation", "16:9")
     )
 
 
 @router.post("/generate-video")
-async def diagnostic_video(request: dict):
+@deps.limiter.limit("10/minute")
+async def diagnostic_video(request: Request, body: dict):
     if not deps.video_svc or not deps.storage_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
     scene = Scene(
-        visual_description=request.get("prompt", ""),
+        visual_description=body.get("prompt", ""),
         timestamp_start="0",
         timestamp_end="8",
     )

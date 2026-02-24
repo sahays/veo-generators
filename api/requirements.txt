@@ -7,3 +7,4 @@ google-genai
 pydantic
 python-multipart
 python-dotenv
+slowapi

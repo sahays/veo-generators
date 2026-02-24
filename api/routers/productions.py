@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 import deps
 from helpers import sign_production_urls
@@ -38,15 +38,16 @@ async def get_production(id: str):
 
 
 @router.post("/{id}/analyze", response_model=AIResponseWrapper)
-async def analyze_production(id: str, request: dict = {}):
+@deps.limiter.limit("10/minute")
+async def analyze_production(request: Request, id: str, body: dict = {}):
     if not deps.firestore_svc or not deps.ai_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
     p = deps.firestore_svc.get_production(id)
     if not p:
         raise HTTPException(status_code=404)
 
-    prompt_id = request.get("prompt_id")
-    schema_id = request.get("schema_id")
+    prompt_id = body.get("prompt_id")
+    schema_id = body.get("schema_id")
 
     deps.firestore_svc.update_production(id, {"status": ProjectStatus.ANALYZING})
     try:

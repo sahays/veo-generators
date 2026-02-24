@@ -38,6 +38,11 @@ async function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   }
   const res = await fetch(input, { ...init, headers })
   handleAuthError(res)
+  if (res.status === 429) {
+    const retryAfter = res.headers.get('Retry-After')
+    const seconds = retryAfter ? parseInt(retryAfter, 10) : 60
+    throw new Error(`Rate limit exceeded. Please wait ${seconds} seconds.`)
+  }
   return res
 }
 
@@ -49,6 +54,7 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code }),
       })
+      if (res.status === 429) throw new Error('Too many attempts. Please wait a minute.')
       if (!res.ok) throw new Error(`Validation failed: ${res.status}`)
       return res.json()
     },

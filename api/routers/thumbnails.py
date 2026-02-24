@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 import deps
 from models import ThumbnailRecord, ThumbnailScreenshot, ProjectStatus
@@ -100,19 +100,20 @@ async def get_thumbnail_record(record_id: str):
 
 
 @router.post("/analyze")
-async def analyze_video_for_thumbnails(request: dict):
+@deps.limiter.limit("10/minute")
+async def analyze_video_for_thumbnails(request: Request, body: dict):
     if not deps.ai_svc or not deps.firestore_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
-    gcs_uri = request.get("gcs_uri")
-    prompt_id = request.get("prompt_id")
+    gcs_uri = body.get("gcs_uri")
+    prompt_id = body.get("prompt_id")
     if not gcs_uri or not prompt_id:
         raise HTTPException(
             status_code=400, detail="gcs_uri and prompt_id are required"
         )
-    mime_type = request.get("mime_type", "video/mp4")
-    video_filename = request.get("video_filename", "")
-    video_source = request.get("video_source", "upload")
-    production_id = request.get("production_id")
+    mime_type = body.get("mime_type", "video/mp4")
+    video_filename = body.get("video_filename", "")
+    video_source = body.get("video_source", "upload")
+    production_id = body.get("production_id")
     try:
         result = await deps.ai_svc.analyze_video_for_thumbnails(
             gcs_uri=gcs_uri,
@@ -177,13 +178,14 @@ async def save_thumbnail_screenshots(record_id: str, request: dict):
 
 
 @router.post("/{record_id}/collage")
-async def generate_thumbnail_collage(record_id: str, request: dict):
+@deps.limiter.limit("10/minute")
+async def generate_thumbnail_collage(request: Request, record_id: str, body: dict):
     if not deps.ai_svc or not deps.firestore_svc or not deps.storage_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
     record = deps.firestore_svc.get_thumbnail_record(record_id)
     if not record:
         raise HTTPException(status_code=404, detail="Thumbnail record not found")
-    prompt_id = request.get("prompt_id")
+    prompt_id = body.get("prompt_id")
     if not prompt_id:
         raise HTTPException(status_code=400, detail="prompt_id is required")
     screenshot_uris = [s.gcs_uri for s in record.screenshots if s.gcs_uri]

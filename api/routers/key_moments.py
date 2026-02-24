@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 import deps
 from models import KeyMomentsRecord, ProjectStatus
@@ -77,20 +77,21 @@ async def get_key_moments_analysis(record_id: str):
 
 
 @router.post("/analyze")
-async def analyze_key_moments(request: dict):
+@deps.limiter.limit("10/minute")
+async def analyze_key_moments(request: Request, body: dict):
     if not deps.ai_svc or not deps.firestore_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
-    gcs_uri = request.get("gcs_uri")
-    prompt_id = request.get("prompt_id")
+    gcs_uri = body.get("gcs_uri")
+    prompt_id = body.get("prompt_id")
     if not gcs_uri or not prompt_id:
         raise HTTPException(
             status_code=400, detail="gcs_uri and prompt_id are required"
         )
-    mime_type = request.get("mime_type", "video/mp4")
-    schema_id = request.get("schema_id")
-    video_filename = request.get("video_filename", "")
-    video_source = request.get("video_source", "upload")
-    production_id = request.get("production_id")
+    mime_type = body.get("mime_type", "video/mp4")
+    schema_id = body.get("schema_id")
+    video_filename = body.get("video_filename", "")
+    video_source = body.get("video_source", "upload")
+    production_id = body.get("production_id")
     try:
         result = await deps.ai_svc.analyze_video_key_moments(
             gcs_uri=gcs_uri,

@@ -59,7 +59,8 @@ def validate_code(code: str) -> dict:
 
 
 @router.post("/validate")
-async def validate(body: ValidateCodeRequest):
+@deps.limiter.limit("5/minute")
+async def validate(request: Request, body: ValidateCodeRequest):
     logger.info(f"Auth validate endpoint called, code length={len(body.code)}")
     return validate_code(body.code)
 

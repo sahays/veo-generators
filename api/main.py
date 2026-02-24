@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 
 from fastapi import FastAPI, Request
@@ -6,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from dotenv import load_dotenv
 
 import deps
@@ -29,6 +32,17 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Veo Production API", version="1.0.0")
+
+# --- Rate Limiting ---
+app.state.limiter = deps.limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+# Exempt health check from rate limiting
+@deps.limiter.request_filter
+def _health_check_filter(request: Request) -> bool:
+    return request.url.path == "/health"
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -71,6 +85,24 @@ class InviteCodeMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+BOT_UA_PATTERN = re.compile(
+    r"bot|crawl|spider|slurp|scraper|wget|curl|httpie|python-requests"
+    r"|go-http-client|node-fetch|axios|scrapy|phantomjs|headlesschrome",
+    re.IGNORECASE,
+)
+
+
+class BotProtectionMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if not request.url.path.startswith("/api/"):
+            return await call_next(request)
+        ua = request.headers.get("User-Agent", "")
+        if not ua or BOT_UA_PATTERN.search(ua):
+            return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+        return await call_next(request)
+
+
+app.add_middleware(BotProtectionMiddleware)
 app.add_middleware(InviteCodeMiddleware)
 
 # Register routers

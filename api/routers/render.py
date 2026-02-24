@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 
 import deps
 from models import ProjectStatus
@@ -59,7 +59,8 @@ async def process_render_kickoff(production_id: str):
 
 
 @router.post("/{id}/render")
-async def start_render(id: str, background_tasks: BackgroundTasks):
+@deps.limiter.limit("10/minute")
+async def start_render(request: Request, id: str, background_tasks: BackgroundTasks):
     if not deps.firestore_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
     deps.firestore_svc.update_production(id, {"status": ProjectStatus.GENERATING})
@@ -68,7 +69,8 @@ async def start_render(id: str, background_tasks: BackgroundTasks):
 
 
 @router.post("/{id}/stitch")
-async def stitch_production(id: str):
+@deps.limiter.limit("10/minute")
+async def stitch_production(request: Request, id: str):
     """Stitch all completed scene videos into a final video.
 
     Called by the client once all scenes have video_url populated.
