@@ -18,7 +18,7 @@ export const Button = ({
   ...props 
 }: ButtonProps) => {
   const variants = {
-    primary: "bg-accent text-slate-900 hover:bg-accent-dark shadow-sm",
+    primary: "btn-primary text-white shadow-sm",
     secondary: "bg-muted text-foreground hover:bg-border",
     ghost: "bg-transparent hover:bg-accent-light text-foreground",
   }

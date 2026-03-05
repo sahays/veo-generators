@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Menu, X, Megaphone, Zap, Image as ImageIcon, Smartphone,
+  Menu, X, Clapperboard, Zap, Image as ImageIcon, Smartphone,
   ChevronLeft, ChevronRight, Terminal,
   FileText, Sun, Moon, Activity, Upload, Shield, LogOut
 } from 'lucide-react'
@@ -99,7 +99,7 @@ export const Sidebar = () => {
   }, [isMaster, creditPct])
 
   const navItems: NavItem[] = [
-    { name: 'Movie Productions', icon: Megaphone, path: '/productions' },
+    { name: 'Productions', icon: Clapperboard, path: '/productions' },
     { name: 'Key Moments', icon: Zap, path: '/key-moments' },
     { name: 'Thumbnails', icon: ImageIcon, path: '/thumbnails' },
     { name: 'Files', icon: Upload, path: '/uploads' },

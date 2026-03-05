@@ -2,6 +2,14 @@ import { create } from 'zustand'
 
 export type ProjectView = 'list' | 'form' | 'review' | 'summary'
 
+function getInitialTheme(): 'light' | 'dark' {
+  try {
+    const stored = localStorage.getItem('theme')
+    if (stored === 'light' || stored === 'dark') return stored
+  } catch {}
+  return 'dark'
+}
+
 interface LayoutState {
   isSidebarOpen: boolean
   isSidebarCollapsed: boolean
@@ -18,7 +26,7 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   isSidebarOpen: false,
   isSidebarCollapsed: false,
   expandedSubmenus: [],
-  theme: 'light',
+  theme: getInitialTheme(),
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
   toggleCollapse: () => set((state) => ({ isSidebarCollapsed: !state.isSidebarCollapsed, expandedSubmenus: [] })),
   setSidebarOpen: (open: boolean) => set({ isSidebarOpen: open }),
@@ -27,5 +35,9 @@ export const useLayoutStore = create<LayoutState>((set) => ({
       ? state.expandedSubmenus.filter(s => s !== name)
       : [...state.expandedSubmenus, name]
   })),
-  toggleTheme: () => set((state) => ({ theme: state.theme === 'light' ? 'dark' : 'light' })),
+  toggleTheme: () => set((state) => {
+    const next = state.theme === 'light' ? 'dark' : 'light'
+    try { localStorage.setItem('theme', next) } catch {}
+    return { theme: next }
+  }),
 }))

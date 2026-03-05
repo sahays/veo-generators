@@ -1,9 +1,6 @@
 import os
 import logging
 
-from fastapi import Request
-from slowapi import Limiter
-
 from firestore_service import FirestoreService
 from ai_service import AIService
 from video_service import VideoService
@@ -11,29 +8,6 @@ from transcoder_service import TranscoderService
 from storage_service import StorageService
 
 logger = logging.getLogger(__name__)
-
-
-def get_rate_limit_key(request: Request) -> str:
-    """Rate limit key: X-Invite-Code header, falling back to client IP."""
-    code = request.headers.get("X-Invite-Code")
-    if code:
-        return code
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
-
-
-def _exempt_health_check(request: Request) -> bool:
-    """Return True to skip rate limiting for health probes."""
-    return request.url.path == "/health"
-
-
-limiter = Limiter(
-    key_func=get_rate_limit_key,
-    default_limits=["60/minute"],
-    request_filters=[_exempt_health_check],
-)
 
 # Global service instances (initialized on startup)
 firestore_svc: FirestoreService | None = None

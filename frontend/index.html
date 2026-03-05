@@ -6,6 +6,9 @@
     <title>VeoGen Dashboard</title>
   </head>
   <body>
+    <script>
+      (function(){var t=localStorage.getItem('theme');if(t==='light')return;document.documentElement.classList.add('dark')})()
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

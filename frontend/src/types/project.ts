@@ -78,6 +78,12 @@ export interface UsageMetrics {
   output_tokens: number
   model_name: string
   cost_usd: number
+  image_generations: number
+  image_cost_usd: number
+  veo_videos: number
+  veo_seconds: number
+  veo_unit_cost: number
+  veo_cost_usd: number
 }
 
 export interface MediaFile {

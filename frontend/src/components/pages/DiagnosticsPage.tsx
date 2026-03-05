@@ -137,7 +137,7 @@ const PromptOptimizationTest = () => {
       icon={Sparkles}
       actions={
         <Button onClick={handleTest} disabled={isLoading} icon={Sparkles}>
-          {isLoading ? 'Analyzing...' : 'Optimize Script'}
+          {isLoading ? 'Analyzing...' : 'Optimize Script (1 credit)'}
         </Button>
       }
     >
@@ -183,7 +183,7 @@ const ImageGenerationTest = () => {
       icon={ImageIcon}
       actions={
         <Button onClick={handleTest} disabled={isLoading} icon={ImageIcon}>
-          {isLoading ? 'Painting...' : 'Generate Frame'}
+          {isLoading ? 'Painting...' : 'Generate Frame (2 credits)'}
         </Button>
       }
     >
@@ -268,7 +268,7 @@ const VideoGenerationTest = () => {
       icon={Video}
       actions={
         <Button onClick={handleTest} disabled={isLoading} icon={Video}>
-          {isLoading ? 'Processing...' : 'Render Scene'}
+          {isLoading ? 'Processing...' : 'Render Scene (5 credits)'}
         </Button>
       }
     >

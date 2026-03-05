@@ -7,7 +7,8 @@ from helpers import (
     build_prompt_data,
     build_flat_image_prompt,
     build_flat_video_prompt,
-    accumulate_cost,
+    accumulate_image_cost,
+    accumulate_veo_cost,
     parse_timestamp,
 )
 from models import AIResponseWrapper, ProjectStatus
@@ -58,7 +59,6 @@ async def update_scene(id: str, scene_id: str, updates: dict):
     "/{id}/scenes/{scene_id}/frame",
     response_model=AIResponseWrapper,
 )
-@deps.limiter.limit("10/minute")
 async def generate_scene_frame(
     request: Request, id: str, scene_id: str, body: dict = {}
 ):
@@ -107,14 +107,13 @@ async def generate_scene_frame(
         scene_updates["generated_prompt"] = result.data["generated_prompt"]
         scene_updates["image_prompt"] = result.data["generated_prompt"]
     deps.firestore_svc.update_scene(id, scene_id, scene_updates)
-    accumulate_cost(id, result.usage.cost_usd)
+    accumulate_image_cost(id, result.usage.cost_usd)
     # Return signed URL for immediate display
     result.data["image_url"] = deps.storage_svc.get_signed_url(gcs_uri)
     return result
 
 
 @router.post("/{id}/scenes/{scene_id}/video")
-@deps.limiter.limit("10/minute")
 async def generate_scene_video(
     request: Request, id: str, scene_id: str, body: dict = {}
 ):
@@ -143,15 +142,15 @@ async def generate_scene_video(
         id, scene, blocking=False, project=production, prompt_override=prompt_override
     )
 
-    # Calculate Veo cost: $0.40/second
+    # Calculate Veo cost based on scene duration
+    VEO_COST_PER_SECOND = 0.40  # Veo 3.1 Standard
     try:
         veo_start = parse_timestamp(scene.timestamp_start)
         veo_end = parse_timestamp(scene.timestamp_end)
         veo_duration = max(4, min(8, int(veo_end - veo_start)))
     except (ValueError, IndexError):
         veo_duration = 8
-    veo_cost = veo_duration * 0.40
-    accumulate_cost(id, veo_cost)
+    accumulate_veo_cost(id, veo_duration, VEO_COST_PER_SECOND)
 
     if isinstance(result, dict) and "operation_name" in result:
         if result.get("generated_prompt"):

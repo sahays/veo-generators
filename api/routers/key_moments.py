@@ -33,9 +33,11 @@ async def list_key_moments(
     if not deps.firestore_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
     records = deps.firestore_svc.get_key_moments_analyses(include_archived=archived)
+    code = getattr(request.state, "invite_code", None)
     if mine:
-        code = getattr(request.state, "invite_code", None)
         records = [r for r in records if r.invite_code == code]
+    else:
+        records = [r for r in records if r.invite_code != code]
     return [_sign_key_moments_url(r) for r in records]
 
 

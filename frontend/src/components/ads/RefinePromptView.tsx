@@ -4,27 +4,71 @@ import {
   ArrowLeft, Sparkles, Video, Play, ImageIcon,
   RotateCcw, Clock, Save,
   Loader2, LayoutGrid, List, Plus, Lock, AlertCircle,
-  Pencil, CheckCircle2, Mic, Music
+  Pencil, CheckCircle2, Mic, Music, Copy, Check
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button, Card } from '@/components/Common'
 import { PromptModal } from '@/components/ads/PromptModal'
 import { CostBreakdownPill } from '@/components/ads/CostBreakdownPill'
 import { useProjectStore } from '@/store/useProjectStore'
+import { useAuthStore } from '@/store/useAuthStore'
 import type { Scene } from '@/types/project'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '@/lib/api'
 
+const ErrorBadge = ({ message }: { message: string }) => {
+  const [copied, setCopied] = useState(false)
+  const [showTooltip, setShowTooltip] = useState(false)
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    navigator.clipboard.writeText(message)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+        onClick={() => setShowTooltip(!showTooltip)}
+        className="flex items-center gap-1 px-2 py-1 rounded-md bg-red-500/10 text-red-500 text-xs font-medium cursor-pointer"
+      >
+        <AlertCircle size={12} />
+        Error!
+      </button>
+      {showTooltip && (
+        <div className="absolute bottom-full left-0 mb-2 z-50 w-80 max-w-[90vw]">
+          <div className="bg-popover border border-border rounded-lg shadow-lg p-3">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-[11px] text-foreground break-all leading-relaxed flex-1">{message}</p>
+              <button
+                onClick={handleCopy}
+                className="shrink-0 p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                title="Copy error"
+              >
+                {copied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export const RefinePromptView = () => {
   const { tempProjectData, updateScene, addScene, setActiveProject, setTempProjectData } = useProjectStore()
+  const refreshCredits = useAuthStore((s) => s.refreshCredits)
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
 
   const [layout, setLayout] = useState<'grid' | 'list'>('list')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
-  const [activeAction, setActiveAction] = useState<'storyboard' | 'video' | null>(null)
   const [generateError, setGenerateError] = useState<string | null>(null)
+  const [isStartingRender, setIsStartingRender] = useState(false)
   const analyzeCalledRef = useRef(false)
 
   // On mount: load production from API if we don't have matching tempProjectData
@@ -42,7 +86,8 @@ export const RefinePromptView = () => {
     }
   }, [id])
 
-  const isReadOnly = ['completed', 'generating', 'stitching'].includes((tempProjectData as any)?.status)
+  const isGenerating = ['generating', 'stitching'].includes((tempProjectData as any)?.status)
+  const isReadOnly = isGenerating
   const scenes = tempProjectData?.scenes || []
 
   // Call real Gemini analysis if no scenes exist
@@ -86,26 +131,24 @@ export const RefinePromptView = () => {
       })
   }, [scenes.length, isAnalyzing, isReadOnly, tempProjectData, id, setTempProjectData])
 
-  const onGenerate = async (type: 'storyboard' | 'video') => {
+  const onGenerateAll = async () => {
     const productionId = (tempProjectData as any)?.id || id
-    if (!productionId) return
-    setActiveAction(type)
+    if (!productionId || scenes.length === 0) return
+    setIsStartingRender(true)
     setGenerateError(null)
     try {
       await api.projects.render(productionId)
-      if (tempProjectData) {
-        setTempProjectData({ ...tempProjectData, status: 'generating' } as any)
-      }
+      const updated = await api.projects.get(productionId)
+      if (updated) setTempProjectData({ ...updated, scenes: updated.scenes || [] })
     } catch (err) {
-      console.error('Render failed:', err)
-      setGenerateError(err instanceof Error ? err.message : 'Render failed')
+      console.error('Failed to start render:', err)
+      setGenerateError(err instanceof Error ? err.message : 'Failed to start generation')
     } finally {
-      setActiveAction(null)
+      setIsStartingRender(false)
     }
   }
 
-  // Poll scene operations while generating — check each scene's Veo operation and auto-stitch
-  // When stitching, poll the stitch job status instead
+  // Poll production status while generating/stitching — backend handles the full state machine
   useEffect(() => {
     const productionId = (tempProjectData as any)?.id || id
     const status = (tempProjectData as any)?.status
@@ -113,72 +156,21 @@ export const RefinePromptView = () => {
 
     const pollInterval = setInterval(async () => {
       try {
-        if (status === 'stitching') {
-          // Poll stitch job status
-          const stitchResult = await api.projects.checkStitchStatus(productionId)
-          if (stitchResult.status === 'completed' || stitchResult.status === 'failed') {
-            const final = await api.projects.get(productionId)
-            setTempProjectData({ ...final, scenes: final.scenes || [] })
-            if (stitchResult.status === 'failed') {
-              setGenerateError(stitchResult.error || 'Stitching failed')
-            }
-            clearInterval(pollInterval)
-          }
-          return
-        }
-
-        // status === 'generating': poll scene operations
         const prod = await api.projects.get(productionId)
         if (!prod) return
+        setTempProjectData({ ...prod, scenes: prod.scenes || [] })
 
-        // If backend already moved to completed/failed, stop polling
         if (prod.status === 'completed' || prod.status === 'failed') {
-          setTempProjectData({ ...prod, scenes: prod.scenes || [] })
           if (prod.status === 'failed') {
-            setGenerateError(prod.error_message || 'Generation failed')
+            setGenerateError((prod as any).error_message || 'Generation failed')
           }
+          refreshCredits()
           clearInterval(pollInterval)
-          return
-        }
-
-        // Poll each scene that has an operation_name but status is not completed
-        const allScenes = prod.scenes || []
-        for (const scene of allScenes) {
-          if (scene.operation_name && scene.status !== 'completed') {
-            try {
-              await api.projects.checkOperation(scene.operation_name, productionId, scene.id)
-            } catch {
-              // Individual scene poll failure is not fatal
-            }
-          }
-        }
-
-        // Re-fetch after polling operations (they may have persisted video_urls)
-        const updated = await api.projects.get(productionId)
-        setTempProjectData({ ...updated, scenes: updated.scenes || [] })
-
-        // Check if all scenes are completed — if so, trigger stitch
-        const updatedScenes = updated.scenes || []
-        const allDone = updatedScenes.length > 0 && updatedScenes.every(
-          (s: any) => s.status === 'completed'
-        )
-        if (allDone && updated.status === 'generating') {
-          try {
-            await api.projects.stitch(productionId)
-            // Don't clear interval — next tick will detect 'stitching' status
-            // and switch to stitch polling
-            const stitching = await api.projects.get(productionId)
-            setTempProjectData({ ...stitching, scenes: stitching.scenes || [] })
-          } catch (err) {
-            console.error('Stitch failed:', err)
-            setGenerateError(err instanceof Error ? err.message : 'Stitch failed')
-            clearInterval(pollInterval)
-          }
         }
       } catch (err) {
         console.error('Poll failed:', err)
       }
-    }, 15000)
+    }, 10000)
 
     return () => clearInterval(pollInterval)
   }, [(tempProjectData as any)?.status, (tempProjectData as any)?.id, id])
@@ -187,6 +179,12 @@ export const RefinePromptView = () => {
   const inputTokens = totalUsage?.input_tokens || 0
   const outputTokens = totalUsage?.output_tokens || 0
   const estimatedCost = totalUsage?.cost_usd || 0
+  const imageGenerations = totalUsage?.image_generations || 0
+  const imageCost = totalUsage?.image_cost_usd || 0
+  const veoVideos = totalUsage?.veo_videos || 0
+  const veoSeconds = totalUsage?.veo_seconds || 0
+  const veoUnitCost = totalUsage?.veo_unit_cost || 0
+  const veoCost = totalUsage?.veo_cost_usd || 0
 
   if (analysisError) {
     return (
@@ -281,17 +279,26 @@ export const RefinePromptView = () => {
               inputTokens={inputTokens}
               outputTokens={outputTokens}
               totalCost={estimatedCost}
+              imageGenerations={imageGenerations}
+              imageCost={imageCost}
+              veoVideos={veoVideos}
+              veoSeconds={veoSeconds}
+              veoUnitCost={veoUnitCost}
+              veoCost={veoCost}
             />
           </div>
           
           {(() => {
             const s = (tempProjectData as any)?.status
             const completedScenes = scenes.filter((sc: any) => sc.status === 'completed').length
+            const framesReady = scenes.filter((sc: any) => sc.thumbnail_url).length
             if (s === 'generating') {
+              const currentScene = scenes.find((sc: any) => sc.status === 'generating_frame' || sc.status === 'generating')
+              const phase = currentScene?.status === 'generating_frame' ? 'Generating Frames' : 'Generating Videos'
               return (
                 <div className="flex items-center gap-2 text-sm text-accent-dark font-medium">
                   <Loader2 className="animate-spin" size={16} />
-                  Generating Videos... {completedScenes}/{scenes.length} scenes
+                  {phase}... {completedScenes}/{scenes.length} scenes
                 </div>
               )
             }
@@ -311,18 +318,20 @@ export const RefinePromptView = () => {
               )
             }
             if (s === 'failed') {
+              const errMsg = generateError || (tempProjectData as any)?.error_message || 'Generation failed'
               return (
                 <div className="flex items-center gap-3">
-                  <span className="text-xs text-red-500">{generateError || (tempProjectData as any)?.error_message || 'Generation failed'}</span>
-                  <Button icon={RotateCcw} onClick={() => onGenerate('video')} disabled={!!activeAction}>
-                    Retry
+                  <ErrorBadge message={errMsg} />
+                  <Button icon={isStartingRender ? Loader2 : RotateCcw} onClick={onGenerateAll} disabled={isStartingRender}>
+                    {isStartingRender ? 'Starting...' : 'Retry'}
                   </Button>
                 </div>
               )
             }
+            const totalCredits = scenes.length * 7 // 2 (frame) + 5 (video) per scene
             return (
-              <Button icon={Play} onClick={() => onGenerate('video')} disabled={!!activeAction}>
-                {activeAction === 'video' ? 'Generating...' : 'Generate Full Video'}
+              <Button icon={isStartingRender ? Loader2 : Play} onClick={onGenerateAll} disabled={isStartingRender}>
+                {isStartingRender ? 'Starting...' : `Generate All (${totalCredits} credits)`}
               </Button>
             )
           })()}
@@ -390,6 +399,10 @@ export const RefinePromptView = () => {
           inputTokens={inputTokens}
           outputTokens={outputTokens}
           totalCost={estimatedCost}
+          veoVideos={veoVideos}
+          veoSeconds={veoSeconds}
+          veoUnitCost={veoUnitCost}
+          veoCost={veoCost}
           className="glass bg-card/90 shadow-2xl rounded-full border-accent/20 [&>button]:px-4 [&>button]:py-2.5 [&>button]:text-xs"
         />
       </motion.div>
@@ -550,6 +563,7 @@ const SceneItem = ({
 }) => {
   const isPortrait = orientation === '9:16'
   const aspectClass = isPortrait ? 'aspect-[9/16]' : 'aspect-video'
+  const refreshCredits = useAuthStore((s) => s.refreshCredits)
   const [isGeneratingFrame, setIsGeneratingFrame] = useState(false)
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -598,6 +612,7 @@ const SceneItem = ({
       setError('Frame generation failed')
     } finally {
       setIsGeneratingFrame(false)
+      refreshCredits()
     }
   }
 
@@ -645,6 +660,7 @@ const SceneItem = ({
       console.error('Video generation failed:', err)
       setError('Video generation failed')
       setIsGeneratingVideo(false)
+      refreshCredits()
     }
   }
 
@@ -747,7 +763,7 @@ const SceneItem = ({
                       onClick={() => handleGenerateFrame()}
                       disabled={isBusy}
                       className="p-1.5 hover:bg-accent/10 rounded-md text-accent-dark transition-colors disabled:opacity-40"
-                      title="Generate Frame"
+                      title="Generate Frame (2 credits)"
                     >
                       {isGeneratingFrame ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />}
                     </button>
@@ -755,7 +771,7 @@ const SceneItem = ({
                       onClick={() => handleGenerateVideo()}
                       disabled={isBusy}
                       className="p-1.5 hover:bg-accent/10 rounded-md text-accent-dark transition-colors disabled:opacity-40"
-                      title="Generate Video"
+                      title="Generate Video (5 credits)"
                     >
                       {isGeneratingVideo ? <Loader2 size={14} className="animate-spin" /> : <Video size={14} />}
                     </button>
@@ -883,7 +899,7 @@ const SceneItem = ({
                     onClick={() => handleGenerateFrame()}
                     disabled={isBusy}
                   >
-                    {isGeneratingFrame ? 'Generating...' : 'Generate Frame'}
+                    {isGeneratingFrame ? 'Generating...' : 'Generate Frame (2)'}
                   </Button>
                   <Button
                     variant="ghost"
@@ -892,7 +908,7 @@ const SceneItem = ({
                     onClick={() => handleGenerateVideo()}
                     disabled={isBusy}
                   >
-                    {isGeneratingVideo ? 'Generating...' : 'Generate Video'}
+                    {isGeneratingVideo ? 'Generating...' : 'Generate Video (5)'}
                   </Button>
                 </>
               )}

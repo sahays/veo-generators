@@ -18,9 +18,12 @@ async def list_productions(
     if not deps.firestore_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
     productions = deps.firestore_svc.get_productions(include_archived=archived)
+    code = getattr(request.state, "invite_code", None)
     if mine:
-        code = getattr(request.state, "invite_code", None)
         productions = [p for p in productions if p.invite_code == code]
+    else:
+        # Demo tab: exclude the current user's productions
+        productions = [p for p in productions if p.invite_code != code]
     return [sign_production_urls(p, thumbnails_only=True) for p in productions]
 
 

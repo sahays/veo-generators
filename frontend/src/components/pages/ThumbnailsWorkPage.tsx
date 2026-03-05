@@ -637,7 +637,7 @@ export const ThumbnailsWorkPage = () => {
             disabled={generatingCollage || !collagePromptId || capturing}
             className={cn("shrink-0 py-2.5", generatingCollage && "[&_svg]:animate-spin")}
           >
-            {generatingCollage ? 'Generating...' : 'Generate Thumbnail'}
+            {generatingCollage ? 'Generating...' : 'Generate Thumbnail (2 credits)'}
           </Button>
         </div>
       )}

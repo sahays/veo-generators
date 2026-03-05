@@ -56,6 +56,12 @@ export const ProductionSummary = () => {
   const inputTokens = totalUsage?.input_tokens || 0
   const outputTokens = totalUsage?.output_tokens || 0
   const totalCost = totalUsage?.cost_usd || 0
+  const imageGenerations = totalUsage?.image_generations || 0
+  const imageCost = totalUsage?.image_cost_usd || 0
+  const veoVideos = totalUsage?.veo_videos || 0
+  const veoSeconds = totalUsage?.veo_seconds || 0
+  const veoUnitCost = totalUsage?.veo_unit_cost || 0
+  const veoCost = totalUsage?.veo_cost_usd || 0
   const isPortrait = tempProjectData.orientation === '9:16'
   const aspectClass = isPortrait ? 'aspect-[9/16]' : 'aspect-video'
 
@@ -172,6 +178,12 @@ export const ProductionSummary = () => {
                   inputTokens={inputTokens}
                   outputTokens={outputTokens}
                   totalCost={totalCost}
+                  imageGenerations={imageGenerations}
+                  imageCost={imageCost}
+                  veoVideos={veoVideos}
+                  veoSeconds={veoSeconds}
+                  veoUnitCost={veoUnitCost}
+                  veoCost={veoCost}
                 />
               </div>
             </div>

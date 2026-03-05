@@ -100,6 +100,12 @@ const ProjectCard = ({ project, onClick, onArchive, showArchive }: { project: Pr
               inputTokens={project.total_usage.input_tokens || 0}
               outputTokens={project.total_usage.output_tokens || 0}
               totalCost={project.total_usage.cost_usd}
+              imageGenerations={project.total_usage.image_generations || 0}
+              imageCost={project.total_usage.image_cost_usd || 0}
+              veoVideos={project.total_usage.veo_videos || 0}
+              veoSeconds={project.total_usage.veo_seconds || 0}
+              veoUnitCost={project.total_usage.veo_unit_cost || 0}
+              veoCost={project.total_usage.veo_cost_usd || 0}
             />
           )}
         </div>

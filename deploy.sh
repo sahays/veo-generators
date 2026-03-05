@@ -27,6 +27,24 @@ VIDEO_GEN_MODEL=${VIDEO_GEN_MODEL:-veo-3.1-generate-001}
 # Execute comprehensive pre-deployment checks
 ./pre-deploy.sh
 
+# Run backend tests (abort on failure)
+echo "🧪 Running Backend Tests..."
+python3 -m venv .test_venv
+source .test_venv/bin/activate
+pip install -q pytest httpx -r api/requirements.txt
+cd api
+if python3 -m pytest tests/ -v; then
+    echo "✅ All tests passed."
+else
+    echo "❌ Tests failed. Aborting deployment."
+    cd ..
+    deactivate && rm -rf .test_venv
+    exit 1
+fi
+cd ..
+deactivate
+rm -rf .test_venv
+
 echo "🚀 Starting deployment for $SERVICE_NAME..."
 
 # Ensure Docker is authenticated with Artifact Registry

@@ -25,6 +25,7 @@ class FirestoreService:
         self.thumbnails_collection = self.db.collection(f"{prefix}_thumbnails")
         self.uploads_collection = self.db.collection(f"{prefix}_uploads")
         self.invite_codes_collection = self.db.collection(f"{prefix}_invite_codes")
+        self.daily_usage_collection = self.db.collection(f"{prefix}_daily_usage")
 
     def _all_resources(self) -> List[SystemResource]:
         docs = self.resources_collection.stream()
@@ -241,3 +242,34 @@ class FirestoreService:
 
     def delete_invite_code(self, code_id: str):
         self.invite_codes_collection.document(code_id).delete()
+
+    # --- Daily Usage Tracking ---
+
+    def get_daily_usage(self, code_value: str, date_str: str) -> int:
+        doc_id = f"{code_value}_{date_str}"
+        doc = self.daily_usage_collection.document(doc_id).get()
+        if doc.exists:
+            return doc.to_dict().get("count", 0)
+        return 0
+
+    def increment_daily_usage(
+        self, code_value: str, date_str: str, amount: int = 1
+    ) -> int:
+        doc_id = f"{code_value}_{date_str}"
+        doc_ref = self.daily_usage_collection.document(doc_id)
+
+        @firestore.transactional
+        def _increment(transaction):
+            snapshot = doc_ref.get(transaction=transaction)
+            if snapshot.exists:
+                current = snapshot.to_dict().get("count", 0)
+            else:
+                current = 0
+            new_count = current + amount
+            transaction.set(
+                doc_ref, {"code": code_value, "date": date_str, "count": new_count}
+            )
+            return new_count
+
+        transaction = self.db.transaction()
+        return _increment(transaction)

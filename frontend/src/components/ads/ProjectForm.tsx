@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Sparkles, FileText, ImageIcon, Monitor, Smartphone, Clock, Clapperboard, Megaphone, Share2, Play, Settings, Loader2, X, Upload, FolderOpen } from 'lucide-react'
+import { ArrowLeft, Sparkles, FileText, ImageIcon, Monitor, Smartphone, Clock, Clapperboard, Megaphone, Share2, Play, Settings, Loader2, X, Upload, FolderOpen, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button, Card } from '@/components/Common'
 import { useProjectStore } from '@/store/useProjectStore'
@@ -143,6 +143,13 @@ export const ProjectForm = () => {
       setUploadProgress(0)
     }
   }
+
+  const onRegenerate = handleSubmit(async (data) => {
+    if (!id) return
+    // Clear scenes and navigate — RefinePromptView will auto-trigger analysis
+    setTempProjectData({ ...data, id, scenes: [], prompt_id: data.prompt_id })
+    navigate(`/productions/${id}/script`)
+  })
 
   const onAnalyze = handleSubmit(async (data) => {
     if (existingProject) {
@@ -460,7 +467,18 @@ export const ProjectForm = () => {
           </Card>
         )}
 
-        <div className="flex justify-end pt-4">
+        <div className="flex justify-end gap-3 pt-4">
+          {existingProject?.scenes.length > 0 && (
+            <Button
+              onClick={onRegenerate}
+              icon={RotateCcw}
+              variant="secondary"
+              className="w-full md:w-auto"
+              disabled={isSubmitting}
+            >
+              Regenerate Script
+            </Button>
+          )}
           <Button
             onClick={onAnalyze}
             icon={existingProject?.scenes.length ? Play : Sparkles}

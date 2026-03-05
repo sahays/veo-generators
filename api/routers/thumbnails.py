@@ -54,9 +54,11 @@ async def list_thumbnails(request: Request, archived: bool = False, mine: bool =
     if not deps.firestore_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
     records = deps.firestore_svc.get_thumbnail_records(include_archived=archived)
+    code = getattr(request.state, "invite_code", None)
     if mine:
-        code = getattr(request.state, "invite_code", None)
         records = [r for r in records if r.invite_code == code]
+    else:
+        records = [r for r in records if r.invite_code != code]
     return [_sign_thumbnail_urls(r) for r in records]
 
 

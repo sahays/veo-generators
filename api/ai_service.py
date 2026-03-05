@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import os
 import json
 import uuid
@@ -7,6 +9,11 @@ from typing import Optional
 from google import genai
 from google.genai import types
 from models import Scene, SceneMetadata, UsageMetrics, AIResponseWrapper, Project
+
+logger = logging.getLogger(__name__)
+
+MAX_RETRIES = 4
+INITIAL_BACKOFF = 2  # seconds
 
 
 def _load_default_schema():
@@ -247,16 +254,35 @@ Return a JSON list of scenes following the requested structure."""
         else:
             contents.append(enriched_prompt)
 
-        response = self.client.models.generate_content(
-            model=model_id,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                response_modalities=["IMAGE"],
-                image_config=types.ImageConfig(
-                    aspect_ratio=orientation,
-                ),
-            ),
-        )
+        last_error = None
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                response = self.client.models.generate_content(
+                    model=model_id,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["IMAGE"],
+                        image_config=types.ImageConfig(
+                            aspect_ratio=orientation,
+                        ),
+                    ),
+                )
+                break
+            except Exception as e:
+                last_error = e
+                err_str = str(e)
+                is_rate_limit = "429" in err_str or "RESOURCE_EXHAUSTED" in err_str
+                if is_rate_limit and attempt < MAX_RETRIES:
+                    wait = INITIAL_BACKOFF * (2**attempt)
+                    logger.warning(
+                        f"Frame gen rate-limited (attempt {attempt + 1}/{MAX_RETRIES + 1}), "
+                        f"retrying in {wait}s: {err_str[:200]}"
+                    )
+                    await asyncio.sleep(wait)
+                else:
+                    raise
+        else:
+            raise last_error  # type: ignore[misc]
 
         image_url = None
 
@@ -401,16 +427,35 @@ Return a JSON list of scenes following the requested structure."""
             contents.append(types.Part.from_uri(file_uri=uri, mime_type="image/png"))
         contents.append(prompt_text)
 
-        response = self.client.models.generate_content(
-            model=model_id,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                response_modalities=["IMAGE"],
-                image_config=types.ImageConfig(
-                    aspect_ratio="16:9",
-                ),
-            ),
-        )
+        last_error = None
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                response = self.client.models.generate_content(
+                    model=model_id,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["IMAGE"],
+                        image_config=types.ImageConfig(
+                            aspect_ratio="16:9",
+                        ),
+                    ),
+                )
+                break
+            except Exception as e:
+                last_error = e
+                err_str = str(e)
+                is_rate_limit = "429" in err_str or "RESOURCE_EXHAUSTED" in err_str
+                if is_rate_limit and attempt < MAX_RETRIES:
+                    wait = INITIAL_BACKOFF * (2**attempt)
+                    logger.warning(
+                        f"Collage gen rate-limited (attempt {attempt + 1}/{MAX_RETRIES + 1}), "
+                        f"retrying in {wait}s: {err_str[:200]}"
+                    )
+                    await asyncio.sleep(wait)
+                else:
+                    raise
+        else:
+            raise last_error  # type: ignore[misc]
 
         image_url = None
         if response.candidates and response.candidates[0].content.parts:

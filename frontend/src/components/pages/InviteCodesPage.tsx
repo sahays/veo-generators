@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Shield, Trash2, Ban, CheckCircle, Shuffle } from 'lucide-react'
+import { Plus, Shield, Trash2, Ban, CheckCircle, Shuffle, Pencil, Check, X } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Button } from '@/components/Common'
 import { Modal } from '@/components/Modal'
@@ -11,6 +11,7 @@ interface InviteCode {
   code: string
   label: string
   is_active: boolean
+  daily_credits: number
   expires_at: string | null
   createdAt: string
 }
@@ -21,9 +22,12 @@ export const InviteCodesPage = () => {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newCode, setNewCode] = useState('')
   const [newLabel, setNewLabel] = useState('')
+  const [newDailyCredits, setNewDailyCredits] = useState('250')
   const [newExpiry, setNewExpiry] = useState('')
   const [createError, setCreateError] = useState('')
   const [isCreating, setIsCreating] = useState(false)
+  const [editingLimitId, setEditingLimitId] = useState<string | null>(null)
+  const [editingLimitValue, setEditingLimitValue] = useState('')
 
   const generateRandomCode = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
@@ -51,13 +55,16 @@ export const InviteCodesPage = () => {
     setIsCreating(true)
     setCreateError('')
     try {
-      const data: { code: string; label?: string; expires_at?: string } = { code: newCode.trim() }
+      const data: { code: string; label?: string; daily_credits?: number; expires_at?: string } = { code: newCode.trim() }
       if (newLabel.trim()) data.label = newLabel.trim()
+      const credits = parseInt(newDailyCredits, 10)
+      if (!isNaN(credits) && credits > 0) data.daily_credits = credits
       if (newExpiry) data.expires_at = new Date(newExpiry).toISOString()
       await api.auth.createCode(data)
       setShowCreateModal(false)
       setNewCode('')
       setNewLabel('')
+      setNewDailyCredits('250')
       setNewExpiry('')
       fetchCodes()
     } catch (err: any) {
@@ -81,6 +88,18 @@ export const InviteCodesPage = () => {
     if (!confirm('Permanently delete this invite code?')) return
     await api.auth.deleteCode(id)
     fetchCodes()
+  }
+
+  const handleSaveDailyCredits = async (id: string) => {
+    const val = parseInt(editingLimitValue, 10)
+    if (isNaN(val) || val < 1) return
+    try {
+      await api.auth.updateCode(id, { daily_credits: val })
+      setEditingLimitId(null)
+      fetchCodes()
+    } catch (err) {
+      console.error('Failed to update daily credits', err)
+    }
   }
 
   if (isLoading) {
@@ -112,6 +131,7 @@ export const InviteCodesPage = () => {
           {codes.map((code) => {
             const isExpired = code.expires_at && new Date(code.expires_at) < new Date()
             const isActive = code.is_active && !isExpired
+            const isEditingLimit = editingLimitId === code.id
 
             return (
               <motion.div
@@ -131,6 +151,36 @@ export const InviteCodesPage = () => {
                     )}>
                       {isExpired ? 'Expired' : isActive ? 'Active' : 'Revoked'}
                     </span>
+                    {isEditingLimit ? (
+                      <span className="inline-flex items-center gap-1">
+                        <input
+                          type="number"
+                          min="1"
+                          value={editingLimitValue}
+                          onChange={(e) => setEditingLimitValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveDailyCredits(code.id)
+                            if (e.key === 'Escape') setEditingLimitId(null)
+                          }}
+                          autoFocus
+                          className="w-20 px-1.5 py-0.5 rounded bg-muted border border-border text-foreground text-xs text-center focus:outline-none focus:ring-1 focus:ring-accent/50"
+                        />
+                        <button onClick={() => handleSaveDailyCredits(code.id)} className="text-green-500 hover:text-green-600">
+                          <Check size={14} />
+                        </button>
+                        <button onClick={() => setEditingLimitId(null)} className="text-muted-foreground hover:text-foreground">
+                          <X size={14} />
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => { setEditingLimitId(code.id); setEditingLimitValue(String(code.daily_credits ?? 250)) }}
+                        className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-blue-500/15 text-blue-600 dark:text-blue-400 hover:bg-blue-500/25 transition-colors"
+                      >
+                        {code.daily_credits ?? 250} credits/day
+                        <Pencil size={10} />
+                      </button>
+                    )}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
                     {code.label && <span>{code.label}</span>}
@@ -215,6 +265,17 @@ export const InviteCodesPage = () => {
               value={newLabel}
               onChange={(e) => setNewLabel(e.target.value)}
               placeholder="e.g. Alpha team access"
+              className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/50 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Daily Credits</label>
+            <input
+              type="number"
+              min="1"
+              value={newDailyCredits}
+              onChange={(e) => setNewDailyCredits(e.target.value)}
+              placeholder="250"
               className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/50 text-sm"
             />
           </div>

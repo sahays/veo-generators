@@ -9,7 +9,6 @@ router = APIRouter(prefix="/api/v1/diagnostics", tags=["diagnostics"])
 
 
 @router.post("/optimize-prompt")
-@deps.limiter.limit("10/minute")
 async def diagnostic_optimize(request: Request, body: dict):
     if not deps.ai_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
@@ -22,7 +21,6 @@ async def diagnostic_optimize(request: Request, body: dict):
 
 
 @router.post("/generate-image")
-@deps.limiter.limit("10/minute")
 async def diagnostic_image(request: Request, body: dict):
     if not deps.ai_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
@@ -37,7 +35,6 @@ async def diagnostic_image(request: Request, body: dict):
 
 
 @router.post("/generate-video")
-@deps.limiter.limit("10/minute")
 async def diagnostic_video(request: Request, body: dict):
     if not deps.video_svc or not deps.storage_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")

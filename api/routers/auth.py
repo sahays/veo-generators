@@ -59,10 +59,24 @@ def validate_code(code: str) -> dict:
 
 
 @router.post("/validate")
-@deps.limiter.limit("5/minute")
 async def validate(request: Request, body: ValidateCodeRequest):
     logger.info(f"Auth validate endpoint called, code length={len(body.code)}")
-    return validate_code(body.code)
+    result = validate_code(body.code)
+
+    # Include credit info for valid codes
+    if result["valid"] and deps.firestore_svc:
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        daily_usage = deps.firestore_svc.get_daily_usage(body.code, today)
+        result["daily_usage"] = daily_usage
+        result["credit_costs"] = {"video": 5, "image": 2, "text": 1}
+
+        if result["is_master"]:
+            result["daily_credits"] = None  # unlimited
+        else:
+            invite = deps.firestore_svc.get_invite_code_by_value(body.code)
+            result["daily_credits"] = invite.daily_credits if invite else 250
+
+    return result
 
 
 @router.get("/codes")
@@ -87,10 +101,35 @@ async def create_code(body: CreateInviteCodeRequest, request: Request):
     invite = InviteCode(
         code=body.code,
         label=body.label,
+        daily_credits=body.daily_credits,
         expires_at=body.expires_at,
     )
     deps.firestore_svc.create_invite_code(invite)
     return invite.dict()
+
+
+@router.patch("/codes/{code_id}")
+async def update_code(code_id: str, body: dict, request: Request):
+    _require_master(request)
+    if not deps.firestore_svc:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+
+    invite = deps.firestore_svc.get_invite_code(code_id)
+    if not invite:
+        raise HTTPException(status_code=404, detail="Code not found")
+
+    updates = {}
+    if "daily_credits" in body:
+        val = body["daily_credits"]
+        if not isinstance(val, int) or val < 1:
+            raise HTTPException(
+                status_code=400, detail="daily_credits must be a positive integer"
+            )
+        updates["daily_credits"] = val
+
+    if updates:
+        deps.firestore_svc.update_invite_code(code_id, updates)
+    return {"status": "updated"}
 
 
 @router.post("/codes/{code_id}/revoke")

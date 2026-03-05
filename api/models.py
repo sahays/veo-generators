@@ -48,6 +48,12 @@ class UsageMetrics(BaseModel):
     output_tokens: int = 0
     model_name: str = ""
     cost_usd: float = 0.0
+    image_generations: int = 0
+    image_cost_usd: float = 0.0
+    veo_videos: int = 0
+    veo_seconds: int = 0
+    veo_unit_cost: float = 0.0
+    veo_cost_usd: float = 0.0
 
 
 class GlobalStyle(BaseModel):

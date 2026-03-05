@@ -9,10 +9,16 @@ interface CostBreakdownPillProps {
   inputTokens: number
   outputTokens: number
   totalCost: number
+  imageGenerations?: number
+  imageCost?: number
+  veoVideos?: number
+  veoSeconds?: number
+  veoUnitCost?: number
+  veoCost?: number
   className?: string
 }
 
-export const CostBreakdownPill = ({ inputTokens, outputTokens, totalCost, className }: CostBreakdownPillProps) => {
+export const CostBreakdownPill = ({ inputTokens, outputTokens, totalCost, imageGenerations, imageCost, veoVideos, veoSeconds, veoUnitCost, veoCost, className }: CostBreakdownPillProps) => {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -28,7 +34,8 @@ export const CostBreakdownPill = ({ inputTokens, outputTokens, totalCost, classN
   const geminiInputCost = inputTokens * GEMINI_INPUT_RATE
   const geminiOutputCost = outputTokens * GEMINI_OUTPUT_RATE
   const geminiTotal = geminiInputCost + geminiOutputCost
-  const mediaCost = Math.max(0, totalCost - geminiTotal)
+  const actualImageCost = imageCost || 0
+  const actualVeoCost = veoCost || 0
 
   const fmt = (n: number) => n >= 0.01 ? `$${n.toFixed(3)}` : `$${n.toFixed(4)}`
 
@@ -49,7 +56,7 @@ export const CostBreakdownPill = ({ inputTokens, outputTokens, totalCost, classN
       {open && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="absolute bottom-full left-0 mb-2 z-50 w-56 glass bg-card rounded-xl border border-border shadow-2xl p-3 space-y-2"
+          className="absolute bottom-full left-0 mb-2 z-50 w-60 glass bg-card rounded-xl border border-border shadow-2xl p-3 space-y-2"
         >
           <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Cost Breakdown</p>
           <div className="space-y-1.5 text-xs font-mono">
@@ -58,8 +65,21 @@ export const CostBreakdownPill = ({ inputTokens, outputTokens, totalCost, classN
             <div className="border-t border-border/50 pt-1.5">
               <Row label="Gemini subtotal" cost={fmt(geminiTotal)} bold />
             </div>
-            {mediaCost > 0 && (
-              <Row label="Media (Imagen/Veo)" cost={fmt(mediaCost)} />
+            {(imageGenerations ?? 0) > 0 && (
+              <div className="border-t border-border/50 pt-1.5">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Images</p>
+                <Row label="Frames generated" value={String(imageGenerations)} />
+                <Row label="Images subtotal" cost={fmt(actualImageCost)} bold />
+              </div>
+            )}
+            {(veoVideos ?? 0) > 0 && (
+              <div className="border-t border-border/50 pt-1.5">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Videos</p>
+                <Row label="Videos generated" value={String(veoVideos)} />
+                <Row label="Total seconds" value={String(veoSeconds)} />
+                <Row label="Unit cost" value={`${fmt(veoUnitCost || 0)}/s`} />
+                <Row label="Videos subtotal" cost={fmt(actualVeoCost)} bold />
+              </div>
             )}
             <div className="border-t border-border/50 pt-1.5">
               <Row label="Total" cost={fmt(totalCost)} bold />
@@ -71,12 +91,12 @@ export const CostBreakdownPill = ({ inputTokens, outputTokens, totalCost, classN
   )
 }
 
-const Row = ({ label, value, cost, bold }: { label: string; value?: string; cost: string; bold?: boolean }) => (
+const Row = ({ label, value, cost, bold }: { label: string; value?: string; cost?: string; bold?: boolean }) => (
   <div className={cn("flex items-center justify-between gap-2", bold && "font-bold")}>
     <span className="text-muted-foreground">{label}</span>
     <span className="flex items-center gap-2">
       {value && <span className="text-foreground/60">{value}</span>}
-      <span className="text-accent-dark">{cost}</span>
+      {cost && <span className="text-accent-dark">{cost}</span>}
     </span>
   </div>
 )
