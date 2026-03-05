@@ -48,7 +48,7 @@ async function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
 
 export const api = {
   auth: {
-    validate: async (code: string): Promise<{ valid: boolean; is_master: boolean }> => {
+    validate: async (code: string): Promise<{ valid: boolean; is_master: boolean; daily_credits: number | null; daily_usage: number; credit_costs: { video: number; image: number; text: number } }> => {
       const res = await fetch(`${API_BASE_URL}/auth/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -63,7 +63,7 @@ export const api = {
       if (!res.ok) throw new Error(`Failed to list codes: ${res.status}`)
       return res.json()
     },
-    createCode: async (data: { code: string; label?: string; expires_at?: string }): Promise<any> => {
+    createCode: async (data: { code: string; label?: string; daily_credits?: number; expires_at?: string }): Promise<any> => {
       const res = await authFetch(`${API_BASE_URL}/auth/codes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -87,10 +87,21 @@ export const api = {
       const res = await authFetch(`${API_BASE_URL}/auth/codes/${id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error(`Failed to delete code: ${res.status}`)
     },
+    updateCode: async (id: string, data: { daily_credits: number }): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/auth/codes/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error(`Failed to update code: ${res.status}`)
+    },
   },
   projects: {
-    list: async (params?: { archived?: boolean }): Promise<any[]> => {
-      const query = params?.archived ? '?archived=true' : ''
+    list: async (params?: { archived?: boolean; mine?: boolean }): Promise<any[]> => {
+      const qs = new URLSearchParams()
+      if (params?.archived) qs.append('archived', 'true')
+      if (params?.mine) qs.append('mine', 'true')
+      const query = qs.toString() ? `?${qs.toString()}` : ''
       const res = await authFetch(`${API_BASE_URL}/productions${query}`)
       if (!res.ok) throw new Error(`Failed to list productions: ${res.status}`)
       return res.json()
@@ -239,8 +250,9 @@ export const api = {
     }
   },
   keyMoments: {
-    list: async (): Promise<any[]> => {
-      const res = await authFetch(`${API_BASE_URL}/key-moments`)
+    list: async (params?: { mine?: boolean }): Promise<any[]> => {
+      const query = params?.mine ? '?mine=true' : ''
+      const res = await authFetch(`${API_BASE_URL}/key-moments${query}`)
       if (!res.ok) throw new Error(`Failed to list key moments: ${res.status}`)
       return res.json()
     },
@@ -273,8 +285,9 @@ export const api = {
     },
   },
   thumbnails: {
-    list: async (): Promise<any[]> => {
-      const res = await authFetch(`${API_BASE_URL}/thumbnails`)
+    list: async (params?: { mine?: boolean }): Promise<any[]> => {
+      const query = params?.mine ? '?mine=true' : ''
+      const res = await authFetch(`${API_BASE_URL}/thumbnails${query}`)
       if (!res.ok) throw new Error(`Failed to list thumbnails: ${res.status}`)
       return res.json()
     },

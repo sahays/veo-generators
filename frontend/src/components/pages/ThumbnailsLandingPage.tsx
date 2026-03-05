@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Image, Loader2, Archive, Upload, Film, Camera } from 'lucide-react'
+import { Image, Loader2, Archive, Upload, Film, Camera, User, Globe } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/Common'
 import { api } from '@/lib/api'
@@ -38,10 +38,12 @@ const ThumbnailCard = ({
   record,
   onClick,
   onArchive,
+  showArchive,
 }: {
   record: ThumbnailRecord
   onClick: () => void
   onArchive: (e: React.MouseEvent) => void
+  showArchive: boolean
 }) => {
   return (
     <motion.button
@@ -99,47 +101,59 @@ const ThumbnailCard = ({
           <span className="text-muted-foreground/50">·</span>
           <span>{record.screenshots.length} screenshot{record.screenshots.length !== 1 ? 's' : ''}</span>
         </div>
-        <button
-          onClick={onArchive}
-          className="p-1 -m-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
-          title="Archive"
-        >
-          <Archive size={12} />
-        </button>
+        {showArchive && (
+          <button
+            onClick={onArchive}
+            className="p-1 -m-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+            title="Archive"
+          >
+            <Archive size={12} />
+          </button>
+        )}
       </div>
     </motion.button>
   )
 }
 
+type TabKey = 'mine' | 'demos'
+
+const TABS: { key: TabKey; label: string; icon: any }[] = [
+  { key: 'mine', label: 'My Thumbnails', icon: User },
+  { key: 'demos', label: 'Demo Thumbnails', icon: Globe },
+]
+
 export const ThumbnailsLandingPage = () => {
   const navigate = useNavigate()
-  const [records, setRecords] = useState<ThumbnailRecord[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<TabKey>('mine')
+  const [myRecords, setMyRecords] = useState<ThumbnailRecord[]>([])
+  const [demoRecords, setDemoRecords] = useState<ThumbnailRecord[]>([])
+  const [myLoading, setMyLoading] = useState(true)
+  const [demoLoading, setDemoLoading] = useState(true)
 
   useEffect(() => {
+    api.thumbnails.list({ mine: true })
+      .then(setMyRecords)
+      .catch((err) => console.error('Failed to fetch my thumbnails', err))
+      .finally(() => setMyLoading(false))
     api.thumbnails.list()
-      .then(setRecords)
-      .catch((err) => console.error('Failed to fetch thumbnails', err))
-      .finally(() => setIsLoading(false))
+      .then(setDemoRecords)
+      .catch((err) => console.error('Failed to fetch demo thumbnails', err))
+      .finally(() => setDemoLoading(false))
   }, [])
 
   const handleArchive = async (id: string) => {
     try {
       await api.thumbnails.archive(id)
-      setRecords(records.filter(r => r.id !== id))
+      setMyRecords(myRecords.filter(r => r.id !== id))
+      setDemoRecords(demoRecords.filter(r => r.id !== id))
     } catch (err) {
       console.error('Failed to archive thumbnail', err)
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-32 space-y-4">
-        <Loader2 className="animate-spin text-accent" size={32} />
-        <p className="text-sm text-muted-foreground">Loading thumbnails...</p>
-      </div>
-    )
-  }
+  const records = activeTab === 'mine' ? myRecords : demoRecords
+  const isLoading = activeTab === 'mine' ? myLoading : demoLoading
+  const isMine = activeTab === 'mine'
 
   return (
     <div className="space-y-6">
@@ -153,7 +167,30 @@ export const ThumbnailsLandingPage = () => {
         <Button icon={Image} onClick={() => navigate('/thumbnails/create')}>Create Thumbnail</Button>
       </div>
 
-      {records.length === 0 ? (
+      <div className="flex gap-1 bg-muted/50 rounded-lg p-1">
+        {TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={cn(
+              "flex items-center gap-1.5 flex-1 justify-center px-3 py-2 rounded-md text-xs font-medium transition-all cursor-pointer",
+              activeTab === tab.key
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <tab.icon size={14} />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center py-32 space-y-4">
+          <Loader2 className="animate-spin text-accent" size={32} />
+          <p className="text-sm text-muted-foreground">Loading thumbnails...</p>
+        </div>
+      ) : records.length === 0 ? (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -162,7 +199,9 @@ export const ThumbnailsLandingPage = () => {
           <div className="w-14 h-14 rounded-full bg-accent/20 text-accent-dark flex items-center justify-center mb-4">
             <Image size={28} />
           </div>
-          <h4 className="text-base font-heading font-bold text-foreground mb-1">No thumbnails yet</h4>
+          <h4 className="text-base font-heading font-bold text-foreground mb-1">
+            {isMine ? "You haven't created any thumbnails yet" : 'No thumbnails yet'}
+          </h4>
           <p className="text-sm text-muted-foreground max-w-xs mb-5">
             Upload a video or select a production to generate a YouTube-style thumbnail with AI.
           </p>
@@ -176,6 +215,7 @@ export const ThumbnailsLandingPage = () => {
               record={record}
               onClick={() => navigate(`/thumbnails/${record.id}`)}
               onArchive={(e) => { e.stopPropagation(); handleArchive(record.id) }}
+              showArchive={isMine}
             />
           ))}
         </div>

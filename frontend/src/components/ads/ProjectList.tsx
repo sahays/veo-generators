@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, FolderOpen, Clock, Loader2, CheckCircle2, AlertCircle, Image as ImageIcon, Archive } from 'lucide-react'
+import { Plus, FolderOpen, Clock, Loader2, CheckCircle2, AlertCircle, Image as ImageIcon, Archive, User, Globe } from 'lucide-react'
 import { CostBreakdownPill } from '@/components/ads/CostBreakdownPill'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/Common'
@@ -18,7 +18,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }>
   failed: { label: 'Failed', color: 'text-red-500 bg-red-500/10', icon: AlertCircle },
 }
 
-const ProjectCard = ({ project, onClick, onArchive }: { project: Project; onClick: () => void; onArchive: (e: React.MouseEvent) => void }) => {
+const ProjectCard = ({ project, onClick, onArchive, showArchive }: { project: Project; onClick: () => void; onArchive: (e: React.MouseEvent) => void; showArchive: boolean }) => {
   const config = STATUS_CONFIG[project.status] || STATUS_CONFIG.draft
   const StatusIcon = config.icon
   const timeAgo = getTimeAgo(project.updatedAt)
@@ -103,30 +103,46 @@ const ProjectCard = ({ project, onClick, onArchive }: { project: Project; onClic
             />
           )}
         </div>
-        <button
-          onClick={onArchive}
-          className="p-1 -m-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
-          title="Archive"
-        >
-          <Archive size={12} />
-        </button>
+        {showArchive && (
+          <button
+            onClick={onArchive}
+            className="p-1 -m-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+            title="Archive"
+          >
+            <Archive size={12} />
+          </button>
+        )}
         <span>{timeAgo}</span>
       </div>
     </motion.button>
   )
 }
 
+type TabKey = 'mine' | 'demos'
+
+const TABS: { key: TabKey; label: string; icon: any }[] = [
+  { key: 'mine', label: 'My Productions', icon: User },
+  { key: 'demos', label: 'Demo Productions', icon: Globe },
+]
+
 export const ProjectList = () => {
   const { setActiveProject, setTempProjectData } = useProjectStore()
   const navigate = useNavigate()
-  const [projects, setProjects] = useState<Project[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<TabKey>('mine')
+  const [myProjects, setMyProjects] = useState<Project[]>([])
+  const [demoProjects, setDemoProjects] = useState<Project[]>([])
+  const [myLoading, setMyLoading] = useState(true)
+  const [demoLoading, setDemoLoading] = useState(true)
 
   useEffect(() => {
+    api.projects.list({ mine: true })
+      .then(setMyProjects)
+      .catch((err) => console.error('Failed to fetch my productions', err))
+      .finally(() => setMyLoading(false))
     api.projects.list()
-      .then((data) => setProjects(data))
-      .catch((err) => console.error('Failed to fetch productions', err))
-      .finally(() => setIsLoading(false))
+      .then(setDemoProjects)
+      .catch((err) => console.error('Failed to fetch demo productions', err))
+      .finally(() => setDemoLoading(false))
   }, [])
 
   const handleNewProject = () => {
@@ -138,7 +154,8 @@ export const ProjectList = () => {
   const handleArchive = async (id: string) => {
     try {
       await api.projects.archive(id)
-      setProjects(projects.filter(p => p.id !== id))
+      setMyProjects(myProjects.filter(p => p.id !== id))
+      setDemoProjects(demoProjects.filter(p => p.id !== id))
     } catch (err) {
       console.error('Failed to archive production', err)
     }
@@ -146,6 +163,7 @@ export const ProjectList = () => {
 
   const handleOpenProject = (id: string) => {
     setActiveProject(id)
+    const projects = activeTab === 'mine' ? myProjects : demoProjects
     const project = projects.find(p => p.id === id)
     if (project?.status === 'completed') {
       navigate(`/productions/${id}`)
@@ -156,14 +174,9 @@ export const ProjectList = () => {
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-32 space-y-4">
-        <Loader2 className="animate-spin text-accent" size={32} />
-        <p className="text-sm text-muted-foreground">Loading productions...</p>
-      </div>
-    )
-  }
+  const projects = activeTab === 'mine' ? myProjects : demoProjects
+  const isLoading = activeTab === 'mine' ? myLoading : demoLoading
+  const isMine = activeTab === 'mine'
 
   return (
     <div className="space-y-6">
@@ -177,7 +190,30 @@ export const ProjectList = () => {
         <Button icon={Plus} onClick={handleNewProject}>New Production</Button>
       </div>
 
-      {projects.length === 0 ? (
+      <div className="flex gap-1 bg-muted/50 rounded-lg p-1">
+        {TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={cn(
+              "flex items-center gap-1.5 flex-1 justify-center px-3 py-2 rounded-md text-xs font-medium transition-all cursor-pointer",
+              activeTab === tab.key
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <tab.icon size={14} />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center py-32 space-y-4">
+          <Loader2 className="animate-spin text-accent" size={32} />
+          <p className="text-sm text-muted-foreground">Loading productions...</p>
+        </div>
+      ) : projects.length === 0 ? (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -186,7 +222,9 @@ export const ProjectList = () => {
           <div className="w-14 h-14 rounded-full bg-accent/20 text-accent-dark flex items-center justify-center mb-4">
             <FolderOpen size={28} />
           </div>
-          <h4 className="text-base font-heading font-bold text-foreground mb-1">No projects yet</h4>
+          <h4 className="text-base font-heading font-bold text-foreground mb-1">
+            {isMine ? "You haven't created any productions yet" : 'No projects yet'}
+          </h4>
           <p className="text-sm text-muted-foreground max-w-xs mb-5">
             Create your first ad generation project to get started.
           </p>
@@ -200,6 +238,7 @@ export const ProjectList = () => {
               project={project}
               onClick={() => handleOpenProject(project.id)}
               onArchive={(e) => { e.stopPropagation(); handleArchive(project.id) }}
+              showArchive={isMine}
             />
           ))}
         </div>

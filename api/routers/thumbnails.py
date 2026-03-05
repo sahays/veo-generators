@@ -50,10 +50,13 @@ def _sign_thumbnail_urls(record: ThumbnailRecord) -> dict:
 
 
 @router.get("")
-async def list_thumbnails(archived: bool = False):
+async def list_thumbnails(request: Request, archived: bool = False, mine: bool = False):
     if not deps.firestore_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
     records = deps.firestore_svc.get_thumbnail_records(include_archived=archived)
+    if mine:
+        code = getattr(request.state, "invite_code", None)
+        records = [r for r in records if r.invite_code == code]
     return [_sign_thumbnail_urls(r) for r in records]
 
 
@@ -100,7 +103,6 @@ async def get_thumbnail_record(record_id: str):
 
 
 @router.post("/analyze")
-@deps.limiter.limit("10/minute")
 async def analyze_video_for_thumbnails(request: Request, body: dict):
     if not deps.ai_svc or not deps.firestore_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
@@ -140,6 +142,7 @@ async def analyze_video_for_thumbnails(request: Request, body: dict):
             production_id=production_id,
             mime_type=mime_type,
             analysis_prompt_id=prompt_id,
+            invite_code=getattr(request.state, "invite_code", None),
             video_summary=(
                 analysis_data.get("video_summary") if analysis_data else None
             ),
@@ -178,7 +181,6 @@ async def save_thumbnail_screenshots(record_id: str, request: dict):
 
 
 @router.post("/{record_id}/collage")
-@deps.limiter.limit("10/minute")
 async def generate_thumbnail_collage(request: Request, record_id: str, body: dict):
     if not deps.ai_svc or not deps.firestore_svc or not deps.storage_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")

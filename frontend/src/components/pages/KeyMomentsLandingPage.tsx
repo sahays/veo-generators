@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Zap, Loader2, Clock, Tag, Archive, Upload, Film } from 'lucide-react'
+import { Zap, Loader2, Clock, Tag, Archive, Upload, Film, User, Globe } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/Common'
 import { api } from '@/lib/api'
@@ -24,10 +24,12 @@ const AnalysisCard = ({
   record,
   onClick,
   onArchive,
+  showArchive,
 }: {
   record: KeyMomentsRecord
   onClick: () => void
   onArchive: (e: React.MouseEvent) => void
+  showArchive: boolean
 }) => {
   const firstMoment = record.key_moments?.[0]
 
@@ -82,47 +84,59 @@ const AnalysisCard = ({
 
       <div className="flex items-center justify-between text-[10px] text-muted-foreground">
         <span>{getTimeAgo(record.createdAt)}</span>
-        <button
-          onClick={onArchive}
-          className="p-1 -m-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
-          title="Archive"
-        >
-          <Archive size={12} />
-        </button>
+        {showArchive && (
+          <button
+            onClick={onArchive}
+            className="p-1 -m-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+            title="Archive"
+          >
+            <Archive size={12} />
+          </button>
+        )}
       </div>
     </motion.button>
   )
 }
 
+type TabKey = 'mine' | 'demos'
+
+const TABS: { key: TabKey; label: string; icon: any }[] = [
+  { key: 'mine', label: 'My Analyses', icon: User },
+  { key: 'demos', label: 'Demo Analyses', icon: Globe },
+]
+
 export const KeyMomentsLandingPage = () => {
   const navigate = useNavigate()
-  const [records, setRecords] = useState<KeyMomentsRecord[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<TabKey>('mine')
+  const [myRecords, setMyRecords] = useState<KeyMomentsRecord[]>([])
+  const [demoRecords, setDemoRecords] = useState<KeyMomentsRecord[]>([])
+  const [myLoading, setMyLoading] = useState(true)
+  const [demoLoading, setDemoLoading] = useState(true)
 
   useEffect(() => {
+    api.keyMoments.list({ mine: true })
+      .then(setMyRecords)
+      .catch((err) => console.error('Failed to fetch my key moments', err))
+      .finally(() => setMyLoading(false))
     api.keyMoments.list()
-      .then(setRecords)
-      .catch((err) => console.error('Failed to fetch key moments', err))
-      .finally(() => setIsLoading(false))
+      .then(setDemoRecords)
+      .catch((err) => console.error('Failed to fetch demo key moments', err))
+      .finally(() => setDemoLoading(false))
   }, [])
 
   const handleArchive = async (id: string) => {
     try {
       await api.keyMoments.archive(id)
-      setRecords(records.filter(r => r.id !== id))
+      setMyRecords(myRecords.filter(r => r.id !== id))
+      setDemoRecords(demoRecords.filter(r => r.id !== id))
     } catch (err) {
       console.error('Failed to archive analysis', err)
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-32 space-y-4">
-        <Loader2 className="animate-spin text-accent" size={32} />
-        <p className="text-sm text-muted-foreground">Loading analyses...</p>
-      </div>
-    )
-  }
+  const records = activeTab === 'mine' ? myRecords : demoRecords
+  const isLoading = activeTab === 'mine' ? myLoading : demoLoading
+  const isMine = activeTab === 'mine'
 
   return (
     <div className="space-y-6">
@@ -136,7 +150,30 @@ export const KeyMomentsLandingPage = () => {
         <Button icon={Zap} onClick={() => navigate('/key-moments/analyze')}>Find Key Moments</Button>
       </div>
 
-      {records.length === 0 ? (
+      <div className="flex gap-1 bg-muted/50 rounded-lg p-1">
+        {TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={cn(
+              "flex items-center gap-1.5 flex-1 justify-center px-3 py-2 rounded-md text-xs font-medium transition-all cursor-pointer",
+              activeTab === tab.key
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <tab.icon size={14} />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center py-32 space-y-4">
+          <Loader2 className="animate-spin text-accent" size={32} />
+          <p className="text-sm text-muted-foreground">Loading analyses...</p>
+        </div>
+      ) : records.length === 0 ? (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -145,7 +182,9 @@ export const KeyMomentsLandingPage = () => {
           <div className="w-14 h-14 rounded-full bg-accent/20 text-accent-dark flex items-center justify-center mb-4">
             <Zap size={28} />
           </div>
-          <h4 className="text-base font-heading font-bold text-foreground mb-1">No analyses yet</h4>
+          <h4 className="text-base font-heading font-bold text-foreground mb-1">
+            {isMine ? "You haven't created any analyses yet" : 'No analyses yet'}
+          </h4>
           <p className="text-sm text-muted-foreground max-w-xs mb-5">
             Upload a video or select a production to discover key moments with AI.
           </p>
@@ -159,6 +198,7 @@ export const KeyMomentsLandingPage = () => {
               record={record}
               onClick={() => navigate(`/key-moments/${record.id}`)}
               onArchive={(e) => { e.stopPropagation(); handleArchive(record.id) }}
+              showArchive={isMine}
             />
           ))}
         </div>

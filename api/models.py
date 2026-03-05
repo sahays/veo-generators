@@ -126,6 +126,7 @@ class Project(BaseModel):
     signed_urls: dict = Field(default_factory=dict)
     scenes: List[Scene] = []
     archived: bool = False
+    invite_code: Optional[str] = None
     total_usage: UsageMetrics = Field(default_factory=UsageMetrics)
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
@@ -154,6 +155,7 @@ class KeyMomentsRecord(BaseModel):
     usage: UsageMetrics = Field(default_factory=UsageMetrics)
     signed_urls: dict = Field(default_factory=dict)
     archived: bool = False
+    invite_code: Optional[str] = None
     createdAt: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -183,6 +185,7 @@ class ThumbnailRecord(BaseModel):
     usage: UsageMetrics = Field(default_factory=UsageMetrics)
     signed_urls: dict = Field(default_factory=dict)
     archived: bool = False
+    invite_code: Optional[str] = None
     createdAt: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -225,6 +228,7 @@ class InviteCode(BaseModel):
     code: str
     label: str = ""
     is_active: bool = True
+    daily_credits: int = 250
     expires_at: Optional[datetime] = None
     createdAt: datetime = Field(default_factory=datetime.utcnow)
 
@@ -232,6 +236,7 @@ class InviteCode(BaseModel):
 class CreateInviteCodeRequest(BaseModel):
     code: str
     label: str = ""
+    daily_credits: int = 250
     expires_at: Optional[datetime] = None
 
 

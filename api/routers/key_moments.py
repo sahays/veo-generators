@@ -27,10 +27,15 @@ def _sign_key_moments_url(record: KeyMomentsRecord) -> dict:
 
 
 @router.get("")
-async def list_key_moments(archived: bool = False):
+async def list_key_moments(
+    request: Request, archived: bool = False, mine: bool = False
+):
     if not deps.firestore_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
     records = deps.firestore_svc.get_key_moments_analyses(include_archived=archived)
+    if mine:
+        code = getattr(request.state, "invite_code", None)
+        records = [r for r in records if r.invite_code == code]
     return [_sign_key_moments_url(r) for r in records]
 
 
@@ -77,7 +82,6 @@ async def get_key_moments_analysis(record_id: str):
 
 
 @router.post("/analyze")
-@deps.limiter.limit("10/minute")
 async def analyze_key_moments(request: Request, body: dict):
     if not deps.ai_svc or not deps.firestore_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
@@ -108,6 +112,7 @@ async def analyze_key_moments(request: Request, body: dict):
             production_id=production_id,
             mime_type=mime_type,
             prompt_id=prompt_id,
+            invite_code=getattr(request.state, "invite_code", None),
             video_summary=(
                 analysis_data.get("video_summary") if analysis_data else None
             ),

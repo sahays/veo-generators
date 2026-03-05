@@ -7,7 +7,7 @@ import {
 import { useLayoutStore } from '@/store/useLayoutStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { cn } from '@/lib/utils'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
 interface NavItem {
@@ -58,7 +58,7 @@ export const Sidebar = () => {
     setSidebarOpen,
     theme, toggleTheme
   } = useLayoutStore()
-  const { isMaster, logout } = useAuthStore()
+  const { isMaster, logout, dailyCredits, dailyUsage, refreshCredits } = useAuthStore()
 
   const location = useLocation()
   const pageTitle = getPageTitle(location.pathname)
@@ -74,6 +74,29 @@ export const Sidebar = () => {
   useEffect(() => {
     document.title = pageTitle === 'VeoGen' ? 'VeoGen' : `${pageTitle} | VeoGen`
   }, [pageTitle])
+
+  useEffect(() => {
+    refreshCredits()
+  }, [])
+
+  const creditPct = useMemo(() => {
+    if (isMaster || !dailyCredits) return 0
+    return Math.min(100, Math.round((dailyUsage / dailyCredits) * 100))
+  }, [isMaster, dailyCredits, dailyUsage])
+
+  const creditBarClass = useMemo(() => {
+    if (isMaster) return 'bg-gradient-to-r from-emerald-500 to-teal-400'
+    if (creditPct > 85) return 'bg-gradient-to-r from-red-500 to-orange-500'
+    if (creditPct > 60) return 'bg-gradient-to-r from-amber-500 to-orange-400'
+    return 'bg-gradient-to-r from-emerald-500 to-teal-400'
+  }, [isMaster, creditPct])
+
+  const creditStrokeClass = useMemo(() => {
+    if (isMaster) return 'stroke-emerald-500'
+    if (creditPct > 85) return 'stroke-red-500'
+    if (creditPct > 60) return 'stroke-amber-500'
+    return 'stroke-emerald-500'
+  }, [isMaster, creditPct])
 
   const navItems: NavItem[] = [
     { name: 'Movie Productions', icon: Megaphone, path: '/productions' },
@@ -127,13 +150,13 @@ export const Sidebar = () => {
           )}
           <button
             onClick={toggleCollapse}
-            className="hidden lg:flex p-1 hover:bg-white/10 rounded transition-colors cursor-pointer"
+            className="hidden lg:flex p-1 hover:bg-sidebar-text/10 rounded transition-colors cursor-pointer"
           >
             {isSidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
           </button>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="lg:hidden p-1 hover:bg-white/10 rounded cursor-pointer"
+            className="lg:hidden p-1 hover:bg-sidebar-text/10 rounded cursor-pointer"
           >
             <X size={18} />
           </button>
@@ -147,8 +170,8 @@ export const Sidebar = () => {
               onClick={() => setSidebarOpen(false)}
               className={({ isActive }) => cn(
                 "flex items-center gap-4 w-full px-6 py-3 transition-all duration-200 group cursor-pointer",
-                "hover:bg-accent hover:text-slate-900",
-                isActive && "bg-accent text-slate-900",
+                "hover:bg-sidebar-text/10",
+                isActive && "bg-sidebar-text/15 font-semibold",
                 isSidebarCollapsed && "justify-center px-0"
               )}
             >
@@ -160,12 +183,46 @@ export const Sidebar = () => {
           ))}
         </nav>
 
-        <div className="p-4 border-t border-white/5 flex flex-col gap-2">
+        {/* Credit meter */}
+        <div className={cn("px-4 py-3 border-t border-sidebar-text/10", isSidebarCollapsed && "px-2")}>
+          {isSidebarCollapsed ? (
+            <div className="flex justify-center" title={isMaster ? `${dailyUsage} / 9999 credits used` : `${dailyUsage} / ${dailyCredits ?? 250} credits used`}>
+              <div className="relative w-8 h-8">
+                <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+                  <circle cx="18" cy="18" r="15" fill="none" strokeWidth="3" className="stroke-sidebar-text/10" />
+                  <circle
+                    cx="18" cy="18" r="15" fill="none" strokeWidth="3"
+                    strokeDasharray={`${(isMaster ? Math.min((dailyUsage / 9999) * 94.2, 94.2) : creditPct * 0.94)} 94.2`}
+                    className={creditStrokeClass}
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-sidebar-text/60">
+                <span>Credits Used</span>
+                <span>
+                  {dailyUsage} / {isMaster ? <span className="text-emerald-500">9999</span> : (dailyCredits ?? 250)}
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full bg-sidebar-text/10 overflow-hidden">
+                <div
+                  className={cn("h-full rounded-full transition-all duration-500", creditBarClass)}
+                  style={{ width: isMaster ? `${Math.min((dailyUsage / 9999) * 100, 100)}%` : `${dailyUsage > 0 ? Math.max(creditPct, 2) : 0}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 border-t border-sidebar-text/10 flex flex-col gap-2">
           <motion.button
             onClick={toggleTheme}
             whileTap={{ scale: 0.95 }}
             className={cn(
-              "flex items-center gap-4 w-full p-3 rounded-xl transition-all duration-200 cursor-pointer group hover:bg-accent hover:text-slate-900",
+              "flex items-center gap-4 w-full p-3 rounded-xl transition-all duration-200 cursor-pointer group hover:bg-sidebar-text/10",
               isSidebarCollapsed && "justify-center px-0"
             )}
           >

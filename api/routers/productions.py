@@ -12,17 +12,23 @@ router = APIRouter(prefix="/api/v1/productions", tags=["productions"])
 
 
 @router.get("")
-async def list_productions(archived: bool = False):
+async def list_productions(
+    request: Request, archived: bool = False, mine: bool = False
+):
     if not deps.firestore_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
     productions = deps.firestore_svc.get_productions(include_archived=archived)
+    if mine:
+        code = getattr(request.state, "invite_code", None)
+        productions = [p for p in productions if p.invite_code == code]
     return [sign_production_urls(p, thumbnails_only=True) for p in productions]
 
 
 @router.post("", response_model=Project)
-async def create_production(project: Project):
+async def create_production(request: Request, project: Project):
     if not deps.firestore_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    project.invite_code = getattr(request.state, "invite_code", None)
     deps.firestore_svc.create_production(project)
     return project
 
@@ -38,7 +44,6 @@ async def get_production(id: str):
 
 
 @router.post("/{id}/analyze", response_model=AIResponseWrapper)
-@deps.limiter.limit("10/minute")
 async def analyze_production(request: Request, id: str, body: dict = {}):
     if not deps.firestore_svc or not deps.ai_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
