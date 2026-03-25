@@ -6,12 +6,14 @@ import { Button, Card } from '@/components/Common'
 import { PromptModal } from '@/components/ads/PromptModal'
 import { CostBreakdownPill } from '@/components/ads/CostBreakdownPill'
 import { useProjectStore } from '@/store/useProjectStore'
+import { useAuthStore } from '@/store/useAuthStore'
 import type { Project, Scene } from '@/types/project'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '@/lib/api'
 
 export const ProductionSummary = () => {
   const { tempProjectData, setTempProjectData, setActiveProject } = useProjectStore()
+  const { isMaster } = useAuthStore()
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const [isLoading, setIsLoading] = useState(false)
@@ -93,7 +95,7 @@ export const ProductionSummary = () => {
         </div>
         <div className="flex items-center gap-3">
           <Button variant="ghost" icon={FileText} onClick={() => navigate(`/productions/${id}/script`)}>View Technical Script</Button>
-          <Button icon={Plus} onClick={handleStartFresh}>New Production</Button>
+          {isMaster && <Button icon={Plus} onClick={handleStartFresh}>New Production</Button>}
         </div>
       </div>
 

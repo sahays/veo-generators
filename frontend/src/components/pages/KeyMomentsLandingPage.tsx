@@ -1,24 +1,12 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Zap, Loader2, Clock, Tag, Archive, Upload, Film, User, Globe } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Zap, Loader2, Clock, Tag, Archive, Upload, Film } from 'lucide-react'
+import { cn, getTimeAgo } from '@/lib/utils'
 import { Button } from '@/components/Common'
 import { api } from '@/lib/api'
 import { useNavigate } from 'react-router-dom'
+import { useAuthStore } from '@/store/useAuthStore'
 import type { KeyMomentsRecord } from '@/types/project'
-
-function getTimeAgo(timestamp: string | number): string {
-  const ms = typeof timestamp === 'string' ? new Date(timestamp).getTime() : timestamp
-  if (isNaN(ms)) return ''
-  const diff = Date.now() - ms
-  const minutes = Math.floor(diff / 60000)
-  if (minutes < 1) return 'Just now'
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
 
 const AnalysisCard = ({
   record,
@@ -98,45 +86,27 @@ const AnalysisCard = ({
   )
 }
 
-type TabKey = 'mine' | 'demos'
-
-const TABS: { key: TabKey; label: string; icon: any }[] = [
-  { key: 'mine', label: 'My Analyses', icon: User },
-  { key: 'demos', label: 'Demo Analyses', icon: Globe },
-]
-
 export const KeyMomentsLandingPage = () => {
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<TabKey>('mine')
-  const [myRecords, setMyRecords] = useState<KeyMomentsRecord[]>([])
-  const [demoRecords, setDemoRecords] = useState<KeyMomentsRecord[]>([])
-  const [myLoading, setMyLoading] = useState(true)
-  const [demoLoading, setDemoLoading] = useState(true)
+  const { isMaster } = useAuthStore()
+  const [records, setRecords] = useState<KeyMomentsRecord[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.keyMoments.list({ mine: true })
-      .then(setMyRecords)
-      .catch((err) => console.error('Failed to fetch my key moments', err))
-      .finally(() => setMyLoading(false))
     api.keyMoments.list()
-      .then(setDemoRecords)
-      .catch((err) => console.error('Failed to fetch demo key moments', err))
-      .finally(() => setDemoLoading(false))
+      .then(setRecords)
+      .catch((err) => console.error('Failed to fetch key moments', err))
+      .finally(() => setLoading(false))
   }, [])
 
   const handleArchive = async (id: string) => {
     try {
       await api.keyMoments.archive(id)
-      setMyRecords(myRecords.filter(r => r.id !== id))
-      setDemoRecords(demoRecords.filter(r => r.id !== id))
+      setRecords(records.filter(r => r.id !== id))
     } catch (err) {
       console.error('Failed to archive analysis', err)
     }
   }
-
-  const records = activeTab === 'mine' ? myRecords : demoRecords
-  const isLoading = activeTab === 'mine' ? myLoading : demoLoading
-  const isMine = activeTab === 'mine'
 
   return (
     <div className="space-y-6">
@@ -147,28 +117,10 @@ export const KeyMomentsLandingPage = () => {
             {records.length} analysis{records.length !== 1 ? 'es' : ''}
           </p>
         </div>
-        <Button icon={Zap} onClick={() => navigate('/key-moments/analyze')}>Find Key Moments</Button>
+        {isMaster && <Button icon={Zap} onClick={() => navigate('/key-moments/analyze')}>Find Key Moments</Button>}
       </div>
 
-      <div className="flex gap-1 bg-muted/50 rounded-lg p-1">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={cn(
-              "flex items-center gap-1.5 flex-1 justify-center px-3 py-2 rounded-md text-xs font-medium transition-all cursor-pointer",
-              activeTab === tab.key
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <tab.icon size={14} />
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {isLoading ? (
+      {loading ? (
         <div className="flex flex-col items-center justify-center py-32 space-y-4">
           <Loader2 className="animate-spin text-accent" size={32} />
           <p className="text-sm text-muted-foreground">Loading analyses...</p>
@@ -182,13 +134,11 @@ export const KeyMomentsLandingPage = () => {
           <div className="w-14 h-14 rounded-full bg-accent/20 text-accent-dark flex items-center justify-center mb-4">
             <Zap size={28} />
           </div>
-          <h4 className="text-base font-heading font-bold text-foreground mb-1">
-            {isMine ? "You haven't created any analyses yet" : 'No analyses yet'}
-          </h4>
+          <h4 className="text-base font-heading font-bold text-foreground mb-1">No analyses yet</h4>
           <p className="text-sm text-muted-foreground max-w-xs mb-5">
             Upload a video or select a production to discover key moments with AI.
           </p>
-          <Button icon={Zap} onClick={() => navigate('/key-moments/analyze')}>Find Key Moments</Button>
+          {isMaster && <Button icon={Zap} onClick={() => navigate('/key-moments/analyze')}>Find Key Moments</Button>}
         </motion.div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
@@ -198,7 +148,7 @@ export const KeyMomentsLandingPage = () => {
               record={record}
               onClick={() => navigate(`/key-moments/${record.id}`)}
               onArchive={(e) => { e.stopPropagation(); handleArchive(record.id) }}
-              showArchive={isMine}
+              showArchive={isMaster}
             />
           ))}
         </div>

@@ -1,34 +1,49 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Image, Loader2, Archive, Upload, Film, Camera } from 'lucide-react'
+import { Scissors, Loader2, Archive } from 'lucide-react'
 import { cn, getTimeAgo } from '@/lib/utils'
 import { Button } from '@/components/Common'
 import { api } from '@/lib/api'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/useAuthStore'
-import type { ThumbnailRecord } from '@/types/project'
 
 const STATUS_STYLES: Record<string, string> = {
+  pending: 'text-slate-600 bg-slate-500/10',
   analyzing: 'text-amber-600 bg-amber-500/10',
-  screenshots_ready: 'text-blue-600 bg-blue-500/10',
-  generating: 'text-purple-600 bg-purple-500/10',
+  extracting: 'text-blue-600 bg-blue-500/10',
+  stitching: 'text-indigo-600 bg-indigo-500/10',
+  encoding: 'text-purple-600 bg-purple-500/10',
   completed: 'text-emerald-600 bg-emerald-500/10',
+  failed: 'text-red-600 bg-red-500/10',
 }
 
 const STATUS_LABELS: Record<string, string> = {
+  pending: 'Pending',
   analyzing: 'Analyzing',
-  screenshots_ready: 'Ready',
-  generating: 'Generating',
+  extracting: 'Extracting',
+  stitching: 'Stitching',
+  encoding: 'Encoding',
   completed: 'Completed',
+  failed: 'Failed',
 }
 
-const ThumbnailCard = ({
+interface PromoRecord {
+  id: string
+  source_filename: string
+  status: string
+  progress_pct: number
+  usage?: { cost_usd?: number }
+  createdAt: string
+  completedAt?: string
+}
+
+const PromoCard = ({
   record,
   onClick,
   onArchive,
   showArchive,
 }: {
-  record: ThumbnailRecord
+  record: PromoRecord
   onClick: () => void
   onArchive: (e: React.MouseEvent) => void
   showArchive: boolean
@@ -43,51 +58,32 @@ const ThumbnailCard = ({
     >
       <div className="flex items-center gap-1.5 mb-1.5">
         <span className={cn(
-          "px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border shrink-0",
-          record.video_source === 'production'
-            ? "bg-indigo-500/10 text-indigo-600 border-indigo-500/20"
-            : "bg-accent/10 text-accent-dark border-accent/20"
-        )}>
-          {record.video_source === 'production' ? (
-            <span className="flex items-center gap-1"><Film size={8} /> Production</span>
-          ) : (
-            <span className="flex items-center gap-1"><Upload size={8} /> Upload</span>
-          )}
-        </span>
-        <span className={cn(
           "flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-medium shrink-0",
-          STATUS_STYLES[record.status] || STATUS_STYLES.analyzing
+          STATUS_STYLES[record.status] || STATUS_STYLES.pending
         )}>
-          {record.status === 'completed' ? <Image size={10} /> : <Camera size={10} />}
+          <Scissors size={10} />
           {STATUS_LABELS[record.status] || record.status}
         </span>
+        {['analyzing', 'extracting', 'stitching', 'encoding'].includes(record.status) && (
+          <span className="text-[9px] text-muted-foreground">{record.progress_pct}%</span>
+        )}
       </div>
 
-      <h4 className="text-sm font-heading font-bold text-foreground group-hover:text-accent-dark transition-colors line-clamp-1 mb-2">
-        {record.video_filename || 'Untitled video'}
+      <h4 className="text-sm font-heading font-bold text-foreground group-hover:text-accent-dark transition-colors line-clamp-1 mb-3">
+        {record.source_filename || 'Untitled video'}
       </h4>
-
-      {record.thumbnail_signed_url && (
-        <div className="mb-3 rounded-lg overflow-hidden border border-border aspect-video bg-black">
-          <img
-            src={record.thumbnail_signed_url}
-            alt="Generated thumbnail"
-            className="w-full h-full object-cover"
-          />
-        </div>
-      )}
-
-      {record.video_summary && (
-        <p className="text-xs text-muted-foreground line-clamp-2 mb-3 leading-relaxed">
-          {record.video_summary}
-        </p>
-      )}
 
       <div className="flex items-center justify-between text-[10px] text-muted-foreground">
         <div className="flex items-center gap-2">
           <span>{getTimeAgo(record.createdAt)}</span>
-          <span className="text-muted-foreground/50">·</span>
-          <span>{record.screenshots.length} screenshot{record.screenshots.length !== 1 ? 's' : ''}</span>
+          {record.completedAt && record.createdAt && (() => {
+            const ms = new Date(record.completedAt!).getTime() - new Date(record.createdAt).getTime()
+            const secs = Math.round(ms / 1000)
+            return secs > 0 ? <><span className="text-muted-foreground/50">&middot;</span><span>{secs < 60 ? `${secs}s` : `${Math.round(secs / 60)}m`}</span></> : null
+          })()}
+          {record.usage?.cost_usd ? (
+            <><span className="text-muted-foreground/50">&middot;</span><span>${record.usage.cost_usd.toFixed(3)}</span></>
+          ) : null}
         </div>
         {showArchive && (
           <button
@@ -103,25 +99,25 @@ const ThumbnailCard = ({
   )
 }
 
-export const ThumbnailsLandingPage = () => {
+export const PromoLandingPage = () => {
   const navigate = useNavigate()
   const { isMaster } = useAuthStore()
-  const [records, setRecords] = useState<ThumbnailRecord[]>([])
+  const [records, setRecords] = useState<PromoRecord[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.thumbnails.list()
+    api.promo.list()
       .then(setRecords)
-      .catch((err) => console.error('Failed to fetch thumbnails', err))
+      .catch((err) => console.error('Failed to fetch promos', err))
       .finally(() => setLoading(false))
   }, [])
 
   const handleArchive = async (id: string) => {
     try {
-      await api.thumbnails.archive(id)
+      await api.promo.archive(id)
       setRecords(records.filter(r => r.id !== id))
     } catch (err) {
-      console.error('Failed to archive thumbnail', err)
+      console.error('Failed to archive promo', err)
     }
   }
 
@@ -129,18 +125,18 @@ export const ThumbnailsLandingPage = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="space-y-1">
-          <h2 className="text-xl font-heading text-foreground tracking-tight">Thumbnails</h2>
+          <h2 className="text-xl font-heading text-foreground tracking-tight">Promos</h2>
           <p className="text-xs text-muted-foreground">
-            {records.length} thumbnail{records.length !== 1 ? 's' : ''}
+            AI-powered promotional clips from your full-length videos
           </p>
         </div>
-        {isMaster && <Button icon={Image} onClick={() => navigate('/thumbnails/create')}>Create Thumbnail</Button>}
+        {isMaster && <Button icon={Scissors} onClick={() => navigate('/promos/create')}>New Promo</Button>}
       </div>
 
       {loading ? (
         <div className="flex flex-col items-center justify-center py-32 space-y-4">
           <Loader2 className="animate-spin text-accent" size={32} />
-          <p className="text-sm text-muted-foreground">Loading thumbnails...</p>
+          <p className="text-sm text-muted-foreground">Loading promos...</p>
         </div>
       ) : records.length === 0 ? (
         <motion.div
@@ -149,21 +145,21 @@ export const ThumbnailsLandingPage = () => {
           className="glass bg-card rounded-xl p-12 flex flex-col items-center justify-center text-center"
         >
           <div className="w-14 h-14 rounded-full bg-accent/20 text-accent-dark flex items-center justify-center mb-4">
-            <Image size={28} />
+            <Scissors size={28} />
           </div>
-          <h4 className="text-base font-heading font-bold text-foreground mb-1">No thumbnails yet</h4>
+          <h4 className="text-base font-heading font-bold text-foreground mb-1">No promos yet</h4>
           <p className="text-sm text-muted-foreground max-w-xs mb-5">
-            Upload a video or select a production to generate a YouTube-style thumbnail with AI.
+            Select a video to generate a promotional highlight reel of the best moments.
           </p>
-          {isMaster && <Button icon={Image} onClick={() => navigate('/thumbnails/create')}>Create Thumbnail</Button>}
+          {isMaster && <Button icon={Scissors} onClick={() => navigate('/promos/create')}>New Promo</Button>}
         </motion.div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {records.map((record) => (
-            <ThumbnailCard
+            <PromoCard
               key={record.id}
               record={record}
-              onClick={() => navigate(`/thumbnails/${record.id}`)}
+              onClick={() => navigate(`/promos/${record.id}`)}
               onArchive={(e) => { e.stopPropagation(); handleArchive(record.id) }}
               showArchive={isMaster}
             />

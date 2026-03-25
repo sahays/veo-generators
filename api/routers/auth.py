@@ -62,20 +62,6 @@ def validate_code(code: str) -> dict:
 async def validate(request: Request, body: ValidateCodeRequest):
     logger.info(f"Auth validate endpoint called, code length={len(body.code)}")
     result = validate_code(body.code)
-
-    # Include credit info for valid codes
-    if result["valid"] and deps.firestore_svc:
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        daily_usage = deps.firestore_svc.get_daily_usage(body.code, today)
-        result["daily_usage"] = daily_usage
-        result["credit_costs"] = {"video": 5, "image": 2, "text": 1}
-
-        if result["is_master"]:
-            result["daily_credits"] = None  # unlimited
-        else:
-            invite = deps.firestore_svc.get_invite_code_by_value(body.code)
-            result["daily_credits"] = invite.daily_credits if invite else 250
-
     return result
 
 

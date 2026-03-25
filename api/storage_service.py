@@ -44,6 +44,21 @@ class StorageService:
         blob.upload_from_string(data, content_type=content_type)
         return f"gs://{self.bucket_name}/{destination_path}"
 
+    def download_to_file(self, gcs_uri: str, local_path: str):
+        """Download a GCS object to a local file path."""
+        path = gcs_uri.replace(f"gs://{self.bucket_name}/", "")
+        blob = self.bucket.blob(path)
+        blob.download_to_filename(local_path)
+
+    def upload_from_file(
+        self, local_path: str, gcs_uri: str, content_type: str = "video/mp4"
+    ) -> str:
+        """Upload a local file to GCS. Returns the gs:// URI."""
+        path = gcs_uri.replace(f"gs://{self.bucket_name}/", "")
+        blob = self.bucket.blob(path)
+        blob.upload_from_filename(local_path, content_type=content_type)
+        return gcs_uri
+
     def _generate_signed_url(self, gcs_uri: str) -> dict:
         """Generate a signed URL and return it with expiration metadata."""
         path = gcs_uri.replace(f"gs://{self.bucket_name}/", "")

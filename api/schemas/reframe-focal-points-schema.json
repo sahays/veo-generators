@@ -1,0 +1,52 @@
+{
+  "type": "object",
+  "properties": {
+    "focal_points": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "time_sec": {
+            "type": "number",
+            "description": "Timestamp in seconds from video start"
+          },
+          "x": {
+            "type": "number",
+            "description": "Horizontal center of main subject as fraction, 0.0=left edge 1.0=right edge"
+          },
+          "y": {
+            "type": "number",
+            "description": "Vertical center of main subject as fraction, 0.0=top edge 1.0=bottom edge"
+          },
+          "confidence": {
+            "type": "number",
+            "description": "Confidence score 0.0-1.0"
+          },
+          "description": {
+            "type": "string",
+            "description": "Brief description of the subject at this point"
+          }
+        },
+        "required": ["time_sec", "x", "y"]
+      }
+    },
+    "scene_changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "time_sec": {
+            "type": "number",
+            "description": "Timestamp of the scene change in seconds"
+          },
+          "description": {
+            "type": "string",
+            "description": "Brief description of the scene transition"
+          }
+        },
+        "required": ["time_sec"]
+      }
+    }
+  },
+  "required": ["focal_points"]
+}

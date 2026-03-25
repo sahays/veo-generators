@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "properties": {
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Short title for this segment"
+          },
+          "description": {
+            "type": "string",
+            "description": "Why this segment fits the theme"
+          },
+          "timestamp_start": {
+            "type": "string",
+            "description": "Start time in MM:SS or HH:MM:SS format"
+          },
+          "timestamp_end": {
+            "type": "string",
+            "description": "End time in MM:SS or HH:MM:SS format"
+          },
+          "relevance_score": {
+            "type": "number",
+            "description": "0.0-1.0 how well this segment fits the theme"
+          }
+        },
+        "required": ["title", "description", "timestamp_start", "timestamp_end"]
+      }
+    },
+    "total_duration_seconds": {
+      "type": "number",
+      "description": "Sum of all segment durations in seconds"
+    }
+  },
+  "required": ["segments"]
+}

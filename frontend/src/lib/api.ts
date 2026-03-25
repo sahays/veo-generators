@@ -48,7 +48,7 @@ async function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
 
 export const api = {
   auth: {
-    validate: async (code: string): Promise<{ valid: boolean; is_master: boolean; daily_credits: number | null; daily_usage: number; credit_costs: { video: number; image: number; text: number } }> => {
+    validate: async (code: string): Promise<{ valid: boolean; is_master: boolean }> => {
       const res = await fetch(`${API_BASE_URL}/auth/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -383,11 +383,7 @@ export const api = {
           xhr = new XMLHttpRequest()
           xhr.open('PUT', init.upload_url)
           xhr.setRequestHeader('Content-Type', init.content_type)
-
-          const code = getInviteCode()
-          if (code) {
-            xhr.setRequestHeader('X-Invite-Code', code)
-          }
+          // Do NOT send X-Invite-Code to GCS — it triggers CORS preflight failure
 
           xhr.upload.onprogress = (e) => {
             if (e.lengthComputable) {
@@ -485,6 +481,85 @@ export const api = {
       const res = await authFetch(`${API_BASE_URL}/system/default-schema`)
       return res.json()
     }
+  },
+  reframe: {
+    list: async (params?: { mine?: boolean }): Promise<any[]> => {
+      const query = params?.mine ? '?mine=true' : ''
+      const res = await authFetch(`${API_BASE_URL}/reframe${query}`)
+      if (!res.ok) throw new Error(`Failed to list reframes: ${res.status}`)
+      return res.json()
+    },
+    get: async (id: string): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/reframe/${id}`)
+      if (!res.ok) throw new Error(`Failed to get reframe record: ${res.status}`)
+      return res.json()
+    },
+    create: async (data: { gcs_uri: string; source_filename?: string; mime_type?: string; prompt_id?: string; blurred_bg?: boolean; sports_mode?: boolean }): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/reframe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error(`Reframe failed: ${res.status}`)
+      return res.json()
+    },
+    archive: async (id: string): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/reframe/${id}/archive`, { method: 'POST' })
+      if (!res.ok) throw new Error(`Failed to archive reframe: ${res.status}`)
+    },
+    delete: async (id: string): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/reframe/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`Failed to delete reframe: ${res.status}`)
+    },
+    listUploadSources: async (): Promise<any[]> => {
+      const res = await authFetch(`${API_BASE_URL}/reframe/sources/uploads`)
+      if (!res.ok) throw new Error(`Failed to list upload sources: ${res.status}`)
+      return res.json()
+    },
+    listProductionSources: async (): Promise<any[]> => {
+      const res = await authFetch(`${API_BASE_URL}/reframe/sources/productions`)
+      if (!res.ok) throw new Error(`Failed to list production sources: ${res.status}`)
+      return res.json()
+    },
+  },
+  promo: {
+    list: async (): Promise<any[]> => {
+      const res = await authFetch(`${API_BASE_URL}/promo`)
+      if (!res.ok) throw new Error(`Failed to list promos: ${res.status}`)
+      return res.json()
+    },
+    get: async (id: string): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/promo/${id}`)
+      if (!res.ok) throw new Error(`Failed to get promo: ${res.status}`)
+      return res.json()
+    },
+    create: async (data: { gcs_uri: string; source_filename?: string; prompt_id?: string; target_duration?: number; text_overlay?: boolean; generate_thumbnail?: boolean }): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/promo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error(`Promo creation failed: ${res.status}`)
+      return res.json()
+    },
+    archive: async (id: string): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/promo/${id}/archive`, { method: 'POST' })
+      if (!res.ok) throw new Error(`Failed to archive promo: ${res.status}`)
+    },
+    delete: async (id: string): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/promo/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`Failed to delete promo: ${res.status}`)
+    },
+    listUploadSources: async (): Promise<any[]> => {
+      const res = await authFetch(`${API_BASE_URL}/promo/sources/uploads`)
+      if (!res.ok) throw new Error(`Failed to list upload sources: ${res.status}`)
+      return res.json()
+    },
+    listProductionSources: async (): Promise<any[]> => {
+      const res = await authFetch(`${API_BASE_URL}/promo/sources/productions`)
+      if (!res.ok) throw new Error(`Failed to list production sources: ${res.status}`)
+      return res.json()
+    },
   },
   diagnostics: {
     optimizePrompt: async (data: any) => {

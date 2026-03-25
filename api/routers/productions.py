@@ -12,18 +12,10 @@ router = APIRouter(prefix="/api/v1/productions", tags=["productions"])
 
 
 @router.get("")
-async def list_productions(
-    request: Request, archived: bool = False, mine: bool = False
-):
+async def list_productions(request: Request, archived: bool = False):
     if not deps.firestore_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
     productions = deps.firestore_svc.get_productions(include_archived=archived)
-    code = getattr(request.state, "invite_code", None)
-    if mine:
-        productions = [p for p in productions if p.invite_code == code]
-    else:
-        # Demo tab: exclude the current user's productions
-        productions = [p for p in productions if p.invite_code != code]
     return [sign_production_urls(p, thumbnails_only=True) for p in productions]
 
 

@@ -11,6 +11,10 @@ import { KeyMomentsLandingPage } from './components/pages/KeyMomentsLandingPage'
 import { KeyMomentsAnalyzePage } from './components/pages/KeyMomentsAnalyzePage'
 import { ThumbnailsLandingPage } from './components/pages/ThumbnailsLandingPage'
 import { ThumbnailsWorkPage } from './components/pages/ThumbnailsWorkPage'
+import { ReframeLandingPage } from './components/pages/ReframeLandingPage'
+import { ReframeWorkPage } from './components/pages/ReframeWorkPage'
+import { PromoLandingPage } from './components/pages/PromoLandingPage'
+import { PromoWorkPage } from './components/pages/PromoWorkPage'
 import { UploadsPage } from './components/pages/UploadsPage'
 import { InviteCodesPage } from './components/pages/InviteCodesPage'
 import { InviteCodeGate } from './components/InviteCodeGate'
@@ -59,19 +63,27 @@ function App() {
               <Route path="/thumbnails/create" element={<ThumbnailsWorkPage />} />
               <Route path="/thumbnails/:id" element={<ThumbnailsWorkPage />} />
 
+              {/* Orientations / Reframe */}
+              <Route path="/orientations" element={<ReframeLandingPage />} />
+              <Route path="/orientations/create" element={<ReframeWorkPage />} />
+              <Route path="/orientations/:id" element={<ReframeWorkPage />} />
+
+              {/* Promos */}
+              <Route path="/promos" element={<PromoLandingPage />} />
+              <Route path="/promos/create" element={<PromoWorkPage />} />
+              <Route path="/promos/:id" element={<PromoWorkPage />} />
+
               {/* Uploads */}
               <Route path="/uploads" element={<UploadsPage />} />
               <Route path="/uploads/:id" element={<UploadsPage />} />
 
-              {/* System Prompts */}
-              <Route path="/prompts" element={<PromptsPage />} />
-
-              {/* Diagnostics */}
-              <Route path="/diagnostics" element={<DiagnosticsPage />} />
-
-              {/* Invite Codes (master only) */}
+              {/* Admin (master only) */}
               {isMaster && (
-                <Route path="/invite-codes" element={<InviteCodesPage />} />
+                <>
+                  <Route path="/prompts" element={<PromptsPage />} />
+                  <Route path="/diagnostics" element={<DiagnosticsPage />} />
+                  <Route path="/invite-codes" element={<InviteCodesPage />} />
+                </>
               )}
 
               {/* Fallback */}

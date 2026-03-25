@@ -198,6 +198,64 @@ class TranscoderService:
         created_job = self.client.create_job(parent=self.parent, job=job)
         return (created_job.name, f"{output_uri}compressed.mp4")
 
+    def reframe_encode(
+        self, record_id: str, input_uri: str, has_audio: bool = True
+    ) -> tuple:
+        """Encode a reframed video to 1080x1920 H.264. Returns (job_name, output_gcs_uri)."""
+        import os
+
+        bucket = os.getenv("GCS_BUCKET")
+        output_uri = f"gs://{bucket}/reframes/{record_id}/encoded/"
+
+        elementary_streams = [
+            transcoder_v1.types.ElementaryStream(
+                key="video_stream",
+                video_stream=transcoder_v1.types.VideoStream(
+                    h264=transcoder_v1.types.VideoStream.H264CodecSettings(
+                        height_pixels=1920,
+                        width_pixels=1080,
+                        bitrate_bps=8000000,
+                        frame_rate=30,
+                        crf_level=18,
+                        rate_control_mode="crf",
+                        profile="high",
+                        preset="slow",
+                        b_frame_count=3,
+                        entropy_coder="cabac",
+                    )
+                ),
+            ),
+        ]
+        mux_elementary = ["video_stream"]
+
+        if has_audio:
+            elementary_streams.append(
+                transcoder_v1.types.ElementaryStream(
+                    key="audio_stream",
+                    audio_stream=transcoder_v1.types.AudioStream(
+                        codec="aac", bitrate_bps=128000
+                    ),
+                )
+            )
+            mux_elementary.append("audio_stream")
+
+        job = transcoder_v1.types.Job()
+        job.input_uri = input_uri
+        job.output_uri = output_uri
+        job.config = transcoder_v1.types.JobConfig(
+            elementary_streams=elementary_streams,
+            mux_streams=[
+                transcoder_v1.types.MuxStream(
+                    key="reframed",
+                    container="mp4",
+                    elementary_streams=mux_elementary,
+                )
+            ],
+        )
+
+        created_job = self.client.create_job(parent=self.parent, job=job)
+        return (created_job.name, f"{output_uri}reframed.mp4")
+
     def get_job_status(self, job_name: str) -> str:
         try:
             job = self.client.get_job(name=job_name)

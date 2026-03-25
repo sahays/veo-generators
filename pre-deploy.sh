@@ -30,7 +30,7 @@ source .lint_venv/bin/activate
 pip install -q ruff -r api/requirements.txt
 
 echo "   Running Ruff linting..."
-if ruff check api; then
+if ruff check api workers; then
     echo "   ✅ Ruff lint passed."
 else
     echo "   ❌ Ruff lint failed. Please fix issues."
@@ -39,7 +39,7 @@ else
 fi
 
 echo "   Running Ruff format..."
-ruff format api
+ruff format api workers
 echo "   ✅ Ruff format applied."
 
 deactivate

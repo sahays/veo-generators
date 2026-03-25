@@ -1,7 +1,166 @@
-from typing import Optional
+import asyncio
+import logging
+from typing import Callable, Optional
+
+from fastapi import HTTPException
 
 import deps
 from models import Project, Scene
+
+logger = logging.getLogger(__name__)
+
+
+# --- Shared Utilities ---
+
+
+def require_firestore():
+    """Raise 503 if Firestore service is not initialized."""
+    if not deps.firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+
+def get_or_404(get_fn: Callable, record_id: str, name: str = "Record"):
+    """Fetch a record by ID or raise 404 if not found."""
+    record = get_fn(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail=f"{name} not found")
+    return record
+
+
+def sign_record_urls(
+    record,
+    uri_fields: dict[str, str],
+    update_fn: Callable[[dict], None],
+) -> dict:
+    """Generic URL signing for records with a signed_urls cache.
+
+    Args:
+        record: Pydantic model with a signed_urls dict field.
+        uri_fields: mapping of record field name to output key
+            (e.g. {"source_gcs_uri": "source_signed_url"}).
+        update_fn: callable to persist updated cache back to Firestore
+            (e.g. lambda cache: deps.firestore_svc.update_reframe_record(record.id, {"signed_urls": cache})).
+
+    Returns:
+        Record dict with signed URL keys added and signed_urls cache removed.
+    """
+    data = record.dict()
+    if not deps.storage_svc:
+        return data
+
+    cache = data.get("signed_urls") or {}
+    dirty = False
+
+    for field_name, output_key in uri_fields.items():
+        gcs_uri = getattr(record, field_name, None)
+        if not gcs_uri:
+            continue
+        url, changed = deps.storage_svc.resolve_cached_url(gcs_uri, cache)
+        data[output_key] = url
+        if changed:
+            dirty = True
+
+    if dirty and deps.firestore_svc:
+        update_fn(cache)
+
+    data.pop("signed_urls", None)
+    return data
+
+
+def list_video_upload_sources() -> list[dict]:
+    """Return signed upload video sources. Shared across routers."""
+    require_firestore()
+    uploads = deps.firestore_svc.get_upload_records(file_type="video")
+    results = []
+    for u in uploads:
+        signed_url = ""
+        if deps.storage_svc and u.gcs_uri:
+            if u.gcs_uri.startswith("gs://"):
+                signed_url = deps.storage_svc.get_signed_url(u.gcs_uri)
+            else:
+                signed_url = u.gcs_uri
+        results.append(
+            {
+                "id": u.id,
+                "filename": u.filename,
+                "gcs_uri": u.gcs_uri,
+                "video_signed_url": signed_url,
+                "file_size_bytes": u.file_size_bytes,
+                "createdAt": u.createdAt.isoformat() if u.createdAt else None,
+            }
+        )
+    return results
+
+
+def list_completed_production_sources(
+    extra_fields: Optional[dict[str, str]] = None,
+) -> list[dict]:
+    """Return signed completed production sources. Shared across routers.
+
+    Args:
+        extra_fields: optional mapping of production attribute name to output key
+            for router-specific fields (e.g. {"orientation": "orientation", "type": "type"}).
+    """
+    require_firestore()
+    productions = deps.firestore_svc.get_productions()
+    completed = [
+        p for p in productions if p.status.value == "completed" and p.final_video_url
+    ]
+    results = []
+    for p in completed:
+        signed_url = ""
+        if deps.storage_svc and p.final_video_url:
+            if p.final_video_url.startswith("gs://"):
+                signed_url = deps.storage_svc.get_signed_url(p.final_video_url)
+            else:
+                signed_url = p.final_video_url
+        entry = {
+            "id": p.id,
+            "name": p.name,
+            "final_video_url": p.final_video_url,
+            "video_signed_url": signed_url,
+            "createdAt": p.createdAt.isoformat() if p.createdAt else None,
+        }
+        if extra_fields:
+            for attr, key in extra_fields.items():
+                entry[key] = getattr(p, attr, None)
+        results.append(entry)
+    return results
+
+
+async def gemini_call_with_retry(
+    client,
+    model: str,
+    contents: list,
+    config,
+    max_retries: int = 4,
+    initial_backoff: int = 2,
+):
+    """Call client.models.generate_content() with exponential backoff on rate limits.
+
+    Retries on 429 / RESOURCE_EXHAUSTED errors up to max_retries times.
+    Returns the Gemini response on success, raises the last error on failure.
+    """
+    last_error = None
+    for attempt in range(max_retries + 1):
+        try:
+            return client.models.generate_content(
+                model=model, contents=contents, config=config
+            )
+        except Exception as e:
+            last_error = e
+            err_str = str(e)
+            is_rate_limit = "429" in err_str or "RESOURCE_EXHAUSTED" in err_str
+            if is_rate_limit and attempt < max_retries:
+                wait = initial_backoff * (2**attempt)
+                logger.warning(
+                    f"Rate-limited (attempt {attempt + 1}/{max_retries + 1}), "
+                    f"retrying in {wait}s: {err_str[:200]}"
+                )
+                await asyncio.sleep(wait)
+            else:
+                raise
+    raise last_error  # type: ignore[misc]
 
 
 # --- URL Signing ---

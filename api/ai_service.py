@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import os
 import json
@@ -8,12 +7,10 @@ from pathlib import Path
 from typing import Optional
 from google import genai
 from google.genai import types
+from helpers import gemini_call_with_retry
 from models import Scene, SceneMetadata, UsageMetrics, AIResponseWrapper, Project
 
 logger = logging.getLogger(__name__)
-
-MAX_RETRIES = 4
-INITIAL_BACKOFF = 2  # seconds
 
 
 def _load_default_schema():
@@ -29,6 +26,44 @@ def _load_key_moments_schema():
 def _load_thumbnail_schema():
     schema_path = Path(__file__).parent / "schemas" / "thumbnail-analysis-schema.json"
     return json.loads(schema_path.read_text())
+
+
+def _load_promo_segments_schema():
+    schema_path = Path(__file__).parent / "schemas" / "promo-segments-schema.json"
+    return json.loads(schema_path.read_text())
+
+
+def _load_reframe_focal_points_schema():
+    schema_path = Path(__file__).parent / "schemas" / "reframe-focal-points-schema.json"
+    return json.loads(schema_path.read_text())
+
+
+def _default_reframe_prompt() -> str:
+    return (
+        "You are a professional video editor analyzing this video for smart reframing "
+        "from 16:9 (landscape) to 9:16 (portrait).\n\n"
+        "Analyze every 0.5-1 second of the video and identify the PRIMARY FOCAL POINT — "
+        "the most important subject or area of visual interest that a viewer's eye would "
+        "be drawn to.\n\n"
+        "For each focal point, provide:\n"
+        "- time_sec: the timestamp in seconds (use decimals, e.g. 1.5)\n"
+        "- x: horizontal position of the subject center as a fraction "
+        "(0.0 = left edge, 0.5 = center, 1.0 = right edge)\n"
+        "- y: vertical position of the subject center as a fraction "
+        "(0.0 = top edge, 0.5 = center, 1.0 = bottom edge)\n"
+        "- confidence: how confident you are (0.0-1.0) that this is the right focal point\n"
+        "- description: brief description of what the subject is "
+        '(e.g. "speaker\'s face", "product close-up")\n\n'
+        "Also identify scene changes (cuts, transitions) with their timestamps.\n\n"
+        "IMPORTANT RULES:\n"
+        "- Sample at LEAST every 1 second; more frequently during action or movement\n"
+        "- Always include t=0 and the final frame\n"
+        "- x values matter most for 16:9 -> 9:16 reframing (horizontal positioning)\n"
+        "- When multiple subjects are present, pick the one currently active "
+        "(speaking, moving, in focus)\n"
+        "- For wide establishing shots with no clear subject, use x=0.5 (center)\n"
+        "- Be precise: a face at the left-third of frame is x~0.33, not x~0.5"
+    )
 
 
 class AIService:
@@ -254,35 +289,17 @@ Return a JSON list of scenes following the requested structure."""
         else:
             contents.append(enriched_prompt)
 
-        last_error = None
-        for attempt in range(MAX_RETRIES + 1):
-            try:
-                response = self.client.models.generate_content(
-                    model=model_id,
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        response_modalities=["IMAGE"],
-                        image_config=types.ImageConfig(
-                            aspect_ratio=orientation,
-                        ),
-                    ),
-                )
-                break
-            except Exception as e:
-                last_error = e
-                err_str = str(e)
-                is_rate_limit = "429" in err_str or "RESOURCE_EXHAUSTED" in err_str
-                if is_rate_limit and attempt < MAX_RETRIES:
-                    wait = INITIAL_BACKOFF * (2**attempt)
-                    logger.warning(
-                        f"Frame gen rate-limited (attempt {attempt + 1}/{MAX_RETRIES + 1}), "
-                        f"retrying in {wait}s: {err_str[:200]}"
-                    )
-                    await asyncio.sleep(wait)
-                else:
-                    raise
-        else:
-            raise last_error  # type: ignore[misc]
+        response = await gemini_call_with_retry(
+            self.client,
+            model_id,
+            contents,
+            types.GenerateContentConfig(
+                response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(
+                    aspect_ratio=orientation,
+                ),
+            ),
+        )
 
         image_url = None
 
@@ -427,35 +444,17 @@ Return a JSON list of scenes following the requested structure."""
             contents.append(types.Part.from_uri(file_uri=uri, mime_type="image/png"))
         contents.append(prompt_text)
 
-        last_error = None
-        for attempt in range(MAX_RETRIES + 1):
-            try:
-                response = self.client.models.generate_content(
-                    model=model_id,
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        response_modalities=["IMAGE"],
-                        image_config=types.ImageConfig(
-                            aspect_ratio="16:9",
-                        ),
-                    ),
-                )
-                break
-            except Exception as e:
-                last_error = e
-                err_str = str(e)
-                is_rate_limit = "429" in err_str or "RESOURCE_EXHAUSTED" in err_str
-                if is_rate_limit and attempt < MAX_RETRIES:
-                    wait = INITIAL_BACKOFF * (2**attempt)
-                    logger.warning(
-                        f"Collage gen rate-limited (attempt {attempt + 1}/{MAX_RETRIES + 1}), "
-                        f"retrying in {wait}s: {err_str[:200]}"
-                    )
-                    await asyncio.sleep(wait)
-                else:
-                    raise
-        else:
-            raise last_error  # type: ignore[misc]
+        response = await gemini_call_with_retry(
+            self.client,
+            model_id,
+            contents,
+            types.GenerateContentConfig(
+                response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(
+                    aspect_ratio="16:9",
+                ),
+            ),
+        )
 
         image_url = None
         if response.candidates and response.candidates[0].content.parts:
@@ -473,3 +472,222 @@ Return a JSON list of scenes following the requested structure."""
 
         usage = UsageMetrics(model_name=model_id, cost_usd=0.134)
         return AIResponseWrapper(data={"thumbnail_url": image_url}, usage=usage)
+
+    async def analyze_video_focal_points(
+        self,
+        gcs_uri: str,
+        mime_type: str = "video/mp4",
+        prompt_id: str = "",
+    ) -> AIResponseWrapper:
+        """Analyze video to extract focal points for smart reframing."""
+        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3-pro-preview")
+
+        # Load prompt from Firestore, or fall back to active reframe prompt, or default
+        prompt_text = None
+        if prompt_id and self.firestore_svc:
+            res = self.firestore_svc.get_resource(prompt_id)
+            if res:
+                prompt_text = res.content
+        if not prompt_text and self.firestore_svc:
+            res = self.firestore_svc.get_active_resource("prompt", "orientation")
+            if res:
+                prompt_text = res.content
+        if not prompt_text:
+            prompt_text = _default_reframe_prompt()
+
+        response_schema = _load_reframe_focal_points_schema()
+
+        contents = [
+            types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type),
+            prompt_text,
+        ]
+
+        response = await gemini_call_with_retry(
+            self.client,
+            model_id,
+            contents,
+            types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=response_schema,
+                max_output_tokens=65536,
+            ),
+        )
+
+        data = response.parsed
+        if not isinstance(data, dict):
+            data = {"focal_points": [], "scene_changes": []}
+
+        usage = UsageMetrics(
+            input_tokens=response.usage_metadata.prompt_token_count,
+            output_tokens=response.usage_metadata.candidates_token_count,
+            model_name=model_id,
+            cost_usd=(response.usage_metadata.prompt_token_count * 0.000002)
+            + (response.usage_metadata.candidates_token_count * 0.000012),
+        )
+
+        return AIResponseWrapper(data=data, usage=usage)
+
+    async def analyze_video_for_promo(
+        self,
+        gcs_uri: str,
+        mime_type: str = "video/mp4",
+        target_duration: int = 60,
+        prompt_id: str = "",
+    ) -> AIResponseWrapper:
+        """Analyze video and select best moments for a promo/highlight reel."""
+        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3-pro-preview")
+
+        prompt_text = None
+        if prompt_id and self.firestore_svc:
+            res = self.firestore_svc.get_resource(prompt_id)
+            if res:
+                prompt_text = res.content
+        if not prompt_text and self.firestore_svc:
+            res = self.firestore_svc.get_active_resource("prompt", "promo")
+            if res:
+                prompt_text = res.content
+        if not prompt_text:
+            prompt_text = (
+                f"You are a professional video editor creating a {target_duration}-second "
+                "promo/highlight reel from this video.\n\n"
+                "Select the most compelling and visually interesting moments. "
+                "The total duration of all segments combined should be approximately "
+                f"{target_duration} seconds.\n\n"
+                "For each segment, provide:\n"
+                "- title: short title for this moment\n"
+                "- description: why this moment is compelling\n"
+                "- timestamp_start: start time (MM:SS or HH:MM:SS)\n"
+                "- timestamp_end: end time (MM:SS or HH:MM:SS)\n"
+                "- relevance_score: 0.0-1.0 how impactful this moment is\n\n"
+                "RULES:\n"
+                "- Return segments in chronological order\n"
+                "- Each segment should be 3-15 seconds long\n"
+                "- Prefer punchy, impactful moments over slow ones\n"
+                f"- Total combined duration should be close to {target_duration} seconds\n"
+                "- Pick diverse moments from different parts of the video\n"
+                "- Ensure clean cut points — start/end on scene transitions or natural pauses"
+            )
+
+        response_schema = _load_promo_segments_schema()
+
+        contents = [
+            types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type),
+            prompt_text,
+        ]
+
+        response = await gemini_call_with_retry(
+            self.client,
+            model_id,
+            contents,
+            types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=response_schema,
+                max_output_tokens=65536,
+            ),
+        )
+
+        data = response.parsed
+        if not isinstance(data, dict):
+            data = {"segments": []}
+
+        usage = UsageMetrics(
+            input_tokens=response.usage_metadata.prompt_token_count,
+            output_tokens=response.usage_metadata.candidates_token_count,
+            model_name=model_id,
+            cost_usd=(response.usage_metadata.prompt_token_count * 0.000002)
+            + (response.usage_metadata.candidates_token_count * 0.000012),
+        )
+
+        return AIResponseWrapper(data=data, usage=usage)
+
+    async def generate_promo_thumbnail(
+        self,
+        title: str,
+        description: str = "",
+        orientation: str = "16:9",
+    ) -> AIResponseWrapper:
+        """Generate a cinematic title card image for a promo using Gemini."""
+        model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
+
+        prompt = (
+            f"Create a cinematic movie poster style title card for a video promo. "
+            f"Bold, stylized text that reads: '{title}'. "
+            "Background should be dramatic — dark with cinematic lighting, "
+            "lens flares, or abstract motion blur. "
+            "The text should be large, centered, and highly legible. "
+            "Style: professional broadcast quality, like ESPN or Netflix promos."
+        )
+        if description:
+            prompt += f" Context: {description}"
+
+        response = await gemini_call_with_retry(
+            self.client,
+            model_id,
+            [prompt],
+            types.GenerateContentConfig(
+                response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(aspect_ratio=orientation),
+            ),
+        )
+
+        image_url = None
+        if response.candidates and response.candidates[0].content.parts:
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, "inline_data") and part.inline_data:
+                    if self.storage_svc:
+                        dest = f"promos/thumbnails/{uuid.uuid4()}.png"
+                        image_url = self.storage_svc.upload_bytes(
+                            part.inline_data.data, dest
+                        )
+                    break
+
+        if not image_url:
+            raise ValueError("Thumbnail generation produced no image")
+
+        usage = UsageMetrics(model_name=model_id, cost_usd=0.134)
+        return AIResponseWrapper(data={"image_url": image_url}, usage=usage)
+
+    async def generate_text_overlay(
+        self,
+        text: str,
+        orientation: str = "16:9",
+    ) -> AIResponseWrapper:
+        """Generate a styled text overlay image for compositing on video."""
+        model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
+
+        prompt = (
+            "Create a lower-third text overlay graphic for a professional video promo. "
+            f"The text reads: '{text.upper()}'. "
+            "Style: bold white cinematic text with a subtle dark gradient "
+            "at the bottom third of the image. "
+            "The top two-thirds should be completely black/dark (will be overlaid on video). "
+            "Text should be large, bold, and centered horizontally in the lower third. "
+            "Professional broadcast quality — like ESPN, Sky Sports, or Netflix promos."
+        )
+
+        response = await gemini_call_with_retry(
+            self.client,
+            model_id,
+            [prompt],
+            types.GenerateContentConfig(
+                response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(aspect_ratio=orientation),
+            ),
+        )
+
+        image_url = None
+        if response.candidates and response.candidates[0].content.parts:
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, "inline_data") and part.inline_data:
+                    if self.storage_svc:
+                        dest = f"promos/overlays/{uuid.uuid4()}.png"
+                        image_url = self.storage_svc.upload_bytes(
+                            part.inline_data.data, dest
+                        )
+                    break
+
+        if not image_url:
+            raise ValueError("Text overlay generation produced no image")
+
+        usage = UsageMetrics(model_name=model_id, cost_usd=0.134)
+        return AIResponseWrapper(data={"image_url": image_url}, usage=usage)

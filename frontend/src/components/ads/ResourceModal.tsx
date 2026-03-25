@@ -24,6 +24,8 @@ const CATEGORY_OPTIONS = {
     { value: 'key-moments', label: 'Key Moments Analysis' },
     { value: 'thumbnails', label: 'Thumbnail Analysis' },
     { value: 'collage', label: 'Thumbnail Collage' },
+    { value: 'orientation', label: 'Orientation / Reframe' },
+    { value: 'promo', label: 'Promo Generation' },
   ],
   schema: [
     { value: 'project-schema', label: 'Project Analysis Schema' },

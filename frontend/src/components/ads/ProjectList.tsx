@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, FolderOpen, Clock, Loader2, CheckCircle2, AlertCircle, Image as ImageIcon, Archive, User, Globe } from 'lucide-react'
+import { Plus, FolderOpen, Clock, Loader2, CheckCircle2, AlertCircle, Image as ImageIcon, Archive } from 'lucide-react'
 import { CostBreakdownPill } from '@/components/ads/CostBreakdownPill'
-import { cn } from '@/lib/utils'
+import { cn, getTimeAgo } from '@/lib/utils'
 import { Button } from '@/components/Common'
 import { useProjectStore } from '@/store/useProjectStore'
 import type { Project } from '@/types/project'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
+import { useAuthStore } from '@/store/useAuthStore'
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
   draft: { label: 'Draft', color: 'text-muted-foreground bg-muted', icon: Clock },
@@ -124,31 +125,18 @@ const ProjectCard = ({ project, onClick, onArchive, showArchive }: { project: Pr
   )
 }
 
-type TabKey = 'mine' | 'demos'
-
-const TABS: { key: TabKey; label: string; icon: any }[] = [
-  { key: 'mine', label: 'My Productions', icon: User },
-  { key: 'demos', label: 'Demo Productions', icon: Globe },
-]
-
 export const ProjectList = () => {
   const { setActiveProject, setTempProjectData } = useProjectStore()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<TabKey>('mine')
-  const [myProjects, setMyProjects] = useState<Project[]>([])
-  const [demoProjects, setDemoProjects] = useState<Project[]>([])
-  const [myLoading, setMyLoading] = useState(true)
-  const [demoLoading, setDemoLoading] = useState(true)
+  const { isMaster } = useAuthStore()
+  const [projects, setProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.projects.list({ mine: true })
-      .then(setMyProjects)
-      .catch((err) => console.error('Failed to fetch my productions', err))
-      .finally(() => setMyLoading(false))
     api.projects.list()
-      .then(setDemoProjects)
-      .catch((err) => console.error('Failed to fetch demo productions', err))
-      .finally(() => setDemoLoading(false))
+      .then(setProjects)
+      .catch((err) => console.error('Failed to fetch productions', err))
+      .finally(() => setLoading(false))
   }, [])
 
   const handleNewProject = () => {
@@ -160,8 +148,7 @@ export const ProjectList = () => {
   const handleArchive = async (id: string) => {
     try {
       await api.projects.archive(id)
-      setMyProjects(myProjects.filter(p => p.id !== id))
-      setDemoProjects(demoProjects.filter(p => p.id !== id))
+      setProjects(projects.filter(p => p.id !== id))
     } catch (err) {
       console.error('Failed to archive production', err)
     }
@@ -169,7 +156,6 @@ export const ProjectList = () => {
 
   const handleOpenProject = (id: string) => {
     setActiveProject(id)
-    const projects = activeTab === 'mine' ? myProjects : demoProjects
     const project = projects.find(p => p.id === id)
     if (project?.status === 'completed') {
       navigate(`/productions/${id}`)
@@ -180,10 +166,6 @@ export const ProjectList = () => {
     }
   }
 
-  const projects = activeTab === 'mine' ? myProjects : demoProjects
-  const isLoading = activeTab === 'mine' ? myLoading : demoLoading
-  const isMine = activeTab === 'mine'
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -193,28 +175,10 @@ export const ProjectList = () => {
             {projects.length} project{projects.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <Button icon={Plus} onClick={handleNewProject}>New Production</Button>
+        {isMaster && <Button icon={Plus} onClick={handleNewProject}>New Production</Button>}
       </div>
 
-      <div className="flex gap-1 bg-muted/50 rounded-lg p-1">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={cn(
-              "flex items-center gap-1.5 flex-1 justify-center px-3 py-2 rounded-md text-xs font-medium transition-all cursor-pointer",
-              activeTab === tab.key
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <tab.icon size={14} />
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {isLoading ? (
+      {loading ? (
         <div className="flex flex-col items-center justify-center py-32 space-y-4">
           <Loader2 className="animate-spin text-accent" size={32} />
           <p className="text-sm text-muted-foreground">Loading productions...</p>
@@ -228,13 +192,11 @@ export const ProjectList = () => {
           <div className="w-14 h-14 rounded-full bg-accent/20 text-accent-dark flex items-center justify-center mb-4">
             <FolderOpen size={28} />
           </div>
-          <h4 className="text-base font-heading font-bold text-foreground mb-1">
-            {isMine ? "You haven't created any productions yet" : 'No projects yet'}
-          </h4>
+          <h4 className="text-base font-heading font-bold text-foreground mb-1">No projects yet</h4>
           <p className="text-sm text-muted-foreground max-w-xs mb-5">
             Create your first ad generation project to get started.
           </p>
-          <Button icon={Plus} onClick={handleNewProject}>Create First Production</Button>
+          {isMaster && <Button icon={Plus} onClick={handleNewProject}>Create First Production</Button>}
         </motion.div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
@@ -244,24 +206,11 @@ export const ProjectList = () => {
               project={project}
               onClick={() => handleOpenProject(project.id)}
               onArchive={(e) => { e.stopPropagation(); handleArchive(project.id) }}
-              showArchive={isMine}
+              showArchive={isMaster}
             />
           ))}
         </div>
       )}
     </div>
   )
-}
-
-function getTimeAgo(timestamp: string | number): string {
-  const ms = typeof timestamp === 'string' ? new Date(timestamp).getTime() : timestamp
-  if (isNaN(ms)) return ''
-  const diff = Date.now() - ms
-  const minutes = Math.floor(diff / 60000)
-  if (minutes < 1) return 'Just now'
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
 }

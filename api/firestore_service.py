@@ -10,6 +10,8 @@ from models import (
     ThumbnailRecord,
     UploadRecord,
     InviteCode,
+    ReframeRecord,
+    PromoRecord,
 )
 
 
@@ -25,7 +27,8 @@ class FirestoreService:
         self.thumbnails_collection = self.db.collection(f"{prefix}_thumbnails")
         self.uploads_collection = self.db.collection(f"{prefix}_uploads")
         self.invite_codes_collection = self.db.collection(f"{prefix}_invite_codes")
-        self.daily_usage_collection = self.db.collection(f"{prefix}_daily_usage")
+        self.reframe_collection = self.db.collection(f"{prefix}_reframes")
+        self.promo_collection = self.db.collection(f"{prefix}_promos")
 
     def _all_resources(self) -> List[SystemResource]:
         docs = self.resources_collection.stream()
@@ -176,6 +179,58 @@ class FirestoreService:
     def delete_thumbnail_record(self, record_id: str):
         self.thumbnails_collection.document(record_id).delete()
 
+    # --- Reframes ---
+
+    def get_reframe_records(
+        self, include_archived: bool = False
+    ) -> List[ReframeRecord]:
+        docs = self.reframe_collection.stream()
+        records = [ReframeRecord(**doc.to_dict()) for doc in docs]
+        records.sort(key=lambda r: r.createdAt or "", reverse=True)
+        if not include_archived:
+            records = [r for r in records if not r.archived]
+        return records
+
+    def get_reframe_record(self, record_id: str) -> Optional[ReframeRecord]:
+        doc = self.reframe_collection.document(record_id).get()
+        if doc.exists:
+            return ReframeRecord(**doc.to_dict())
+        return None
+
+    def create_reframe_record(self, record: ReframeRecord):
+        self.reframe_collection.document(record.id).set(record.dict())
+
+    def update_reframe_record(self, record_id: str, updates: dict):
+        self.reframe_collection.document(record_id).update(updates)
+
+    def delete_reframe_record(self, record_id: str):
+        self.reframe_collection.document(record_id).delete()
+
+    # --- Promos ---
+
+    def get_promo_records(self, include_archived: bool = False) -> List[PromoRecord]:
+        docs = self.promo_collection.stream()
+        records = [PromoRecord(**doc.to_dict()) for doc in docs]
+        records.sort(key=lambda r: r.createdAt or "", reverse=True)
+        if not include_archived:
+            records = [r for r in records if not r.archived]
+        return records
+
+    def get_promo_record(self, record_id: str) -> Optional[PromoRecord]:
+        doc = self.promo_collection.document(record_id).get()
+        if doc.exists:
+            return PromoRecord(**doc.to_dict())
+        return None
+
+    def create_promo_record(self, record: PromoRecord):
+        self.promo_collection.document(record.id).set(record.dict())
+
+    def update_promo_record(self, record_id: str, updates: dict):
+        self.promo_collection.document(record_id).update(updates)
+
+    def delete_promo_record(self, record_id: str):
+        self.promo_collection.document(record_id).delete()
+
     # --- Uploads ---
 
     def get_upload_records(
@@ -242,34 +297,3 @@ class FirestoreService:
 
     def delete_invite_code(self, code_id: str):
         self.invite_codes_collection.document(code_id).delete()
-
-    # --- Daily Usage Tracking ---
-
-    def get_daily_usage(self, code_value: str, date_str: str) -> int:
-        doc_id = f"{code_value}_{date_str}"
-        doc = self.daily_usage_collection.document(doc_id).get()
-        if doc.exists:
-            return doc.to_dict().get("count", 0)
-        return 0
-
-    def increment_daily_usage(
-        self, code_value: str, date_str: str, amount: int = 1
-    ) -> int:
-        doc_id = f"{code_value}_{date_str}"
-        doc_ref = self.daily_usage_collection.document(doc_id)
-
-        @firestore.transactional
-        def _increment(transaction):
-            snapshot = doc_ref.get(transaction=transaction)
-            if snapshot.exists:
-                current = snapshot.to_dict().get("count", 0)
-            else:
-                current = 0
-            new_count = current + amount
-            transaction.set(
-                doc_ref, {"code": code_value, "date": date_str, "count": new_count}
-            )
-            return new_count
-
-        transaction = self.db.transaction()
-        return _increment(transaction)

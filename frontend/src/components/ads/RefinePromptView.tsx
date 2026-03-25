@@ -11,7 +11,7 @@ import { Button, Card } from '@/components/Common'
 import { PromptModal } from '@/components/ads/PromptModal'
 import { CostBreakdownPill } from '@/components/ads/CostBreakdownPill'
 import { useProjectStore } from '@/store/useProjectStore'
-import { useAuthStore } from '@/store/useAuthStore'
+
 import type { Scene } from '@/types/project'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '@/lib/api'
@@ -60,7 +60,6 @@ const ErrorBadge = ({ message }: { message: string }) => {
 
 export const RefinePromptView = () => {
   const { tempProjectData, updateScene, addScene, setActiveProject, setTempProjectData } = useProjectStore()
-  const refreshCredits = useAuthStore((s) => s.refreshCredits)
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
 
@@ -164,7 +163,6 @@ export const RefinePromptView = () => {
           if (prod.status === 'failed') {
             setGenerateError((prod as any).error_message || 'Generation failed')
           }
-          refreshCredits()
           clearInterval(pollInterval)
         }
       } catch (err) {
@@ -563,7 +561,6 @@ const SceneItem = ({
 }) => {
   const isPortrait = orientation === '9:16'
   const aspectClass = isPortrait ? 'aspect-[9/16]' : 'aspect-video'
-  const refreshCredits = useAuthStore((s) => s.refreshCredits)
   const [isGeneratingFrame, setIsGeneratingFrame] = useState(false)
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -612,7 +609,6 @@ const SceneItem = ({
       setError('Frame generation failed')
     } finally {
       setIsGeneratingFrame(false)
-      refreshCredits()
     }
   }
 
@@ -660,7 +656,6 @@ const SceneItem = ({
       console.error('Video generation failed:', err)
       setError('Video generation failed')
       setIsGeneratingVideo(false)
-      refreshCredits()
     }
   }
 

@@ -195,6 +195,73 @@ class ThumbnailRecord(BaseModel):
     createdAt: datetime = Field(default_factory=datetime.utcnow)
 
 
+class FocalPoint(BaseModel):
+    time_sec: float
+    x: float  # 0.0-1.0 horizontal position
+    y: float  # 0.0-1.0 vertical position
+    confidence: float = 1.0
+    description: str = ""
+
+
+class SceneChange(BaseModel):
+    time_sec: float
+    description: str = ""
+
+
+class ReframeRecord(BaseModel):
+    id: str = Field(default_factory=lambda: generate_id("rf-"))
+    source_gcs_uri: str
+    source_filename: str = ""
+    prompt_id: str = ""
+    blurred_bg: bool = False
+    sports_mode: bool = False
+    output_gcs_uri: Optional[str] = None
+    focal_points: List[FocalPoint] = []
+    scene_changes: List[SceneChange] = []
+    status: str = "pending"  # pending|analyzing|processing|encoding|completed|failed
+    error_message: Optional[str] = None
+    progress_pct: int = 0
+    usage: UsageMetrics = Field(default_factory=UsageMetrics)
+    signed_urls: dict = Field(default_factory=dict)
+    archived: bool = False
+    invite_code: Optional[str] = None
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    completedAt: Optional[datetime] = None
+
+
+class PromoSegment(BaseModel):
+    title: str
+    description: str
+    timestamp_start: str  # MM:SS or HH:MM:SS
+    timestamp_end: str
+    order: int = 0
+    relevance_score: float = 0.0
+
+
+class PromoRecord(BaseModel):
+    id: str = Field(default_factory=lambda: generate_id("prm-"))
+    source_gcs_uri: str
+    source_filename: str = ""
+    prompt_id: str = ""
+    target_duration: int = 60  # seconds
+    text_overlay: bool = False
+    generate_thumbnail: bool = False
+    thumbnail_gcs_uri: Optional[str] = None
+    segments: List[PromoSegment] = []
+    output_gcs_uri: Optional[str] = None
+    status: str = (
+        "pending"  # pending|analyzing|extracting|stitching|encoding|completed|failed
+    )
+    error_message: Optional[str] = None
+    progress_pct: int = 0
+    usage: UsageMetrics = Field(default_factory=UsageMetrics)
+    signed_urls: dict = Field(default_factory=dict)
+    archived: bool = False
+    invite_code: Optional[str] = None
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    completedAt: Optional[datetime] = None
+
+
 class CompressedVariant(BaseModel):
     resolution: str  # "480p" | "720p"
     gcs_uri: str = ""

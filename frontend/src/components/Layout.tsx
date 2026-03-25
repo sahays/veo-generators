@@ -1,13 +1,13 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Menu, X, Clapperboard, Zap, Image as ImageIcon, Smartphone,
+  Menu, X, Clapperboard, Zap, Image as ImageIcon, Smartphone, Scissors,
   ChevronLeft, ChevronRight, Terminal,
   FileText, Sun, Moon, Activity, Upload, Shield, LogOut
 } from 'lucide-react'
 import { useLayoutStore } from '@/store/useLayoutStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { cn } from '@/lib/utils'
-import { useEffect, useMemo } from 'react'
+import { useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
 interface NavItem {
@@ -36,6 +36,9 @@ const PAGE_TITLES: Record<string, string> = {
   '/prompts': 'System Prompts',
   '/diagnostics': 'Diagnostics',
   '/orientations': 'Orientations',
+  '/orientations/create': 'New Reframe',
+  '/promos': 'Promos',
+  '/promos/create': 'New Promo',
   '/invite-codes': 'Invite Codes',
 }
 
@@ -48,6 +51,8 @@ function getPageTitle(pathname: string): string {
   if (pathname.match(/^\/productions\/[^/]+$/)) return 'Production Details'
   if (pathname.match(/^\/key-moments\/[^/]+$/)) return 'Key Moments Analysis'
   if (pathname.match(/^\/thumbnails\/[^/]+$/)) return 'Thumbnail Details'
+  if (pathname.match(/^\/orientations\/[^/]+$/)) return 'Reframe Details'
+  if (pathname.match(/^\/promos\/[^/]+$/)) return 'Promo Details'
   if (pathname.match(/^\/uploads\/[^/]+$/)) return 'File Details'
   return 'VeoGen'
 }
@@ -58,7 +63,7 @@ export const Sidebar = () => {
     setSidebarOpen,
     theme, toggleTheme
   } = useLayoutStore()
-  const { isMaster, logout, dailyCredits, dailyUsage, refreshCredits } = useAuthStore()
+  const { isMaster, logout } = useAuthStore()
 
   const location = useLocation()
   const pageTitle = getPageTitle(location.pathname)
@@ -75,38 +80,18 @@ export const Sidebar = () => {
     document.title = pageTitle === 'VeoGen' ? 'VeoGen' : `${pageTitle} | VeoGen`
   }, [pageTitle])
 
-  useEffect(() => {
-    refreshCredits()
-  }, [])
-
-  const creditPct = useMemo(() => {
-    if (isMaster || !dailyCredits) return 0
-    return Math.min(100, Math.round((dailyUsage / dailyCredits) * 100))
-  }, [isMaster, dailyCredits, dailyUsage])
-
-  const creditBarClass = useMemo(() => {
-    if (isMaster) return 'bg-gradient-to-r from-emerald-500 to-teal-400'
-    if (creditPct > 85) return 'bg-gradient-to-r from-red-500 to-orange-500'
-    if (creditPct > 60) return 'bg-gradient-to-r from-amber-500 to-orange-400'
-    return 'bg-gradient-to-r from-emerald-500 to-teal-400'
-  }, [isMaster, creditPct])
-
-  const creditStrokeClass = useMemo(() => {
-    if (isMaster) return 'stroke-emerald-500'
-    if (creditPct > 85) return 'stroke-red-500'
-    if (creditPct > 60) return 'stroke-amber-500'
-    return 'stroke-emerald-500'
-  }, [isMaster, creditPct])
-
   const navItems: NavItem[] = [
     { name: 'Productions', icon: Clapperboard, path: '/productions' },
     { name: 'Key Moments', icon: Zap, path: '/key-moments' },
     { name: 'Thumbnails', icon: ImageIcon, path: '/thumbnails' },
     { name: 'Files', icon: Upload, path: '/uploads' },
     { name: 'Orientations', icon: Smartphone, path: '/orientations' },
-    { name: 'System Prompts', icon: FileText, path: '/prompts' },
-    { name: 'Diagnostics', icon: Activity, path: '/diagnostics' },
-    ...(isMaster ? [{ name: 'Invite Codes', icon: Shield, path: '/invite-codes' }] : []),
+    { name: 'Promos', icon: Scissors, path: '/promos' },
+    ...(isMaster ? [
+      { name: 'System Prompts', icon: FileText, path: '/prompts' },
+      { name: 'Diagnostics', icon: Activity, path: '/diagnostics' },
+      { name: 'Invite Codes', icon: Shield, path: '/invite-codes' },
+    ] : []),
   ]
 
   return (
@@ -182,40 +167,6 @@ export const Sidebar = () => {
             </NavLink>
           ))}
         </nav>
-
-        {/* Credit meter */}
-        <div className={cn("px-4 py-3 border-t border-sidebar-text/10", isSidebarCollapsed && "px-2")}>
-          {isSidebarCollapsed ? (
-            <div className="flex justify-center" title={isMaster ? `${dailyUsage} / 9999 credits used` : `${dailyUsage} / ${dailyCredits ?? 250} credits used`}>
-              <div className="relative w-8 h-8">
-                <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-                  <circle cx="18" cy="18" r="15" fill="none" strokeWidth="3" className="stroke-sidebar-text/10" />
-                  <circle
-                    cx="18" cy="18" r="15" fill="none" strokeWidth="3"
-                    strokeDasharray={`${(isMaster ? Math.min((dailyUsage / 9999) * 94.2, 94.2) : creditPct * 0.94)} 94.2`}
-                    className={creditStrokeClass}
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-sidebar-text/60">
-                <span>Credits Used</span>
-                <span>
-                  {dailyUsage} / {isMaster ? <span className="text-emerald-500">9999</span> : (dailyCredits ?? 250)}
-                </span>
-              </div>
-              <div className="h-1.5 rounded-full bg-sidebar-text/10 overflow-hidden">
-                <div
-                  className={cn("h-full rounded-full transition-all duration-500", creditBarClass)}
-                  style={{ width: isMaster ? `${Math.min((dailyUsage / 9999) * 100, 100)}%` : `${dailyUsage > 0 ? Math.max(creditPct, 2) : 0}%` }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
 
         <div className="p-4 border-t border-sidebar-text/10 flex flex-col gap-2">
           <motion.button
