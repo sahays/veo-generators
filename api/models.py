@@ -236,6 +236,7 @@ class PromoSegment(BaseModel):
     timestamp_end: str
     order: int = 0
     relevance_score: float = 0.0
+    overlay_gcs_uri: Optional[str] = None
 
 
 class PromoRecord(BaseModel):

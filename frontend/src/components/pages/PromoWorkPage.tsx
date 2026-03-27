@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  Scissors, Loader2, ArrowLeft, Download,
+  Scissors, Loader2, ArrowLeft, Download, RotateCcw,
 } from 'lucide-react'
 import { Button } from '@/components/Common'
 import { api } from '@/lib/api'
@@ -22,6 +22,7 @@ interface PromoSegment {
   timestamp_start: string
   timestamp_end: string
   description: string
+  overlay_signed_url?: string
 }
 
 const ACTIVE_STATUSES = ['pending', 'analyzing', 'extracting', 'stitching', 'encoding']
@@ -125,6 +126,20 @@ export const PromoWorkPage = () => {
     }
   }
 
+  const [retrying, setRetrying] = useState(false)
+
+  const handleRetry = async () => {
+    if (!id) return
+    setRetrying(true)
+    try {
+      await api.promo.retry(id)
+    } catch (err: any) {
+      console.error('Failed to retry promo', err)
+    } finally {
+      setRetrying(false)
+    }
+  }
+
   // --- View Mode ---
   if (isViewMode) {
     if (recordLoading) {
@@ -185,13 +200,23 @@ export const PromoWorkPage = () => {
                 Text Overlays
               </span>
             )}
+            {record.prompt_name && (
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                {record.prompt_name}
+              </span>
+            )}
           </div>
         </div>
 
         {isProcessing && <ProgressBar progress={record.progress_pct} />}
 
-        {record.status === 'failed' && record.error_message && (
-          <ErrorDisplay error={record.error_message} size="md" />
+        {record.status === 'failed' && (
+          <div className="space-y-3">
+            {record.error_message && <ErrorDisplay error={record.error_message} size="md" />}
+            <Button icon={retrying ? Loader2 : RotateCcw} onClick={handleRetry} disabled={retrying}>
+              {retrying ? 'Retrying...' : 'Retry'}
+            </Button>
+          </div>
         )}
 
         {record.status === 'completed' && (
@@ -223,6 +248,17 @@ export const PromoWorkPage = () => {
               </div>
             )}
 
+            {record.thumbnail_signed_url && (
+              <div className="space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Title Card</h3>
+                <img
+                  src={record.thumbnail_signed_url}
+                  alt="Title card collage"
+                  className="rounded-xl border border-border max-w-md"
+                />
+              </div>
+            )}
+
             {record.segments && record.segments.length > 0 && (
               <div className="space-y-3">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Selected Moments</h3>
@@ -232,6 +268,13 @@ export const PromoWorkPage = () => {
                       key={i}
                       className="glass bg-card p-4 rounded-xl border border-border"
                     >
+                      {seg.overlay_signed_url && (
+                        <img
+                          src={seg.overlay_signed_url}
+                          alt={seg.title}
+                          className="w-full rounded-lg mb-2 bg-black"
+                        />
+                      )}
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-[10px] font-mono text-muted-foreground">
                           {seg.timestamp_start} - {seg.timestamp_end}

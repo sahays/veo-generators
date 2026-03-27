@@ -6,10 +6,14 @@ No FastAPI or Firestore dependencies — easily testable.
 
 import json
 import logging
+import os
 import subprocess
+import tempfile
 from typing import List, Tuple
 
 logger = logging.getLogger(__name__)
+
+MAX_KEYPOINTS_PER_CHUNK = 80
 
 
 def ffprobe_video(path: str) -> dict:
@@ -416,14 +420,169 @@ def execute_reframe(
 ) -> str:
     """Run FFmpeg to crop and scale video with dynamic panning.
 
-    Filter graphs are written to a temp file and passed via -filter_script:v
-    or -filter_complex_script. This avoids all comma-escaping issues — FFmpeg
-    reads the file content without applying CLI-level filter graph splitting.
-
-    Returns the output file path.
+    When keypoints exceed MAX_KEYPOINTS_PER_CHUNK, the video is split into
+    time-range chunks (each with ≤80 keypoints), processed independently,
+    and concatenated with -c copy.
     """
-    import os
-    import tempfile
+    chunks = _split_keypoints_into_chunks(keypoints)
+
+    if len(chunks) == 1:
+        return _execute_reframe_chunk(
+            src_path, out_path, keypoints, src_w, src_h, has_audio, blurred_bg
+        )
+
+    logger.info(
+        f"Chunking: {len(keypoints)} keypoints -> {len(chunks)} chunks "
+        f"(max {MAX_KEYPOINTS_PER_CHUNK} per chunk)"
+    )
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    # Prepare chunk args
+    chunk_args: list[dict] = []
+    chunk_paths: list[str] = []
+    for i, chunk_kps in enumerate(chunks):
+        chunk_start = chunk_kps[0][0]
+        chunk_end = chunk_kps[-1][0]
+
+        fd, chunk_path = tempfile.mkstemp(suffix=f"_chunk{i}.mp4")
+        os.close(fd)
+        chunk_paths.append(chunk_path)
+
+        ss_time = chunk_start if chunk_start > 0 else None
+        duration = (chunk_end - chunk_start) if i < len(chunks) - 1 else None
+
+        chunk_args.append(
+            dict(
+                src_path=src_path,
+                out_path=chunk_path,
+                keypoints=chunk_kps,
+                src_w=src_w,
+                src_h=src_h,
+                has_audio=has_audio,
+                blurred_bg=blurred_bg,
+                ss_time=ss_time,
+                duration=duration,
+            )
+        )
+        logger.info(
+            f"Chunk {i + 1}/{len(chunks)}: "
+            f"t={chunk_start:.1f}-{chunk_end:.1f}s, "
+            f"{len(chunk_kps)} keypoints"
+        )
+
+    # Process chunks in parallel
+    try:
+        max_workers = min(len(chunks), NUM_PARALLEL_WORKERS)
+        logger.info(
+            f"Processing {len(chunks)} chunks with {max_workers} parallel workers"
+        )
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {
+                pool.submit(_execute_reframe_chunk, **args): i
+                for i, args in enumerate(chunk_args)
+            }
+            for future in as_completed(futures):
+                idx = futures[future]
+                future.result()  # raises if chunk failed
+                logger.info(f"Chunk {idx + 1}/{len(chunks)} complete")
+
+        logger.info(f"Concatenating {len(chunks)} chunks...")
+        _concat_reframe_chunks(chunk_paths, out_path, has_audio)
+        logger.info(f"Chunked reframe complete: {out_path}")
+        return out_path
+
+    finally:
+        for p in chunk_paths:
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+
+
+NUM_PARALLEL_WORKERS = int(os.environ.get("FFMPEG_WORKERS", "0")) or os.cpu_count() or 4
+
+
+def _interpolate_keypoint(
+    keypoints: List[Tuple[float, float, float]], t: float
+) -> Tuple[float, float, float]:
+    """Linearly interpolate x,y at time t between surrounding keypoints."""
+    if t <= keypoints[0][0]:
+        return keypoints[0]
+    if t >= keypoints[-1][0]:
+        return keypoints[-1]
+    for i in range(len(keypoints) - 1):
+        t0, x0, y0 = keypoints[i]
+        t1, x1, y1 = keypoints[i + 1]
+        if t0 <= t <= t1:
+            if t1 == t0:
+                return (t, x0, y0)
+            frac = (t - t0) / (t1 - t0)
+            return (t, x0 + (x1 - x0) * frac, y0 + (y1 - y0) * frac)
+    return keypoints[-1]
+
+
+def _split_keypoints_into_chunks(
+    keypoints: List[Tuple[float, float, float]],
+    max_per_chunk: int = MAX_KEYPOINTS_PER_CHUNK,
+    num_workers: int = NUM_PARALLEL_WORKERS,
+) -> List[List[Tuple[float, float, float]]]:
+    """Split keypoints into chunks — one per vCPU for maximum parallelism.
+
+    Also respects max_per_chunk to stay under FFmpeg's expression depth limit.
+    Interpolates boundary keypoints so crop position is continuous.
+    """
+    total_duration = keypoints[-1][0] - keypoints[0][0]
+
+    # Determine target chunk count: at least num_workers, more if keypoints demand it
+    chunks_for_depth = max(
+        1, (len(keypoints) + max_per_chunk - 2) // (max_per_chunk - 1)
+    )
+    num_chunks = max(chunks_for_depth, num_workers)
+
+    if num_chunks <= 1:
+        return [keypoints]
+
+    chunk_duration = total_duration / num_chunks
+
+    # Build time boundaries
+    start_time = keypoints[0][0]
+    chunk_boundaries = [start_time + i * chunk_duration for i in range(num_chunks)]
+    chunk_boundaries.append(keypoints[-1][0])
+
+    # Build chunks with interpolated boundary keypoints
+    chunks = []
+    for ci in range(len(chunk_boundaries) - 1):
+        c_start = chunk_boundaries[ci]
+        c_end = chunk_boundaries[ci + 1]
+
+        chunk_kps = [kp for kp in keypoints if c_start <= kp[0] <= c_end]
+
+        if not chunk_kps or chunk_kps[0][0] > c_start:
+            chunk_kps.insert(0, _interpolate_keypoint(keypoints, c_start))
+        if chunk_kps[-1][0] < c_end:
+            chunk_kps.append(_interpolate_keypoint(keypoints, c_end))
+
+        chunks.append(chunk_kps)
+
+    return chunks
+
+
+def _execute_reframe_chunk(
+    src_path: str,
+    out_path: str,
+    keypoints: List[Tuple[float, float, float]],
+    src_w: int,
+    src_h: int,
+    has_audio: bool = True,
+    blurred_bg: bool = False,
+    ss_time: float | None = None,
+    duration: float | None = None,
+) -> str:
+    """Process a single reframe chunk (or the full video if no chunking)."""
+    # Time-shift keypoints so filter expressions start at t=0
+    if ss_time is not None and ss_time > 0:
+        keypoints = [(t - ss_time, x, y) for t, x, y in keypoints]
 
     if blurred_bg:
         filter_str = build_blurred_bg_filter(keypoints, src_w, src_h)
@@ -436,30 +595,21 @@ def execute_reframe(
         f"Source: {src_w}x{src_h}, keypoints: {len(keypoints)}, "
         f"audio: {has_audio}, blurred_bg: {blurred_bg}"
     )
-    logger.info(
-        f"Filter ({len(filter_str)} chars): {filter_str[:300]}{'...' if len(filter_str) > 300 else ''}"
-    )
 
-    # Write filter to a temp file — the definitive fix for comma escaping.
-    # FFmpeg's -filter_complex_script / -filter_script:v reads the file as-is
-    # without applying CLI-level comma splitting.
     fd, filter_path = tempfile.mkstemp(suffix=".txt", prefix="ffmpeg_filter_")
     try:
         with os.fdopen(fd, "w") as f:
             f.write(filter_str)
-        logger.info(f"Filter script: {filter_path}")
 
-        cmd = ["ffmpeg", "-y", "-i", src_path]
+        cmd = ["ffmpeg", "-y"]
+        if ss_time is not None and ss_time > 0:
+            cmd += ["-ss", f"{ss_time:.3f}"]
+        cmd += ["-i", src_path]
+        if duration is not None:
+            cmd += ["-t", f"{duration:.3f}"]
+
         if use_complex:
-            # FFmpeg 7.x: -/filter_complex reads filter graph from a file
-            cmd += [
-                "-/filter_complex",
-                filter_path,
-                "-map",
-                "[v]",
-                "-map",
-                "0:a?",
-            ]
+            cmd += ["-/filter_complex", filter_path, "-map", "[v]", "-map", "0:a?"]
         else:
             cmd += ["-/filter:v", filter_path]
 
@@ -470,23 +620,60 @@ def execute_reframe(
             cmd += ["-an"]
         cmd += ["-movflags", "+faststart", out_path]
 
-        logger.info(f"FFmpeg cmd: {' '.join(cmd[:8])}...")
+        logger.info(f"FFmpeg cmd: {' '.join(cmd[:10])}...")
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
 
         if result.returncode != 0:
             stderr_tail = result.stderr[-1000:] if result.stderr else "(no stderr)"
             logger.error(f"FFmpeg returncode={result.returncode}")
             logger.error(f"FFmpeg stderr: {stderr_tail}")
-            logger.error(f"Filter was: {filter_str[:500]}")
             raise RuntimeError(
                 f"FFmpeg failed (exit {result.returncode}): {stderr_tail}"
             )
 
-        logger.info(f"FFmpeg reframe complete: {out_path}")
         return out_path
 
     finally:
         try:
             os.unlink(filter_path)
+        except OSError:
+            pass
+
+
+def _concat_reframe_chunks(
+    chunk_paths: list[str], out_path: str, has_audio: bool
+) -> str:
+    """Concatenate reframe chunks using the concat demuxer with -c copy."""
+    fd, list_path = tempfile.mkstemp(suffix=".txt", prefix="ffmpeg_concat_")
+    try:
+        with os.fdopen(fd, "w") as f:
+            for path in chunk_paths:
+                f.write(f"file '{path}'\n")
+
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            list_path,
+            "-c",
+            "copy",
+        ]
+        if not has_audio:
+            cmd += ["-an"]
+        cmd += ["-movflags", "+faststart", out_path]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if result.returncode != 0:
+            stderr_tail = result.stderr[-500:] if result.stderr else "(no stderr)"
+            raise RuntimeError(f"Chunk concat failed: {stderr_tail}")
+
+        return out_path
+    finally:
+        try:
+            os.unlink(list_path)
         except OSError:
             pass

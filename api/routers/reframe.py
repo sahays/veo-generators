@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 import deps
@@ -87,6 +87,22 @@ async def create_reframe(
     deps.firestore_svc.create_reframe_record(record)
 
     return {"id": record.id, "status": record.status}
+
+
+@router.post("/{record_id}/retry")
+async def retry_reframe(record_id: str):
+    """Reset a failed reframe to pending so the worker retries it."""
+    require_firestore()
+    record = get_or_404(
+        deps.firestore_svc.get_reframe_record, record_id, "Reframe record"
+    )
+    if record.status in ("pending", "completed"):
+        raise HTTPException(400, f"Cannot retry a {record.status} reframe")
+    deps.firestore_svc.update_reframe_record(
+        record_id,
+        {"status": "pending", "error_message": None, "progress_pct": 0},
+    )
+    return {"id": record_id, "status": "pending"}
 
 
 @router.post("/{record_id}/archive")

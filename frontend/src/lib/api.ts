@@ -503,6 +503,11 @@ export const api = {
       if (!res.ok) throw new Error(`Reframe failed: ${res.status}`)
       return res.json()
     },
+    retry: async (id: string): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/reframe/${id}/retry`, { method: 'POST' })
+      if (!res.ok) throw new Error(`Failed to retry reframe: ${res.status}`)
+      return res.json()
+    },
     archive: async (id: string): Promise<void> => {
       const res = await authFetch(`${API_BASE_URL}/reframe/${id}/archive`, { method: 'POST' })
       if (!res.ok) throw new Error(`Failed to archive reframe: ${res.status}`)
@@ -540,6 +545,11 @@ export const api = {
         body: JSON.stringify(data),
       })
       if (!res.ok) throw new Error(`Promo creation failed: ${res.status}`)
+      return res.json()
+    },
+    retry: async (id: string): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/promo/${id}/retry`, { method: 'POST' })
+      if (!res.ok) throw new Error(`Failed to retry promo: ${res.status}`)
       return res.json()
     },
     archive: async (id: string): Promise<void> => {

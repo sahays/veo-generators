@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  Smartphone, Loader2, ArrowLeft, Download,
+  Smartphone, Loader2, ArrowLeft, Download, RotateCcw,
 } from 'lucide-react'
 import { Button } from '@/components/Common'
 import { api } from '@/lib/api'
@@ -111,6 +111,20 @@ export const ReframeWorkPage = () => {
     }
   }
 
+  const [retrying, setRetrying] = useState(false)
+
+  const handleRetry = async () => {
+    if (!id) return
+    setRetrying(true)
+    try {
+      await api.reframe.retry(id)
+    } catch (err: any) {
+      console.error('Failed to retry reframe', err)
+    } finally {
+      setRetrying(false)
+    }
+  }
+
   // --- View Mode ---
   if (isViewMode) {
     if (recordLoading) {
@@ -171,8 +185,13 @@ export const ReframeWorkPage = () => {
 
         {isProcessing && <ProgressBar progress={record.progress_pct} />}
 
-        {record.status === 'failed' && record.error_message && (
-          <ErrorDisplay error={record.error_message} size="md" />
+        {record.status === 'failed' && (
+          <div className="space-y-3">
+            {record.error_message && <ErrorDisplay error={record.error_message} size="md" />}
+            <Button icon={retrying ? Loader2 : RotateCcw} onClick={handleRetry} disabled={retrying}>
+              {retrying ? 'Retrying...' : 'Retry'}
+            </Button>
+          </div>
         )}
 
         {record.status === 'completed' && (

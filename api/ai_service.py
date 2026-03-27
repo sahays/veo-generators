@@ -546,6 +546,9 @@ Return a JSON list of scenes following the requested structure."""
             res = self.firestore_svc.get_active_resource("prompt", "promo")
             if res:
                 prompt_text = res.content
+        # Substitute variables in custom prompts (e.g. {target_duration})
+        if prompt_text:
+            prompt_text = prompt_text.replace("{target_duration}", str(target_duration))
         if not prompt_text:
             prompt_text = (
                 f"You are a professional video editor creating a {target_duration}-second "
@@ -600,30 +603,54 @@ Return a JSON list of scenes following the requested structure."""
 
         return AIResponseWrapper(data=data, usage=usage)
 
-    async def generate_promo_thumbnail(
+    async def generate_promo_collage(
         self,
-        title: str,
-        description: str = "",
+        screenshot_uris: list[str],
+        segments: list[dict] | None = None,
         orientation: str = "16:9",
     ) -> AIResponseWrapper:
-        """Generate a cinematic title card image for a promo using Gemini."""
+        """Generate a stylized collage title card from key moment frames."""
         model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
 
+        # Build context from key moments metadata
+        moments_ctx = ""
+        if segments:
+            moment_lines = []
+            for s in segments:
+                title = s.get("title", "")
+                desc = s.get("description", "")
+                if title:
+                    moment_lines.append(f"- {title}: {desc}" if desc else f"- {title}")
+            if moment_lines:
+                moments_ctx = (
+                    "\n\nKey moments from this video:\n"
+                    + "\n".join(moment_lines)
+                    + "\n\nUse these details to create a relevant, punchy title.\n"
+                )
+
         prompt = (
-            f"Create a cinematic movie poster style title card for a video promo. "
-            f"Bold, stylized text that reads: '{title}'. "
-            "Background should be dramatic — dark with cinematic lighting, "
-            "lens flares, or abstract motion blur. "
-            "The text should be large, centered, and highly legible. "
-            "Style: professional broadcast quality, like ESPN or Netflix promos."
+            "Create a stylized collage thumbnail from these video screenshots. "
+            "Arrange the images in a dynamic layout with different proportions — "
+            "NOT a simple grid. One image should be a close-up crop of a person's "
+            "face or upper body to add human connection. "
+            "Use cinematic styling: slight color grading, dramatic lighting, subtle vignette. "
+            "Infer a short, punchy title from the content of the screenshots "
+            "and the key moments context below, then render it as bold, highly "
+            "legible text on the collage. "
+            "Style: professional broadcast quality, like ESPN or Netflix promos. "
+            "The collage should feel energetic and highlight the best moments."
+            + moments_ctx
         )
-        if description:
-            prompt += f" Context: {description}"
+
+        contents: list = []
+        for uri in screenshot_uris:
+            contents.append(types.Part.from_uri(file_uri=uri, mime_type="image/png"))
+        contents.append(prompt)
 
         response = await gemini_call_with_retry(
             self.client,
             model_id,
-            [prompt],
+            contents,
             types.GenerateContentConfig(
                 response_modalities=["IMAGE"],
                 image_config=types.ImageConfig(aspect_ratio=orientation),
@@ -642,7 +669,7 @@ Return a JSON list of scenes following the requested structure."""
                     break
 
         if not image_url:
-            raise ValueError("Thumbnail generation produced no image")
+            raise ValueError("Collage generation produced no image")
 
         usage = UsageMetrics(model_name=model_id, cost_usd=0.134)
         return AIResponseWrapper(data={"image_url": image_url}, usage=usage)

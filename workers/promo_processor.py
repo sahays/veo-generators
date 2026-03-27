@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import deps
 from models import PromoSegment
@@ -39,6 +40,7 @@ class PromoProcessor(JobProcessor):
         from promo_service import (
             parse_timestamp,
             extract_segment,
+            normalize_segment,
             concatenate_with_crossfade,
         )
 
@@ -46,44 +48,52 @@ class PromoProcessor(JobProcessor):
         tmp = TempFileManager()
 
         try:
-            # --- Step 1: Gemini selects moments ---
-            self.update_status(record_id, "analyzing", 5)
-            logger.info(f"[promo:{record_id}] Analyzing video for promo...")
-
-            loop = asyncio.new_event_loop()
-            try:
-                result = loop.run_until_complete(
-                    deps.ai_svc.analyze_video_for_promo(
-                        gcs_uri=record.source_gcs_uri,
-                        mime_type="video/mp4",
-                        target_duration=record.target_duration,
-                        prompt_id=record.prompt_id,
-                    )
+            # --- Step 1: Gemini selects moments (skip if segments exist) ---
+            if record.segments:
+                segments_raw = [s.dict() for s in record.segments]
+                logger.info(
+                    f"[promo:{record_id}] Resuming — reusing {len(segments_raw)} existing segments"
                 )
-            finally:
-                loop.close()
+            else:
+                self.update_status(record_id, "analyzing", 5)
+                logger.info(f"[promo:{record_id}] Analyzing video for promo...")
 
-            segments_raw = result.data.get("segments", [])
-            if not segments_raw:
-                raise ValueError("Gemini returned no segments for this theme")
+                loop = asyncio.new_event_loop()
+                try:
+                    result = loop.run_until_complete(
+                        deps.ai_svc.analyze_video_for_promo(
+                            gcs_uri=record.source_gcs_uri,
+                            mime_type="video/mp4",
+                            target_duration=record.target_duration,
+                            prompt_id=record.prompt_id,
+                        )
+                    )
+                finally:
+                    loop.close()
 
-            # Save segments and usage
-            segments = [
-                PromoSegment(
-                    title=s.get("title", ""),
-                    description=s.get("description", ""),
-                    timestamp_start=s.get("timestamp_start", "0:00"),
-                    timestamp_end=s.get("timestamp_end", "0:00"),
-                    order=i,
-                    relevance_score=s.get("relevance_score", 0.0),
-                ).dict()
-                for i, s in enumerate(segments_raw)
-            ]
-            deps.firestore_svc.update_promo_record(
-                record_id,
-                {"segments": segments, "usage": result.usage.dict()},
-            )
-            logger.info(f"[promo:{record_id}] Got {len(segments_raw)} segments")
+                segments_raw = result.data.get("segments", [])
+                if not segments_raw:
+                    raise ValueError("Gemini returned no segments for this theme")
+
+                # Save segments and usage
+                segments = [
+                    PromoSegment(
+                        title=s.get("title", ""),
+                        description=s.get("description", ""),
+                        timestamp_start=s.get("timestamp_start", "0:00"),
+                        timestamp_end=s.get("timestamp_end", "0:00"),
+                        order=i,
+                        relevance_score=s.get("relevance_score", 0.0),
+                    ).dict()
+                    for i, s in enumerate(segments_raw)
+                ]
+                deps.firestore_svc.update_promo_record(
+                    record_id,
+                    {"segments": segments, "usage": result.usage.dict()},
+                )
+                # Use the saved version so overlay_gcs_uri keys are present
+                segments_raw = segments
+                logger.info(f"[promo:{record_id}] Got {len(segments_raw)} segments")
 
             # --- Step 2: Download source video ---
             self.update_status(record_id, "extracting", 20)
@@ -93,26 +103,53 @@ class PromoProcessor(JobProcessor):
             deps.storage_svc.download_to_file(record.source_gcs_uri, src_path)
             logger.info(f"[promo:{record_id}] Downloaded to {src_path}")
 
-            # --- Step 3: Extract each segment ---
-            segment_paths = []
+            # --- Step 3: Extract each segment (parallel) ---
+            extract_tasks = []
             for i, seg in enumerate(segments_raw):
                 start_sec = parse_timestamp(seg["timestamp_start"])
                 end_sec = parse_timestamp(seg["timestamp_end"])
-
                 seg_path = tmp.create(suffix=f"_seg{i}.mp4")
-                extract_segment(src_path, seg_path, start_sec, end_sec)
-                segment_paths.append(seg_path)
+                extract_tasks.append((i, seg, seg_path, start_sec, end_sec))
 
-                progress = 20 + int((i + 1) / len(segments_raw) * 30)
-                self.update_status(record_id, "extracting", progress)
+            segment_paths = []
+            valid_segments_raw = []
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                futures = {
+                    pool.submit(extract_segment, src_path, t[2], t[3], t[4]): t
+                    for t in extract_tasks
+                }
+                for future in futures:
+                    i, seg, seg_path, _, _ = futures[future]
+                    try:
+                        future.result()
+                        segment_paths.append((i, seg, seg_path))
+                    except RuntimeError as e:
+                        logger.warning(
+                            f"[promo:{record_id}] Skipping segment {i} "
+                            f"({seg['timestamp_start']}-{seg['timestamp_end']}): {e}"
+                        )
 
+            # Sort by original index to preserve order
+            segment_paths.sort(key=lambda x: x[0])
+            valid_segments_raw = [s[1] for s in segment_paths]
+            segment_paths = [s[2] for s in segment_paths]
+            segments_raw = valid_segments_raw
+            self.update_status(record_id, "extracting", 50)
             logger.info(f"[promo:{record_id}] Extracted {len(segment_paths)} segments")
+
+            if not segment_paths:
+                raise ValueError("No valid segments could be extracted")
 
             # --- Step 3b: Generate thumbnail title card ---
             if record.generate_thumbnail:
-                self._generate_title_card(
-                    record, record_id, src_path, segments_raw, segment_paths, tmp
-                )
+                try:
+                    self._generate_title_card(
+                        record, record_id, src_path, segments_raw, segment_paths, tmp
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"[promo:{record_id}] Title card failed, skipping: {e}"
+                    )
 
             # --- Step 3c: Generate text overlays ---
             if record.text_overlay:
@@ -120,8 +157,45 @@ class PromoProcessor(JobProcessor):
                     record, record_id, src_path, segments_raw, segment_paths, tmp
                 )
 
-            # --- Step 4: Concatenate with cross-dissolve ---
+            # --- Step 3d: Normalize all segments to canonical format ---
             self.update_status(record_id, "stitching", 55)
+            logger.info(f"[promo:{record_id}] Normalizing segments...")
+
+            from reframe_service import ffprobe_video
+
+            probe = ffprobe_video(src_path)
+            target_w = probe["width"] // 2 * 2
+            target_h = probe["height"] // 2 * 2
+
+            norm_tasks = [
+                (i, seg_path, tmp.create(suffix=f"_norm{i}.mp4"))
+                for i, seg_path in enumerate(segment_paths)
+            ]
+            normalized_paths = []
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                futures = {
+                    pool.submit(normalize_segment, t[1], t[2], target_w, target_h): t
+                    for t in norm_tasks
+                }
+                for future in futures:
+                    i, _, norm_path = futures[future]
+                    try:
+                        future.result()
+                        normalized_paths.append((i, norm_path))
+                    except RuntimeError as e:
+                        logger.warning(
+                            f"[promo:{record_id}] Skipping segment {i} — normalization failed: {e}"
+                        )
+            normalized_paths.sort(key=lambda x: x[0])
+            segment_paths = [p[1] for p in normalized_paths]
+
+            logger.info(
+                f"[promo:{record_id}] Normalized {len(segment_paths)} segments "
+                f"to {target_w}x{target_h}@30fps"
+            )
+
+            # --- Step 4: Concatenate with cross-dissolve ---
+            self.update_status(record_id, "stitching", 60)
             logger.info(f"[promo:{record_id}] Stitching with cross-dissolve...")
 
             stitched_path = tmp.create(suffix="_stitched.mp4")
@@ -152,30 +226,64 @@ class PromoProcessor(JobProcessor):
         tmp: TempFileManager,
     ) -> None:
         from reframe_service import ffprobe_video
-        from promo_service import create_title_card_video
+        from promo_service import (
+            create_title_card_video,
+            extract_frame,
+            parse_timestamp,
+        )
 
         self.update_status(record_id, "extracting", 52)
-        logger.info(f"[promo:{record_id}] Generating thumbnail title card...")
 
         probe = ffprobe_video(src_path)
         orientation = "16:9" if probe["width"] > probe["height"] else "9:16"
 
-        loop = asyncio.new_event_loop()
-        try:
-            thumb_result = loop.run_until_complete(
-                deps.ai_svc.generate_promo_thumbnail(
-                    title=record.source_filename or "PROMO",
-                    description=f"Highlight reel with {len(segments_raw)} moments",
-                    orientation=orientation,
-                )
-            )
-        finally:
-            loop.close()
+        # Reuse existing thumbnail if available (checkpoint)
+        if record.thumbnail_gcs_uri:
+            logger.info(f"[promo:{record_id}] Resuming — reusing existing thumbnail")
+            thumb_gcs_uri = record.thumbnail_gcs_uri
+        else:
+            logger.info(f"[promo:{record_id}] Generating collage title card...")
 
-        thumb_gcs_uri = thumb_result.data["image_url"]
-        deps.firestore_svc.update_promo_record(
-            record_id, {"thumbnail_gcs_uri": thumb_gcs_uri}
-        )
+            # Extract frames from first 3-4 key moments
+            frame_uris = []
+            max_frames = min(4, len(segments_raw))
+            bucket = os.getenv("GCS_BUCKET")
+            for i in range(max_frames):
+                seg = segments_raw[i]
+                start = parse_timestamp(seg["timestamp_start"])
+                end = parse_timestamp(seg["timestamp_end"])
+                midpoint = (start + end) / 2
+
+                frame_path = tmp.create(suffix=f"_frame{i}.png")
+                extract_frame(src_path, frame_path, midpoint)
+
+                # Upload frame to GCS
+                import uuid as _uuid
+
+                dest = f"promos/frames/{_uuid.uuid4()}.png"
+                frame_uri = deps.storage_svc.upload_from_file(
+                    frame_path, f"gs://{bucket}/{dest}", content_type="image/png"
+                )
+                frame_uris.append(frame_uri)
+                logger.info(f"[promo:{record_id}] Extracted frame {i + 1}/{max_frames}")
+
+            # Generate collage from frames
+            loop = asyncio.new_event_loop()
+            try:
+                collage_result = loop.run_until_complete(
+                    deps.ai_svc.generate_promo_collage(
+                        screenshot_uris=frame_uris,
+                        segments=segments_raw,
+                        orientation=orientation,
+                    )
+                )
+            finally:
+                loop.close()
+
+            thumb_gcs_uri = collage_result.data["image_url"]
+            deps.firestore_svc.update_promo_record(
+                record_id, {"thumbnail_gcs_uri": thumb_gcs_uri}
+            )
 
         # Download thumbnail image, create title card video
         thumb_img_path = tmp.create(suffix=".png")
@@ -212,36 +320,59 @@ class PromoProcessor(JobProcessor):
         # Skip first segment if thumbnail is prepended (it's the title card)
         start_idx = 1 if record.generate_thumbnail else 0
 
+        # Phase 1: Collect all overlay images (Gemini calls — sequential)
+        overlay_images: list[tuple[int, str]] = []  # (seg_idx, ovr_img_path)
         for i, seg in enumerate(segments_raw):
-            # Pause between Gemini image calls to avoid rate limits
-            if i > 0:
-                time.sleep(5)
             seg_idx = i + start_idx
+            existing_uri = seg.get("overlay_gcs_uri")
 
-            loop = asyncio.new_event_loop()
-            try:
-                overlay_result = loop.run_until_complete(
-                    deps.ai_svc.generate_text_overlay(
-                        text=seg.get("title", ""),
-                        orientation=orientation,
+            if existing_uri:
+                logger.info(f"[promo:{record_id}] Resuming — reusing overlay {i}")
+                ovr_img_path = tmp.create(suffix=f"_ovr{i}.png")
+                deps.storage_svc.download_to_file(existing_uri, ovr_img_path)
+            else:
+                if i > 0:
+                    time.sleep(5)
+
+                loop = asyncio.new_event_loop()
+                try:
+                    overlay_result = loop.run_until_complete(
+                        deps.ai_svc.generate_text_overlay(
+                            text=seg.get("title", ""),
+                            orientation=orientation,
+                        )
                     )
+                finally:
+                    loop.close()
+
+                overlay_uri = overlay_result.data["image_url"]
+                segments_raw[i]["overlay_gcs_uri"] = overlay_uri
+                deps.firestore_svc.update_promo_record(
+                    record_id, {"segments": segments_raw}
                 )
-            finally:
-                loop.close()
 
-            # Download overlay image
-            ovr_img_path = tmp.create(suffix=f"_ovr{i}.png")
-            deps.storage_svc.download_to_file(
-                overlay_result.data["image_url"], ovr_img_path
-            )
+                ovr_img_path = tmp.create(suffix=f"_ovr{i}.png")
+                deps.storage_svc.download_to_file(overlay_uri, ovr_img_path)
 
-            # Overlay on segment
-            overlaid_path = tmp.create(suffix=f"_overlaid{i}.mp4")
-            overlay_image_on_segment(
-                segment_paths[seg_idx], ovr_img_path, overlaid_path
-            )
-            segment_paths[seg_idx] = overlaid_path
-
+            overlay_images.append((seg_idx, ovr_img_path))
             logger.info(
-                f"[promo:{record_id}] Overlay {i + 1}/{len(segments_raw)}: {seg.get('title', '')}"
+                f"[promo:{record_id}] Overlay image {i + 1}/{len(segments_raw)}: {seg.get('title', '')}"
             )
+
+        # Phase 2: Apply overlays to segments (FFmpeg — parallel)
+        def _apply_one_overlay(seg_idx: int, ovr_path: str) -> tuple[int, str]:
+            out = tmp.create(suffix=f"_overlaid{seg_idx}.mp4")
+            overlay_image_on_segment(segment_paths[seg_idx], ovr_path, out)
+            return seg_idx, out
+
+        logger.info(
+            f"[promo:{record_id}] Compositing {len(overlay_images)} overlays in parallel..."
+        )
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = [
+                pool.submit(_apply_one_overlay, seg_idx, ovr_path)
+                for seg_idx, ovr_path in overlay_images
+            ]
+            for future in futures:
+                seg_idx, overlaid_path = future.result()
+                segment_paths[seg_idx] = overlaid_path

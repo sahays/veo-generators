@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 import deps
@@ -29,13 +29,31 @@ class PromoRequest(BaseModel):
 
 
 def _sign_promo_urls(record: PromoRecord) -> dict:
-    return sign_record_urls(
+    data = sign_record_urls(
         record,
-        {"source_gcs_uri": "source_signed_url", "output_gcs_uri": "output_signed_url"},
+        {
+            "source_gcs_uri": "source_signed_url",
+            "output_gcs_uri": "output_signed_url",
+            "thumbnail_gcs_uri": "thumbnail_signed_url",
+        },
         lambda cache: deps.firestore_svc.update_promo_record(
             record.id, {"signed_urls": cache}
         ),
     )
+    # Resolve prompt name for display
+    if record.prompt_id and deps.firestore_svc:
+        res = deps.firestore_svc.get_resource(record.prompt_id)
+        if res:
+            data["prompt_name"] = res.name
+    # Sign overlay image URIs per segment
+    if deps.storage_svc and data.get("segments"):
+        _cache: dict = {}
+        for seg in data["segments"]:
+            uri = seg.get("overlay_gcs_uri")
+            if uri:
+                url, _ = deps.storage_svc.resolve_cached_url(uri, _cache)
+                seg["overlay_signed_url"] = url
+    return data
 
 
 @router.get("")
@@ -82,6 +100,24 @@ async def create_promo(body: PromoRequest, request: Request):
     deps.firestore_svc.create_promo_record(record)
 
     return {"id": record.id, "status": record.status}
+
+
+@router.post("/{record_id}/retry")
+async def retry_promo(record_id: str):
+    """Reset a failed promo to pending so the worker retries it.
+
+    Preserves segments, thumbnail, and overlay data so expensive Gemini
+    calls are not repeated.
+    """
+    require_firestore()
+    record = get_or_404(deps.firestore_svc.get_promo_record, record_id, "Promo record")
+    if record.status in ("pending", "completed"):
+        raise HTTPException(400, f"Cannot retry a {record.status} promo")
+    deps.firestore_svc.update_promo_record(
+        record_id,
+        {"status": "pending", "error_message": None, "progress_pct": 0},
+    )
+    return {"id": record_id, "status": "pending"}
 
 
 @router.post("/{record_id}/archive")

@@ -33,6 +33,7 @@ interface PromoRecord {
   status: string
   progress_pct: number
   usage?: { cost_usd?: number }
+  prompt_name?: string
   createdAt: string
   completedAt?: string
 }
@@ -69,9 +70,14 @@ const PromoCard = ({
         )}
       </div>
 
-      <h4 className="text-sm font-heading font-bold text-foreground group-hover:text-accent-dark transition-colors line-clamp-1 mb-3">
+      <h4 className="text-sm font-heading font-bold text-foreground group-hover:text-accent-dark transition-colors line-clamp-1 mb-1">
         {record.source_filename || 'Untitled video'}
       </h4>
+      {record.prompt_name && (
+        <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-medium bg-amber-500/10 text-amber-600 mb-2">
+          {record.prompt_name}
+        </span>
+      )}
 
       <div className="flex items-center justify-between text-[10px] text-muted-foreground">
         <div className="flex items-center gap-2">

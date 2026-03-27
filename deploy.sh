@@ -90,8 +90,8 @@ gcloud run deploy $WORKER_SERVICE_NAME \
   --region $REGION \
   --no-allow-unauthenticated \
   --execution-environment gen2 \
-  --cpu 4 \
-  --memory 8Gi \
+  --cpu 8 \
+  --memory 16Gi \
   --no-cpu-throttling \
   --timeout 3600 \
   --min-instances 1 \
