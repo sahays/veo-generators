@@ -54,6 +54,7 @@ function getPageTitle(pathname: string): string {
   if (pathname.match(/^\/orientations\/[^/]+$/)) return 'Reframe Details'
   if (pathname.match(/^\/promos\/[^/]+$/)) return 'Promo Details'
   if (pathname.match(/^\/uploads\/[^/]+$/)) return 'File Details'
+  if (pathname.match(/^\/prompts\/[^/]+$/)) return 'Prompt Details'
   return 'VeoGen'
 }
 
@@ -87,8 +88,8 @@ export const Sidebar = () => {
     { name: 'Files', icon: Upload, path: '/uploads' },
     { name: 'Orientations', icon: Smartphone, path: '/orientations' },
     { name: 'Promos', icon: Scissors, path: '/promos' },
+    { name: 'System Prompts', icon: FileText, path: '/prompts' },
     ...(isMaster ? [
-      { name: 'System Prompts', icon: FileText, path: '/prompts' },
       { name: 'Diagnostics', icon: Activity, path: '/diagnostics' },
       { name: 'Invite Codes', icon: Shield, path: '/invite-codes' },
     ] : []),

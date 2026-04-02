@@ -87,7 +87,7 @@ export const api = {
       const res = await authFetch(`${API_BASE_URL}/auth/codes/${id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error(`Failed to delete code: ${res.status}`)
     },
-    updateCode: async (id: string, data: { daily_credits: number }): Promise<void> => {
+    updateCode: async (id: string, data: { daily_credits?: number; expires_at?: string | null }): Promise<void> => {
       const res = await authFetch(`${API_BASE_URL}/auth/codes/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -457,6 +457,11 @@ export const api = {
     },
   },
   system: {
+    getResource: async (id: string): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/system/resources/${id}`)
+      if (!res.ok) throw new Error(`Failed to get resource: ${res.status}`)
+      return res.json()
+    },
     listResources: async (type?: string, category?: string): Promise<any[]> => {
       const params = new URLSearchParams()
       if (type) params.append('type', type)

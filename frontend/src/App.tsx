@@ -7,6 +7,7 @@ import { ProductionSummary } from './components/ads/ProductionSummary'
 import { ProjectList } from './components/ads/ProjectList'
 import { DiagnosticsPage } from './components/pages/DiagnosticsPage'
 import { PromptsPage } from './components/pages/PromptsPage'
+import { PromptDetailPage } from './components/pages/PromptDetailPage'
 import { KeyMomentsLandingPage } from './components/pages/KeyMomentsLandingPage'
 import { KeyMomentsAnalyzePage } from './components/pages/KeyMomentsAnalyzePage'
 import { ThumbnailsLandingPage } from './components/pages/ThumbnailsLandingPage'
@@ -77,10 +78,13 @@ function App() {
               <Route path="/uploads" element={<UploadsPage />} />
               <Route path="/uploads/:id" element={<UploadsPage />} />
 
+              {/* System Prompts (view for all, edit for master) */}
+              <Route path="/prompts" element={<PromptsPage />} />
+              <Route path="/prompts/:id" element={<PromptDetailPage />} />
+
               {/* Admin (master only) */}
               {isMaster && (
                 <>
-                  <Route path="/prompts" element={<PromptsPage />} />
                   <Route path="/diagnostics" element={<DiagnosticsPage />} />
                   <Route path="/invite-codes" element={<InviteCodesPage />} />
                 </>

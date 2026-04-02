@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "e2e": "npx playwright test",
+    "e2e:screenshots": "npx playwright test --project=setup --project=screenshots"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -23,10 +25,12 @@
     "zustand": "^4.5.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/vite": "^4.0.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react-swc": "^3.5.0",
+    "dotenv": "^17.4.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.2.2",
     "vite": "^5.3.1"

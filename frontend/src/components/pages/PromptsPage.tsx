@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   FileText, Code, Plus,
-  Copy, Loader2, Eye
+  Copy, Loader2, Eye, ExternalLink
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/Common'
 import { api } from '@/lib/api'
+import { useAuthStore } from '@/store/useAuthStore'
 import { ResourceModal } from '@/components/ads/ResourceModal'
 import type { SystemResource } from '@/types/project'
 
@@ -51,6 +53,8 @@ export const PromptsPage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedInitialData, setSelectedInitialData] = useState<Partial<SystemResource> | undefined>()
   const [isReadOnly, setIsReadOnly] = useState(false)
+  const navigate = useNavigate()
+  const { isMaster } = useAuthStore()
 
   const fetchResources = async () => {
     setLoading(true)
@@ -119,12 +123,14 @@ export const PromptsPage = () => {
 
       {activeTab === 'prompt' && (
         <>
-          {/* Create button */}
-          <div className="flex justify-end">
-            <Button icon={Plus} onClick={handleCreateNew}>
-              Create New Prompt
-            </Button>
-          </div>
+          {/* Create button (master only) */}
+          {isMaster && (
+            <div className="flex justify-end">
+              <Button icon={Plus} onClick={handleCreateNew}>
+                Create New Prompt
+              </Button>
+            </div>
+          )}
 
           {/* Prompt grid */}
           {loading ? (
@@ -158,7 +164,12 @@ export const PromptsPage = () => {
                       className="border-b border-border/50 last:border-b-0 hover:bg-muted/20 transition-colors"
                     >
                       <td className="px-4 py-3">
-                        <span className="font-medium text-foreground">{res.name}</span>
+                        <button
+                          onClick={() => navigate(`/prompts/${res.id}`)}
+                          className="font-medium text-foreground hover:text-accent-dark transition-colors text-left"
+                        >
+                          {res.name}
+                        </button>
                       </td>
                       <td className="px-4 py-3">
                         <span className="bg-muted px-2 py-0.5 rounded text-[10px] font-mono text-muted-foreground capitalize">
@@ -176,19 +187,28 @@ export const PromptsPage = () => {
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-1">
                           <button
+                            onClick={() => navigate(`/prompts/${res.id}`)}
+                            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                            title="Open page"
+                          >
+                            <ExternalLink size={15} />
+                          </button>
+                          <button
                             onClick={() => handleView(res)}
                             className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                            title="View"
+                            title="Quick view"
                           >
                             <Eye size={15} />
                           </button>
-                          <button
-                            onClick={() => handleIterate(res)}
-                            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                            title="Iterate"
-                          >
-                            <Copy size={15} />
-                          </button>
+                          {isMaster && (
+                            <button
+                              onClick={() => handleIterate(res)}
+                              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                              title="Iterate"
+                            >
+                              <Copy size={15} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </motion.tr>

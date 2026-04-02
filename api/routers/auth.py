@@ -113,6 +113,20 @@ async def update_code(code_id: str, body: dict, request: Request):
             )
         updates["daily_credits"] = val
 
+    if "expires_at" in body:
+        val = body["expires_at"]
+        if val is None:
+            updates["expires_at"] = None
+        else:
+            try:
+                updates["expires_at"] = datetime.fromisoformat(
+                    val.replace("Z", "+00:00")
+                )
+            except (ValueError, AttributeError):
+                raise HTTPException(
+                    status_code=400, detail="expires_at must be a valid ISO datetime"
+                )
+
     if updates:
         deps.firestore_svc.update_invite_code(code_id, updates)
     return {"status": "updated"}

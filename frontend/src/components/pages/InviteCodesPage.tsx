@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Shield, Trash2, Ban, CheckCircle, Shuffle, Pencil, Check, X } from 'lucide-react'
+import { Plus, Shield, Trash2, Ban, CheckCircle, Shuffle, Pencil, Check, X, CalendarClock } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Button } from '@/components/Common'
 import { Modal } from '@/components/Modal'
@@ -16,6 +16,29 @@ interface InviteCode {
   createdAt: string
 }
 
+const EXPIRY_OPTIONS = [
+  { value: '', label: 'No expiry' },
+  { value: '1w', label: '1 week' },
+  { value: '2w', label: '2 weeks' },
+  { value: '1m', label: '1 month' },
+  { value: '3m', label: '3 months' },
+  { value: '6m', label: '6 months' },
+]
+
+function computeExpiryDate(duration: string, from: Date = new Date()): string | null {
+  if (!duration) return null
+  const d = new Date(from)
+  switch (duration) {
+    case '1w': d.setDate(d.getDate() + 7); break
+    case '2w': d.setDate(d.getDate() + 14); break
+    case '1m': d.setMonth(d.getMonth() + 1); break
+    case '3m': d.setMonth(d.getMonth() + 3); break
+    case '6m': d.setMonth(d.getMonth() + 6); break
+    default: return null
+  }
+  return d.toISOString()
+}
+
 export const InviteCodesPage = () => {
   const [codes, setCodes] = useState<InviteCode[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -23,11 +46,14 @@ export const InviteCodesPage = () => {
   const [newCode, setNewCode] = useState('')
   const [newLabel, setNewLabel] = useState('')
   const [newDailyCredits, setNewDailyCredits] = useState('250')
-  const [newExpiry, setNewExpiry] = useState('')
+  const [newExpiryDuration, setNewExpiryDuration] = useState('')
   const [createError, setCreateError] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const [editingLimitId, setEditingLimitId] = useState<string | null>(null)
   const [editingLimitValue, setEditingLimitValue] = useState('')
+  const [extendingId, setExtendingId] = useState<string | null>(null)
+  const [extendDuration, setExtendDuration] = useState('1m')
+  const [isExtending, setIsExtending] = useState(false)
 
   const generateRandomCode = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
@@ -59,18 +85,38 @@ export const InviteCodesPage = () => {
       if (newLabel.trim()) data.label = newLabel.trim()
       const credits = parseInt(newDailyCredits, 10)
       if (!isNaN(credits) && credits > 0) data.daily_credits = credits
-      if (newExpiry) data.expires_at = new Date(newExpiry).toISOString()
+      const expiryDate = computeExpiryDate(newExpiryDuration)
+      if (expiryDate) data.expires_at = expiryDate
       await api.auth.createCode(data)
       setShowCreateModal(false)
       setNewCode('')
       setNewLabel('')
       setNewDailyCredits('250')
-      setNewExpiry('')
+      setNewExpiryDuration('')
       fetchCodes()
     } catch (err: any) {
       setCreateError(err.message || 'Failed to create code')
     } finally {
       setIsCreating(false)
+    }
+  }
+
+  const handleExtend = async (id: string) => {
+    setIsExtending(true)
+    try {
+      const code = codes.find(c => c.id === id)
+      // Extend from current expiry if still in the future, otherwise from now
+      const base = code?.expires_at && new Date(code.expires_at) > new Date()
+        ? new Date(code.expires_at)
+        : new Date()
+      const newExpiry = computeExpiryDate(extendDuration, base)
+      await api.auth.updateCode(id, { expires_at: newExpiry })
+      setExtendingId(null)
+      fetchCodes()
+    } catch (err) {
+      console.error('Failed to extend expiry', err)
+    } finally {
+      setIsExtending(false)
     }
   }
 
@@ -132,6 +178,7 @@ export const InviteCodesPage = () => {
             const isExpired = code.expires_at && new Date(code.expires_at) < new Date()
             const isActive = code.is_active && !isExpired
             const isEditingLimit = editingLimitId === code.id
+            const isExtendingThis = extendingId === code.id
 
             return (
               <motion.div
@@ -141,7 +188,7 @@ export const InviteCodesPage = () => {
                 className="glass bg-card rounded-xl border border-border p-4 flex items-center justify-between gap-4"
               >
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <code className="text-sm font-mono font-bold text-foreground">{code.code}</code>
                     <span className={cn(
                       "text-xs px-2 py-0.5 rounded-full font-medium",
@@ -182,16 +229,61 @@ export const InviteCodesPage = () => {
                       </button>
                     )}
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                     {code.label && <span>{code.label}</span>}
-                    {code.expires_at && (
-                      <span>Expires: {new Date(code.expires_at).toLocaleDateString()}</span>
+                    {code.expires_at ? (
+                      <span className={cn(isExpired && 'text-red-500')}>
+                        {isExpired ? 'Expired' : 'Expires'}: {new Date(code.expires_at).toLocaleDateString()}
+                      </span>
+                    ) : (
+                      <span>No expiry</span>
                     )}
                     <span>Created: {new Date(code.createdAt).toLocaleDateString()}</span>
                   </div>
+
+                  {/* Inline extend UI */}
+                  {isExtendingThis && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <select
+                        value={extendDuration}
+                        onChange={(e) => setExtendDuration(e.target.value)}
+                        className="px-2 py-1 rounded-lg bg-muted border border-border text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-accent/50"
+                      >
+                        {EXPIRY_OPTIONS.filter(o => o.value).map(o => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                      <span className="text-[10px] text-muted-foreground">
+                        from {code.expires_at && new Date(code.expires_at) > new Date()
+                          ? new Date(code.expires_at).toLocaleDateString()
+                          : 'now'}
+                      </span>
+                      <button
+                        onClick={() => handleExtend(code.id)}
+                        disabled={isExtending}
+                        className="text-xs px-2 py-1 rounded-lg bg-accent/10 text-accent-dark hover:bg-accent/20 transition-colors font-medium disabled:opacity-50"
+                      >
+                        {isExtending ? 'Saving...' : 'Apply'}
+                      </button>
+                      <button
+                        onClick={() => setExtendingId(null)}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    icon={CalendarClock}
+                    onClick={() => { setExtendingId(extendingId === code.id ? null : code.id); setExtendDuration('1m') }}
+                    className="text-xs px-2 py-1"
+                  >
+                    Extend
+                  </Button>
                   {code.is_active ? (
                     <Button
                       variant="ghost"
@@ -280,13 +372,21 @@ export const InviteCodesPage = () => {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Expiry Date</label>
-            <input
-              type="date"
-              value={newExpiry}
-              onChange={(e) => setNewExpiry(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/50 text-sm"
-            />
+            <label className="block text-sm font-medium text-foreground mb-1">Expiry</label>
+            <select
+              value={newExpiryDuration}
+              onChange={(e) => setNewExpiryDuration(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-accent/50 text-sm"
+            >
+              {EXPIRY_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            {newExpiryDuration && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Expires on {new Date(computeExpiryDate(newExpiryDuration)!).toLocaleDateString()}
+              </p>
+            )}
           </div>
           {createError && (
             <p className="text-sm text-red-500">{createError}</p>

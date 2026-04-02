@@ -125,6 +125,11 @@ dist/
 .eslintcache
 .stylelintcache
 
+# Playwright
+frontend/e2e/.auth/
+frontend/e2e/test-results/
+frontend/e2e/screenshots/
+
 
 
 # Spyder project settings
