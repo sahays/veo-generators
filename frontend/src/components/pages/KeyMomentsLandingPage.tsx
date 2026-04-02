@@ -44,7 +44,7 @@ const AnalysisCard = ({
             )}
           </span>
           <h4 className="text-sm font-heading font-bold text-foreground group-hover:text-accent-dark transition-colors line-clamp-1">
-            {record.video_filename || 'Untitled video'}
+            {record.display_name || record.video_filename || 'Untitled video'}
           </h4>
         </div>
         <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0 text-emerald-600 bg-emerald-500/10">

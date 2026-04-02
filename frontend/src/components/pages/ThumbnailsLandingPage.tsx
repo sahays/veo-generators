@@ -64,7 +64,7 @@ const ThumbnailCard = ({
       </div>
 
       <h4 className="text-sm font-heading font-bold text-foreground group-hover:text-accent-dark transition-colors line-clamp-1 mb-2">
-        {record.video_filename || 'Untitled video'}
+        {record.display_name || record.video_filename || 'Untitled video'}
       </h4>
 
       {record.thumbnail_signed_url && (

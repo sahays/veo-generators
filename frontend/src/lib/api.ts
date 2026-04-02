@@ -274,6 +274,14 @@ export const api = {
       const res = await authFetch(`${API_BASE_URL}/key-moments/${id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error(`Failed to delete key moments analysis: ${res.status}`)
     },
+    update: async (id: string, data: { display_name?: string }): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/key-moments/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error(`Failed to update key moments: ${res.status}`)
+    },
     archive: async (id: string): Promise<void> => {
       const res = await authFetch(`${API_BASE_URL}/key-moments/${id}/archive`, { method: 'POST' })
       if (!res.ok) throw new Error(`Failed to archive key moments analysis: ${res.status}`)
@@ -322,6 +330,14 @@ export const api = {
       })
       if (!res.ok) throw new Error(`Collage generation failed: ${res.status}`)
       return res.json()
+    },
+    update: async (id: string, data: { display_name?: string }): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/thumbnails/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error(`Failed to update thumbnail: ${res.status}`)
     },
     archive: async (id: string): Promise<void> => {
       const res = await authFetch(`${API_BASE_URL}/thumbnails/${id}/archive`, { method: 'POST' })

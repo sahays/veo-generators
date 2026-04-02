@@ -151,6 +151,7 @@ class KeyMomentsRecord(BaseModel):
     id: str = Field(default_factory=lambda: generate_id("km-"))
     video_gcs_uri: str
     video_filename: str = ""
+    display_name: str = ""
     video_source: str = "upload"  # "upload" | "production"
     production_id: Optional[str] = None
     mime_type: str = "video/mp4"
@@ -179,6 +180,7 @@ class ThumbnailRecord(BaseModel):
     id: str = Field(default_factory=lambda: generate_id("th-"))
     video_gcs_uri: str
     video_filename: str = ""
+    display_name: str = ""
     video_source: str = "upload"  # "upload" | "production"
     production_id: Optional[str] = None
     mime_type: str = "video/mp4"

@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Upload, Image, Loader2, ArrowLeft, Download,
-  Film, FileVideo, ChevronRight, Camera, Sparkles, Tag,
+  Film, FileVideo, ChevronRight, Camera, Sparkles, Tag, Pencil, Check,
 } from 'lucide-react'
 import { Button, Card, AnchorHeading } from '@/components/Common'
 import { Select } from '@/components/UI'
@@ -25,6 +25,10 @@ export const ThumbnailsWorkPage = () => {
   const [videoFilename, setVideoFilename] = useState('')
   const [videoSource, setVideoSource] = useState<'upload' | 'production'>('upload')
   const [productionId, setProductionId] = useState<string | undefined>()
+
+  // Name editing
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [editName, setEditName] = useState('')
 
   // Source data
   const [productions, setProductions] = useState<CompletedProductionSource[]>([])
@@ -83,7 +87,7 @@ export const ThumbnailsWorkPage = () => {
       .then((record: ThumbnailRecord) => {
         setVideoUrl(record.video_signed_url || null)
         setGcsUri(record.video_gcs_uri)
-        setVideoFilename(record.video_filename)
+        setVideoFilename(record.display_name || record.video_filename)
         setVideoSource(record.video_source)
         setProductionId(record.production_id)
         setVideoSummary(record.video_summary || null)
@@ -315,14 +319,34 @@ export const ThumbnailsWorkPage = () => {
 
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-heading text-foreground tracking-tight">
-            {isViewMode ? 'Thumbnail Details' : 'Create Thumbnail'}
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            {isViewMode
-              ? `Viewing thumbnail for ${videoFilename || 'video'}`
-              : 'Select a video, identify key moments, then generate a collage thumbnail.'}
-          </p>
+          {isViewMode ? (
+            <>
+              {isEditingName ? (
+                <form className="flex items-center gap-2" onSubmit={async (e) => {
+                  e.preventDefault()
+                  if (id) await api.thumbnails.update(id, { display_name: editName })
+                  setVideoFilename(editName)
+                  setIsEditingName(false)
+                }}>
+                  <input autoFocus value={editName} onChange={(e) => setEditName(e.target.value)}
+                    className="text-2xl font-heading font-bold text-foreground bg-muted px-2 py-0.5 rounded border border-border focus:outline-none focus:ring-1 focus:ring-accent" />
+                  <button type="submit" className="text-accent hover:text-accent-dark"><Check size={16} /></button>
+                </form>
+              ) : (
+                <button className="flex items-center gap-2 text-2xl font-heading text-foreground tracking-tight hover:text-accent-dark transition-colors"
+                  onClick={() => { setEditName(videoFilename || ''); setIsEditingName(true) }}>
+                  {videoFilename || 'Untitled'}
+                  <Pencil size={12} className="text-muted-foreground" />
+                </button>
+              )}
+              <p className="text-sm text-muted-foreground mt-1">Thumbnail Details</p>
+            </>
+          ) : (
+            <>
+              <h2 className="text-2xl font-heading text-foreground tracking-tight">Create Thumbnail</h2>
+              <p className="text-sm text-muted-foreground mt-1">Select a video, identify key moments, then generate a collage thumbnail.</p>
+            </>
+          )}
         </div>
         {!isViewMode && !videoUrl && (
           <button

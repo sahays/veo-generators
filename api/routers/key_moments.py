@@ -101,6 +101,19 @@ async def analyze_key_moments(request: Request, body: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.patch("/{record_id}")
+async def update_key_moments(record_id: str, body: dict):
+    require_firestore()
+    get_or_404(deps.firestore_svc.get_key_moments_analysis, record_id, "Analysis")
+    updates = {}
+    if "display_name" in body:
+        updates["display_name"] = str(body["display_name"]).strip()
+    if not updates:
+        raise HTTPException(400, "No valid fields to update")
+    deps.firestore_svc.key_moments_collection.document(record_id).update(updates)
+    return {"status": "updated"}
+
+
 @router.post("/{record_id}/archive")
 async def archive_key_moments_analysis(record_id: str):
     require_firestore()

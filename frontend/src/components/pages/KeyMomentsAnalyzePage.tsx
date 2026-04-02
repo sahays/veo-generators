@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Zap, Loader2, Play, Clock, Tag, ArrowLeft, Upload,
-  Film, FileVideo, ChevronRight,
+  Film, FileVideo, ChevronRight, Pencil, Check,
 } from 'lucide-react'
 import { Button, Card, AnchorHeading } from '@/components/Common'
 import { Select } from '@/components/UI'
@@ -32,6 +32,10 @@ export const KeyMomentsAnalyzePage = () => {
   const [videoFilename, setVideoFilename] = useState('')
   const [videoSource, setVideoSource] = useState<'upload' | 'production'>('upload')
   const [productionId, setProductionId] = useState<string | undefined>()
+
+  // Name editing
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [editName, setEditName] = useState('')
 
   // Source data
   const [productions, setProductions] = useState<CompletedProductionSource[]>([])
@@ -68,7 +72,7 @@ export const KeyMomentsAnalyzePage = () => {
       .then((record: KeyMomentsRecord) => {
         setVideoUrl(record.video_signed_url || null)
         setGcsUri(record.video_gcs_uri)
-        setVideoFilename(record.video_filename)
+        setVideoFilename(record.display_name || record.video_filename)
         setVideoSource(record.video_source)
         setProductionId(record.production_id)
         setAnalysis({
@@ -209,14 +213,34 @@ export const KeyMomentsAnalyzePage = () => {
 
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-heading text-foreground tracking-tight">
-            {isViewMode ? 'Key Moments Analysis' : 'Find Key Moments'}
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            {isViewMode
-              ? `Viewing analysis for ${videoFilename || 'video'}`
-              : 'Select a video source and let AI identify the key moments.'}
-          </p>
+          {isViewMode ? (
+            <>
+              {isEditingName ? (
+                <form className="flex items-center gap-2" onSubmit={async (e) => {
+                  e.preventDefault()
+                  if (id) await api.keyMoments.update(id, { display_name: editName })
+                  setVideoFilename(editName)
+                  setIsEditingName(false)
+                }}>
+                  <input autoFocus value={editName} onChange={(e) => setEditName(e.target.value)}
+                    className="text-2xl font-heading font-bold text-foreground bg-muted px-2 py-0.5 rounded border border-border focus:outline-none focus:ring-1 focus:ring-accent" />
+                  <button type="submit" className="text-accent hover:text-accent-dark"><Check size={16} /></button>
+                </form>
+              ) : (
+                <button className="flex items-center gap-2 text-2xl font-heading text-foreground tracking-tight hover:text-accent-dark transition-colors"
+                  onClick={() => { setEditName(videoFilename || ''); setIsEditingName(true) }}>
+                  {videoFilename || 'Untitled'}
+                  <Pencil size={12} className="text-muted-foreground" />
+                </button>
+              )}
+              <p className="text-sm text-muted-foreground mt-1">Key Moments Analysis</p>
+            </>
+          ) : (
+            <>
+              <h2 className="text-2xl font-heading text-foreground tracking-tight">Find Key Moments</h2>
+              <p className="text-sm text-muted-foreground mt-1">Select a video source and let AI identify the key moments.</p>
+            </>
+          )}
         </div>
         {!isViewMode && !videoUrl && (
           <button

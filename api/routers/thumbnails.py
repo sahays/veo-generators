@@ -201,6 +201,19 @@ async def generate_thumbnail_collage(request: Request, record_id: str, body: dic
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.patch("/{record_id}")
+async def update_thumbnail(record_id: str, body: dict):
+    require_firestore()
+    get_or_404(deps.firestore_svc.get_thumbnail_record, record_id, "Thumbnail record")
+    updates = {}
+    if "display_name" in body:
+        updates["display_name"] = str(body["display_name"]).strip()
+    if not updates:
+        raise HTTPException(400, "No valid fields to update")
+    deps.firestore_svc.update_thumbnail_record(record_id, updates)
+    return {"status": "updated"}
+
+
 @router.post("/{record_id}/archive")
 async def archive_thumbnail(record_id: str):
     require_firestore()

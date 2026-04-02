@@ -167,6 +167,7 @@ export interface KeyMomentsRecord {
   id: string
   video_gcs_uri: string
   video_filename: string
+  display_name?: string
   video_source: 'upload' | 'production'
   production_id?: string
   mime_type: string
@@ -194,6 +195,7 @@ export interface ThumbnailRecord {
   id: string
   video_gcs_uri: string
   video_filename: string
+  display_name?: string
   video_source: 'upload' | 'production'
   production_id?: string
   mime_type: string
