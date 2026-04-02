@@ -30,6 +30,7 @@ const STATUS_LABELS: Record<string, string> = {
 interface PromoRecord {
   id: string
   source_filename: string
+  display_name?: string
   status: string
   progress_pct: number
   usage?: { cost_usd?: number }
@@ -71,7 +72,7 @@ const PromoCard = ({
       </div>
 
       <h4 className="text-sm font-heading font-bold text-foreground group-hover:text-accent-dark transition-colors line-clamp-1 mb-1">
-        {record.source_filename || 'Untitled video'}
+        {record.display_name || record.source_filename || 'Untitled video'}
       </h4>
       {record.prompt_name && (
         <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-medium bg-amber-500/10 text-amber-600 mb-2">

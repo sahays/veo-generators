@@ -408,7 +408,7 @@ export const ProjectForm = () => {
                       }}
                       className="aspect-square rounded-lg overflow-hidden border border-border hover:border-accent transition-colors"
                     >
-                      <img src={img.signed_url} alt={img.filename} className="w-full h-full object-cover" />
+                      <img src={img.signed_url} alt={img.display_name || img.filename} className="w-full h-full object-cover" />
                     </button>
                   ))}
                 </div>

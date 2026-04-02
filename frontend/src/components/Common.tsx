@@ -1,6 +1,42 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { LucideIcon } from 'lucide-react'
+import { LucideIcon, Link as LinkIcon, Check as CheckIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+/** Copyable anchor link icon — shows on hover, copies full URL on click */
+const AnchorLink = ({ id }: { id: string }) => {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      onClick={(e) => {
+        e.preventDefault()
+        const url = `${window.location.origin}${window.location.pathname}#${id}`
+        navigator.clipboard.writeText(url)
+        window.history.replaceState(null, '', `#${id}`)
+        document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      }}
+      className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-accent"
+      title="Copy link"
+    >
+      {copied ? <CheckIcon size={14} /> : <LinkIcon size={14} />}
+    </button>
+  )
+}
+
+/** Section heading with hover-copyable anchor link */
+export const AnchorHeading = ({ id, children, className, as: Tag = 'h3' }: {
+  id: string
+  children: React.ReactNode
+  className?: string
+  as?: 'h2' | 'h3' | 'h4'
+}) => (
+  <Tag id={id} className={cn("group flex items-center gap-2", className)}>
+    {children}
+    <AnchorLink id={id} />
+  </Tag>
+)
 
 type MotionButtonProps = React.ComponentPropsWithoutRef<typeof motion.button>
 
@@ -65,9 +101,10 @@ export const Card = ({ id, title, icon: Icon, children, actions, className }: Ca
     >
       {/* Header */}
       {(title || Icon) && (
-        <div className="px-5 pt-5 pb-3 flex items-center gap-2.5">
+        <div className="px-5 pt-5 pb-3 flex items-center gap-2.5 group">
           {Icon && <Icon className="text-accent-dark" size={20} />}
           {title && <h3 className="text-base font-heading font-bold text-foreground">{title}</h3>}
+          {id && <AnchorLink id={id} />}
         </div>
       )}
       

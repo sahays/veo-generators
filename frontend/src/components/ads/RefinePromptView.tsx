@@ -336,24 +336,6 @@ export const RefinePromptView = () => {
         </div>
       </div>
 
-      {(tempProjectData as any)?.status === 'completed' && (tempProjectData as any)?.final_video_url && (
-        <Card className="p-0 overflow-hidden">
-          <div className={cn(
-            "relative mx-auto",
-            (tempProjectData as any)?.orientation === '9:16' ? "aspect-[9/16] max-w-sm" : "aspect-video max-w-3xl"
-          )}>
-            <video
-              src={(tempProjectData as any).final_video_url}
-              controls
-              className="w-full h-full object-contain bg-black"
-            />
-          </div>
-          <div className="p-4 text-center">
-            <span className="text-xs font-bold uppercase text-muted-foreground tracking-widest">Final Video</span>
-          </div>
-        </Card>
-      )}
-
       <div className={cn(
         "grid gap-6 transition-all duration-500",
         layout === 'grid' ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-3" : "grid-cols-1"

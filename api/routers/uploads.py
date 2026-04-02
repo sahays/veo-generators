@@ -291,6 +291,25 @@ async def get_compress_status(record_id: str):
     return {"variants": result_variants}
 
 
+@router.patch("/uploads/{record_id}")
+async def update_upload(record_id: str, body: dict):
+    if not deps.firestore_svc:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    record = deps.firestore_svc.get_upload_record(record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Upload not found")
+
+    updates = {}
+    if "display_name" in body:
+        updates["display_name"] = str(body["display_name"]).strip()
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
+
+    deps.firestore_svc.update_upload_record(record_id, updates)
+    return {"status": "updated"}
+
+
 @router.post("/uploads/{record_id}/archive")
 async def archive_upload(record_id: str):
     if not deps.firestore_svc:

@@ -28,6 +28,7 @@ const STATUS_LABELS: Record<string, string> = {
 interface ReframeRecord {
   id: string
   source_filename: string
+  display_name?: string
   status: string
   progress_pct: number
   source_signed_url?: string
@@ -70,7 +71,7 @@ const ReframeCard = ({
       </div>
 
       <h4 className="text-sm font-heading font-bold text-foreground group-hover:text-accent-dark transition-colors line-clamp-1 mb-3">
-        {record.source_filename || 'Untitled video'}
+        {record.display_name || record.source_filename || 'Untitled video'}
       </h4>
 
       <div className="flex items-center justify-between text-[10px] text-muted-foreground">

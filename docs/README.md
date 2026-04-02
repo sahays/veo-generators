@@ -23,18 +23,19 @@ Sections: Production Type, Concept & Vision, System Configuration, Duration, Ori
 ![](productions-create.png)
 
 ### Productions Detail
-Sections: Video Player, [Production Brief](#production-brief), [Resource Usage](#resource-usage), [Technical Specs](#technical-specs), [Final Storyboard](#final-storyboard)
 
-![Video player and production header](productions-detail-hero.png)
+**Video Player & Header** — title, status badge, generation date, resource usage sidebar
+![](productions-detail-hero.png)
 
-![Production Brief with format, duration, scene count](productions-detail-brief.png)
+**[Production Brief](#production-brief)** — base concept, format, duration, scene count, analysis prompt
+![](productions-detail-brief.png)
 
-![Final Storyboard grid with scene thumbnails](productions-detail-storyboard.png)
+**[Final Storyboard](#final-storyboard)** — scene thumbnails with timestamps and descriptions
+![](productions-detail-storyboard.png)
 
 ### Productions Script
-Scene grid with visual descriptions, audio controls (voice-over, music), frame/video generation status per scene. Supports grid and list layout modes.
-
-![Script Editor with scene cards](productions-script.png)
+Scene cards with visual descriptions, audio controls (voice-over, music), frame/video generation status. Supports grid and list layout modes.
+![](productions-script.png)
 
 ---
 
@@ -52,11 +53,12 @@ Select a video source from Productions or Files, then run AI analysis.
 ![](key-moments-create.png)
 
 ### Key Moments Detail
-Sections: Video Player, [Video Summary](#video-summary), [Key Moments Grid](#key-moments-list)
 
-![Video player and summary](key-moments-detail-summary.png)
+**[Video Summary](#video-summary)** — AI-generated summary of the full video
+![](key-moments-detail-summary.png)
 
-![Timestamped key moments with descriptions and tags](key-moments-detail-moments.png)
+**[Key Moments Grid](#key-moments-list)** — timestamped moments with descriptions, tags, and relevance scores
+![](key-moments-detail-moments.png)
 
 ---
 
@@ -74,11 +76,12 @@ Select a video, identify key moments, then generate a collage thumbnail.
 ![](thumbnails-create.png)
 
 ### Thumbnails Detail
-Sections: Video Player, Video Summary, [Screenshots](#screenshots), [Generated Thumbnail](#generated-thumbnail)
 
-![Video player with captured screenshots](thumbnails-detail.png)
+**[Screenshots](#screenshots)** — captured key frames with descriptions
+![](thumbnails-detail.png)
 
-![Screenshots grid and generated collage thumbnail](thumbnails-detail-result.png)
+**[Generated Thumbnail](#generated-thumbnail)** — final collage output
+![](thumbnails-detail-result.png)
 
 ---
 
@@ -92,9 +95,8 @@ Upload and manage source videos and assets. Drag-and-drop files that can be used
 ![](uploads.png)
 
 ### Files Detail
-Sections: Video Player, File Metadata (MIME type, size, upload date, source), Compressed Variants
-
-![File detail with inline video player and metadata](uploads-detail.png)
+Video player, editable display name, file metadata (MIME type, size, upload date, source), compressed variants.
+![](uploads-detail.png)
 
 ---
 
@@ -112,9 +114,8 @@ Select a landscape video, choose reframe options, and configure the analysis pro
 ![](orientations-create.png)
 
 ### Orientations Detail
-Sections: [Original (16:9)](#original-video) side-by-side with [Reframed (9:16)](#reframed-video), download button, cost breakdown
-
-![Original vs reframed video comparison](orientations-detail.png)
+**[Original (16:9)](#original-video)** side-by-side with **[Reframed (9:16)](#reframed-video)**, download button, cost breakdown.
+![](orientations-detail.png)
 
 ---
 
@@ -132,13 +133,15 @@ Select a video source, configure the promo prompt, and set target duration.
 ![](promos-create.png)
 
 ### Promos Detail
-Sections: [Promo Output](#promo-output), [Title Card](#title-card), [Selected Moments](#selected-moments)
 
-![Promo output video with download](promos-detail-output.png)
+**[Promo Output](#promo-output)** — rendered promo video with download
+![](promos-detail-output.png)
 
-![Title card collage](promos-detail-titlecard.png)
+**[Title Card](#title-card)** — generated collage title card
+![](promos-detail-titlecard.png)
 
-![Selected moments with timestamps and descriptions](promos-detail-moments.png)
+**[Selected Moments](#selected-moments)** — extracted segments with timestamps and descriptions
+![](promos-detail-moments.png)
 
 ---
 
@@ -152,6 +155,5 @@ View and manage the AI prompt templates that drive each generation step. Master 
 ![](system-prompts.png)
 
 ### System Prompts Detail
-Shows the full prompt content with metadata (category, version, active status).
-
-![Prompt detail with content](system-prompts-detail.png)
+Full prompt content with metadata (category, version, active status).
+![](system-prompts-detail.png)

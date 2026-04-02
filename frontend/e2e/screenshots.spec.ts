@@ -8,15 +8,12 @@ async function waitForContent(page: Page) {
   await page.waitForTimeout(1000)
 }
 
-async function snap(page: Page, name: string, anchorId?: string) {
-  if (anchorId) {
-    await page.locator(`#${anchorId}`).scrollIntoViewIfNeeded()
-    await page.waitForTimeout(500)
-  }
+async function snap(page: Page, name: string) {
   await page.screenshot({ path: `${DIR}/${name}.png`, fullPage: false })
 }
 
-async function navToFirstCard(page: Page, listPath: string, urlPattern: RegExp, selector = 'button.bg-card') {
+/** Navigate to list, click first card, return the detail page URL path */
+async function getFirstDetailPath(page: Page, listPath: string, urlPattern: RegExp, selector = 'button.bg-card') {
   await page.goto(listPath)
   await waitForContent(page)
   await page.waitForTimeout(500)
@@ -24,6 +21,15 @@ async function navToFirstCard(page: Page, listPath: string, urlPattern: RegExp, 
   await page.waitForURL(urlPattern, { timeout: 10000 })
   await page.waitForLoadState('networkidle')
   await page.waitForTimeout(2000)
+  return new URL(page.url()).pathname
+}
+
+/** Navigate to a detail page anchor URL — uses the app's auto-scroll */
+async function gotoAnchor(page: Page, path: string, anchor: string) {
+  await page.goto(`${path}#${anchor}`)
+  await waitForContent(page)
+  // Wait for auto-scroll to complete (app retries up to 10x at 300ms)
+  await page.waitForTimeout(3000)
 }
 
 // ── List pages ──────────────────────────────────────────────
@@ -64,88 +70,98 @@ for (const pg of createPages) {
   })
 }
 
-// ── Productions Detail (multi-section) ──────────────────────
+// ── Productions Detail (multi-section via anchor URLs) ──────
 
 test('screenshot: productions-detail', async ({ page }) => {
-  await navToFirstCard(page, '/productions', /\/productions\/[^/]/)
+  const path = await getFirstDetailPath(page, '/productions', /\/productions\/[^/]/)
 
-  // Hero: video player + header
+  // Hero: video player + header (top of page)
   await snap(page, 'productions-detail-hero')
 
   // Production Brief card
-  await snap(page, 'productions-detail-brief', 'production-brief')
+  await gotoAnchor(page, path, 'production-brief')
+  await snap(page, 'productions-detail-brief')
 
   // Final Storyboard grid
-  await snap(page, 'productions-detail-storyboard', 'final-storyboard')
+  await gotoAnchor(page, path, 'final-storyboard')
+  await snap(page, 'productions-detail-storyboard')
 })
 
 // ── Productions Script ──────────────────────────────────────
 
 test('screenshot: productions-script', async ({ page }) => {
-  await navToFirstCard(page, '/productions', /\/productions\/[^/]/)
+  const path = await getFirstDetailPath(page, '/productions', /\/productions\/[^/]/)
 
-  // Click "View Technical Script" to navigate to script page
-  await page.getByText('View Technical Script').click()
-  await page.waitForURL(/\/script/, { timeout: 10000 })
+  await page.goto(`${path}/script`)
   await waitForContent(page)
-
   await snap(page, 'productions-script')
 })
 
-// ── Key Moments Detail (multi-section) ──────────────────────
+// ── Key Moments Detail (multi-section via anchor URLs) ──────
 
 test('screenshot: key-moments-detail', async ({ page }) => {
-  await navToFirstCard(page, '/key-moments', /\/key-moments\/[^/]/)
+  const path = await getFirstDetailPath(page, '/key-moments', /\/key-moments\/[^/]/)
 
   // Video + summary
-  await snap(page, 'key-moments-detail-summary', 'video-summary')
+  await gotoAnchor(page, path, 'video-summary')
+  await snap(page, 'key-moments-detail-summary')
 
   // Key moments list
-  await snap(page, 'key-moments-detail-moments', 'key-moments-list')
+  await gotoAnchor(page, path, 'key-moments-list')
+  await snap(page, 'key-moments-detail-moments')
 })
 
-// ── Thumbnails Detail ───────────────────────────────────────
+// ── Thumbnails Detail (multi-section via anchor URLs) ───────
 
 test('screenshot: thumbnails-detail', async ({ page }) => {
-  await navToFirstCard(page, '/thumbnails', /\/thumbnails\/[^/]/)
-  await snap(page, 'thumbnails-detail', 'screenshots')
+  const path = await getFirstDetailPath(page, '/thumbnails', /\/thumbnails\/[^/]/)
+
+  // Screenshots
+  await gotoAnchor(page, path, 'screenshots')
+  await snap(page, 'thumbnails-detail')
 
   // Generated thumbnail
-  await snap(page, 'thumbnails-detail-result', 'generated-thumbnail')
+  await gotoAnchor(page, path, 'generated-thumbnail')
+  await snap(page, 'thumbnails-detail-result')
 })
 
 // ── Uploads Detail ──────────────────────────────────────────
 
 test('screenshot: uploads-detail', async ({ page }) => {
-  await navToFirstCard(page, '/uploads', /\/uploads\/[^/]/, '.grid button')
+  await getFirstDetailPath(page, '/uploads', /\/uploads\/[^/]/, '.grid button')
   await snap(page, 'uploads-detail')
 })
 
-// ── Orientations Detail ─────────────────────────────────────
+// ── Orientations Detail (via anchor URL) ────────────────────
 
 test('screenshot: orientations-detail', async ({ page }) => {
-  await navToFirstCard(page, '/orientations', /\/orientations\/[^/]/)
-  await snap(page, 'orientations-detail', 'original-video')
+  const path = await getFirstDetailPath(page, '/orientations', /\/orientations\/[^/]/)
+
+  await gotoAnchor(page, path, 'original-video')
+  await snap(page, 'orientations-detail')
 })
 
-// ── Promos Detail (multi-section) ───────────────────────────
+// ── Promos Detail (multi-section via anchor URLs) ───────────
 
 test('screenshot: promos-detail', async ({ page }) => {
-  await navToFirstCard(page, '/promos', /\/promos\/[^/]/)
+  const path = await getFirstDetailPath(page, '/promos', /\/promos\/[^/]/)
 
   // Promo output
-  await snap(page, 'promos-detail-output', 'promo-output')
+  await gotoAnchor(page, path, 'promo-output')
+  await snap(page, 'promos-detail-output')
 
-  // Title card + selected moments
-  await snap(page, 'promos-detail-titlecard', 'title-card')
+  // Title card
+  await gotoAnchor(page, path, 'title-card')
+  await snap(page, 'promos-detail-titlecard')
 
   // Selected moments
-  await snap(page, 'promos-detail-moments', 'selected-moments')
+  await gotoAnchor(page, path, 'selected-moments')
+  await snap(page, 'promos-detail-moments')
 })
 
 // ── System Prompts Detail ───────────────────────────────────
 
 test('screenshot: system-prompts-detail', async ({ page }) => {
-  await navToFirstCard(page, '/prompts', /\/prompts\/[^/]/, 'table button')
+  await getFirstDetailPath(page, '/prompts', /\/prompts\/[^/]/, 'table button')
   await snap(page, 'system-prompts-detail')
 })

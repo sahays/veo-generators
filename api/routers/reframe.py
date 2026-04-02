@@ -105,6 +105,19 @@ async def retry_reframe(record_id: str):
     return {"id": record_id, "status": "pending"}
 
 
+@router.patch("/{record_id}")
+async def update_reframe(record_id: str, body: dict):
+    require_firestore()
+    get_or_404(deps.firestore_svc.get_reframe_record, record_id, "Reframe record")
+    updates = {}
+    if "display_name" in body:
+        updates["display_name"] = str(body["display_name"]).strip()
+    if not updates:
+        raise HTTPException(400, "No valid fields to update")
+    deps.firestore_svc.update_reframe_record(record_id, updates)
+    return {"status": "updated"}
+
+
 @router.post("/{record_id}/archive")
 async def archive_reframe(record_id: str):
     require_firestore()

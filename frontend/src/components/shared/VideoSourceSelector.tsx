@@ -8,6 +8,7 @@ type VideoSourceTab = 'productions' | 'past-uploads'
 export interface UploadItem {
   id: string
   filename: string
+  display_name?: string
   gcs_uri: string
   video_signed_url: string
   file_size_bytes: number
@@ -98,7 +99,7 @@ export function VideoSourceSelector({
                 >
                   <FileVideo size={18} className="text-muted-foreground shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{u.filename}</p>
+                    <p className="text-sm font-medium text-foreground truncate">{u.display_name || u.filename}</p>
                     <p className="text-[10px] text-muted-foreground">{formatFileSize(u.file_size_bytes)} &middot; {getTimeAgo(u.createdAt)}</p>
                   </div>
                   <ChevronRight size={16} className="text-muted-foreground shrink-0" />

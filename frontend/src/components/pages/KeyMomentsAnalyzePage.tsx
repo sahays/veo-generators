@@ -5,7 +5,7 @@ import {
   Zap, Loader2, Play, Clock, Tag, ArrowLeft, Upload,
   Film, FileVideo, ChevronRight,
 } from 'lucide-react'
-import { Button, Card } from '@/components/Common'
+import { Button, Card, AnchorHeading } from '@/components/Common'
 import { Select } from '@/components/UI'
 import { api } from '@/lib/api'
 import { cn, getTimeAgo, formatFileSize, parseTimestamp } from '@/lib/utils'
@@ -127,7 +127,7 @@ export const KeyMomentsAnalyzePage = () => {
   const handleSelectUpload = (record: UploadRecord) => {
     setVideoUrl(record.signed_url || null)
     setGcsUri(record.gcs_uri)
-    setVideoFilename(record.filename)
+    setVideoFilename(record.display_name || record.filename)
     setVideoSource('upload')
     setProductionId(undefined)
     setAnalysis(null)
@@ -323,7 +323,7 @@ export const KeyMomentsAnalyzePage = () => {
                             </div>
                             <div className="min-w-0 flex-1">
                               <p className="text-xs font-medium text-foreground truncate group-hover:text-accent-dark transition-colors">
-                                {record.filename}
+                                {record.display_name || record.filename}
                               </p>
                               <p className="text-[10px] text-muted-foreground">
                                 {formatFileSize(record.file_size_bytes)}
@@ -417,9 +417,9 @@ export const KeyMomentsAnalyzePage = () => {
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Clock size={16} className="text-accent-dark" />
-            <h3 id="key-moments-list" className="text-base font-heading font-bold text-foreground">
+            <AnchorHeading id="key-moments-list" className="text-base font-heading font-bold text-foreground">
               {analysis.key_moments.length} Key Moments
-            </h3>
+            </AnchorHeading>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

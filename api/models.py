@@ -212,6 +212,7 @@ class ReframeRecord(BaseModel):
     id: str = Field(default_factory=lambda: generate_id("rf-"))
     source_gcs_uri: str
     source_filename: str = ""
+    display_name: str = ""
     prompt_id: str = ""
     blurred_bg: bool = False
     sports_mode: bool = False
@@ -243,6 +244,7 @@ class PromoRecord(BaseModel):
     id: str = Field(default_factory=lambda: generate_id("prm-"))
     source_gcs_uri: str
     source_filename: str = ""
+    display_name: str = ""
     prompt_id: str = ""
     target_duration: int = 60  # seconds
     text_overlay: bool = False
@@ -274,6 +276,7 @@ class CompressedVariant(BaseModel):
 class UploadRecord(BaseModel):
     id: str = Field(default_factory=lambda: generate_id("up-"))
     filename: str
+    display_name: str = ""
     mime_type: str
     file_type: str = "other"  # "video" | "image" | "other"
     gcs_uri: str

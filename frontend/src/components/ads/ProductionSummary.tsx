@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Play, FileText, LayoutGrid, Cpu, CheckCircle2, Plus, Loader2, Eye, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Button, Card } from '@/components/Common'
+import { Button, Card, AnchorHeading } from '@/components/Common'
 import { PromptModal } from '@/components/ads/PromptModal'
 import { CostBreakdownPill } from '@/components/ads/CostBreakdownPill'
 import { useProjectStore } from '@/store/useProjectStore'
@@ -215,7 +215,7 @@ export const ProductionSummary = () => {
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <LayoutGrid size={18} className="text-accent-dark" />
-            <h3 id="final-storyboard" className="text-lg font-heading font-bold">Final Storyboard</h3>
+            <AnchorHeading id="final-storyboard" className="text-lg font-heading font-bold">Final Storyboard</AnchorHeading>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {scenes.map((scene: Scene, i: number) => (

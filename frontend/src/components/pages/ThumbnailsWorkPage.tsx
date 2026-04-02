@@ -5,7 +5,7 @@ import {
   Upload, Image, Loader2, ArrowLeft, Download,
   Film, FileVideo, ChevronRight, Camera, Sparkles, Tag,
 } from 'lucide-react'
-import { Button, Card } from '@/components/Common'
+import { Button, Card, AnchorHeading } from '@/components/Common'
 import { Select } from '@/components/UI'
 import { api } from '@/lib/api'
 import { cn, getTimeAgo, formatFileSize, parseTimestamp } from '@/lib/utils'
@@ -130,7 +130,7 @@ export const ThumbnailsWorkPage = () => {
   const handleSelectUpload = (record: UploadRecord) => {
     setVideoUrl(record.signed_url || null)
     setGcsUri(record.gcs_uri)
-    setVideoFilename(record.filename)
+    setVideoFilename(record.display_name || record.filename)
     setVideoSource('upload')
     setProductionId(undefined)
     setScreenshots([])
@@ -425,7 +425,7 @@ export const ThumbnailsWorkPage = () => {
                             </div>
                             <div className="min-w-0 flex-1">
                               <p className="text-xs font-medium text-foreground truncate group-hover:text-accent-dark transition-colors">
-                                {record.filename}
+                                {record.display_name || record.filename}
                               </p>
                               <p className="text-[10px] text-muted-foreground">
                                 {formatFileSize(record.file_size_bytes)}
@@ -520,9 +520,9 @@ export const ThumbnailsWorkPage = () => {
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Camera size={16} className="text-accent-dark" />
-            <h3 id="screenshots" className="text-base font-heading font-bold text-foreground">
+            <AnchorHeading id="screenshots" className="text-base font-heading font-bold text-foreground">
               {screenshots.length} Screenshots {capturing ? 'Capturing...' : 'Captured'}
-            </h3>
+            </AnchorHeading>
             {capturing && (
               <span className="text-xs text-muted-foreground">
                 ({captureProgress}/{screenshots.length})
@@ -620,9 +620,9 @@ export const ThumbnailsWorkPage = () => {
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Image size={16} className="text-accent-dark" />
-            <h3 id="generated-thumbnail" className="text-base font-heading font-bold text-foreground">
+            <AnchorHeading id="generated-thumbnail" className="text-base font-heading font-bold text-foreground">
               Generated Thumbnail
-            </h3>
+            </AnchorHeading>
           </div>
 
           <div className="rounded-2xl overflow-hidden border border-border shadow-2xl" style={{ aspectRatio: '16/9' }}>

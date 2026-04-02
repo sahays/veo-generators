@@ -83,6 +83,7 @@ def list_video_upload_sources() -> list[dict]:
             {
                 "id": u.id,
                 "filename": u.filename,
+                "display_name": u.display_name or "",
                 "gcs_uri": u.gcs_uri,
                 "video_signed_url": signed_url,
                 "file_size_bytes": u.file_size_bytes,

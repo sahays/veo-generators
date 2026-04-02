@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Sidebar } from './components/Layout'
 import { ProjectForm } from './components/ads/ProjectForm'
 import { RefinePromptView } from './components/ads/RefinePromptView'
@@ -33,6 +33,24 @@ function App() {
       // Network error — don't logout, let subsequent API calls handle it
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-scroll to hash anchor (retry for async content)
+  const { hash } = useLocation()
+  useEffect(() => {
+    if (!hash) return
+    const id = hash.slice(1)
+    let attempts = 0
+    const tryScroll = () => {
+      const el = document.getElementById(id)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      } else if (attempts < 10) {
+        attempts++
+        setTimeout(tryScroll, 300)
+      }
+    }
+    tryScroll()
+  }, [hash])
 
   if (!isAuthenticated) {
     return <InviteCodeGate />

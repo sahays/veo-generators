@@ -447,6 +447,14 @@ export const api = {
       if (!res.ok) throw new Error(`Compress status check failed: ${res.status}`)
       return res.json()
     },
+    update: async (id: string, data: { display_name?: string }): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/uploads/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error(`Failed to update upload: ${res.status}`)
+    },
     archive: async (id: string): Promise<void> => {
       const res = await authFetch(`${API_BASE_URL}/uploads/${id}/archive`, { method: 'POST' })
       if (!res.ok) throw new Error(`Failed to archive upload: ${res.status}`)
@@ -513,6 +521,14 @@ export const api = {
       if (!res.ok) throw new Error(`Failed to retry reframe: ${res.status}`)
       return res.json()
     },
+    update: async (id: string, data: { display_name?: string }): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/reframe/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error(`Failed to update reframe: ${res.status}`)
+    },
     archive: async (id: string): Promise<void> => {
       const res = await authFetch(`${API_BASE_URL}/reframe/${id}/archive`, { method: 'POST' })
       if (!res.ok) throw new Error(`Failed to archive reframe: ${res.status}`)
@@ -556,6 +572,14 @@ export const api = {
       const res = await authFetch(`${API_BASE_URL}/promo/${id}/retry`, { method: 'POST' })
       if (!res.ok) throw new Error(`Failed to retry promo: ${res.status}`)
       return res.json()
+    },
+    update: async (id: string, data: { display_name?: string }): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/promo/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error(`Failed to update promo: ${res.status}`)
     },
     archive: async (id: string): Promise<void> => {
       const res = await authFetch(`${API_BASE_URL}/promo/${id}/archive`, { method: 'POST' })

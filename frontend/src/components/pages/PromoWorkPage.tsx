@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  Scissors, Loader2, ArrowLeft, Download, RotateCcw,
+  Scissors, Loader2, ArrowLeft, Download, RotateCcw, Pencil, Check,
 } from 'lucide-react'
-import { Button } from '@/components/Common'
+import { Button, AnchorHeading } from '@/components/Common'
 import { api } from '@/lib/api'
 import { cn, getTimeAgo } from '@/lib/utils'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -65,6 +65,10 @@ export const PromoWorkPage = () => {
   const [textOverlay, setTextOverlay] = useState(false)
   const [generateThumbnail, setGenerateThumbnail] = useState(false)
 
+  // Name editing
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [editName, setEditName] = useState('')
+
   // Processing state
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -96,7 +100,7 @@ export const PromoWorkPage = () => {
   const handleSelectUpload = (upload: UploadItem) => {
     setVideoUrl(upload.video_signed_url)
     setGcsUri(upload.gcs_uri)
-    setVideoFilename(upload.filename)
+    setVideoFilename(upload.display_name || upload.filename)
   }
 
   const handleSelectProduction = (prod: ProductionItem) => {
@@ -177,7 +181,24 @@ export const PromoWorkPage = () => {
         </div>
 
         <div className="space-y-2">
-          <h2 className="text-lg font-heading font-bold text-foreground">{record.source_filename || 'Promo'}</h2>
+          {isEditingName ? (
+            <form className="flex items-center gap-2" onSubmit={async (e) => {
+              e.preventDefault()
+              await api.promo.update(record.id, { display_name: editName })
+              record.display_name = editName
+              setIsEditingName(false)
+            }}>
+              <input autoFocus value={editName} onChange={(e) => setEditName(e.target.value)}
+                className="text-lg font-heading font-bold text-foreground bg-muted px-2 py-0.5 rounded border border-border focus:outline-none focus:ring-1 focus:ring-accent" />
+              <button type="submit" className="text-accent hover:text-accent-dark"><Check size={16} /></button>
+            </form>
+          ) : (
+            <button className="flex items-center gap-2 text-lg font-heading font-bold text-foreground hover:text-accent-dark transition-colors"
+              onClick={() => { setEditName(record.display_name || record.source_filename || 'Promo'); setIsEditingName(true) }}>
+              {record.display_name || record.source_filename || 'Promo'}
+              <Pencil size={12} className="text-muted-foreground" />
+            </button>
+          )}
           <div className="flex items-center gap-2">
             <span className={cn("text-sm font-medium", statusCfg.color)}>{statusCfg.label}</span>
             {isProcessing && (
@@ -223,7 +244,7 @@ export const PromoWorkPage = () => {
           <div className="space-y-6">
             {record.output_signed_url && (
               <div className="space-y-2">
-                <h3 id="promo-output" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Promo Output</h3>
+                <AnchorHeading id="promo-output" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Promo Output</AnchorHeading>
                 <div className="aspect-video bg-black rounded-xl overflow-hidden border border-border max-w-2xl">
                   <video
                     src={record.output_signed_url}
@@ -250,7 +271,7 @@ export const PromoWorkPage = () => {
 
             {record.thumbnail_signed_url && (
               <div className="space-y-2">
-                <h3 id="title-card" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Title Card</h3>
+                <AnchorHeading id="title-card" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Title Card</AnchorHeading>
                 <img
                   src={record.thumbnail_signed_url}
                   alt="Title card collage"
@@ -261,7 +282,7 @@ export const PromoWorkPage = () => {
 
             {record.segments && record.segments.length > 0 && (
               <div className="space-y-3">
-                <h3 id="selected-moments" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Selected Moments</h3>
+                <AnchorHeading id="selected-moments" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Selected Moments</AnchorHeading>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {record.segments.map((seg: PromoSegment, i: number) => (
                     <div

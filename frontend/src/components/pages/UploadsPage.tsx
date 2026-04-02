@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion } from 'framer-motion'
 import {
   Upload, Loader2, Archive, Video, Image as ImageIcon, File as FileIcon,
-  ArrowLeft, Download, Shrink, CheckCircle2, XCircle, ExternalLink, AlertCircle
+  ArrowLeft, Download, Shrink, CheckCircle2, XCircle, ExternalLink, AlertCircle,
+  Pencil, Check
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
@@ -90,9 +91,9 @@ const UploadCard = ({
         )}
       </div>
 
-      {/* Row 2: Filename */}
+      {/* Row 2: Display name */}
       <h4 className="text-sm font-heading font-bold text-foreground group-hover:text-accent-dark transition-colors line-clamp-1 mb-1">
-        {record.filename}
+        {record.display_name || record.filename}
       </h4>
 
       {/* Row 3: Size + time */}
@@ -255,6 +256,8 @@ const UploadDetailView = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const [record, setRecord] = useState<UploadRecord | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [editName, setEditName] = useState('')
 
   const fetchRecord = useCallback(async () => {
     try {
@@ -317,7 +320,7 @@ const UploadDetailView = ({ id }: { id: string }) => {
           ) : record.file_type === 'image' ? (
             <img
               src={record.signed_url}
-              alt={record.filename}
+              alt={record.display_name || record.filename}
               className="w-full max-h-[400px] object-contain bg-black"
             />
           ) : null}
@@ -346,7 +349,33 @@ const UploadDetailView = ({ id }: { id: string }) => {
               original
             </span>
           )}
-          <h3 className="text-base font-heading font-bold text-foreground">{record.filename}</h3>
+          {isEditingName ? (
+            <form
+              className="flex items-center gap-2 flex-1"
+              onSubmit={async (e) => {
+                e.preventDefault()
+                await api.uploads.update(record.id, { display_name: editName })
+                setRecord({ ...record, display_name: editName })
+                setIsEditingName(false)
+              }}
+            >
+              <input
+                autoFocus
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="text-base font-heading font-bold text-foreground bg-muted px-2 py-0.5 rounded border border-border focus:outline-none focus:ring-1 focus:ring-accent"
+              />
+              <button type="submit" className="text-accent hover:text-accent-dark"><Check size={16} /></button>
+            </form>
+          ) : (
+            <button
+              className="flex items-center gap-2 text-base font-heading font-bold text-foreground hover:text-accent-dark transition-colors"
+              onClick={() => { setEditName(record.display_name || record.filename); setIsEditingName(true) }}
+            >
+              {record.display_name || record.filename}
+              <Pencil size={12} className="text-muted-foreground" />
+            </button>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-3 text-xs">
           <div>

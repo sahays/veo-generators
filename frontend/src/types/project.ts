@@ -221,6 +221,7 @@ export interface CompressedVariant {
 export interface UploadRecord {
   id: string
   filename: string
+  display_name?: string
   mime_type: string
   file_type: 'video' | 'image' | 'other'
   gcs_uri: string
