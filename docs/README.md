@@ -7,17 +7,34 @@ AI-powered video production platform built on Google Veo and Gemini.
 
 > **Architecture:** FastAPI backend orchestrates Gemini (script/storyboard) and Veo (video generation) on Cloud Run, with a React frontend and Firestore for state. A dedicated worker service handles long-running renders asynchronously via a polling loop.
 
-![Login](login.png)
-
 ---
 
 ## Productions
 
 Create AI-generated video ads from a text prompt. Choose a production type (Movie, Ad, Promo), describe your concept, configure director style and camera movement, and VeoGen generates a storyboard and renders the final video.
 
-| List | Create | Detail |
-|------|--------|--------|
-| ![](productions.png) | ![](productions-create.png) | ![](productions-detail.png) |
+[List](#productions-list) · [Create](#productions-create) · [Detail](#productions-detail) · [Script Editor](#productions-script)
+
+### Productions List
+![](productions.png)
+
+### Productions Create
+Sections: Production Type, Concept & Vision, System Configuration, Duration, Orientation, Visual Reference
+![](productions-create.png)
+
+### Productions Detail
+Sections: Video Player, [Production Brief](#production-brief), [Resource Usage](#resource-usage), [Technical Specs](#technical-specs), [Final Storyboard](#final-storyboard)
+
+![Video player and production header](productions-detail-hero.png)
+
+![Production Brief with format, duration, scene count](productions-detail-brief.png)
+
+![Final Storyboard grid with scene thumbnails](productions-detail-storyboard.png)
+
+### Productions Script
+Scene grid with visual descriptions, audio controls (voice-over, music), frame/video generation status per scene. Supports grid and list layout modes.
+
+![Script Editor with scene cards](productions-script.png)
 
 ---
 
@@ -25,49 +42,103 @@ Create AI-generated video ads from a text prompt. Choose a production type (Movi
 
 Extract highlight clips from existing videos. Upload a video and Gemini analyzes it to identify the most impactful moments, returning timestamped segments with a video summary.
 
-| List | Create | Detail |
-|------|--------|--------|
-| ![](key-moments.png) | ![](key-moments-create.png) | ![](key-moments-detail.png) |
+[List](#key-moments-list) · [Create](#key-moments-create) · [Detail](#key-moments-detail)
+
+### Key Moments List
+![](key-moments.png)
+
+### Key Moments Create
+Select a video source from Productions or Files, then run AI analysis.
+![](key-moments-create.png)
+
+### Key Moments Detail
+Sections: Video Player, [Video Summary](#video-summary), [Key Moments Grid](#key-moments-list)
+
+![Video player and summary](key-moments-detail-summary.png)
+
+![Timestamped key moments with descriptions and tags](key-moments-detail-moments.png)
 
 ---
 
 ## Thumbnails
 
-Generate eye-catching thumbnails for your videos. Gemini's image model creates multiple thumbnail options from a video or prompt, so you can pick the best one without opening a design tool.
+Generate eye-catching thumbnails for your videos. Gemini's image model captures key frames, then composites them into a collage thumbnail.
 
-| List | Create | Detail |
-|------|--------|--------|
-| ![](thumbnails.png) | ![](thumbnails-create.png) | ![](thumbnails-detail.png) |
+[List](#thumbnails-list) · [Create](#thumbnails-create) · [Detail](#thumbnails-detail)
+
+### Thumbnails List
+![](thumbnails.png)
+
+### Thumbnails Create
+Select a video, identify key moments, then generate a collage thumbnail.
+![](thumbnails-create.png)
+
+### Thumbnails Detail
+Sections: Video Player, Video Summary, [Screenshots](#screenshots), [Generated Thumbnail](#generated-thumbnail)
+
+![Video player with captured screenshots](thumbnails-detail.png)
+
+![Screenshots grid and generated collage thumbnail](thumbnails-detail-result.png)
 
 ---
 
 ## Files
 
-Upload and manage source videos and assets. Drag-and-drop files that can be used across productions, key moments, orientations, and promos. The detail view shows file metadata and an inline video player.
+Upload and manage source videos and assets. Drag-and-drop files that can be used across productions, key moments, orientations, and promos.
 
-| List | Detail |
-|------|--------|
-| ![](uploads.png) | ![](uploads-detail.png) |
+[List](#files-list) · [Detail](#files-detail)
+
+### Files List
+![](uploads.png)
+
+### Files Detail
+Sections: Video Player, File Metadata (MIME type, size, upload date, source), Compressed Variants
+
+![File detail with inline video player and metadata](uploads-detail.png)
 
 ---
 
 ## Orientations
 
-Reframe videos for different aspect ratios (16:9, 9:16, 1:1). The reframer intelligently crops and repositions content so a landscape ad works on Stories or Reels without manual re-editing.
+Reframe videos for different aspect ratios (16:9 to 9:16). The reframer intelligently crops and repositions content so a landscape ad works on Stories or Reels without manual re-editing.
 
-| List | Create | Detail |
-|------|--------|--------|
-| ![](orientations.png) | ![](orientations-create.png) | ![](orientations-detail.png) |
+[List](#orientations-list) · [Create](#orientations-create) · [Detail](#orientations-detail)
+
+### Orientations List
+![](orientations.png)
+
+### Orientations Create
+Select a landscape video, choose reframe options, and configure the analysis prompt.
+![](orientations-create.png)
+
+### Orientations Detail
+Sections: [Original (16:9)](#original-video) side-by-side with [Reframed (9:16)](#reframed-video), download button, cost breakdown
+
+![Original vs reframed video comparison](orientations-detail.png)
 
 ---
 
 ## Promos
 
-Stitch together clips into short promotional videos. Select source videos, define the cut order and length, and VeoGen assembles a final promo with title cards and parallel FFmpeg encoding.
+Stitch together clips into short promotional videos. Select source videos, define target duration, and VeoGen assembles a final promo with title cards and parallel FFmpeg encoding.
 
-| List | Create | Detail |
-|------|--------|--------|
-| ![](promos.png) | ![](promos-create.png) | ![](promos-detail.png) |
+[List](#promos-list) · [Create](#promos-create) · [Detail](#promos-detail)
+
+### Promos List
+![](promos.png)
+
+### Promos Create
+Select a video source, configure the promo prompt, and set target duration.
+![](promos-create.png)
+
+### Promos Detail
+Sections: [Promo Output](#promo-output), [Title Card](#title-card), [Selected Moments](#selected-moments)
+
+![Promo output video with download](promos-detail-output.png)
+
+![Title card collage](promos-detail-titlecard.png)
+
+![Selected moments with timestamps and descriptions](promos-detail-moments.png)
 
 ---
 
@@ -75,6 +146,12 @@ Stitch together clips into short promotional videos. Select source videos, defin
 
 View and manage the AI prompt templates that drive each generation step. Master users can create and edit prompts; regular users can browse them to understand how the AI is instructed.
 
-| List | Detail |
-|------|--------|
-| ![](system-prompts.png) | ![](system-prompts-detail.png) |
+[List](#system-prompts-list) · [Detail](#system-prompts-detail)
+
+### System Prompts List
+![](system-prompts.png)
+
+### System Prompts Detail
+Shows the full prompt content with metadata (category, version, active status).
+
+![Prompt detail with content](system-prompts-detail.png)

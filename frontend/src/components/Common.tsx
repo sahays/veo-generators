@@ -43,6 +43,7 @@ export const Button = ({
 }
 
 interface CardProps {
+  id?: string
   title?: string
   icon?: LucideIcon
   children: React.ReactNode
@@ -50,9 +51,10 @@ interface CardProps {
   className?: string
 }
 
-export const Card = ({ title, icon: Icon, children, actions, className }: CardProps) => {
+export const Card = ({ id, title, icon: Icon, children, actions, className }: CardProps) => {
   return (
     <motion.div
+      id={id}
       initial={{ opacity: 0, y: 10 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}

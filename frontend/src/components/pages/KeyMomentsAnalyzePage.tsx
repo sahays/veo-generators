@@ -407,7 +407,7 @@ export const KeyMomentsAnalyzePage = () => {
 
       {/* Video Summary */}
       {analysis?.video_summary && (
-        <Card title="Video Summary">
+        <Card id="video-summary" title="Video Summary">
           <p className="text-sm leading-relaxed">{analysis.video_summary}</p>
         </Card>
       )}
@@ -417,7 +417,7 @@ export const KeyMomentsAnalyzePage = () => {
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Clock size={16} className="text-accent-dark" />
-            <h3 className="text-base font-heading font-bold text-foreground">
+            <h3 id="key-moments-list" className="text-base font-heading font-bold text-foreground">
               {analysis.key_moments.length} Key Moments
             </h3>
           </div>

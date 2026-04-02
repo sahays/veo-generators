@@ -223,7 +223,7 @@ export const PromoWorkPage = () => {
           <div className="space-y-6">
             {record.output_signed_url && (
               <div className="space-y-2">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Promo Output</h3>
+                <h3 id="promo-output" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Promo Output</h3>
                 <div className="aspect-video bg-black rounded-xl overflow-hidden border border-border max-w-2xl">
                   <video
                     src={record.output_signed_url}
@@ -250,7 +250,7 @@ export const PromoWorkPage = () => {
 
             {record.thumbnail_signed_url && (
               <div className="space-y-2">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Title Card</h3>
+                <h3 id="title-card" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Title Card</h3>
                 <img
                   src={record.thumbnail_signed_url}
                   alt="Title card collage"
@@ -261,7 +261,7 @@ export const PromoWorkPage = () => {
 
             {record.segments && record.segments.length > 0 && (
               <div className="space-y-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Selected Moments</h3>
+                <h3 id="selected-moments" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Selected Moments</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {record.segments.map((seg: PromoSegment, i: number) => (
                     <div

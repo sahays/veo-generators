@@ -124,7 +124,7 @@ export const ProductionSummary = () => {
             </div>
           )}
 
-          <Card title="Production Brief" icon={FileText}>
+          <Card id="production-brief" title="Production Brief" icon={FileText}>
             <p className="text-sm leading-relaxed italic">"{tempProjectData.base_concept}"</p>
             <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-border/50">
               <div>
@@ -161,7 +161,7 @@ export const ProductionSummary = () => {
 
         {/* Sidebar: Metadata & Metrics */}
         <div className="space-y-6">
-          <Card title="Resource Usage" icon={Cpu}>
+          <Card id="resource-usage" title="Resource Usage" icon={Cpu}>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">Input Tokens</span>
@@ -191,7 +191,7 @@ export const ProductionSummary = () => {
             </div>
           </Card>
 
-          <Card title="Technical Specs" icon={LayoutGrid}>
+          <Card id="technical-specs" title="Technical Specs" icon={LayoutGrid}>
              <div className="space-y-3">
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-muted-foreground">Orientation</span>
@@ -215,7 +215,7 @@ export const ProductionSummary = () => {
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <LayoutGrid size={18} className="text-accent-dark" />
-            <h3 className="text-lg font-heading font-bold">Final Storyboard</h3>
+            <h3 id="final-storyboard" className="text-lg font-heading font-bold">Final Storyboard</h3>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {scenes.map((scene: Scene, i: number) => (

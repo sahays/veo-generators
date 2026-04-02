@@ -199,7 +199,7 @@ export const ReframeWorkPage = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
               {record.source_signed_url && (
                 <div className="space-y-2">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Original (16:9)</h3>
+                  <h3 id="original-video" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Original (16:9)</h3>
                   <div className="aspect-video bg-black rounded-xl overflow-hidden border border-border">
                     <video
                       src={record.source_signed_url}
@@ -212,7 +212,7 @@ export const ReframeWorkPage = () => {
 
               {record.output_signed_url && (
                 <div className="space-y-2">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Reframed (9:16)</h3>
+                  <h3 id="reframed-video" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Reframed (9:16)</h3>
                   <div className="aspect-[9/16] max-w-xs bg-black rounded-xl overflow-hidden border border-border">
                     <video
                       src={record.output_signed_url}

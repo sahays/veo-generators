@@ -520,7 +520,7 @@ export const ThumbnailsWorkPage = () => {
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Camera size={16} className="text-accent-dark" />
-            <h3 className="text-base font-heading font-bold text-foreground">
+            <h3 id="screenshots" className="text-base font-heading font-bold text-foreground">
               {screenshots.length} Screenshots {capturing ? 'Capturing...' : 'Captured'}
             </h3>
             {capturing && (
@@ -620,7 +620,7 @@ export const ThumbnailsWorkPage = () => {
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Image size={16} className="text-accent-dark" />
-            <h3 className="text-base font-heading font-bold text-foreground">
+            <h3 id="generated-thumbnail" className="text-base font-heading font-bold text-foreground">
               Generated Thumbnail
             </h3>
           </div>
