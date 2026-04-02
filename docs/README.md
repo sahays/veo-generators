@@ -15,17 +15,19 @@ AI-powered video production platform built on Google Veo and Gemini.
 
 Create AI-generated video ads from a text prompt. Choose a production type (Movie, Ad, Promo), describe your concept, configure director style and camera movement, and VeoGen generates a storyboard and renders the final video.
 
-| | |
-|---|---|
-| ![Productions](productions.png) | ![New Production](new-production.png) |
+| List | Create | Detail |
+|------|--------|--------|
+| ![](productions.png) | ![](productions-create.png) | ![](productions-detail.png) |
 
 ---
 
 ## Key Moments
 
-Extract highlight clips from existing videos. Upload a video and Gemini analyzes it to identify the most impactful moments, returning timestamped segments you can export as standalone clips.
+Extract highlight clips from existing videos. Upload a video and Gemini analyzes it to identify the most impactful moments, returning timestamped segments with a video summary.
 
-![Key Moments](key-moments.png)
+| List | Create | Detail |
+|------|--------|--------|
+| ![](key-moments.png) | ![](key-moments-create.png) | ![](key-moments-detail.png) |
 
 ---
 
@@ -33,31 +35,39 @@ Extract highlight clips from existing videos. Upload a video and Gemini analyzes
 
 Generate eye-catching thumbnails for your videos. Gemini's image model creates multiple thumbnail options from a video or prompt, so you can pick the best one without opening a design tool.
 
-![Thumbnails](thumbnails.png)
+| List | Create | Detail |
+|------|--------|--------|
+| ![](thumbnails.png) | ![](thumbnails-create.png) | ![](thumbnails-detail.png) |
 
 ---
 
 ## Files
 
-Upload and manage source videos and assets. Drag-and-drop files that can be used across productions, key moments, orientations, and promos.
+Upload and manage source videos and assets. Drag-and-drop files that can be used across productions, key moments, orientations, and promos. The detail view shows file metadata and an inline video player.
 
-![Files](uploads.png)
+| List | Detail |
+|------|--------|
+| ![](uploads.png) | ![](uploads-detail.png) |
 
 ---
 
 ## Orientations
 
-Reframe videos for different aspect ratios (16:9, 9:16, 1:1). Powered by FFmpeg, the reframer intelligently crops and repositions content so a landscape ad works on Stories or Reels without manual re-editing.
+Reframe videos for different aspect ratios (16:9, 9:16, 1:1). The reframer intelligently crops and repositions content so a landscape ad works on Stories or Reels without manual re-editing.
 
-![Orientations](orientations.png)
+| List | Create | Detail |
+|------|--------|--------|
+| ![](orientations.png) | ![](orientations-create.png) | ![](orientations-detail.png) |
 
 ---
 
 ## Promos
 
-Stitch together clips into short promotional videos. Select source videos, define the cut order and length, and VeoGen assembles a final promo with parallel FFmpeg encoding.
+Stitch together clips into short promotional videos. Select source videos, define the cut order and length, and VeoGen assembles a final promo with title cards and parallel FFmpeg encoding.
 
-![Promos](promos.png)
+| List | Create | Detail |
+|------|--------|--------|
+| ![](promos.png) | ![](promos-create.png) | ![](promos-detail.png) |
 
 ---
 
@@ -65,20 +75,6 @@ Stitch together clips into short promotional videos. Select source videos, defin
 
 View and manage the AI prompt templates that drive each generation step. Master users can create and edit prompts; regular users can browse them to understand how the AI is instructed.
 
-![System Prompts](system-prompts.png)
-
----
-
-## Diagnostics
-
-Verify connectivity to all external services — GCS storage, Gemini script analysis, Imagen storyboard generation, and Veo video rendering. Each card runs a live health check and reports status.
-
-![Diagnostics](diagnostics.png)
-
----
-
-## Invite Codes
-
-Control access to the platform. Master users create invite codes with daily credit limits and optional expiry dates, and can revoke or reactivate them at any time.
-
-![Invite Codes](invite-codes.png)
+| List | Detail |
+|------|--------|
+| ![](system-prompts.png) | ![](system-prompts-detail.png) |
