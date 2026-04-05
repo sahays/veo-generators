@@ -1,0 +1,48 @@
+{
+  "type": "object",
+  "properties": {
+    "speaker_positions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "speaker_id": {
+            "type": "string",
+            "description": "Stable identifier for the speaker (e.g. speaker_1, speaker_2)"
+          },
+          "x": {
+            "type": "number",
+            "description": "Horizontal center of speaker as fraction, 0.0=left edge 1.0=right edge"
+          },
+          "y": {
+            "type": "number",
+            "description": "Vertical center of speaker as fraction, 0.0=top edge 1.0=bottom edge"
+          },
+          "description": {
+            "type": "string",
+            "description": "Brief description of the speaker (e.g. host on the left, guest on the right)"
+          }
+        },
+        "required": ["speaker_id", "x", "y"]
+      }
+    },
+    "scene_changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "time_sec": {
+            "type": "number",
+            "description": "Timestamp of the scene change in seconds"
+          },
+          "description": {
+            "type": "string",
+            "description": "Brief description of the scene transition"
+          }
+        },
+        "required": ["time_sec"]
+      }
+    }
+  },
+  "required": ["speaker_positions"]
+}

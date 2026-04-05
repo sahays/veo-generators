@@ -53,6 +53,44 @@ def _detect_faces(frame, video_w: int, video_h: int) -> tuple:
     return center_x, center_y, confidence
 
 
+def _detect_all_faces(
+    frame, video_w: int, video_h: int
+) -> list[tuple[float, float, float]]:
+    """Detect all faces in a frame. Returns list of (x_frac, y_frac, confidence)."""
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    detector = _get_face_detector()
+    faces = detector.detectMultiScale(
+        gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)
+    )
+    if len(faces) == 0:
+        return []
+
+    results = []
+    for fx, fy, fw, fh in faces:
+        center_x = (fx + fw / 2) / video_w
+        center_y = (fy + fh / 2) / video_h
+        confidence = min(1.0, (fw * fh) / (video_w * video_h) * 20)
+        results.append((center_x, center_y, confidence))
+    return results
+
+
+def _detect_nearest_face(
+    frame,
+    video_w: int,
+    video_h: int,
+    target_x: float,
+    target_y: float,
+) -> tuple:
+    """Detect the face nearest to target position. Returns (x_frac, y_frac, confidence) or None."""
+    all_faces = _detect_all_faces(frame, video_w, video_h)
+    if not all_faces:
+        return None
+
+    # Find face closest to the target position
+    best = min(all_faces, key=lambda f: (f[0] - target_x) ** 2 + (f[1] - target_y) ** 2)
+    return best
+
+
 def _detect_motion(prev_frame, curr_frame, video_w: int, video_h: int) -> tuple:
     """Detect motion between two frames. Returns (x_frac, y_frac, confidence) or None."""
     if prev_frame is None:
@@ -103,6 +141,7 @@ def validate_focal_points(
     video_w: int,
     video_h: int,
     sports_mode: bool = False,
+    cv_strategy: str = "face",
     sample_interval: float = 2.0,
 ) -> List[dict]:
     """Validate and correct focal points using OpenCV detection.
@@ -113,11 +152,16 @@ def validate_focal_points(
         video_w: Source video width in pixels.
         video_h: Source video height in pixels.
         sports_mode: If True, use motion detection instead of face detection.
+        cv_strategy: Detection strategy — "face" (largest), "multi_face"
+            (nearest to target), or "motion".
         sample_interval: Only validate every N seconds (skip others for speed).
 
     Returns:
         Same list with x, y corrected where OpenCV detection succeeds.
     """
+    # Normalize: sports_mode flag overrides cv_strategy
+    if sports_mode:
+        cv_strategy = "motion"
     if not focal_points:
         return focal_points
 
@@ -148,7 +192,7 @@ def validate_focal_points(
             samples += 1
             result = None
 
-            if sports_mode:
+            if cv_strategy == "motion":
                 # Read a frame slightly before for comparison
                 if prev_frame is None:
                     prev_t = max(0, t - 0.5)
@@ -163,6 +207,9 @@ def validate_focal_points(
 
                 result = _detect_motion(prev_frame, frame, video_w, video_h)
                 prev_frame = frame.copy()
+            elif cv_strategy == "multi_face":
+                # Snap to nearest face to the AI-predicted position
+                result = _detect_nearest_face(frame, video_w, video_h, fp["x"], fp["y"])
             else:
                 result = _detect_faces(frame, video_w, video_h)
 
@@ -183,13 +230,12 @@ def validate_focal_points(
                     logger.info(
                         f"OpenCV corrected t={t:.1f}s: "
                         f"x={orig_x:.2f}→{det_x:.2f} "
-                        f"({'motion' if sports_mode else 'face'}, conf={det_conf:.2f})"
+                        f"({cv_strategy}, conf={det_conf:.2f})"
                     )
 
-        mode_str = "motion" if sports_mode else "face"
         logger.info(
             f"OpenCV validation: {samples} frames sampled, "
-            f"{corrections} corrections ({mode_str} mode)"
+            f"{corrections} corrections ({cv_strategy} mode)"
         )
 
     finally:

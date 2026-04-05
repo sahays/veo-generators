@@ -26,13 +26,14 @@ const AnchorLink = ({ id }: { id: string }) => {
 }
 
 /** Section heading with hover-copyable anchor link */
-export const AnchorHeading = ({ id, children, className, as: Tag = 'h3' }: {
+export const AnchorHeading = ({ id, children, className, as: Tag = 'h3', onClick }: {
   id: string
   children: React.ReactNode
   className?: string
-  as?: 'h2' | 'h3' | 'h4'
+  as?: 'h2' | 'h3' | 'h4' | 'button'
+  onClick?: () => void
 }) => (
-  <Tag id={id} className={cn("group flex items-center gap-2", className)}>
+  <Tag id={id} className={cn("group flex items-center gap-2", className)} {...(onClick ? { onClick, type: 'button' as const } : {})}>
     {children}
     <AnchorLink id={id} />
   </Tag>

@@ -199,11 +199,21 @@ class TranscoderService:
         return (created_job.name, f"{output_uri}compressed.mp4")
 
     def reframe_encode(
-        self, record_id: str, input_uri: str, has_audio: bool = True
+        self,
+        record_id: str,
+        input_uri: str,
+        has_audio: bool = True,
+        blurred_bg: bool = False,
     ) -> tuple:
-        """Encode a reframed video to 1080x1920 H.264. Returns (job_name, output_gcs_uri)."""
+        """Encode a reframed video. Returns (job_name, output_gcs_uri).
+
+        Output dimensions:
+            blurred_bg=False: 1080x1920 (9:16)
+            blurred_bg=True:  1080x1350 (4:5)
+        """
         import os
 
+        out_h = 1350 if blurred_bg else 1920
         bucket = os.getenv("GCS_BUCKET")
         output_uri = f"gs://{bucket}/reframes/{record_id}/encoded/"
 
@@ -212,7 +222,7 @@ class TranscoderService:
                 key="video_stream",
                 video_stream=transcoder_v1.types.VideoStream(
                     h264=transcoder_v1.types.VideoStream.H264CodecSettings(
-                        height_pixels=1920,
+                        height_pixels=out_h,
                         width_pixels=1080,
                         bitrate_bps=8000000,
                         frame_rate=30,

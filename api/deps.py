@@ -6,6 +6,7 @@ from ai_service import AIService
 from video_service import VideoService
 from transcoder_service import TranscoderService
 from storage_service import StorageService
+from diarization_service import DiarizationService
 
 logger = logging.getLogger(__name__)
 
@@ -15,11 +16,13 @@ ai_svc: AIService | None = None
 video_svc: VideoService | None = None
 transcoder_svc: TranscoderService | None = None
 storage_svc: StorageService | None = None
+diarization_svc: DiarizationService | None = None
 
 
 def init_services():
     """Instantiate all backend services. Called once during FastAPI startup."""
     global firestore_svc, ai_svc, video_svc, transcoder_svc, storage_svc
+    global diarization_svc
     logger.info("Initializing services...")
     firestore_svc = FirestoreService()
     storage_svc = StorageService()
@@ -28,6 +31,7 @@ def init_services():
     project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
     location = os.getenv("GOOGLE_CLOUD_LOCATION", "asia-south1")
     transcoder_svc = TranscoderService(project_id, location)
+    diarization_svc = DiarizationService(project_id, location)
     logger.info("Services initialized successfully.")
 
 

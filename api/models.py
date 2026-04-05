@@ -210,17 +210,38 @@ class SceneChange(BaseModel):
     description: str = ""
 
 
+class SpeakerPosition(BaseModel):
+    speaker_id: str
+    x: float  # 0.0-1.0 horizontal position
+    y: float  # 0.0-1.0 vertical position
+    description: str = ""
+
+
+class SpeakerSegment(BaseModel):
+    speaker_id: str
+    start_sec: float
+    end_sec: float
+    confidence: float = 1.0
+
+
 class ReframeRecord(BaseModel):
     id: str = Field(default_factory=lambda: generate_id("rf-"))
     source_gcs_uri: str
     source_filename: str = ""
     display_name: str = ""
     prompt_id: str = ""
+    content_type: str = "other"
     blurred_bg: bool = False
     sports_mode: bool = False
+    vertical_split: bool = False
     output_gcs_uri: Optional[str] = None
     focal_points: List[FocalPoint] = []
     scene_changes: List[SceneChange] = []
+    speaker_positions: List[SpeakerPosition] = []
+    speaker_segments: List[SpeakerSegment] = []
+    prompt_variables: dict = Field(default_factory=dict)
+    prompt_text_used: str = ""
+    track_summary: str = ""
     status: str = "pending"  # pending|analyzing|processing|encoding|completed|failed
     error_message: Optional[str] = None
     progress_pct: int = 0

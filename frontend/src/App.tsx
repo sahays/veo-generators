@@ -14,6 +14,7 @@ import { ThumbnailsLandingPage } from './components/pages/ThumbnailsLandingPage'
 import { ThumbnailsWorkPage } from './components/pages/ThumbnailsWorkPage'
 import { ReframeLandingPage } from './components/pages/ReframeLandingPage'
 import { ReframeWorkPage } from './components/pages/ReframeWorkPage'
+import { ReframeOutputPage } from './components/pages/ReframeOutputPage'
 import { PromoLandingPage } from './components/pages/PromoLandingPage'
 import { PromoWorkPage } from './components/pages/PromoWorkPage'
 import { UploadsPage } from './components/pages/UploadsPage'
@@ -86,6 +87,7 @@ function App() {
               <Route path="/orientations" element={<ReframeLandingPage />} />
               <Route path="/orientations/create" element={<ReframeWorkPage />} />
               <Route path="/orientations/:id" element={<ReframeWorkPage />} />
+              <Route path="/orientations/:id/:section" element={<ReframeOutputPage />} />
 
               {/* Promos */}
               <Route path="/promos" element={<PromoLandingPage />} />

@@ -23,8 +23,10 @@ class ReframeRequest(BaseModel):
     source_filename: str = ""
     mime_type: str = "video/mp4"
     prompt_id: str = ""
+    content_type: str = "other"
     blurred_bg: bool = False
-    sports_mode: bool = False
+    sports_mode: bool = False  # deprecated — use content_type="sports"
+    vertical_split: bool = False
 
 
 def _sign_reframe_urls(record: ReframeRecord) -> dict:
@@ -75,12 +77,19 @@ async def create_reframe(
     """Create a reframe job. Worker picks it up from Firestore."""
     require_firestore()
 
+    # Backward compat: sports_mode=True maps to content_type="sports"
+    content_type = body.content_type
+    if body.sports_mode and content_type == "other":
+        content_type = "sports"
+
     record = ReframeRecord(
         source_gcs_uri=body.gcs_uri,
         source_filename=body.source_filename,
         prompt_id=body.prompt_id,
+        content_type=content_type,
         blurred_bg=body.blurred_bg,
         sports_mode=body.sports_mode,
+        vertical_split=body.vertical_split,
         status="pending",
         invite_code=getattr(request.state, "invite_code", None),
     )

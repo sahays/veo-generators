@@ -1,16 +1,21 @@
-"""Pure computation module for promo generation.
+"""Promo generation — video segment extraction, normalization, and stitching.
 
-Handles video segment extraction and concatenation with cross-dissolve transitions.
-No FastAPI or Firestore dependencies.
+No FastAPI or Firestore dependencies — easily testable.
 """
 
-import json
 import logging
 import os
 import shutil
-import subprocess
 import tempfile
 from typing import List
+
+from ffmpeg_runner import (
+    ffprobe_duration,
+    ffprobe_has_audio,
+    ffprobe_video_width,
+    run_ffmpeg,
+    run_ffmpeg_with_filter,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -18,10 +23,14 @@ TARGET_FPS = 30
 TARGET_AUDIO_RATE = 44100
 
 
+# ---------------------------------------------------------------------------
+# Timestamp parsing
+# ---------------------------------------------------------------------------
+
+
 def parse_timestamp(ts: str) -> float:
     """Convert MM:SS or HH:MM:SS to seconds."""
-    parts = ts.strip().split(":")
-    parts = [float(p) for p in parts]
+    parts = [float(p) for p in ts.strip().split(":")]
     if len(parts) == 3:
         return parts[0] * 3600 + parts[1] * 60 + parts[2]
     if len(parts) == 2:
@@ -29,14 +38,18 @@ def parse_timestamp(ts: str) -> float:
     return parts[0]
 
 
-def extract_segment(
-    src_path: str, out_path: str, start_sec: float, end_sec: float
-) -> str:
-    """Extract a segment from a video using FFmpeg.
+# ---------------------------------------------------------------------------
+# Segment extraction
+# ---------------------------------------------------------------------------
 
-    Uses -ss before -i for fast seeking, then -t for duration.
-    Returns the output path.
-    """
+
+def extract_segment(
+    src_path: str,
+    out_path: str,
+    start_sec: float,
+    end_sec: float,
+) -> str:
+    """Extract a time-range segment from a video."""
     duration = end_sec - start_sec
     if duration <= 0:
         raise ValueError(f"Invalid segment: start={start_sec}, end={end_sec}")
@@ -68,29 +81,18 @@ def extract_segment(
         "+faststart",
         out_path,
     ]
-
-    logger.info(
-        f"Extracting segment: {start_sec:.1f}s - {end_sec:.1f}s ({duration:.1f}s)"
+    run_ffmpeg(
+        cmd, timeout=300, label=f"extract-segment({start_sec:.1f}-{end_sec:.1f})"
     )
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 
-    if result.returncode != 0:
-        stderr_tail = result.stderr[-500:] if result.stderr else "(no stderr)"
-        logger.error(f"FFmpeg extract failed: {stderr_tail}")
-        raise RuntimeError(f"Segment extraction failed: {stderr_tail}")
-
-    # Validate extracted file has content
-    dur = _get_duration(out_path)
+    dur = ffprobe_duration(out_path)
     if dur <= 0:
-        raise RuntimeError(
-            f"Extracted segment is empty (duration={dur}): {start_sec}-{end_sec}s"
-        )
-
+        raise RuntimeError(f"Extracted segment is empty: {start_sec}-{end_sec}s")
     return out_path
 
 
 def extract_frame(src_path: str, out_path: str, timestamp_sec: float) -> str:
-    """Extract a single frame from a video at the given timestamp as a PNG."""
+    """Extract a single frame as PNG at the given timestamp."""
     cmd = [
         "ffmpeg",
         "-y",
@@ -104,16 +106,13 @@ def extract_frame(src_path: str, out_path: str, timestamp_sec: float) -> str:
         "2",
         out_path,
     ]
-
-    logger.info(f"Extracting frame at {timestamp_sec:.1f}s -> {out_path}")
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-
-    if result.returncode != 0:
-        stderr_tail = result.stderr[-500:] if result.stderr else "(no stderr)"
-        logger.error(f"Frame extraction failed: {stderr_tail}")
-        raise RuntimeError(f"Frame extraction failed: {stderr_tail}")
-
+    run_ffmpeg(cmd, timeout=60, label=f"extract-frame({timestamp_sec:.1f}s)")
     return out_path
+
+
+# ---------------------------------------------------------------------------
+# Normalization
+# ---------------------------------------------------------------------------
 
 
 def normalize_segment(
@@ -123,42 +122,39 @@ def normalize_segment(
     target_h: int,
     target_fps: int = TARGET_FPS,
 ) -> str:
-    """Re-encode a segment to canonical format for reliable crossfade.
-
-    Forces consistent framerate, timebase, resolution, pixel format, and audio
-    parameters so that xfade/acrossfade never sees mismatched inputs.
-    """
-    # Check if input has an audio stream
-    probe_cmd = [
-        "ffprobe",
-        "-v",
-        "quiet",
-        "-print_format",
-        "json",
-        "-show_streams",
+    """Re-encode a segment to canonical format for reliable crossfade."""
+    has_audio = ffprobe_has_audio(in_path)
+    cmd = _build_normalize_cmd(
         in_path,
-    ]
-    probe = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=30)
-    has_audio = False
-    if probe.returncode == 0:
-        streams = json.loads(probe.stdout).get("streams", [])
-        has_audio = any(s["codec_type"] == "audio" for s in streams)
+        out_path,
+        target_w,
+        target_h,
+        target_fps,
+        has_audio,
+    )
+    run_ffmpeg(cmd, timeout=300, label="normalize-segment")
+    _validate_has_video_stream(out_path)
+    return out_path
 
-    # Build video filter chain
+
+def _build_normalize_cmd(
+    in_path,
+    out_path,
+    target_w,
+    target_h,
+    target_fps,
+    has_audio,
+) -> list:
+    """Build FFmpeg command for segment normalization."""
     vf = (
         f"fps={target_fps},"
         f"scale={target_w}:{target_h}:force_original_aspect_ratio=decrease,"
         f"pad={target_w}:{target_h}:(ow-iw)/2:(oh-ih)/2,"
         f"setsar=1,format=yuv420p"
     )
-
     cmd = ["ffmpeg", "-y", "-i", in_path]
-
     if not has_audio:
-        # Get duration to limit synthetic audio (fallback 30s if probe fails)
-        seg_dur = _get_duration(in_path)
-        if seg_dur <= 0:
-            seg_dur = 30.0
+        seg_dur = ffprobe_duration(in_path) or 30.0
         cmd += [
             "-f",
             "lavfi",
@@ -180,49 +176,35 @@ def normalize_segment(
         "-crf",
         "23",
     ]
-
-    if has_audio:
-        # Audio already encoded during extraction — just copy
-        cmd += ["-c:a", "copy"]
-    else:
-        # Synthetic silent audio needs encoding
-        cmd += ["-c:a", "aac", "-ar", str(TARGET_AUDIO_RATE), "-ac", "2"]
-
-    cmd += ["-movflags", "+faststart", out_path]
-
-    logger.info(
-        f"Normalizing segment: {in_path} -> {target_w}x{target_h}@{target_fps}fps"
+    cmd += (
+        ["-c:a", "copy"]
+        if has_audio
+        else [
+            "-c:a",
+            "aac",
+            "-ar",
+            str(TARGET_AUDIO_RATE),
+            "-ac",
+            "2",
+        ]
     )
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    cmd += ["-movflags", "+faststart", out_path]
+    return cmd
 
-    if result.returncode != 0:
-        stderr_tail = result.stderr[-500:] if result.stderr else "(no stderr)"
-        logger.error(f"Normalize failed: {stderr_tail}")
-        raise RuntimeError(f"Segment normalization failed: {stderr_tail}")
 
-    # Validate output has a video stream
-    val_cmd = [
-        "ffprobe",
-        "-v",
-        "quiet",
-        "-print_format",
-        "json",
-        "-show_streams",
-        out_path,
-    ]
-    val = subprocess.run(val_cmd, capture_output=True, text=True, timeout=30)
-    has_video_out = False
-    if val.returncode == 0:
-        for s in json.loads(val.stdout).get("streams", []):
-            if s.get("codec_type") == "video":
-                has_video_out = True
-                break
-    if not has_video_out:
-        raise RuntimeError(
-            f"Normalization produced output without video stream: {out_path}"
-        )
+def _validate_has_video_stream(path: str) -> None:
+    """Raise if output has no video stream."""
+    from ffmpeg_runner import ffprobe_json
 
-    return out_path
+    data = ffprobe_json(path, timeout=30)
+    has_video = any(s.get("codec_type") == "video" for s in data.get("streams", []))
+    if not has_video:
+        raise RuntimeError(f"Output has no video stream: {path}")
+
+
+# ---------------------------------------------------------------------------
+# Crossfade stitching
+# ---------------------------------------------------------------------------
 
 
 def concatenate_with_crossfade(
@@ -230,15 +212,9 @@ def concatenate_with_crossfade(
     out_path: str,
     crossfade_duration: float = 0.5,
 ) -> str:
-    """Concatenate pre-normalized segments with cross-dissolve transitions.
-
-    Uses pairwise stitching: each transition is an independent 2-input FFmpeg
-    call. If any xfade fails, that pair falls back to a hard-cut concat.
-    All segments must be pre-normalized to the same fps/resolution/format.
-    """
+    """Concatenate pre-normalized segments with cross-dissolve transitions."""
     if not segment_paths:
         raise ValueError("No segments to concatenate")
-
     if len(segment_paths) == 1:
         shutil.copy2(segment_paths[0], out_path)
         return out_path
@@ -252,114 +228,58 @@ def concatenate_with_crossfade(
         if not is_last:
             intermediates.append(pair_out)
 
-        next_seg = segment_paths[i]
-        logger.info(
-            f"Stitching pair {i}/{len(segment_paths) - 1}: {current} + {next_seg}"
-        )
-
         try:
-            _xfade_pair(current, next_seg, pair_out, crossfade_duration)
+            _xfade_pair(current, segment_paths[i], pair_out, crossfade_duration)
         except RuntimeError:
             logger.warning(f"xfade failed for pair {i}, falling back to concat")
-            # xfade may have written a corrupt file — remove before concat
             _safe_unlink(pair_out)
-            _concat_pair(current, next_seg, pair_out)
+            _concat_pair(current, segment_paths[i], pair_out)
 
-        # Clean up previous intermediate (not an original segment)
         if current in intermediates:
             _safe_unlink(current)
             intermediates.remove(current)
-
         current = pair_out
 
-    # Clean any remaining intermediates
     for f in intermediates:
         _safe_unlink(f)
-
-    logger.info(f"Crossfade complete: {out_path}")
     return out_path
 
 
-def _xfade_pair(
-    a_path: str,
-    b_path: str,
-    out_path: str,
-    crossfade_dur: float,
-) -> None:
-    """Apply xfade + acrossfade between exactly two pre-normalized segments.
-
-    Forces fps and settb on both inputs to guarantee matching timebases,
-    and on the output to keep the chain stable for subsequent pairs.
-    """
-    dur_a = _get_duration(a_path)
-    dur_b = _get_duration(b_path)
-
-    # Clamp crossfade so offset stays positive
-    xf = min(crossfade_dur, dur_a - 0.1, dur_b - 0.1)
+def _xfade_pair(a_path: str, b_path: str, out_path: str, xf_dur: float) -> None:
+    """Apply xfade + acrossfade between two pre-normalized segments."""
+    dur_a = ffprobe_duration(a_path)
+    dur_b = ffprobe_duration(b_path)
+    xf = min(xf_dur, dur_a - 0.1, dur_b - 0.1)
     if xf < 0.04:
         _concat_pair(a_path, b_path, out_path)
         return
 
     offset = dur_a - xf
-    # Video: xfade with fps/timebase normalization.
-    # Audio: acrossfade to match the video overlap timing and keep sync.
-    filter_str = (
+    filt = (
         f"[0:v]fps={TARGET_FPS},settb=AVTB[v0];"
         f"[1:v]fps={TARGET_FPS},settb=AVTB[v1];"
         f"[v0][v1]xfade=transition=fade:duration={xf}:offset={offset:.3f},"
         f"fps={TARGET_FPS},settb=AVTB[v];"
         f"[0:a][1:a]acrossfade=d={xf}[a]"
     )
-
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-i",
-        a_path,
-        "-i",
-        b_path,
-        "-filter_complex",
-        filter_str,
-        "-map",
-        "[v]",
-        "-map",
-        "[a]",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "ultrafast",
-        "-crf",
-        "23",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "192k",
-        "-movflags",
-        "+faststart",
-        out_path,
-    ]
-
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-
-    if result.returncode != 0:
-        stderr_tail = result.stderr[-500:] if result.stderr else "(no stderr)"
-        logger.error(f"xfade pair failed: {stderr_tail}")
-        raise RuntimeError(f"xfade pair failed: {stderr_tail}")
+    cmd = _build_pair_cmd(a_path, b_path, out_path, filt)
+    run_ffmpeg(cmd, timeout=120, label="xfade-pair")
 
 
 def _concat_pair(a_path: str, b_path: str, out_path: str) -> None:
-    """Hard-cut concatenation using the filter_complex concat filter.
-
-    Uses the concat *filter* (not the concat demuxer) to properly reset
-    timestamps and avoid gaps between segments.
-    """
-    filter_str = (
+    """Hard-cut concat using the concat filter."""
+    filt = (
         f"[0:v]fps={TARGET_FPS},settb=AVTB[v0];"
         f"[1:v]fps={TARGET_FPS},settb=AVTB[v1];"
         f"[v0][0:a][v1][1:a]concat=n=2:v=1:a=1[v][a]"
     )
+    cmd = _build_pair_cmd(a_path, b_path, out_path, filt)
+    run_ffmpeg(cmd, timeout=120, label="concat-pair")
 
-    cmd = [
+
+def _build_pair_cmd(a_path, b_path, out_path, filter_str) -> list:
+    """Build FFmpeg command for a 2-input filter_complex operation."""
+    return [
         "ffmpeg",
         "-y",
         "-i",
@@ -387,12 +307,10 @@ def _concat_pair(a_path: str, b_path: str, out_path: str) -> None:
         out_path,
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 
-    if result.returncode != 0:
-        stderr_tail = result.stderr[-500:] if result.stderr else "(no stderr)"
-        logger.error(f"concat pair failed: {stderr_tail}")
-        raise RuntimeError(f"Concat pair failed: {stderr_tail}")
+# ---------------------------------------------------------------------------
+# Title card & overlay
+# ---------------------------------------------------------------------------
 
 
 def create_title_card_video(
@@ -403,10 +321,11 @@ def create_title_card_video(
     duration: float = 2.5,
     fps: int = TARGET_FPS,
 ) -> str:
-    """Convert a still image into a video clip with silent audio.
-
-    Scales the image to match the source video resolution so xfade works.
-    """
+    """Convert a still image into a video clip with silent audio."""
+    vf = (
+        f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
+    )
     cmd = [
         "ffmpeg",
         "-y",
@@ -419,7 +338,7 @@ def create_title_card_video(
         "-i",
         f"anullsrc=r={TARGET_AUDIO_RATE}:cl=stereo",
         "-vf",
-        f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2",
+        vf,
         "-t",
         f"{duration:.1f}",
         "-c:v",
@@ -437,15 +356,7 @@ def create_title_card_video(
         "+faststart",
         out_path,
     ]
-
-    logger.info(f"Creating title card video: {duration}s from {image_path}")
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-
-    if result.returncode != 0:
-        stderr_tail = result.stderr[-500:] if result.stderr else "(no stderr)"
-        logger.error(f"Title card creation failed: {stderr_tail}")
-        raise RuntimeError(f"Title card creation failed: {stderr_tail}")
-
+    run_ffmpeg(cmd, timeout=60, label="title-card")
     return out_path
 
 
@@ -458,36 +369,55 @@ def overlay_image_on_segment(
     hold: float = 1.5,
     fade_out: float = 0.3,
 ) -> str:
-    """Overlay a PNG image on a video segment with fade in/out.
-
-    The overlay starts after `delay` seconds so it appears after the
-    crossfade transition is complete, not during it.
-    """
+    """Overlay a PNG image on a video segment with fade in/out."""
+    seg_dur = ffprobe_duration(segment_path)
+    vid_w = ffprobe_video_width(segment_path)
     end = delay + fade_in + hold + fade_out
+    filter_str = _build_overlay_filter(vid_w, delay, fade_in, hold, fade_out, end)
 
-    # Get segment duration and resolution
-    seg_dur = _get_duration(segment_path)
-    probe_cmd = [
-        "ffprobe",
-        "-v",
-        "quiet",
-        "-print_format",
-        "json",
-        "-show_streams",
+    from ffmpeg_runner import _FILTER_PLACEHOLDER
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
         segment_path,
+        "-loop",
+        "1",
+        "-t",
+        f"{seg_dur:.3f}",
+        "-i",
+        overlay_path,
+        _FILTER_PLACEHOLDER,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-crf",
+        "23",
+        "-c:a",
+        "copy",
+        "-movflags",
+        "+faststart",
+        out_path,
     ]
-    probe_result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=30)
-    vid_w = 854  # fallback
-    if probe_result.returncode == 0:
-        streams = json.loads(probe_result.stdout).get("streams", [])
-        vs = next((s for s in streams if s["codec_type"] == "video"), None)
-        if vs:
-            vid_w = int(vs["width"])
+    run_ffmpeg_with_filter(
+        cmd, filter_str, filter_flag="-/filter_complex", timeout=120, label="overlay"
+    )
+    return out_path
 
-    # Scale overlay to 70% of video width (keep aspect ratio),
-    # cap opacity at 85%, fade in/out after crossfade transition.
-    ovr_w = int(vid_w * 0.7) // 2 * 2  # ensure even
-    filter_graph = (
+
+def _build_overlay_filter(
+    vid_w: int,
+    delay: float,
+    fade_in: float,
+    hold: float,
+    fade_out: float,
+    end: float,
+) -> str:
+    """Build filter_complex string for image overlay with fade."""
+    ovr_w = int(vid_w * 0.7) // 2 * 2
+    return (
         f"[0:v]scale=trunc(iw/2)*2:trunc(ih/2)*2[base];"
         f"[1:v]scale={ovr_w}:-1,format=rgba,"
         f"colorchannelmixer=aa=0.85,"
@@ -498,90 +428,19 @@ def overlay_image_on_segment(
         f",format=yuv420p"
     )
 
-    fd, filter_path = tempfile.mkstemp(suffix=".txt", prefix="ffmpeg_overlay_")
-    try:
-        with os.fdopen(fd, "w") as f:
-            f.write(filter_graph)
 
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-i",
-            segment_path,
-            "-loop",
-            "1",
-            "-t",
-            f"{seg_dur:.3f}",
-            "-i",
-            overlay_path,
-            "-/filter_complex",
-            filter_path,
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-crf",
-            "23",
-            "-c:a",
-            "copy",
-            "-movflags",
-            "+faststart",
-            out_path,
-        ]
-
-        logger.info(f"Overlaying image on segment: fade_in={fade_in}, hold={hold}")
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-
-        if result.returncode != 0:
-            stderr_tail = result.stderr[-500:] if result.stderr else "(no stderr)"
-            logger.error(f"Overlay failed: {stderr_tail}")
-            raise RuntimeError(f"Overlay compositing failed: {stderr_tail}")
-
-        return out_path
-
-    finally:
-        _safe_unlink(filter_path)
-
-
-def _get_duration(path: str) -> float:
-    """Get video duration in seconds via ffprobe.
-
-    Tries format duration first, falls back to the longest stream duration.
-    """
-    cmd = [
-        "ffprobe",
-        "-v",
-        "quiet",
-        "-print_format",
-        "json",
-        "-show_format",
-        "-show_streams",
-        path,
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-    if result.returncode != 0:
-        raise RuntimeError(f"ffprobe failed on {path}")
-
-    data = json.loads(result.stdout)
-    dur = float(data.get("format", {}).get("duration", 0))
-    if dur <= 0:
-        # Fall back to longest stream duration
-        for s in data.get("streams", []):
-            s_dur = float(s.get("duration", 0))
-            if s_dur > dur:
-                dur = s_dur
-    return dur
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
 def _tmp_file(suffix: str) -> str:
-    """Create a named temp file and return its path."""
     fd, path = tempfile.mkstemp(suffix=suffix, prefix="ffmpeg_")
     os.close(fd)
     return path
 
 
 def _safe_unlink(path: str) -> None:
-    """Delete a file, ignoring errors."""
     try:
         os.unlink(path)
     except OSError:

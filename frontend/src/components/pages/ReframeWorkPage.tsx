@@ -1,18 +1,20 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   Smartphone, Loader2, ArrowLeft, Download, RotateCcw, Pencil, Check,
+  ExternalLink,
 } from 'lucide-react'
 import { Button, AnchorHeading } from '@/components/Common'
+import { Select } from '@/components/UI'
 import { api } from '@/lib/api'
 import { cn, getTimeAgo } from '@/lib/utils'
 import { usePolling } from '@/hooks/usePolling'
 import { VideoSourceSelector } from '@/components/shared/VideoSourceSelector'
-import { PromptSelector } from '@/components/shared/PromptSelector'
+
 import { ProgressBar } from '@/components/shared/ProgressBar'
 import { ErrorDisplay } from '@/components/shared/ErrorDisplay'
 import type { UploadItem, ProductionItem } from '@/components/shared/VideoSourceSelector'
-import type { SystemResource } from '@/types/project'
+
 
 type VideoSourceTab = 'productions' | 'past-uploads'
 
@@ -25,6 +27,26 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   encoding: { label: 'Encoding final output...', color: 'text-purple-500' },
   completed: { label: 'Reframe complete', color: 'text-emerald-500' },
   failed: { label: 'Reframe failed', color: 'text-red-500' },
+}
+
+const CONTENT_TYPE_OPTIONS = [
+  { value: 'movies', label: 'Movies', description: 'Films, drama, scripted — follows characters and story' },
+  { value: 'documentaries', label: 'Documentaries', description: 'Interviews, narration, b-roll — tracks speaker and subject' },
+  { value: 'sports', label: 'Sports', description: 'Live action, highlights — fast tracking on the play' },
+  { value: 'podcasts', label: 'Podcasts', description: 'Podcasts, interviews, panels — centers the active speaker' },
+  { value: 'promos', label: 'Promos', description: 'Ads, product showcases — keeps product and presenter visible' },
+  { value: 'news', label: 'News', description: 'Anchors, field reports — follows the active reporter' },
+  { value: 'other', label: 'Other', description: 'General reframing for other content' },
+]
+
+const CONTENT_TYPE_BADGE: Record<string, { label: string; className: string }> = {
+  movies: { label: 'Movies', className: 'bg-violet-500/10 text-violet-600 border-violet-500/20' },
+  documentaries: { label: 'Documentaries', className: 'bg-teal-500/10 text-teal-600 border-teal-500/20' },
+  sports: { label: 'Sports', className: 'bg-orange-500/10 text-orange-600 border-orange-500/20' },
+  podcasts: { label: 'Podcasts', className: 'bg-blue-500/10 text-blue-600 border-blue-500/20' },
+  promos: { label: 'Promos', className: 'bg-pink-500/10 text-pink-600 border-pink-500/20' },
+  news: { label: 'News', className: 'bg-red-500/10 text-red-600 border-red-500/20' },
+  other: { label: 'Other', className: 'bg-gray-500/10 text-gray-600 border-gray-500/20' },
 }
 
 export const ReframeWorkPage = () => {
@@ -43,13 +65,10 @@ export const ReframeWorkPage = () => {
   const [uploads, setUploads] = useState<UploadItem[]>([])
   const [loadingSources, setLoadingSources] = useState(false)
 
-  // Prompt state
-  const [prompts, setPrompts] = useState<SystemResource[]>([])
-  const [promptId, setPromptId] = useState('')
-
   // Options
+  const [contentType, setContentType] = useState('other')
   const [blurredBg, setBlurredBg] = useState(false)
-  const [sportsMode, setSportsMode] = useState(false)
+  const [verticalSplit, setVerticalSplit] = useState(false)
 
   // Processing state
   const [submitting, setSubmitting] = useState(false)
@@ -73,13 +92,9 @@ export const ReframeWorkPage = () => {
     Promise.all([
       api.reframe.listUploadSources().catch(() => []),
       api.reframe.listProductionSources().catch(() => []),
-      api.system.listResources('prompt', 'orientation').catch(() => []),
-    ]).then(([ups, prods, orientationPrompts]) => {
+    ]).then(([ups, prods]) => {
       setUploads(ups)
       setProductions(prods.filter((p: ProductionItem) => p.orientation === '16:9'))
-      setPrompts(orientationPrompts)
-      const active = orientationPrompts.find((p: SystemResource) => p.is_active)
-      if (active) setPromptId(active.id)
     }).finally(() => setLoadingSources(false))
   }, [isViewMode])
 
@@ -103,9 +118,9 @@ export const ReframeWorkPage = () => {
       const result = await api.reframe.create({
         gcs_uri: gcsUri,
         source_filename: videoFilename,
-        prompt_id: promptId,
+        content_type: contentType,
         blurred_bg: blurredBg,
-        sports_mode: sportsMode,
+        vertical_split: verticalSplit,
       })
       navigate(`/orientations/${result.id}`, { replace: true })
     } catch (err: any) {
@@ -155,6 +170,12 @@ export const ReframeWorkPage = () => {
 
     const statusCfg = STATUS_CONFIG[record.status] || STATUS_CONFIG.pending
     const isProcessing = ACTIVE_STATUSES.includes(record.status)
+    const badge = CONTENT_TYPE_BADGE[record.content_type] || CONTENT_TYPE_BADGE.other
+    const hasPrompt = !!(record.prompt_text_used || (record.prompt_variables && Object.keys(record.prompt_variables).length > 0))
+    const hasTrackSummary = !!record.track_summary
+    const speakerSegments = record.speaker_segments as Array<{ speaker_id: string; start_sec: number; end_sec: number }> | undefined
+    const focalPoints = record.focal_points as Array<{ time_sec: number; x: number; y: number; confidence?: number; description?: string }> | undefined
+    const geminiScenes = record.gemini_scenes as Array<any> | undefined
 
     return (
       <div className="space-y-6">
@@ -191,14 +212,19 @@ export const ReframeWorkPage = () => {
             )}
           </div>
           <div className="flex items-center gap-1.5">
+            {record.content_type && record.content_type !== 'other' && (
+              <span className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border", badge.className)}>
+                {badge.label}
+              </span>
+            )}
             {record.blurred_bg && (
               <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-600 border border-purple-500/20">
                 Blurred BG
               </span>
             )}
-            {record.sports_mode && (
-              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-orange-500/10 text-orange-600 border border-orange-500/20">
-                Sports Mode
+            {record.vertical_split && (
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-cyan-500/10 text-cyan-600 border border-cyan-500/20">
+                Vertical Split
               </span>
             )}
           </div>
@@ -212,6 +238,57 @@ export const ReframeWorkPage = () => {
             <Button icon={retrying ? Loader2 : RotateCcw} onClick={handleRetry} disabled={retrying}>
               {retrying ? 'Retrying...' : 'Retry'}
             </Button>
+          </div>
+        )}
+
+        {/* AI Pipeline Output Links — in pipeline order */}
+        {!record.vertical_split && (hasTrackSummary || hasPrompt || geminiScenes?.length || focalPoints?.length || speakerSegments?.length) && (
+          <div className="flex flex-wrap gap-2">
+            {hasTrackSummary && (
+              <Link
+                to={`/orientations/${record.id}/mediapipe`}
+                target="_blank"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+              >
+                MediaPipe <ExternalLink size={12} />
+              </Link>
+            )}
+            {speakerSegments && speakerSegments.length > 0 && (
+              <Link
+                to={`/orientations/${record.id}/chirp`}
+                target="_blank"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+              >
+                Chirp <ExternalLink size={12} />
+              </Link>
+            )}
+            {hasPrompt && (
+              <Link
+                to={`/orientations/${record.id}/prompt`}
+                target="_blank"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+              >
+                Prompt <ExternalLink size={12} />
+              </Link>
+            )}
+            {geminiScenes && geminiScenes.length > 0 && (
+              <Link
+                to={`/orientations/${record.id}/gemini`}
+                target="_blank"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+              >
+                Gemini <ExternalLink size={12} />
+              </Link>
+            )}
+            {focalPoints && focalPoints.length > 0 && (
+              <Link
+                to={`/orientations/${record.id}/focal-points`}
+                target="_blank"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+              >
+                Focal Points <ExternalLink size={12} />
+              </Link>
+            )}
           </div>
         )}
 
@@ -233,8 +310,13 @@ export const ReframeWorkPage = () => {
 
               {record.output_signed_url && (
                 <div className="space-y-2">
-                  <AnchorHeading id="reframed-video" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Reframed (9:16)</AnchorHeading>
-                  <div className="aspect-[9/16] max-w-xs bg-black rounded-xl overflow-hidden border border-border">
+                  <AnchorHeading id="reframed-video" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Reframed ({record.blurred_bg ? '4:5' : '9:16'})
+                  </AnchorHeading>
+                  <div className={cn(
+                    "bg-black rounded-xl overflow-hidden border border-border",
+                    record.blurred_bg ? "aspect-[4/5] max-w-sm" : "aspect-[9/16] max-w-xs"
+                  )}>
                     <video
                       src={record.output_signed_url}
                       controls
@@ -254,7 +336,7 @@ export const ReframeWorkPage = () => {
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-dark transition-colors"
                 >
-                  <Download size={16} /> Download 9:16 Video
+                  <Download size={16} /> Download {record.blurred_bg ? '4:5' : '9:16'} Video
                 </a>
               </div>
             )}
@@ -310,17 +392,19 @@ export const ReframeWorkPage = () => {
         </div>
       )}
 
-      {videoUrl && (
+      {videoUrl && !verticalSplit && (
         <div className="space-y-2">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Analysis Prompt</h3>
-          <PromptSelector
-            prompts={prompts}
-            value={promptId}
-            onChange={setPromptId}
-            emptyMessage='No orientation prompts found. Using default. Create one in System Prompts with category "orientation".'
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Content Type</h3>
+          <Select
+            value={contentType}
+            onChange={setContentType}
+            options={CONTENT_TYPE_OPTIONS}
+            placeholder="Select content type..."
           />
         </div>
       )}
+
+      {/* Prompt selector hidden — content type now drives the prompt via strategy template */}
 
       {videoUrl && (
         <div className="space-y-3">
@@ -328,7 +412,7 @@ export const ReframeWorkPage = () => {
             <input
               type="checkbox"
               checked={blurredBg}
-              onChange={(e) => setBlurredBg(e.target.checked)}
+              onChange={(e) => { setBlurredBg(e.target.checked); if (e.target.checked) setVerticalSplit(false) }}
               className="w-4 h-4 rounded border-border text-accent focus:ring-accent/30 cursor-pointer"
             />
             <div>
@@ -336,23 +420,23 @@ export const ReframeWorkPage = () => {
                 Blurred background fill
               </span>
               <p className="text-xs text-muted-foreground">
-                Wider crop with blurred bars on top/bottom — shows more of the scene
+                4:5 output with blurred fill on the sides — wider than 9:16
               </p>
             </div>
           </label>
           <label className="flex items-center gap-3 cursor-pointer group">
             <input
               type="checkbox"
-              checked={sportsMode}
-              onChange={(e) => setSportsMode(e.target.checked)}
+              checked={verticalSplit}
+              onChange={(e) => { setVerticalSplit(e.target.checked); if (e.target.checked) setBlurredBg(false) }}
               className="w-4 h-4 rounded border-border text-accent focus:ring-accent/30 cursor-pointer"
             />
             <div>
               <span className="text-sm font-medium text-foreground group-hover:text-accent-dark transition-colors">
-                Sports mode
+                Vertical split screen
               </span>
               <p className="text-xs text-muted-foreground">
-                Faster panning to keep up with fast-moving action (basketball, football, etc.)
+                Split the landscape frame into left/right halves stacked vertically — no AI analysis needed
               </p>
             </div>
           </label>

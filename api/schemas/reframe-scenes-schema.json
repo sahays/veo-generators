@@ -1,0 +1,36 @@
+{
+  "type": "object",
+  "properties": {
+    "scenes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "start_sec": {
+            "type": "number",
+            "description": "Scene start timestamp in seconds"
+          },
+          "end_sec": {
+            "type": "number",
+            "description": "Scene end timestamp in seconds"
+          },
+          "description": {
+            "type": "string",
+            "description": "Brief description of the scene"
+          },
+          "active_subject": {
+            "type": "string",
+            "description": "Which person or area to focus on: 'left', 'right', 'center', 'largest', or a brief descriptor like 'person on the left'"
+          },
+          "scene_type": {
+            "type": "string",
+            "enum": ["dialogue", "action", "close-up", "establishing", "wide", "general"],
+            "description": "Type of scene for framing decisions"
+          }
+        },
+        "required": ["start_sec", "end_sec", "description", "active_subject", "scene_type"]
+      }
+    }
+  },
+  "required": ["scenes"]
+}

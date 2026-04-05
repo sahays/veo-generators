@@ -1,83 +1,53 @@
+"""AI service — Gemini-powered video analysis and image generation."""
+
 import logging
 import os
-import json
-import uuid
 from collections import defaultdict
-from pathlib import Path
 from typing import Optional
+
 from google import genai
 from google.genai import types
+
+from ai_helpers import (
+    compute_usage,
+    extract_image_from_response,
+    image_generation_usage,
+    load_schema,
+    resolve_resource,
+)
 from helpers import gemini_call_with_retry
-from models import Scene, SceneMetadata, UsageMetrics, AIResponseWrapper, Project
+from models import Scene, SceneMetadata, AIResponseWrapper, Project
 
 logger = logging.getLogger(__name__)
 
-
-def _load_default_schema():
-    schema_path = Path(__file__).parent / "schemas" / "production-schema.json"
-    return json.loads(schema_path.read_text())
-
-
-def _load_key_moments_schema():
-    schema_path = Path(__file__).parent / "schemas" / "key-moments-schema.json"
-    return json.loads(schema_path.read_text())
+_CATEGORY_MAP = {
+    "movie": "production-movie",
+    "advertizement": "production-ad",
+    "social": "production-social",
+}
 
 
-def _load_thumbnail_schema():
-    schema_path = Path(__file__).parent / "schemas" / "thumbnail-analysis-schema.json"
-    return json.loads(schema_path.read_text())
-
-
-def _load_promo_segments_schema():
-    schema_path = Path(__file__).parent / "schemas" / "promo-segments-schema.json"
-    return json.loads(schema_path.read_text())
-
-
-def _load_reframe_focal_points_schema():
-    schema_path = Path(__file__).parent / "schemas" / "reframe-focal-points-schema.json"
-    return json.loads(schema_path.read_text())
-
-
-def _default_reframe_prompt() -> str:
-    return (
-        "You are a professional video editor analyzing this video for smart reframing "
-        "from 16:9 (landscape) to 9:16 (portrait).\n\n"
-        "Analyze every 0.5-1 second of the video and identify the PRIMARY FOCAL POINT — "
-        "the most important subject or area of visual interest that a viewer's eye would "
-        "be drawn to.\n\n"
-        "For each focal point, provide:\n"
-        "- time_sec: the timestamp in seconds (use decimals, e.g. 1.5)\n"
-        "- x: horizontal position of the subject center as a fraction "
-        "(0.0 = left edge, 0.5 = center, 1.0 = right edge)\n"
-        "- y: vertical position of the subject center as a fraction "
-        "(0.0 = top edge, 0.5 = center, 1.0 = bottom edge)\n"
-        "- confidence: how confident you are (0.0-1.0) that this is the right focal point\n"
-        "- description: brief description of what the subject is "
-        '(e.g. "speaker\'s face", "product close-up")\n\n'
-        "Also identify scene changes (cuts, transitions) with their timestamps.\n\n"
-        "IMPORTANT RULES:\n"
-        "- Sample at LEAST every 1 second; more frequently during action or movement\n"
-        "- Always include t=0 and the final frame\n"
-        "- x values matter most for 16:9 -> 9:16 reframing (horizontal positioning)\n"
-        "- When multiple subjects are present, pick the one currently active "
-        "(speaking, moving, in focus)\n"
-        "- For wide establishing shots with no clear subject, use x=0.5 (center)\n"
-        "- Be precise: a face at the left-third of frame is x~0.33, not x~0.5"
-    )
+def _gcs_ref_url(project: Optional["Project"]) -> str | None:
+    """Return GCS reference image URL if available, else None."""
+    url = project.reference_image_url if project else None
+    return url if url and url.startswith("gs://") else None
 
 
 class AIService:
     def __init__(self, storage_svc=None, firestore_svc=None):
         self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
         self.location = os.getenv("GEMINI_REGION", "global")
-
         self.storage_svc = storage_svc
         self.firestore_svc = firestore_svc
-
-        # Client for Text and Image
         self.client = genai.Client(
-            vertexai=True, project=self.project_id, location=self.location
+            vertexai=True,
+            project=self.project_id,
+            location=self.location,
         )
+
+    # ------------------------------------------------------------------
+    # Brief analysis (production planning)
+    # ------------------------------------------------------------------
 
     async def analyze_brief(
         self,
@@ -90,10 +60,487 @@ class AIService:
         project_type: Optional[str] = None,
         project: Optional[Project] = None,
     ) -> AIResponseWrapper:
-        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3-pro-preview")
+        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3.1-pro-preview")
+        prompt = self._resolve_brief_prompt(
+            concept,
+            length,
+            orientation,
+            prompt_id,
+            project_type,
+            project,
+        )
+        schema = self._resolve_schema(
+            schema_id, "project-analysis", "production-schema"
+        )
 
-        # 1. Resolve Prompt
-        system_prompt_text = """Act as a professional film director and scriptwriter.
+        contents = self._build_brief_contents(project, prompt)
+        response = self.client.models.generate_content(
+            model=model_id,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=schema,
+            ),
+        )
+        scenes, global_style, continuity = _parse_scenes(response.parsed)
+        usage = compute_usage(response, model_id)
+        return AIResponseWrapper(
+            data={
+                "scenes": scenes,
+                "global_style": global_style,
+                "continuity": continuity,
+                "analysis_prompt": prompt,
+            },
+            usage=usage,
+        )
+
+    def _resolve_brief_prompt(
+        self, concept, length, orientation, prompt_id, project_type, project
+    ) -> str:
+        """Resolve and format the brief analysis prompt."""
+        template = self._lookup_brief_template(prompt_id, project_type)
+        ref_note = (
+            "A reference image is attached above — use it as a visual style guide."
+            if _gcs_ref_url(project)
+            else ""
+        )
+        return template.format_map(
+            defaultdict(
+                str,
+                length=length,
+                orientation=orientation,
+                concept=concept,
+                ref_images=ref_note,
+            )
+        )
+
+    def _lookup_brief_template(self, prompt_id, project_type) -> str:
+        """Resolve template: explicit ID > category > default. No nesting."""
+        if not self.firestore_svc:
+            return _DEFAULT_BRIEF_PROMPT
+        if prompt_id:
+            return (
+                resolve_resource(self.firestore_svc, prompt_id) or _DEFAULT_BRIEF_PROMPT
+            )
+        category = _CATEGORY_MAP.get(project_type, "production-ad")
+        return (
+            resolve_resource(self.firestore_svc, "", "prompt", category)
+            or _DEFAULT_BRIEF_PROMPT
+        )
+
+    def _build_brief_contents(self, project, prompt) -> list:
+        ref = _gcs_ref_url(project)
+        if not ref:
+            return [prompt]
+        return [types.Part.from_uri(file_uri=ref, mime_type="image/png"), prompt]
+
+    def _resolve_schema(self, schema_id, category, default_name) -> dict:
+        """Resolve JSON schema from Firestore or load default."""
+        import json
+
+        if self.firestore_svc:
+            content = resolve_resource(
+                self.firestore_svc, schema_id or "", "schema", category
+            )
+            if content:
+                return json.loads(content)
+        return load_schema(default_name)
+
+    # ------------------------------------------------------------------
+    # Scene prompt building
+    # ------------------------------------------------------------------
+
+    def _build_scene_prompt(
+        self,
+        scene: Scene,
+        project: Optional[Project],
+        orientation: Optional[str] = None,
+    ) -> str:
+        parts = []
+        if orientation:
+            parts.append(f"Aspect ratio: {orientation}.")
+        if project and project.global_style:
+            gs = project.global_style
+            parts.append(
+                f"Style: {gs.look}. Mood: {gs.mood}. Colors: {gs.color_grading}. Lighting: {gs.lighting_style}."
+            )
+        if project and project.continuity and project.continuity.characters:
+            chars = [
+                f"{c.id}: {c.description}, wearing {c.wardrobe}"
+                for c in project.continuity.characters
+            ]
+            parts.append(f"Characters: {'; '.join(chars)}.")
+        if project and project.continuity and project.continuity.setting_notes:
+            parts.append(f"Setting: {project.continuity.setting_notes}.")
+        parts.append(scene.visual_description)
+        return " ".join(parts)
+
+    # ------------------------------------------------------------------
+    # Frame / image generation
+    # ------------------------------------------------------------------
+
+    async def generate_frame(
+        self,
+        project_id: str,
+        scene: Scene,
+        orientation: str,
+        project: Optional[Project] = None,
+        prompt_override: Optional[str] = None,
+    ) -> AIResponseWrapper:
+        model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
+        prompt = prompt_override or self._build_scene_prompt(
+            scene, project, orientation
+        )
+        contents = self._build_image_contents(project, prompt)
+
+        response = await gemini_call_with_retry(
+            self.client,
+            model_id,
+            contents,
+            types.GenerateContentConfig(
+                response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(aspect_ratio=orientation),
+            ),
+        )
+        url = extract_image_from_response(
+            response, self.storage_svc, f"generated/{project_id}"
+        )
+        return AIResponseWrapper(
+            data={"image_url": url, "generated_prompt": prompt},
+            usage=image_generation_usage(model_id),
+        )
+
+    def _build_image_contents(self, project, prompt) -> list:
+        ref = _gcs_ref_url(project)
+        if not ref:
+            return [prompt]
+        return [
+            types.Part.from_uri(file_uri=ref, mime_type="image/png"),
+            f"Use the above reference image as a style guide. {prompt}",
+        ]
+
+    # ------------------------------------------------------------------
+    # Video analysis methods
+    # ------------------------------------------------------------------
+
+    async def analyze_video_key_moments(
+        self,
+        gcs_uri: str,
+        mime_type: str,
+        prompt_id: str,
+        schema_id: Optional[str] = None,
+    ) -> AIResponseWrapper:
+        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3.1-pro-preview")
+        prompt = self._require_prompt(prompt_id)
+        schema = self._resolve_schema(schema_id, "key-moments", "key-moments-schema")
+        return await self._analyze_video(model_id, gcs_uri, mime_type, prompt, schema)
+
+    async def analyze_video_for_thumbnails(
+        self, gcs_uri: str, mime_type: str, prompt_id: str
+    ) -> AIResponseWrapper:
+        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3.1-pro-preview")
+        prompt = self._require_prompt(prompt_id)
+        schema = load_schema("thumbnail-analysis-schema")
+        return await self._analyze_video(model_id, gcs_uri, mime_type, prompt, schema)
+
+    async def analyze_video_focal_points(
+        self,
+        gcs_uri: str,
+        mime_type: str = "video/mp4",
+        prompt_id: str = "",
+        content_type: str = "other",
+        chirp_context: str = "",
+    ) -> AIResponseWrapper:
+        from reframe_strategies import resolve_prompt
+
+        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3.1-pro-preview")
+        prompt_text, prompt_variables = None, {}
+        if prompt_id and self.firestore_svc:
+            content = resolve_resource(self.firestore_svc, prompt_id)
+            if content:
+                prompt_text = content
+        if not prompt_text:
+            prompt_text, prompt_variables = resolve_prompt(content_type)
+        if chirp_context:
+            prompt_text = chirp_context + "\n\n" + prompt_text
+
+        schema = load_schema("reframe-focal-points-schema")
+        contents = [
+            types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type),
+            prompt_text,
+        ]
+        response = await gemini_call_with_retry(
+            self.client,
+            model_id,
+            contents,
+            types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=schema,
+                max_output_tokens=65536,
+            ),
+        )
+        data = (
+            response.parsed
+            if isinstance(response.parsed, dict)
+            else {"focal_points": [], "scene_changes": []}
+        )
+        data["prompt_variables"] = prompt_variables
+        data["prompt_text_used"] = prompt_text
+        return AIResponseWrapper(data=data, usage=compute_usage(response, model_id))
+
+    async def analyze_video_scenes(
+        self,
+        gcs_uri: str,
+        mime_type: str = "video/mp4",
+        content_type: str = "other",
+        chirp_context: str = "",
+    ) -> AIResponseWrapper:
+        """Analyze video for scene-based reframing (used with MediaPipe).
+
+        Returns scenes with active_subject hints instead of x,y coordinates.
+        """
+        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3.1-pro-preview")
+        prompt_text = _SCENE_ANALYSIS_PROMPT
+        prompt_variables = {"mode": "scene-based", "content_type": content_type}
+        if chirp_context:
+            prompt_text = chirp_context + "\n\n" + prompt_text
+
+        schema = load_schema("reframe-scenes-schema")
+        contents = [
+            types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type),
+            prompt_text,
+        ]
+        response = await gemini_call_with_retry(
+            self.client,
+            model_id,
+            contents,
+            types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=schema,
+                max_output_tokens=65536,
+            ),
+        )
+        data = response.parsed if isinstance(response.parsed, dict) else {"scenes": []}
+        data["prompt_variables"] = prompt_variables
+        data["prompt_text_used"] = prompt_text
+        return AIResponseWrapper(data=data, usage=compute_usage(response, model_id))
+
+    async def analyze_video_for_promo(
+        self,
+        gcs_uri: str,
+        mime_type: str = "video/mp4",
+        target_duration: int = 60,
+        prompt_id: str = "",
+    ) -> AIResponseWrapper:
+        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3.1-pro-preview")
+        prompt = self._resolve_promo_prompt(prompt_id, target_duration)
+        schema = load_schema("promo-segments-schema")
+        return await self._analyze_video(model_id, gcs_uri, mime_type, prompt, schema)
+
+    # ------------------------------------------------------------------
+    # Collage / overlay generation
+    # ------------------------------------------------------------------
+
+    async def generate_thumbnail_collage(
+        self, screenshot_uris: list[str], prompt_id: str
+    ) -> AIResponseWrapper:
+        model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
+        prompt = self._require_prompt(prompt_id)
+        contents = [
+            types.Part.from_uri(file_uri=uri, mime_type="image/png")
+            for uri in screenshot_uris
+        ]
+        contents.append(prompt)
+        response = await gemini_call_with_retry(
+            self.client,
+            model_id,
+            contents,
+            types.GenerateContentConfig(
+                response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(aspect_ratio="16:9"),
+            ),
+        )
+        url = extract_image_from_response(response, self.storage_svc, "thumbnails")
+        return AIResponseWrapper(
+            data={"thumbnail_url": url}, usage=image_generation_usage(model_id)
+        )
+
+    async def generate_promo_collage(
+        self,
+        screenshot_uris: list[str],
+        segments: list[dict] | None = None,
+        orientation: str = "16:9",
+    ) -> AIResponseWrapper:
+        model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
+        prompt = _build_collage_prompt(segments)
+        contents = [
+            types.Part.from_uri(file_uri=uri, mime_type="image/png")
+            for uri in screenshot_uris
+        ]
+        contents.append(prompt)
+        response = await gemini_call_with_retry(
+            self.client,
+            model_id,
+            contents,
+            types.GenerateContentConfig(
+                response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(aspect_ratio=orientation),
+            ),
+        )
+        url = extract_image_from_response(
+            response, self.storage_svc, "promos/thumbnails"
+        )
+        return AIResponseWrapper(
+            data={"image_url": url}, usage=image_generation_usage(model_id)
+        )
+
+    async def generate_text_overlay(
+        self, text: str, orientation: str = "16:9"
+    ) -> AIResponseWrapper:
+        model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
+        prompt = (
+            "Create a lower-third text overlay graphic for a professional video promo. "
+            f"The text reads: '{text.upper()}'. "
+            "Style: bold white cinematic text with a subtle dark gradient at the bottom third. "
+            "Top two-thirds should be completely black. Professional broadcast quality."
+        )
+        response = await gemini_call_with_retry(
+            self.client,
+            model_id,
+            [prompt],
+            types.GenerateContentConfig(
+                response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(aspect_ratio=orientation),
+            ),
+        )
+        url = extract_image_from_response(response, self.storage_svc, "promos/overlays")
+        return AIResponseWrapper(
+            data={"image_url": url}, usage=image_generation_usage(model_id)
+        )
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _require_prompt(self, prompt_id: str) -> str:
+        """Load a prompt from Firestore, raising if not found."""
+        if not self.firestore_svc:
+            raise ValueError("Firestore service not available")
+        res = self.firestore_svc.get_resource(prompt_id)
+        if not res:
+            raise ValueError(f"Prompt resource not found: {prompt_id}")
+        return res.content
+
+    async def _analyze_video(
+        self,
+        model_id: str,
+        gcs_uri: str,
+        mime_type: str,
+        prompt: str,
+        schema: dict,
+    ) -> AIResponseWrapper:
+        """Common pattern: video + prompt → structured JSON response."""
+        contents = [types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type), prompt]
+        response = await gemini_call_with_retry(
+            self.client,
+            model_id,
+            contents,
+            types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=schema,
+                max_output_tokens=65536,
+            ),
+        )
+        data = response.parsed if isinstance(response.parsed, dict) else {}
+        return AIResponseWrapper(data=data, usage=compute_usage(response, model_id))
+
+    def _resolve_promo_prompt(self, prompt_id: str, target_duration: int) -> str:
+        """Resolve promo prompt with variable substitution."""
+        content = (
+            resolve_resource(self.firestore_svc, prompt_id, "prompt", "promo")
+            if self.firestore_svc
+            else None
+        )
+        if content:
+            return content.replace("{target_duration}", str(target_duration))
+        return _default_promo_prompt(target_duration)
+
+
+# ------------------------------------------------------------------
+# Module-level helpers
+# ------------------------------------------------------------------
+
+
+def _parse_scenes(data) -> tuple:
+    """Parse Gemini response into Scene objects."""
+    global_style = continuity = None
+    if isinstance(data, dict):
+        global_style = data.get("global_style")
+        continuity = data.get("continuity")
+        data = data.get("scenes", data)
+    if not isinstance(data, list):
+        return [], None, None
+
+    scenes = []
+    for s in data:
+        metadata = s.get("metadata", {})
+        if "character" in metadata and isinstance(metadata["character"], str):
+            metadata["characters"] = [metadata.pop("character")]
+        scenes.append(
+            Scene(
+                visual_description=s["visual_description"],
+                timestamp_start=s["timestamp_start"],
+                timestamp_end=s["timestamp_end"],
+                metadata=SceneMetadata(**metadata),
+                narration=s.get("narration"),
+                narration_enabled=bool(s.get("narration")),
+                music_description=s.get("music_description"),
+                music_enabled=bool(s.get("music_description")),
+                enter_transition=s.get("enter_transition"),
+                exit_transition=s.get("exit_transition"),
+                music_transition=s.get("music_transition"),
+            )
+        )
+    return scenes, global_style, continuity
+
+
+def _build_collage_prompt(segments: list[dict] | None) -> str:
+    """Build prompt for promo collage with optional moment context."""
+    base = (
+        "Create a stylized collage thumbnail from these video screenshots. "
+        "Arrange in a dynamic layout — NOT a simple grid. "
+        "Include a close-up crop of a person's face. "
+        "Cinematic styling: color grading, dramatic lighting, subtle vignette. "
+        "Infer a short, punchy title and render as bold text. "
+        "Style: professional broadcast quality, like ESPN or Netflix promos."
+    )
+    if not segments:
+        return base
+    lines = [
+        f"- {s.get('title', '')}: {s.get('description', '')}"
+        for s in segments
+        if s.get("title")
+    ]
+    if lines:
+        base += (
+            "\n\nKey moments:\n"
+            + "\n".join(lines)
+            + "\n\nUse these to create a relevant title.\n"
+        )
+    return base
+
+
+def _default_promo_prompt(target_duration: int) -> str:
+    return (
+        f"You are a professional video editor creating a {target_duration}-second "
+        "promo/highlight reel. Select compelling moments. "
+        f"Total duration ≈ {target_duration}s. Each segment 3-15s. "
+        "Return segments in chronological order with title, description, "
+        "timestamp_start, timestamp_end, relevance_score."
+    )
+
+
+_DEFAULT_BRIEF_PROMPT = """Act as a professional film director and scriptwriter.
 Break the following creative brief into a scene-by-scene cinematic script.
 Total length: {length} seconds.
 Each scene must be between 2 and 8 seconds.
@@ -114,607 +561,26 @@ Creative Brief: {concept}
 
 Return a JSON list of scenes following the requested structure."""
 
-        if self.firestore_svc:
-            fs = self.firestore_svc
-            if prompt_id:
-                res = fs.get_resource(prompt_id)
-                if res:
-                    system_prompt_text = res.content
-            else:
-                type_to_category = {
-                    "movie": "production-movie",
-                    "advertizement": "production-ad",
-                    "social": "production-social",
-                }
-                category = type_to_category.get(project_type or "", "production-ad")
-                res = fs.get_active_resource("prompt", category)
-                if res:
-                    system_prompt_text = res.content
-
-        # Safe substitution: missing placeholders resolve to empty string
-        ref_url = project.reference_image_url if project else None
-        ref_images_note = (
-            "A reference image is attached above — use it as a visual style guide."
-            if ref_url and ref_url.startswith("gs://")
-            else ""
-        )
-        prompt = system_prompt_text.format_map(
-            defaultdict(
-                str,
-                length=length,
-                orientation=orientation,
-                concept=concept,
-                ref_images=ref_images_note,
-            )
-        )
-
-        # 2. Resolve Schema
-        response_schema = _load_default_schema()
-
-        if self.firestore_svc:
-            fs = self.firestore_svc
-            if schema_id:
-                res = fs.get_resource(schema_id)
-                if res:
-                    response_schema = json.loads(res.content)
-            else:
-                res = fs.get_active_resource("schema", "project-analysis")
-                if res:
-                    response_schema = json.loads(res.content)
-
-        # Build multimodal content: optional reference image + text prompt
-        contents = []
-        if ref_url and ref_url.startswith("gs://"):
-            contents.append(
-                types.Part.from_uri(file_uri=ref_url, mime_type="image/png")
-            )
-        contents.append(prompt)
-
-        response = self.client.models.generate_content(
-            model=model_id,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json", response_schema=response_schema
-            ),
-        )
-
-        scenes_data = response.parsed
-        global_style = None
-        continuity = None
-
-        if isinstance(scenes_data, dict):
-            global_style = scenes_data.get("global_style")
-            continuity = scenes_data.get("continuity")
-            scenes_data = scenes_data.get("scenes", scenes_data)
-
-        if not isinstance(scenes_data, list):
-            scenes_data = []
-
-        scenes = []
-        for s in scenes_data:
-            metadata = s.get("metadata", {})
-            # Handle legacy 'character' field by migrating to 'characters' list
-            if "character" in metadata and isinstance(metadata["character"], str):
-                metadata["characters"] = [metadata.pop("character")]
-
-            scenes.append(
-                Scene(
-                    visual_description=s["visual_description"],
-                    timestamp_start=s["timestamp_start"],
-                    timestamp_end=s["timestamp_end"],
-                    metadata=SceneMetadata(**metadata),
-                    narration=s.get("narration"),
-                    narration_enabled=bool(s.get("narration")),
-                    music_description=s.get("music_description"),
-                    music_enabled=bool(s.get("music_description")),
-                    enter_transition=s.get("enter_transition"),
-                    exit_transition=s.get("exit_transition"),
-                    music_transition=s.get("music_transition"),
-                )
-            )
-
-        usage = UsageMetrics(
-            input_tokens=response.usage_metadata.prompt_token_count,
-            output_tokens=response.usage_metadata.candidates_token_count,
-            model_name=model_id,
-            cost_usd=(response.usage_metadata.prompt_token_count * 0.000002)
-            + (response.usage_metadata.candidates_token_count * 0.000012),
-        )
-
-        return AIResponseWrapper(
-            data={
-                "scenes": scenes,
-                "global_style": global_style,
-                "continuity": continuity,
-                "analysis_prompt": prompt,
-            },
-            usage=usage,
-        )
-
-    def _build_scene_prompt(
-        self,
-        scene: Scene,
-        project: Optional[Project],
-        orientation: Optional[str] = None,
-    ) -> str:
-        """Build a rich prompt with production context for image generation."""
-        parts = []
-        if orientation == "9:16":
-            parts.append("Aspect ratio: 9:16 (portrait/vertical).")
-        elif orientation == "16:9":
-            parts.append("Aspect ratio: 16:9 (landscape/horizontal).")
-        elif orientation:
-            parts.append(f"Aspect ratio: {orientation}.")
-        if project and project.global_style:
-            gs = project.global_style
-            parts.append(
-                f"Style: {gs.look}. Mood: {gs.mood}. "
-                f"Colors: {gs.color_grading}. Lighting: {gs.lighting_style}."
-            )
-        if project and project.continuity and project.continuity.characters:
-            char_descs = []
-            for c in project.continuity.characters:
-                char_descs.append(f"{c.id}: {c.description}, wearing {c.wardrobe}")
-            parts.append(f"Characters: {'; '.join(char_descs)}.")
-        if project and project.continuity and project.continuity.setting_notes:
-            parts.append(f"Setting: {project.continuity.setting_notes}.")
-        parts.append(scene.visual_description)
-        return " ".join(parts)
-
-    async def generate_frame(
-        self,
-        project_id: str,
-        scene: Scene,
-        orientation: str,
-        project: Optional[Project] = None,
-        prompt_override: Optional[str] = None,
-    ) -> AIResponseWrapper:
-        model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
-
-        enriched_prompt = prompt_override or self._build_scene_prompt(
-            scene, project, orientation=orientation
-        )
-
-        # Build multimodal content: text prompt + optional reference image
-        contents = []
-        if project and project.reference_image_url:
-            ref_url = project.reference_image_url
-            if ref_url.startswith("gs://"):
-                contents.append(
-                    types.Part.from_uri(file_uri=ref_url, mime_type="image/png")
-                )
-            contents.append(
-                f"Use the above reference image as a style guide. {enriched_prompt}"
-            )
-        else:
-            contents.append(enriched_prompt)
-
-        response = await gemini_call_with_retry(
-            self.client,
-            model_id,
-            contents,
-            types.GenerateContentConfig(
-                response_modalities=["IMAGE"],
-                image_config=types.ImageConfig(
-                    aspect_ratio=orientation,
-                ),
-            ),
-        )
-
-        image_url = None
-
-        if response.candidates and response.candidates[0].content.parts:
-            for part in response.candidates[0].content.parts:
-                if hasattr(part, "inline_data") and part.inline_data:
-                    if self.storage_svc:
-                        dest = f"generated/{project_id}/{uuid.uuid4()}.png"
-                        image_url = self.storage_svc.upload_bytes(
-                            part.inline_data.data, dest
-                        )
-                    break
-
-        if not image_url:
-            raise ValueError("Frame generation produced no image")
-
-        usage = UsageMetrics(model_name=model_id, cost_usd=0.134)
-        return AIResponseWrapper(
-            data={"image_url": image_url, "generated_prompt": enriched_prompt},
-            usage=usage,
-        )
-
-    async def analyze_video_key_moments(
-        self,
-        gcs_uri: str,
-        mime_type: str,
-        prompt_id: str,
-        schema_id: Optional[str] = None,
-    ) -> AIResponseWrapper:
-        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3-pro-preview")
-
-        # 1. Resolve Prompt (required)
-        if not self.firestore_svc:
-            raise ValueError("Firestore service not available")
-        res = self.firestore_svc.get_resource(prompt_id)
-        if not res:
-            raise ValueError(f"Prompt resource not found: {prompt_id}")
-        prompt_text = res.content
-
-        # 2. Resolve Schema
-        response_schema = _load_key_moments_schema()
-        if schema_id:
-            res = self.firestore_svc.get_resource(schema_id)
-            if res:
-                response_schema = json.loads(res.content)
-        else:
-            res = self.firestore_svc.get_active_resource("schema", "key-moments")
-            if res:
-                response_schema = json.loads(res.content)
-
-        # 3. Build multimodal content
-        contents = [
-            types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type),
-            prompt_text,
-        ]
-
-        # 4. Call Gemini
-        response = self.client.models.generate_content(
-            model=model_id,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=response_schema,
-            ),
-        )
-
-        data = response.parsed
-        if not isinstance(data, dict):
-            data = {"key_moments": [], "video_summary": ""}
-
-        usage = UsageMetrics(
-            input_tokens=response.usage_metadata.prompt_token_count,
-            output_tokens=response.usage_metadata.candidates_token_count,
-            model_name=model_id,
-            cost_usd=(response.usage_metadata.prompt_token_count * 0.000002)
-            + (response.usage_metadata.candidates_token_count * 0.000012),
-        )
-
-        return AIResponseWrapper(data=data, usage=usage)
-
-    async def analyze_video_for_thumbnails(
-        self,
-        gcs_uri: str,
-        mime_type: str,
-        prompt_id: str,
-    ) -> AIResponseWrapper:
-        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3-pro-preview")
-
-        if not self.firestore_svc:
-            raise ValueError("Firestore service not available")
-        res = self.firestore_svc.get_resource(prompt_id)
-        if not res:
-            raise ValueError(f"Prompt resource not found: {prompt_id}")
-        prompt_text = res.content
-
-        response_schema = _load_thumbnail_schema()
-
-        contents = [
-            types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type),
-            prompt_text,
-        ]
-
-        response = self.client.models.generate_content(
-            model=model_id,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=response_schema,
-            ),
-        )
-
-        data = response.parsed
-        if not isinstance(data, dict):
-            data = {"key_moments": [], "video_summary": ""}
-
-        usage = UsageMetrics(
-            input_tokens=response.usage_metadata.prompt_token_count,
-            output_tokens=response.usage_metadata.candidates_token_count,
-            model_name=model_id,
-            cost_usd=(response.usage_metadata.prompt_token_count * 0.000002)
-            + (response.usage_metadata.candidates_token_count * 0.000012),
-        )
-
-        return AIResponseWrapper(data=data, usage=usage)
-
-    async def generate_thumbnail_collage(
-        self,
-        screenshot_uris: list[str],
-        prompt_id: str,
-    ) -> AIResponseWrapper:
-        model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
-
-        if not self.firestore_svc:
-            raise ValueError("Firestore service not available")
-        res = self.firestore_svc.get_resource(prompt_id)
-        if not res:
-            raise ValueError(f"Prompt resource not found: {prompt_id}")
-        prompt_text = res.content
-
-        contents = []
-        for uri in screenshot_uris:
-            contents.append(types.Part.from_uri(file_uri=uri, mime_type="image/png"))
-        contents.append(prompt_text)
-
-        response = await gemini_call_with_retry(
-            self.client,
-            model_id,
-            contents,
-            types.GenerateContentConfig(
-                response_modalities=["IMAGE"],
-                image_config=types.ImageConfig(
-                    aspect_ratio="16:9",
-                ),
-            ),
-        )
-
-        image_url = None
-        if response.candidates and response.candidates[0].content.parts:
-            for part in response.candidates[0].content.parts:
-                if hasattr(part, "inline_data") and part.inline_data:
-                    if self.storage_svc:
-                        dest = f"thumbnails/{uuid.uuid4()}.png"
-                        image_url = self.storage_svc.upload_bytes(
-                            part.inline_data.data, dest
-                        )
-                    break
-
-        if not image_url:
-            raise ValueError("Collage generation produced no image")
-
-        usage = UsageMetrics(model_name=model_id, cost_usd=0.134)
-        return AIResponseWrapper(data={"thumbnail_url": image_url}, usage=usage)
-
-    async def analyze_video_focal_points(
-        self,
-        gcs_uri: str,
-        mime_type: str = "video/mp4",
-        prompt_id: str = "",
-    ) -> AIResponseWrapper:
-        """Analyze video to extract focal points for smart reframing."""
-        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3-pro-preview")
-
-        # Load prompt from Firestore, or fall back to active reframe prompt, or default
-        prompt_text = None
-        if prompt_id and self.firestore_svc:
-            res = self.firestore_svc.get_resource(prompt_id)
-            if res:
-                prompt_text = res.content
-        if not prompt_text and self.firestore_svc:
-            res = self.firestore_svc.get_active_resource("prompt", "orientation")
-            if res:
-                prompt_text = res.content
-        if not prompt_text:
-            prompt_text = _default_reframe_prompt()
-
-        response_schema = _load_reframe_focal_points_schema()
-
-        contents = [
-            types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type),
-            prompt_text,
-        ]
-
-        response = await gemini_call_with_retry(
-            self.client,
-            model_id,
-            contents,
-            types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=response_schema,
-                max_output_tokens=65536,
-            ),
-        )
-
-        data = response.parsed
-        if not isinstance(data, dict):
-            data = {"focal_points": [], "scene_changes": []}
-
-        usage = UsageMetrics(
-            input_tokens=response.usage_metadata.prompt_token_count,
-            output_tokens=response.usage_metadata.candidates_token_count,
-            model_name=model_id,
-            cost_usd=(response.usage_metadata.prompt_token_count * 0.000002)
-            + (response.usage_metadata.candidates_token_count * 0.000012),
-        )
-
-        return AIResponseWrapper(data=data, usage=usage)
-
-    async def analyze_video_for_promo(
-        self,
-        gcs_uri: str,
-        mime_type: str = "video/mp4",
-        target_duration: int = 60,
-        prompt_id: str = "",
-    ) -> AIResponseWrapper:
-        """Analyze video and select best moments for a promo/highlight reel."""
-        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3-pro-preview")
-
-        prompt_text = None
-        if prompt_id and self.firestore_svc:
-            res = self.firestore_svc.get_resource(prompt_id)
-            if res:
-                prompt_text = res.content
-        if not prompt_text and self.firestore_svc:
-            res = self.firestore_svc.get_active_resource("prompt", "promo")
-            if res:
-                prompt_text = res.content
-        # Substitute variables in custom prompts (e.g. {target_duration})
-        if prompt_text:
-            prompt_text = prompt_text.replace("{target_duration}", str(target_duration))
-        if not prompt_text:
-            prompt_text = (
-                f"You are a professional video editor creating a {target_duration}-second "
-                "promo/highlight reel from this video.\n\n"
-                "Select the most compelling and visually interesting moments. "
-                "The total duration of all segments combined should be approximately "
-                f"{target_duration} seconds.\n\n"
-                "For each segment, provide:\n"
-                "- title: short title for this moment\n"
-                "- description: why this moment is compelling\n"
-                "- timestamp_start: start time (MM:SS or HH:MM:SS)\n"
-                "- timestamp_end: end time (MM:SS or HH:MM:SS)\n"
-                "- relevance_score: 0.0-1.0 how impactful this moment is\n\n"
-                "RULES:\n"
-                "- Return segments in chronological order\n"
-                "- Each segment should be 3-15 seconds long\n"
-                "- Prefer punchy, impactful moments over slow ones\n"
-                f"- Total combined duration should be close to {target_duration} seconds\n"
-                "- Pick diverse moments from different parts of the video\n"
-                "- Ensure clean cut points — start/end on scene transitions or natural pauses"
-            )
-
-        response_schema = _load_promo_segments_schema()
-
-        contents = [
-            types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type),
-            prompt_text,
-        ]
-
-        response = await gemini_call_with_retry(
-            self.client,
-            model_id,
-            contents,
-            types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=response_schema,
-                max_output_tokens=65536,
-            ),
-        )
-
-        data = response.parsed
-        if not isinstance(data, dict):
-            data = {"segments": []}
-
-        usage = UsageMetrics(
-            input_tokens=response.usage_metadata.prompt_token_count,
-            output_tokens=response.usage_metadata.candidates_token_count,
-            model_name=model_id,
-            cost_usd=(response.usage_metadata.prompt_token_count * 0.000002)
-            + (response.usage_metadata.candidates_token_count * 0.000012),
-        )
-
-        return AIResponseWrapper(data=data, usage=usage)
-
-    async def generate_promo_collage(
-        self,
-        screenshot_uris: list[str],
-        segments: list[dict] | None = None,
-        orientation: str = "16:9",
-    ) -> AIResponseWrapper:
-        """Generate a stylized collage title card from key moment frames."""
-        model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
-
-        # Build context from key moments metadata
-        moments_ctx = ""
-        if segments:
-            moment_lines = []
-            for s in segments:
-                title = s.get("title", "")
-                desc = s.get("description", "")
-                if title:
-                    moment_lines.append(f"- {title}: {desc}" if desc else f"- {title}")
-            if moment_lines:
-                moments_ctx = (
-                    "\n\nKey moments from this video:\n"
-                    + "\n".join(moment_lines)
-                    + "\n\nUse these details to create a relevant, punchy title.\n"
-                )
-
-        prompt = (
-            "Create a stylized collage thumbnail from these video screenshots. "
-            "Arrange the images in a dynamic layout with different proportions — "
-            "NOT a simple grid. One image should be a close-up crop of a person's "
-            "face or upper body to add human connection. "
-            "Use cinematic styling: slight color grading, dramatic lighting, subtle vignette. "
-            "Infer a short, punchy title from the content of the screenshots "
-            "and the key moments context below, then render it as bold, highly "
-            "legible text on the collage. "
-            "Style: professional broadcast quality, like ESPN or Netflix promos. "
-            "The collage should feel energetic and highlight the best moments."
-            + moments_ctx
-        )
-
-        contents: list = []
-        for uri in screenshot_uris:
-            contents.append(types.Part.from_uri(file_uri=uri, mime_type="image/png"))
-        contents.append(prompt)
-
-        response = await gemini_call_with_retry(
-            self.client,
-            model_id,
-            contents,
-            types.GenerateContentConfig(
-                response_modalities=["IMAGE"],
-                image_config=types.ImageConfig(aspect_ratio=orientation),
-            ),
-        )
-
-        image_url = None
-        if response.candidates and response.candidates[0].content.parts:
-            for part in response.candidates[0].content.parts:
-                if hasattr(part, "inline_data") and part.inline_data:
-                    if self.storage_svc:
-                        dest = f"promos/thumbnails/{uuid.uuid4()}.png"
-                        image_url = self.storage_svc.upload_bytes(
-                            part.inline_data.data, dest
-                        )
-                    break
-
-        if not image_url:
-            raise ValueError("Collage generation produced no image")
-
-        usage = UsageMetrics(model_name=model_id, cost_usd=0.134)
-        return AIResponseWrapper(data={"image_url": image_url}, usage=usage)
-
-    async def generate_text_overlay(
-        self,
-        text: str,
-        orientation: str = "16:9",
-    ) -> AIResponseWrapper:
-        """Generate a styled text overlay image for compositing on video."""
-        model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
-
-        prompt = (
-            "Create a lower-third text overlay graphic for a professional video promo. "
-            f"The text reads: '{text.upper()}'. "
-            "Style: bold white cinematic text with a subtle dark gradient "
-            "at the bottom third of the image. "
-            "The top two-thirds should be completely black/dark (will be overlaid on video). "
-            "Text should be large, bold, and centered horizontally in the lower third. "
-            "Professional broadcast quality — like ESPN, Sky Sports, or Netflix promos."
-        )
-
-        response = await gemini_call_with_retry(
-            self.client,
-            model_id,
-            [prompt],
-            types.GenerateContentConfig(
-                response_modalities=["IMAGE"],
-                image_config=types.ImageConfig(aspect_ratio=orientation),
-            ),
-        )
-
-        image_url = None
-        if response.candidates and response.candidates[0].content.parts:
-            for part in response.candidates[0].content.parts:
-                if hasattr(part, "inline_data") and part.inline_data:
-                    if self.storage_svc:
-                        dest = f"promos/overlays/{uuid.uuid4()}.png"
-                        image_url = self.storage_svc.upload_bytes(
-                            part.inline_data.data, dest
-                        )
-                    break
-
-        if not image_url:
-            raise ValueError("Text overlay generation produced no image")
-
-        usage = UsageMetrics(model_name=model_id, cost_usd=0.134)
-        return AIResponseWrapper(data={"image_url": image_url}, usage=usage)
+_SCENE_ANALYSIS_PROMPT = """You are analyzing this video for smart reframing from 16:9 to 9:16 (portrait).
+
+Your job is to identify SCENES and WHO to focus on in each scene.
+
+FACE TRACK DATA may be provided above — it tells you exactly which faces were detected and their typical horizontal positions (left/center/right). Use the track labels (Track A, Track B, etc.) in your active_subject field when available.
+
+For each scene, provide:
+- start_sec and end_sec (timestamps)
+- description: what's happening
+- active_subject: WHO to focus on. Use one of:
+  * A track label: "Track A", "Track B" (preferred when tracks are provided)
+  * A spatial hint: "left", "right", "center"
+  * "largest" for the most prominent person
+- scene_type: one of "dialogue", "action", "close-up", "establishing", "wide", "general"
+
+RULES:
+- Cover the entire video with no gaps between scenes
+- Scene boundaries should be at camera cuts or significant subject changes
+- For dialogue: alternate between the speaking person's track per scene
+- For close-ups: use "center" (the face fills the frame)
+- For wide/establishing shots: use "center"
+- For action: use "largest" to track the most prominent moving subject
+- Include t=0 to the final frame"""

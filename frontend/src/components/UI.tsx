@@ -169,7 +169,7 @@ export const Select = ({
                       opt.className
                     )}
                   >
-                    <div className="flex flex-col">
+                    <div className="flex flex-col items-start text-left">
                       <span>{opt.label}</span>
                       {opt.description && (
                         <span className="text-[10px] text-muted-foreground group-hover:text-slate-900/70">

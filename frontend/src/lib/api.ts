@@ -523,7 +523,7 @@ export const api = {
       if (!res.ok) throw new Error(`Failed to get reframe record: ${res.status}`)
       return res.json()
     },
-    create: async (data: { gcs_uri: string; source_filename?: string; mime_type?: string; prompt_id?: string; blurred_bg?: boolean; sports_mode?: boolean }): Promise<any> => {
+    create: async (data: { gcs_uri: string; source_filename?: string; mime_type?: string; prompt_id?: string; content_type?: string; blurred_bg?: boolean; sports_mode?: boolean; vertical_split?: boolean }): Promise<any> => {
       const res = await authFetch(`${API_BASE_URL}/reframe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
