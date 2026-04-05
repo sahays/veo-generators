@@ -1,6 +1,12 @@
 # Orientation / Reframe Architecture
 
-Intelligent landscape-to-portrait video reframing using a multi-stage pipeline that combines face detection (MediaPipe), scene understanding (Gemini), speaker diarization (Chirp 3), and smooth path synthesis to produce natural-looking cropped output via FFmpeg.
+## Why does this exist?
+
+Landscape (16:9) video dominates traditional production — TV, cinema, YouTube. But mobile-first platforms (Instagram Reels, TikTok, YouTube Shorts) require portrait (9:16) or square formats. Manually re-editing every video for every platform is expensive and slow.
+
+Naive center-cropping loses the subject entirely when they're off-center. A human editor watches the video, decides where to look in each scene, and smoothly pans the crop window to follow the action. This pipeline automates that editorial judgment by combining computer vision (where are the faces?), AI scene understanding (who matters in this scene?), and signal processing (how do we move the camera smoothly?).
+
+The result: a landscape video goes in, a portrait video comes out with the right subject in frame at every moment — no manual editing required.
 
 ---
 
@@ -68,6 +74,42 @@ Intelligent landscape-to-portrait video reframing using a multi-stage pipeline t
 
 ---
 
+## Why each step matters
+
+### 1. Download & Probe
+
+Extracts video dimensions, frame rate, duration, and audio presence via `ffprobe`. Every downstream decision depends on knowing the source geometry — crop width is calculated from source height, chunk boundaries depend on duration, and audio presence determines whether audio streams are carried through. Without accurate probing, the pipeline would produce wrong-sized output or silently drop audio.
+
+### 2. Speaker Diarization (Chirp 3)
+
+Identifies *who is speaking when* by transcribing the audio and tagging speaker turns. This is critical because the right person to follow in a scene is usually the one talking. Without diarization, the pipeline would have to guess which face matters based on position alone — fine for single-subject content, but wrong for interviews, panels, and news segments where multiple people are visible but only one is speaking. The diarization context is passed to Gemini so it can make informed decisions about which subject to track in each scene.
+
+### 3. Face Detection & Tracking (MediaPipe)
+
+Scans the video at 0.5 fps to find every face and assigns persistent track IDs across frames by matching positions. This gives the pipeline *ground truth coordinates* — it knows exactly where each person is in pixel space at each moment. Gemini can understand scenes semantically ("the interviewer is on the left") but it can't give precise pixel positions. MediaPipe provides the coordinates that Gemini's semantic hints will be mapped onto.
+
+### 4. Scene Analysis (Gemini)
+
+Watches the full video with diarization and track context, then returns scene boundaries with `active_subject` hints (e.g. "Track A", "left", "center"). This is the editorial brain — it understands narrative context, shot composition, and who matters in each scene. MediaPipe knows *where* faces are; Gemini knows *which* face to follow and *when* to switch. Without Gemini, the pipeline would track the largest face or the center of all faces — adequate for simple content, but wrong for anything with editorial intent.
+
+### 5. Merge Scenes + Tracks
+
+Maps Gemini's semantic hints ("Track A", "left speaker") to MediaPipe's concrete pixel coordinates, producing focal points with `(time, x, y)`. This is where the two detection systems converge: Gemini's understanding of *who* becomes MediaPipe's knowledge of *where*. The output is a sparse timeline of "look here at this moment" instructions — the raw material for smooth camera movement.
+
+### 6. Smooth Focal Path
+
+Raw focal points jump between positions — playing them directly would produce nauseating pans. This step applies Catmull-Rom spline interpolation for natural curves, velocity limiting to prevent impossibly fast pans (tuned per content type — 0.10 for podcasts, 0.50 for sports), and deadzone suppression to eliminate micro-jitter. It also resets interpolation at scene boundaries so smooth pans never cross hard cuts. The output is keypoints at ~1 second intervals that describe a physically plausible camera movement.
+
+### 7. FFmpeg Crop & Scale
+
+Compiles the smooth keypoints into FFmpeg filter expressions — piecewise-linear `x(t)` functions nested as `if(lt(t,t1), lerp1, if(lt(t,t2), lerp2, ...))`. This is where the abstract "look here" path becomes actual pixel manipulation. Long videos are split into chunks (max 80 keypoints each) and processed in parallel across CPU cores, then concatenated. The output is a cropped, scaled MP4 in the target aspect ratio.
+
+### 8. Transcode (Cloud Transcoder)
+
+Encodes the intermediate MP4 into delivery-ready formats via Google Cloud Transcoder. FFmpeg's output is optimized for speed, not delivery — Transcoder produces properly bitrate-controlled, streaming-ready output suitable for web playback. This separation keeps the pipeline fast (FFmpeg does the geometry) while ensuring quality output (Transcoder handles compression).
+
+---
+
 ## Processing Modes
 
 | Mode | Output | Description |
@@ -123,7 +165,7 @@ Each content type tunes the pipeline's behavior:
 | File | Role |
 |------|------|
 | `frontend/src/components/pages/ReframeWorkPage.tsx` | Create jobs, poll status, display results |
-| `frontend/src/components/pages/ReframeOutputPage.tsx` | Pipeline diagnostics — prompt, chirp, gemini, mediapipe tabs |
+| `frontend/src/components/pages/ReframeOutputPage.tsx` | Pipeline diagnostics — mediapipe, prompt, gemini, focal points tabs |
 | `frontend/src/lib/api.ts` | HTTP client (`api.reframe.*`) |
 
 ---
