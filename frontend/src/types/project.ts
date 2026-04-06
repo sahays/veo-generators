@@ -246,6 +246,40 @@ export interface CompletedProductionSource {
   createdAt: string
 }
 
+export interface AdaptVariant {
+  aspect_ratio: string
+  status: 'pending' | 'generating' | 'completed' | 'failed'
+  output_gcs_uri?: string
+  output_signed_url?: string
+  prompt_text_used?: string
+  error_message?: string
+}
+
+export interface AdaptRecord {
+  id: string
+  source_gcs_uri: string
+  source_filename: string
+  source_mime_type: string
+  display_name: string
+  template_gcs_uri?: string
+  preset_bundle: string
+  variants: AdaptVariant[]
+  status: string
+  error_message?: string
+  progress_pct: number
+  usage: UsageMetrics
+  source_signed_url?: string
+  template_signed_url?: string
+  archived: boolean
+  createdAt: string
+  completedAt?: string
+}
+
+export interface PresetBundle {
+  name: string
+  ratios: string[]
+}
+
 export type SelectCategory =
   | 'directorStyle'
   | 'cameraMovement'

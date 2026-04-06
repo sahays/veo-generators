@@ -242,17 +242,18 @@ def _interpolate_keypoint(
     t: float,
 ) -> Tuple[float, float, float]:
     """Linearly interpolate x,y at time t between surrounding keypoints."""
+    import bisect
+
     if t <= keypoints[0][0]:
         return keypoints[0]
     if t >= keypoints[-1][0]:
         return keypoints[-1]
-    for i in range(len(keypoints) - 1):
-        t0, x0, y0 = keypoints[i]
-        t1, x1, y1 = keypoints[i + 1]
-        if t0 <= t <= t1:
-            frac = (t - t0) / (t1 - t0) if t1 != t0 else 0
-            return (t, x0 + (x1 - x0) * frac, y0 + (y1 - y0) * frac)
-    return keypoints[-1]
+    times = [kp[0] for kp in keypoints]
+    i = min(bisect.bisect_right(times, t) - 1, len(keypoints) - 2)
+    t0, x0, y0 = keypoints[i]
+    t1, x1, y1 = keypoints[i + 1]
+    frac = (t - t0) / (t1 - t0) if t1 != t0 else 0
+    return (t, x0 + (x1 - x0) * frac, y0 + (y1 - y0) * frac)
 
 
 def _split_keypoints_into_chunks(

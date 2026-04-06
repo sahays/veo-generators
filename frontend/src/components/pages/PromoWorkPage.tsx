@@ -1,17 +1,18 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  Scissors, Loader2, ArrowLeft, Download, RotateCcw, Pencil, Check,
+  Scissors, Loader2, ArrowLeft, Download, RotateCcw,
 } from 'lucide-react'
 import { Button, AnchorHeading } from '@/components/Common'
 import { api } from '@/lib/api'
-import { cn, getTimeAgo } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/useAuthStore'
 import { usePolling } from '@/hooks/usePolling'
 import { VideoSourceSelector } from '@/components/shared/VideoSourceSelector'
 import { PromptSelector } from '@/components/shared/PromptSelector'
 import { ProgressBar } from '@/components/shared/ProgressBar'
 import { ErrorDisplay } from '@/components/shared/ErrorDisplay'
+import { WorkPageHeader } from '@/components/shared/WorkPageHeader'
 import type { UploadItem, ProductionItem } from '@/components/shared/VideoSourceSelector'
 import type { SystemResource } from '@/types/project'
 
@@ -64,10 +65,6 @@ export const PromoWorkPage = () => {
   // Options
   const [textOverlay, setTextOverlay] = useState(false)
   const [generateThumbnail, setGenerateThumbnail] = useState(false)
-
-  // Name editing
-  const [isEditingName, setIsEditingName] = useState(false)
-  const [editName, setEditName] = useState('')
 
   // Processing state
   const [submitting, setSubmitting] = useState(false)
@@ -168,66 +165,40 @@ export const PromoWorkPage = () => {
 
     if (!record) return null
 
-    const statusCfg = STATUS_CONFIG[record.status] || STATUS_CONFIG.pending
     const isProcessing = ACTIVE_STATUSES.includes(record.status)
 
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <button onClick={() => navigate('/promos')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-            <ArrowLeft size={16} /> Back to Promos
-          </button>
-          <span className="text-xs text-muted-foreground">{getTimeAgo(record.createdAt)}</span>
-        </div>
-
-        <div className="space-y-2">
-          {isEditingName ? (
-            <form className="flex items-center gap-2" onSubmit={async (e) => {
-              e.preventDefault()
-              await api.promo.update(record.id, { display_name: editName })
-              record.display_name = editName
-              setIsEditingName(false)
-            }}>
-              <input autoFocus value={editName} onChange={(e) => setEditName(e.target.value)}
-                className="text-lg font-heading font-bold text-foreground bg-muted px-2 py-0.5 rounded border border-border focus:outline-none focus:ring-1 focus:ring-accent" />
-              <button type="submit" className="text-accent hover:text-accent-dark"><Check size={16} /></button>
-            </form>
-          ) : (
-            <button className="flex items-center gap-2 text-lg font-heading font-bold text-foreground hover:text-accent-dark transition-colors"
-              onClick={() => { setEditName(record.display_name || record.source_filename || 'Promo'); setIsEditingName(true) }}>
-              {record.display_name || record.source_filename || 'Promo'}
-              <Pencil size={12} className="text-muted-foreground" />
-            </button>
+        <WorkPageHeader
+          backPath="/promos"
+          backLabel="Back to Promos"
+          record={record}
+          defaultName="Promo"
+          onSaveName={(name) => api.promo.update(record.id, { display_name: name })}
+          statusConfig={STATUS_CONFIG}
+          activeStatuses={ACTIVE_STATUSES}
+        >
+          {record.target_duration && (
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-slate-500/10 text-slate-600 border border-slate-500/20">
+              {record.target_duration}s target
+            </span>
           )}
-          <div className="flex items-center gap-2">
-            <span className={cn("text-sm font-medium", statusCfg.color)}>{statusCfg.label}</span>
-            {isProcessing && (
-              <span className="text-xs text-muted-foreground">({record.progress_pct}%)</span>
-            )}
-          </div>
-          <div className="flex items-center gap-1.5">
-            {record.target_duration && (
-              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-slate-500/10 text-slate-600 border border-slate-500/20">
-                {record.target_duration}s target
-              </span>
-            )}
-            {record.generate_thumbnail && (
-              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">
-                Thumbnail
-              </span>
-            )}
-            {record.text_overlay && (
-              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-600 border border-purple-500/20">
-                Text Overlays
-              </span>
-            )}
-            {record.prompt_name && (
-              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-600 border border-amber-500/20">
-                {record.prompt_name}
-              </span>
-            )}
-          </div>
-        </div>
+          {record.generate_thumbnail && (
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">
+              Thumbnail
+            </span>
+          )}
+          {record.text_overlay && (
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-600 border border-purple-500/20">
+              Text Overlays
+            </span>
+          )}
+          {record.prompt_name && (
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-600 border border-amber-500/20">
+              {record.prompt_name}
+            </span>
+          )}
+        </WorkPageHeader>
 
         {isProcessing && <ProgressBar progress={record.progress_pct} />}
 

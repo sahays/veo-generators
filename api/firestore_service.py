@@ -12,6 +12,7 @@ from models import (
     InviteCode,
     ReframeRecord,
     PromoRecord,
+    AdaptRecord,
 )
 
 
@@ -29,12 +30,37 @@ class FirestoreService:
         self.invite_codes_collection = self.db.collection(f"{prefix}_invite_codes")
         self.reframe_collection = self.db.collection(f"{prefix}_reframes")
         self.promo_collection = self.db.collection(f"{prefix}_promos")
+        self.adapts_collection = self.db.collection(f"{prefix}_adapts")
+
+    # --- Generic CRUD helpers ---
+
+    def _get_records(self, collection, model_cls, include_archived=False):
+        docs = collection.stream()
+        records = [model_cls(**doc.to_dict()) for doc in docs]
+        records.sort(key=lambda r: r.createdAt or "", reverse=True)
+        if not include_archived:
+            records = [r for r in records if not getattr(r, "archived", False)]
+        return records
+
+    def _get_record(self, collection, model_cls, record_id):
+        doc = collection.document(record_id).get()
+        if doc.exists:
+            return model_cls(**doc.to_dict())
+        return None
+
+    def _create_record(self, collection, record):
+        collection.document(record.id).set(record.dict())
+
+    def _update_record(self, collection, record_id, updates):
+        collection.document(record_id).update(updates)
+
+    def _delete_record(self, collection, record_id):
+        collection.document(record_id).delete()
 
     def _all_resources(self) -> List[SystemResource]:
-        docs = self.resources_collection.stream()
-        resources = [SystemResource(**doc.to_dict()) for doc in docs]
-        resources.sort(key=lambda r: r.createdAt or "", reverse=True)
-        return resources
+        return self._get_records(
+            self.resources_collection, SystemResource, include_archived=True
+        )
 
     def list_resources(
         self, resource_type: Optional[str] = None, category: Optional[str] = None
@@ -47,10 +73,7 @@ class FirestoreService:
         return resources
 
     def get_resource(self, resource_id: str) -> Optional[SystemResource]:
-        doc = self.resources_collection.document(resource_id).get()
-        if doc.exists:
-            return SystemResource(**doc.to_dict())
-        return None
+        return self._get_record(self.resources_collection, SystemResource, resource_id)
 
     def get_active_resource(
         self, resource_type: str, category: str
@@ -62,7 +85,7 @@ class FirestoreService:
         return None
 
     def create_resource(self, resource: SystemResource):
-        self.resources_collection.document(resource.id).set(resource.dict())
+        self._create_record(self.resources_collection, resource)
 
     def set_resource_active(self, resource_id: str):
         resource = self.get_resource(resource_id)
@@ -87,30 +110,22 @@ class FirestoreService:
         batch.commit()
 
     def get_productions(self, include_archived: bool = False) -> List[Project]:
-        docs = self.collection.stream()
-        productions = [Project(**doc.to_dict()) for doc in docs]
-        productions.sort(key=lambda p: p.createdAt or "", reverse=True)
-        if not include_archived:
-            productions = [p for p in productions if not p.archived]
-        return productions
+        return self._get_records(self.collection, Project, include_archived)
 
     def get_production(self, production_id: str) -> Optional[Project]:
-        doc = self.collection.document(production_id).get()
-        if doc.exists:
-            return Project(**doc.to_dict())
-        return None
+        return self._get_record(self.collection, Project, production_id)
 
     def create_production(self, production: Project):
-        self.collection.document(production.id).set(production.dict())
+        self._create_record(self.collection, production)
 
     def update_production(self, production_id: str, updates: dict):
         updates["updatedAt"] = datetime.utcnow()
         if "status" in updates and isinstance(updates["status"], ProjectStatus):
             updates["status"] = updates["status"].value
-        self.collection.document(production_id).update(updates)
+        self._update_record(self.collection, production_id, updates)
 
     def delete_production(self, production_id: str):
-        self.collection.document(production_id).delete()
+        self._delete_record(self.collection, production_id)
 
     def update_scene(self, production_id: str, scene_id: str, updates: dict):
         production = self.get_production(production_id)
@@ -133,103 +148,96 @@ class FirestoreService:
     def get_key_moments_analyses(
         self, include_archived: bool = False
     ) -> List[KeyMomentsRecord]:
-        docs = self.key_moments_collection.stream()
-        records = [KeyMomentsRecord(**doc.to_dict()) for doc in docs]
-        records.sort(key=lambda r: r.createdAt or "", reverse=True)
-        if not include_archived:
-            records = [r for r in records if not r.archived]
-        return records
+        return self._get_records(
+            self.key_moments_collection, KeyMomentsRecord, include_archived
+        )
 
     def get_key_moments_analysis(self, record_id: str) -> Optional[KeyMomentsRecord]:
-        doc = self.key_moments_collection.document(record_id).get()
-        if doc.exists:
-            return KeyMomentsRecord(**doc.to_dict())
-        return None
+        return self._get_record(
+            self.key_moments_collection, KeyMomentsRecord, record_id
+        )
 
     def create_key_moments_analysis(self, record: KeyMomentsRecord):
-        self.key_moments_collection.document(record.id).set(record.dict())
+        self._create_record(self.key_moments_collection, record)
 
     def delete_key_moments_analysis(self, record_id: str):
-        self.key_moments_collection.document(record_id).delete()
+        self._delete_record(self.key_moments_collection, record_id)
 
     # --- Thumbnails ---
 
     def get_thumbnail_records(
         self, include_archived: bool = False
     ) -> List[ThumbnailRecord]:
-        docs = self.thumbnails_collection.stream()
-        records = [ThumbnailRecord(**doc.to_dict()) for doc in docs]
-        records.sort(key=lambda r: r.createdAt or "", reverse=True)
-        if not include_archived:
-            records = [r for r in records if not r.archived]
-        return records
+        return self._get_records(
+            self.thumbnails_collection, ThumbnailRecord, include_archived
+        )
 
     def get_thumbnail_record(self, record_id: str) -> Optional[ThumbnailRecord]:
-        doc = self.thumbnails_collection.document(record_id).get()
-        if doc.exists:
-            return ThumbnailRecord(**doc.to_dict())
-        return None
+        return self._get_record(self.thumbnails_collection, ThumbnailRecord, record_id)
 
     def create_thumbnail_record(self, record: ThumbnailRecord):
-        self.thumbnails_collection.document(record.id).set(record.dict())
+        self._create_record(self.thumbnails_collection, record)
 
     def update_thumbnail_record(self, record_id: str, updates: dict):
-        self.thumbnails_collection.document(record_id).update(updates)
+        self._update_record(self.thumbnails_collection, record_id, updates)
 
     def delete_thumbnail_record(self, record_id: str):
-        self.thumbnails_collection.document(record_id).delete()
+        self._delete_record(self.thumbnails_collection, record_id)
 
     # --- Reframes ---
 
     def get_reframe_records(
         self, include_archived: bool = False
     ) -> List[ReframeRecord]:
-        docs = self.reframe_collection.stream()
-        records = [ReframeRecord(**doc.to_dict()) for doc in docs]
-        records.sort(key=lambda r: r.createdAt or "", reverse=True)
-        if not include_archived:
-            records = [r for r in records if not r.archived]
-        return records
+        return self._get_records(
+            self.reframe_collection, ReframeRecord, include_archived
+        )
 
     def get_reframe_record(self, record_id: str) -> Optional[ReframeRecord]:
-        doc = self.reframe_collection.document(record_id).get()
-        if doc.exists:
-            return ReframeRecord(**doc.to_dict())
-        return None
+        return self._get_record(self.reframe_collection, ReframeRecord, record_id)
 
     def create_reframe_record(self, record: ReframeRecord):
-        self.reframe_collection.document(record.id).set(record.dict())
+        self._create_record(self.reframe_collection, record)
 
     def update_reframe_record(self, record_id: str, updates: dict):
-        self.reframe_collection.document(record_id).update(updates)
+        self._update_record(self.reframe_collection, record_id, updates)
 
     def delete_reframe_record(self, record_id: str):
-        self.reframe_collection.document(record_id).delete()
+        self._delete_record(self.reframe_collection, record_id)
 
     # --- Promos ---
 
     def get_promo_records(self, include_archived: bool = False) -> List[PromoRecord]:
-        docs = self.promo_collection.stream()
-        records = [PromoRecord(**doc.to_dict()) for doc in docs]
-        records.sort(key=lambda r: r.createdAt or "", reverse=True)
-        if not include_archived:
-            records = [r for r in records if not r.archived]
-        return records
+        return self._get_records(self.promo_collection, PromoRecord, include_archived)
 
     def get_promo_record(self, record_id: str) -> Optional[PromoRecord]:
-        doc = self.promo_collection.document(record_id).get()
-        if doc.exists:
-            return PromoRecord(**doc.to_dict())
-        return None
+        return self._get_record(self.promo_collection, PromoRecord, record_id)
 
     def create_promo_record(self, record: PromoRecord):
-        self.promo_collection.document(record.id).set(record.dict())
+        self._create_record(self.promo_collection, record)
 
     def update_promo_record(self, record_id: str, updates: dict):
-        self.promo_collection.document(record_id).update(updates)
+        self._update_record(self.promo_collection, record_id, updates)
 
     def delete_promo_record(self, record_id: str):
-        self.promo_collection.document(record_id).delete()
+        self._delete_record(self.promo_collection, record_id)
+
+    # --- Adapts ---
+
+    def get_adapt_records(self, include_archived: bool = False) -> List[AdaptRecord]:
+        return self._get_records(self.adapts_collection, AdaptRecord, include_archived)
+
+    def get_adapt_record(self, record_id: str) -> Optional[AdaptRecord]:
+        return self._get_record(self.adapts_collection, AdaptRecord, record_id)
+
+    def create_adapt_record(self, record: AdaptRecord):
+        self._create_record(self.adapts_collection, record)
+
+    def update_adapt_record(self, record_id: str, updates: dict):
+        self._update_record(self.adapts_collection, record_id, updates)
+
+    def delete_adapt_record(self, record_id: str):
+        self._delete_record(self.adapts_collection, record_id)
 
     # --- Uploads ---
 
@@ -239,11 +247,9 @@ class FirestoreService:
         file_type: Optional[str] = None,
         include_pending: bool = False,
     ) -> List[UploadRecord]:
-        docs = self.uploads_collection.stream()
-        records = [UploadRecord(**doc.to_dict()) for doc in docs]
-        records.sort(key=lambda r: r.createdAt or "", reverse=True)
-        if not include_archived:
-            records = [r for r in records if not r.archived]
+        records = self._get_records(
+            self.uploads_collection, UploadRecord, include_archived
+        )
         if not include_pending:
             records = [r for r in records if r.status != "pending"]
         if file_type:
@@ -251,33 +257,26 @@ class FirestoreService:
         return records
 
     def get_upload_record(self, record_id: str) -> Optional[UploadRecord]:
-        doc = self.uploads_collection.document(record_id).get()
-        if doc.exists:
-            return UploadRecord(**doc.to_dict())
-        return None
+        return self._get_record(self.uploads_collection, UploadRecord, record_id)
 
     def create_upload_record(self, record: UploadRecord):
-        self.uploads_collection.document(record.id).set(record.dict())
+        self._create_record(self.uploads_collection, record)
 
     def update_upload_record(self, record_id: str, updates: dict):
-        self.uploads_collection.document(record_id).update(updates)
+        self._update_record(self.uploads_collection, record_id, updates)
 
     def delete_upload_record(self, record_id: str):
-        self.uploads_collection.document(record_id).delete()
+        self._delete_record(self.uploads_collection, record_id)
 
     # --- Invite Codes ---
 
     def get_invite_codes(self) -> List[InviteCode]:
-        docs = self.invite_codes_collection.stream()
-        codes = [InviteCode(**doc.to_dict()) for doc in docs]
-        codes.sort(key=lambda c: c.createdAt or "", reverse=True)
-        return codes
+        return self._get_records(
+            self.invite_codes_collection, InviteCode, include_archived=True
+        )
 
     def get_invite_code(self, code_id: str) -> Optional[InviteCode]:
-        doc = self.invite_codes_collection.document(code_id).get()
-        if doc.exists:
-            return InviteCode(**doc.to_dict())
-        return None
+        return self._get_record(self.invite_codes_collection, InviteCode, code_id)
 
     def get_invite_code_by_value(self, code_str: str) -> Optional[InviteCode]:
         from google.cloud.firestore_v1.base_query import FieldFilter
@@ -290,10 +289,10 @@ class FirestoreService:
         return None
 
     def create_invite_code(self, invite_code: InviteCode):
-        self.invite_codes_collection.document(invite_code.id).set(invite_code.dict())
+        self._create_record(self.invite_codes_collection, invite_code)
 
     def update_invite_code(self, code_id: str, updates: dict):
-        self.invite_codes_collection.document(code_id).update(updates)
+        self._update_record(self.invite_codes_collection, code_id, updates)
 
     def delete_invite_code(self, code_id: str):
-        self.invite_codes_collection.document(code_id).delete()
+        self._delete_record(self.invite_codes_collection, code_id)

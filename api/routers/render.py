@@ -27,6 +27,182 @@ async def _poll_veo_operation(operation_name: str, timeout: int = 600) -> dict:
     return {"status": "failed", "error": "Operation timed out"}
 
 
+async def _generate_scene_frame(production_id: str, scene, production):
+    """Generate a frame/image for a single scene. Returns True on success."""
+    if scene.thumbnail_url and scene.thumbnail_url.startswith("gs://"):
+        return True
+
+    deps.firestore_svc.update_scene(
+        production_id, scene.id, {"status": "generating_frame"}
+    )
+    try:
+        frame_result = await deps.ai_svc.generate_frame(
+            production_id,
+            scene,
+            production.orientation,
+            project=production,
+        )
+        gcs_uri = frame_result.data["image_url"]
+        scene_updates = {"thumbnail_url": gcs_uri}
+        if frame_result.data.get("generated_prompt"):
+            scene_updates["generated_prompt"] = frame_result.data["generated_prompt"]
+            scene_updates["image_prompt"] = frame_result.data["generated_prompt"]
+        deps.firestore_svc.update_scene(production_id, scene.id, scene_updates)
+        accumulate_image_cost(production_id, frame_result.usage.cost_usd)
+        # Update scene object for video step (needs thumbnail_url)
+        scene.thumbnail_url = gcs_uri
+        return True
+    except Exception as e:
+        logger.error(f"Frame generation failed for scene {scene.id}: {e}")
+        deps.firestore_svc.update_scene(
+            production_id,
+            scene.id,
+            {"status": "failed", "error_message": str(e)},
+        )
+        deps.firestore_svc.update_production(
+            production_id,
+            {
+                "status": ProjectStatus.FAILED,
+                "error_message": f"Frame gen failed for {scene.id}: {e}",
+            },
+        )
+        return False
+
+
+async def _generate_scene_video(production_id: str, scene, production):
+    """Kick off video generation for a single scene. Returns the result dict or None on failure."""
+    deps.firestore_svc.update_scene(production_id, scene.id, {"status": "generating"})
+    try:
+        result = await deps.video_svc.generate_scene_video(
+            production_id, scene, blocking=False, project=production
+        )
+    except Exception as e:
+        logger.error(f"Video generation failed for scene {scene.id}: {e}")
+        deps.firestore_svc.update_scene(
+            production_id,
+            scene.id,
+            {"status": "failed", "error_message": str(e)},
+        )
+        deps.firestore_svc.update_production(
+            production_id,
+            {
+                "status": ProjectStatus.FAILED,
+                "error_message": f"Video gen failed for {scene.id}: {e}",
+            },
+        )
+        return None
+
+    if not isinstance(result, dict):
+        return result
+
+    # Save operation name and prompt
+    scene_updates = {}
+    if result.get("operation_name"):
+        scene_updates["operation_name"] = result["operation_name"]
+    if result.get("generated_prompt"):
+        scene_updates["generated_prompt"] = result["generated_prompt"]
+        scene_updates["video_prompt"] = result["generated_prompt"]
+    if scene_updates:
+        deps.firestore_svc.update_scene(production_id, scene.id, scene_updates)
+
+    return result
+
+
+async def _poll_scene_video(production_id: str, scene):
+    """Poll a scene's Veo operation until complete. Returns True on success."""
+    op_name = getattr(scene, "_pending_op", None)
+    if not op_name:
+        return True
+
+    veo_status = await _poll_veo_operation(op_name)
+    if veo_status.get("status") == "completed" and veo_status.get("video_uri"):
+        deps.firestore_svc.update_scene(
+            production_id,
+            scene.id,
+            {"status": "completed", "video_url": veo_status["video_uri"]},
+        )
+        # Track Veo cost
+        try:
+            veo_start = parse_timestamp(scene.timestamp_start)
+            veo_end = parse_timestamp(scene.timestamp_end)
+            veo_duration = max(4, min(8, int(veo_end - veo_start)))
+        except (ValueError, IndexError):
+            veo_duration = 8
+        accumulate_veo_cost(production_id, veo_duration, VEO_COST_PER_SECOND)
+        return True
+    else:
+        error_msg = veo_status.get("error") or veo_status.get(
+            "message", "Video generation failed"
+        )
+        logger.error(f"Veo failed for scene {scene.id}: {error_msg}")
+        deps.firestore_svc.update_scene(
+            production_id,
+            scene.id,
+            {"status": "failed", "error_message": str(error_msg)},
+        )
+        deps.firestore_svc.update_production(
+            production_id,
+            {
+                "status": ProjectStatus.FAILED,
+                "error_message": f"Video failed for {scene.id}: {error_msg}",
+            },
+        )
+        return False
+
+
+async def _stitch_production(production_id: str, production):
+    """Stitch all scene videos into a final video and poll until done."""
+    scene_uris = []
+    for scene in production.scenes:
+        if not scene.video_url or not scene.video_url.startswith("gs://"):
+            logger.error(f"Scene {scene.id} missing video after render loop")
+            deps.firestore_svc.update_production(
+                production_id,
+                {
+                    "status": ProjectStatus.FAILED,
+                    "error_message": f"Scene {scene.id} missing video",
+                },
+            )
+            return
+
+    scene_uris = [s.video_url for s in production.scenes]
+
+    if not deps.transcoder_svc:
+        logger.error("Transcoder service not available")
+        return
+
+    deps.firestore_svc.update_production(
+        production_id, {"status": ProjectStatus.STITCHING}
+    )
+    job_name, final_uri = deps.transcoder_svc.stitch_from_uris(
+        production_id, scene_uris, orientation=production.orientation
+    )
+    deps.firestore_svc.update_production(
+        production_id,
+        {"stitch_job_name": job_name, "final_video_url": final_uri},
+    )
+
+    # Poll stitch job
+    while True:
+        await asyncio.sleep(10)
+        job_state = deps.transcoder_svc.get_job_status(job_name)
+        if job_state == "SUCCEEDED":
+            deps.firestore_svc.update_production(
+                production_id, {"status": ProjectStatus.COMPLETED}
+            )
+            logger.info(f"Production {production_id} completed successfully")
+            return
+        elif job_state in ("FAILED", "UNKNOWN"):
+            deps.firestore_svc.update_production(
+                production_id,
+                {
+                    "status": ProjectStatus.FAILED,
+                    "error_message": f"Transcoder job {job_state}",
+                },
+            )
+            return
+
+
 async def process_render(production_id: str):
     """Sequential state machine: frame -> video per scene, then stitch.
 
@@ -50,184 +226,29 @@ async def process_render(production_id: str):
                     )
                 continue
 
-            # --- Step 1: Generate frame (image) ---
-            if not scene.thumbnail_url or not scene.thumbnail_url.startswith("gs://"):
-                deps.firestore_svc.update_scene(
-                    production_id, scene.id, {"status": "generating_frame"}
-                )
-                try:
-                    frame_result = await deps.ai_svc.generate_frame(
-                        production_id,
-                        scene,
-                        production.orientation,
-                        project=production,
-                    )
-                    gcs_uri = frame_result.data["image_url"]
-                    scene_updates = {"thumbnail_url": gcs_uri}
-                    if frame_result.data.get("generated_prompt"):
-                        scene_updates["generated_prompt"] = frame_result.data[
-                            "generated_prompt"
-                        ]
-                        scene_updates["image_prompt"] = frame_result.data[
-                            "generated_prompt"
-                        ]
-                    deps.firestore_svc.update_scene(
-                        production_id, scene.id, scene_updates
-                    )
-                    accumulate_image_cost(production_id, frame_result.usage.cost_usd)
-                    # Update scene object for video step (needs thumbnail_url)
-                    scene.thumbnail_url = gcs_uri
-                except Exception as e:
-                    logger.error(f"Frame generation failed for scene {scene.id}: {e}")
-                    deps.firestore_svc.update_scene(
-                        production_id,
-                        scene.id,
-                        {"status": "failed", "error_message": str(e)},
-                    )
-                    deps.firestore_svc.update_production(
-                        production_id,
-                        {
-                            "status": ProjectStatus.FAILED,
-                            "error_message": f"Frame gen failed for {scene.id}: {e}",
-                        },
-                    )
-                    return
-
-            # --- Step 2: Generate video ---
-            deps.firestore_svc.update_scene(
-                production_id, scene.id, {"status": "generating"}
-            )
-            try:
-                result = await deps.video_svc.generate_scene_video(
-                    production_id, scene, blocking=False, project=production
-                )
-            except Exception as e:
-                logger.error(f"Video generation failed for scene {scene.id}: {e}")
-                deps.firestore_svc.update_scene(
-                    production_id,
-                    scene.id,
-                    {"status": "failed", "error_message": str(e)},
-                )
-                deps.firestore_svc.update_production(
-                    production_id,
-                    {
-                        "status": ProjectStatus.FAILED,
-                        "error_message": f"Video gen failed for {scene.id}: {e}",
-                    },
-                )
+            # Step 1: Generate frame (image)
+            if not await _generate_scene_frame(production_id, scene, production):
                 return
 
+            # Step 2: Generate video
+            result = await _generate_scene_video(production_id, scene, production)
+            if result is None:
+                return
             if not isinstance(result, dict):
                 continue
 
-            # Save operation name and prompt
-            scene_updates = {}
-            if result.get("operation_name"):
-                scene_updates["operation_name"] = result["operation_name"]
-            if result.get("generated_prompt"):
-                scene_updates["generated_prompt"] = result["generated_prompt"]
-                scene_updates["video_prompt"] = result["generated_prompt"]
-            if scene_updates:
-                deps.firestore_svc.update_scene(production_id, scene.id, scene_updates)
-
-            # Poll Veo operation to completion
+            # Step 3: Poll Veo operation to completion
             op_name = result.get("operation_name")
             if op_name:
-                veo_status = await _poll_veo_operation(op_name)
-                if veo_status.get("status") == "completed" and veo_status.get(
-                    "video_uri"
-                ):
-                    deps.firestore_svc.update_scene(
-                        production_id,
-                        scene.id,
-                        {
-                            "status": "completed",
-                            "video_url": veo_status["video_uri"],
-                        },
-                    )
-                    # Track Veo cost
-                    try:
-                        veo_start = parse_timestamp(scene.timestamp_start)
-                        veo_end = parse_timestamp(scene.timestamp_end)
-                        veo_duration = max(4, min(8, int(veo_end - veo_start)))
-                    except (ValueError, IndexError):
-                        veo_duration = 8
-                    accumulate_veo_cost(
-                        production_id, veo_duration, VEO_COST_PER_SECOND
-                    )
-                else:
-                    error_msg = veo_status.get("error") or veo_status.get(
-                        "message", "Video generation failed"
-                    )
-                    logger.error(f"Veo failed for scene {scene.id}: {error_msg}")
-                    deps.firestore_svc.update_scene(
-                        production_id,
-                        scene.id,
-                        {"status": "failed", "error_message": str(error_msg)},
-                    )
-                    deps.firestore_svc.update_production(
-                        production_id,
-                        {
-                            "status": ProjectStatus.FAILED,
-                            "error_message": f"Video failed for {scene.id}: {error_msg}",
-                        },
-                    )
+                scene._pending_op = op_name
+                if not await _poll_scene_video(production_id, scene):
                     return
 
-        # --- Step 3: Stitch ---
-        # Re-read production to get updated scene video URLs
+        # Step 4: Stitch all scenes
         production = deps.firestore_svc.get_production(production_id)
         if not production:
             return
-
-        scene_uris = []
-        for scene in production.scenes:
-            if not scene.video_url or not scene.video_url.startswith("gs://"):
-                logger.error(f"Scene {scene.id} missing video after render loop")
-                deps.firestore_svc.update_production(
-                    production_id,
-                    {
-                        "status": ProjectStatus.FAILED,
-                        "error_message": f"Scene {scene.id} missing video",
-                    },
-                )
-                return
-            scene_uris.append(scene.video_url)
-
-        if not deps.transcoder_svc:
-            logger.error("Transcoder service not available")
-            return
-
-        deps.firestore_svc.update_production(
-            production_id, {"status": ProjectStatus.STITCHING}
-        )
-        job_name, final_uri = deps.transcoder_svc.stitch_from_uris(
-            production_id, scene_uris, orientation=production.orientation
-        )
-        deps.firestore_svc.update_production(
-            production_id,
-            {"stitch_job_name": job_name, "final_video_url": final_uri},
-        )
-
-        # Poll stitch job
-        while True:
-            await asyncio.sleep(10)
-            job_state = deps.transcoder_svc.get_job_status(job_name)
-            if job_state == "SUCCEEDED":
-                deps.firestore_svc.update_production(
-                    production_id, {"status": ProjectStatus.COMPLETED}
-                )
-                logger.info(f"Production {production_id} completed successfully")
-                return
-            elif job_state in ("FAILED", "UNKNOWN"):
-                deps.firestore_svc.update_production(
-                    production_id,
-                    {
-                        "status": ProjectStatus.FAILED,
-                        "error_message": f"Transcoder job {job_state}",
-                    },
-                )
-                return
+        await _stitch_production(production_id, production)
 
     except Exception as e:
         logger.error(f"Render failed for {production_id}: {e}")

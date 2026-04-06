@@ -17,6 +17,9 @@ import { ReframeWorkPage } from './components/pages/ReframeWorkPage'
 import { ReframeOutputPage } from './components/pages/ReframeOutputPage'
 import { PromoLandingPage } from './components/pages/PromoLandingPage'
 import { PromoWorkPage } from './components/pages/PromoWorkPage'
+import { AdaptsLandingPage } from './components/pages/AdaptsLandingPage'
+import { AdaptsWorkPage } from './components/pages/AdaptsWorkPage'
+import { AdaptsOutputPage } from './components/pages/AdaptsOutputPage'
 import { UploadsPage } from './components/pages/UploadsPage'
 import { InviteCodesPage } from './components/pages/InviteCodesPage'
 import { InviteCodeGate } from './components/InviteCodeGate'
@@ -93,6 +96,13 @@ function App() {
               <Route path="/promos" element={<PromoLandingPage />} />
               <Route path="/promos/create" element={<PromoWorkPage />} />
               <Route path="/promos/:id" element={<PromoWorkPage />} />
+
+              {/* Adapts */}
+              <Route path="/adapts" element={<AdaptsLandingPage />} />
+              <Route path="/adapts/create" element={<AdaptsWorkPage />} />
+              <Route path="/adapts/:id" element={<AdaptsWorkPage />} />
+              <Route path="/adapts/:id/prompt" element={<AdaptsOutputPage />} />
+              <Route path="/adapts/:id/prompt/:variantIndex" element={<AdaptsOutputPage />} />
 
               {/* Uploads */}
               <Route path="/uploads" element={<UploadsPage />} />

@@ -108,13 +108,14 @@ class TestStandard916:
 
 
 class TestBlurredBg45:
-    """AI reframe → 4:5 crop + blurred bg → 1080×1350."""
+    """AI reframe → 4:5 content centered in 9:16 with blurred bg → 1080×1920."""
 
     def test_filter_for_all_sources(self):
         for name, (w, h) in SOURCES.items():
             kps = [(0.0, 0.5, 0.5), (10.0, 0.5, 0.5)]
             f = build_blurred_bg_filter(kps, w, h)
-            assert "1080:1350" in f, f"{name}: missing 1080:1350"
+            assert "1080:1920" in f, f"{name}: missing 1080:1920 bg"
+            assert "1080:1350" in f, f"{name}: missing 1080:1350 fg"
             assert "gblur" in f, f"{name}: missing blur"
 
     def test_crop_width_is_4_5_of_height(self):
@@ -161,7 +162,7 @@ class TestBlurredBg45:
                 deadzone=strategy["deadzone"],
             )
             f = build_blurred_bg_filter(kps, 1920, 1080)
-            assert "1080:1350" in f
+            assert "1080:1920" in f
             assert "overlay" in f
 
 
@@ -216,10 +217,9 @@ class TestTranscoderDimensions:
         assert out_h == 1920
 
     def test_blurred_bg_dimensions(self):
-        """blurred_bg=True → transcoder should use 1080×1350."""
-        blurred_bg = True
-        out_h = 1350 if blurred_bg else 1920
-        assert out_h == 1350
+        """blurred_bg=True → transcoder should also use 1080×1920 (9:16 with centered content)."""
+        out_h = 1920
+        assert out_h == 1920
 
 
 # ---------------------------------------------------------------------------

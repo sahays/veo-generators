@@ -616,6 +616,58 @@ export const api = {
       return res.json()
     },
   },
+  adapts: {
+    list: async (): Promise<any[]> => {
+      const res = await authFetch(`${API_BASE_URL}/adapts`)
+      if (!res.ok) throw new Error(`Failed to list adapts: ${res.status}`)
+      return res.json()
+    },
+    get: async (id: string): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/adapts/${id}`)
+      if (!res.ok) throw new Error(`Failed to get adapt: ${res.status}`)
+      return res.json()
+    },
+    create: async (data: { gcs_uri: string; source_filename?: string; source_mime_type?: string; template_gcs_uri?: string; preset_bundle?: string; aspect_ratios?: string[] }): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/adapts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error(`Adapt creation failed: ${res.status}`)
+      return res.json()
+    },
+    retry: async (id: string): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/adapts/${id}/retry`, { method: 'POST' })
+      if (!res.ok) throw new Error(`Failed to retry adapt: ${res.status}`)
+      return res.json()
+    },
+    update: async (id: string, data: { display_name?: string }): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/adapts/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error(`Failed to update adapt: ${res.status}`)
+    },
+    archive: async (id: string): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/adapts/${id}/archive`, { method: 'POST' })
+      if (!res.ok) throw new Error(`Failed to archive adapt: ${res.status}`)
+    },
+    delete: async (id: string): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/adapts/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`Failed to delete adapt: ${res.status}`)
+    },
+    listUploadSources: async (): Promise<any[]> => {
+      const res = await authFetch(`${API_BASE_URL}/adapts/sources/uploads`)
+      if (!res.ok) throw new Error(`Failed to list upload sources: ${res.status}`)
+      return res.json()
+    },
+    listPresets: async (): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/adapts/presets`)
+      if (!res.ok) throw new Error(`Failed to list presets: ${res.status}`)
+      return res.json()
+    },
+  },
   diagnostics: {
     optimizePrompt: async (data: any) => {
       const res = await authFetch(`${API_BASE_URL}/diagnostics/optimize-prompt`, {

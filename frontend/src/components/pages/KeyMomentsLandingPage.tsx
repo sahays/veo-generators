@@ -1,19 +1,11 @@
-import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Zap, Loader2, Clock, Tag, Archive, Upload, Film } from 'lucide-react'
+import { Zap, Clock, Tag, Archive, Upload, Film } from 'lucide-react'
 import { cn, getTimeAgo } from '@/lib/utils'
-import { Button } from '@/components/Common'
 import { api } from '@/lib/api'
-import { useNavigate } from 'react-router-dom'
-import { useAuthStore } from '@/store/useAuthStore'
+import { LandingPageShell } from '@/components/shared/LandingPageShell'
 import type { KeyMomentsRecord } from '@/types/project'
 
-const AnalysisCard = ({
-  record,
-  onClick,
-  onArchive,
-  showArchive,
-}: {
+const AnalysisCard = ({ record, onClick, onArchive, showArchive }: {
   record: KeyMomentsRecord
   onClick: () => void
   onArchive: (e: React.MouseEvent) => void
@@ -23,6 +15,7 @@ const AnalysisCard = ({
 
   return (
     <motion.button
+      key={record.id}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2 }}
@@ -86,73 +79,21 @@ const AnalysisCard = ({
   )
 }
 
-export const KeyMomentsLandingPage = () => {
-  const navigate = useNavigate()
-  const { isMaster } = useAuthStore()
-  const [records, setRecords] = useState<KeyMomentsRecord[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    api.keyMoments.list()
-      .then(setRecords)
-      .catch((err) => console.error('Failed to fetch key moments', err))
-      .finally(() => setLoading(false))
-  }, [])
-
-  const handleArchive = async (id: string) => {
-    try {
-      await api.keyMoments.archive(id)
-      setRecords(records.filter(r => r.id !== id))
-    } catch (err) {
-      console.error('Failed to archive analysis', err)
-    }
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <h2 className="text-xl font-heading text-foreground tracking-tight">Key Moments</h2>
-          <p className="text-xs text-muted-foreground">
-            {records.length} analysis{records.length !== 1 ? 'es' : ''}
-          </p>
-        </div>
-        {isMaster && <Button icon={Zap} onClick={() => navigate('/key-moments/analyze')}>Find Key Moments</Button>}
-      </div>
-
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-32 space-y-4">
-          <Loader2 className="animate-spin text-accent" size={32} />
-          <p className="text-sm text-muted-foreground">Loading analyses...</p>
-        </div>
-      ) : records.length === 0 ? (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="glass bg-card rounded-xl p-12 flex flex-col items-center justify-center text-center"
-        >
-          <div className="w-14 h-14 rounded-full bg-accent/20 text-accent-dark flex items-center justify-center mb-4">
-            <Zap size={28} />
-          </div>
-          <h4 className="text-base font-heading font-bold text-foreground mb-1">No analyses yet</h4>
-          <p className="text-sm text-muted-foreground max-w-xs mb-5">
-            Upload a video or select a production to discover key moments with AI.
-          </p>
-          {isMaster && <Button icon={Zap} onClick={() => navigate('/key-moments/analyze')}>Find Key Moments</Button>}
-        </motion.div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4">
-          {records.map((record) => (
-            <AnalysisCard
-              key={record.id}
-              record={record}
-              onClick={() => navigate(`/key-moments/${record.id}`)}
-              onArchive={(e) => { e.stopPropagation(); handleArchive(record.id) }}
-              showArchive={isMaster}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
+export const KeyMomentsLandingPage = () => (
+  <LandingPageShell<KeyMomentsRecord>
+    title="Key Moments"
+    subtitle={(count) => `${count} analysis${count !== 1 ? 'es' : ''}`}
+    icon={Zap}
+    fetchRecords={() => api.keyMoments.list()}
+    archiveRecord={(id) => api.keyMoments.archive(id)}
+    createPath="/key-moments/analyze"
+    detailPath="/key-moments"
+    buttonLabel="Find Key Moments"
+    gridClassName="grid grid-cols-1 gap-4"
+    renderCard={(record, onClick, onArchive, showArchive) => (
+      <AnalysisCard key={record.id} record={record} onClick={onClick} onArchive={onArchive} showArchive={showArchive} />
+    )}
+    emptyTitle="No analyses yet"
+    emptyDescription="Upload a video or select a production to discover key moments with AI."
+  />
+)

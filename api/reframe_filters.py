@@ -50,29 +50,35 @@ def build_blurred_bg_filter(
     src_w: int,
     src_h: int,
 ) -> str:
-    """Generate filter_complex for 4:5 blurred-background reframe (1080x1350 output)."""
-    out_w, out_h = 1080, 1350
+    """Generate filter_complex for 9:16 blurred-background reframe (1080x1920 output).
+
+    Content is cropped at 4:5, scaled to 1080x1350, and centered vertically
+    over a blurred full-frame background that fills 1080x1920.
+    """
+    out_w, out_h = 1080, 1920
+    fg_w, fg_h = 1080, 1350
+    y_offset = (out_h - fg_h) // 2  # 285
     crop_w = min(int(src_h * 4 / 5), src_w)
     max_x = src_w - crop_w
     bg = _blurred_bg_base(out_w, out_h)
 
     if max_x <= 0 or not keypoints:
-        return f"{bg};[0:v]scale={out_w}:{out_h}[fg];[bg][fg]overlay=0:0[v]"
+        return f"{bg};[0:v]scale={fg_w}:{fg_h}[fg];[bg][fg]overlay=0:{y_offset}[v]"
 
     pixel_kps = _to_pixel_keypoints(keypoints, src_w, crop_w, max_x)
     if len(pixel_kps) <= 1:
         x = pixel_kps[0][1] if pixel_kps else max(0, (src_w - crop_w) // 2)
         return (
             f"{bg};[0:v]crop={crop_w}:{src_h}:{x}:0,"
-            f"scale={out_w}:{out_h}[fg];[bg][fg]overlay=0:0[v]"
+            f"scale={fg_w}:{fg_h}[fg];[bg][fg]overlay=0:{y_offset}[v]"
         )
 
     x_expr = _build_piecewise_linear_expr(pixel_kps)
     return (
         f"{bg};"
         f"[0:v]crop={crop_w}:{src_h}:clip({x_expr}\\,0\\,{max_x}):0[cropped];"
-        f"[cropped]scale={out_w}:{out_h}[fg];"
-        f"[bg][fg]overlay=0:0[v]"
+        f"[cropped]scale={fg_w}:{fg_h}[fg];"
+        f"[bg][fg]overlay=0:{y_offset}[v]"
     )
 
 
@@ -101,17 +107,43 @@ def build_vertical_split_filter(src_w: int, src_h: int) -> str:
 
 
 def _build_piecewise_linear_expr(keypoints: List[Tuple[float, int]]) -> str:
-    """Build nested if(lt(t,...)) FFmpeg expression for piecewise-linear x(t)."""
+    """Build balanced binary-tree of if(lt(t,...)) for piecewise-linear x(t).
+
+    Uses O(log n) nesting depth instead of O(n) to avoid hitting FFmpeg's
+    expression parser recursion limit (~100 levels).
+    """
     if len(keypoints) == 1:
         return str(keypoints[0][1])
 
-    expr = str(keypoints[-1][1])
-    for i in range(len(keypoints) - 2, -1, -1):
+    # Build list of (t_boundary, segment_expr) pairs
+    segments: List[Tuple[float, str]] = []
+    for i in range(len(keypoints) - 1):
         t0, x0 = keypoints[i]
         t1, x1 = keypoints[i + 1]
         if t1 == t0 or x1 == x0:
             seg = str(x0)
         else:
             seg = f"{x0}+{x1 - x0}*(t-{t0:.3f})/{t1 - t0:.3f}"
-        expr = f"if(lt(t\\,{t1:.3f})\\,{seg}\\,{expr})"
-    return expr
+        segments.append((t1, seg))
+
+    last_val = str(keypoints[-1][1])
+    return _build_balanced_expr(segments, 0, len(segments), last_val)
+
+
+def _build_balanced_expr(
+    segments: List[Tuple[float, str]],
+    lo: int,
+    hi: int,
+    fallback: str,
+) -> str:
+    """Recursively build a balanced if-tree over segments[lo:hi]."""
+    if lo >= hi:
+        return fallback
+    if lo + 1 == hi:
+        t, seg = segments[lo]
+        return f"if(lt(t\\,{t:.3f})\\,{seg}\\,{fallback})"
+    mid = (lo + hi) // 2
+    t_mid = segments[mid][0]
+    left = _build_balanced_expr(segments, lo, mid, segments[mid][1])
+    right = _build_balanced_expr(segments, mid + 1, hi, fallback)
+    return f"if(lt(t\\,{t_mid:.3f})\\,{left}\\,{right})"

@@ -70,30 +70,34 @@ class TestCropFilter:
 class TestBlurredBgFilter:
     def test_1920x1080_dimensions(self):
         f = build_blurred_bg_filter(CENTER, 1920, 1080)
-        assert "1080:1350" in f
+        assert "1080:1920" in f  # bg fills 9:16
+        assert "1080:1350" in f  # fg is 4:5
         assert "crop=864:1080" in f
         assert "gblur=sigma=40" in f
-        assert "overlay" in f
+        assert "overlay=0:285" in f  # centered vertically
 
     def test_1280x720_dimensions(self):
         f = build_blurred_bg_filter(CENTER, 1280, 720)
+        assert "1080:1920" in f
         assert "1080:1350" in f
         assert "crop=576:720" in f
 
     def test_640x360_dimensions(self):
         f = build_blurred_bg_filter(CENTER, 640, 360)
+        assert "1080:1920" in f
         assert "1080:1350" in f
         assert "crop=288:360" in f
 
     def test_3840x2160_dimensions(self):
         f = build_blurred_bg_filter(CENTER, 3840, 2160)
+        assert "1080:1920" in f
         assert "1080:1350" in f
         assert "crop=1728:2160" in f
 
     def test_empty_keypoints(self):
         f = build_blurred_bg_filter([], 1920, 1080)
-        assert "1080:1350" in f
-        assert "overlay" in f
+        assert "1080:1920" in f
+        assert "overlay=0:285" in f
 
     def test_single_keypoint(self):
         f = build_blurred_bg_filter([(5.0, 0.3, 0.5)], 1920, 1080)

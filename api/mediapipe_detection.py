@@ -4,6 +4,7 @@ Uses the MediaPipe Tasks API (v0.10+) with downloaded model files.
 Falls back to OpenCV Haar cascade if MediaPipe fails to initialize.
 """
 
+import bisect
 import logging
 import os
 import tempfile
@@ -249,6 +250,7 @@ def merge_scenes_with_tracks(
 ) -> List[dict]:
     """Merge Gemini scene hints with MediaPipe tracked positions → focal points."""
     focal_points = []
+    frame_times = [f["time_sec"] for f in tracked_frames]
     for scene in scenes:
         start = scene.get("start_sec", 0)
         end = scene.get("end_sec", video_duration)
@@ -256,7 +258,9 @@ def merge_scenes_with_tracks(
         scene_type = scene.get("scene_type", "general")
         desc = scene.get("description", "")
 
-        scene_frames = [f for f in tracked_frames if start <= f["time_sec"] <= end]
+        lo = bisect.bisect_left(frame_times, start)
+        hi = bisect.bisect_right(frame_times, end)
+        scene_frames = tracked_frames[lo:hi]
         if not scene_frames:
             focal_points.append(_center_point(start, desc))
             continue

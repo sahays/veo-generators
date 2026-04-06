@@ -87,8 +87,9 @@ def main() -> None:
 
     from reframe_processor import ReframeProcessor
     from promo_processor import PromoProcessor
+    from adapts_processor import AdaptsProcessor
 
-    worker = UnifiedWorker([ReframeProcessor(), PromoProcessor()])
+    worker = UnifiedWorker([ReframeProcessor(), PromoProcessor(), AdaptsProcessor()])
     worker.start()
 
 

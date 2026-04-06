@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Menu, X, Clapperboard, Zap, Image as ImageIcon, Smartphone, Scissors,
+  Menu, X, Clapperboard, Zap, Image as ImageIcon, Smartphone, Scissors, LayoutGrid,
   ChevronLeft, ChevronRight, Terminal,
   FileText, Sun, Moon, Activity, Upload, Shield, LogOut
 } from 'lucide-react'
@@ -39,6 +39,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/orientations/create': 'New Reframe',
   '/promos': 'Promos',
   '/promos/create': 'New Promo',
+  '/adapts': 'Adapts',
+  '/adapts/create': 'New Adapt',
   '/invite-codes': 'Invite Codes',
 }
 
@@ -53,6 +55,8 @@ function getPageTitle(pathname: string): string {
   if (pathname.match(/^\/thumbnails\/[^/]+$/)) return 'Thumbnail Details'
   if (pathname.match(/^\/orientations\/[^/]+$/)) return 'Reframe Details'
   if (pathname.match(/^\/promos\/[^/]+$/)) return 'Promo Details'
+  if (pathname.match(/^\/adapts\/[^/]+\/prompt/)) return 'Adapt Prompt'
+  if (pathname.match(/^\/adapts\/[^/]+$/)) return 'Adapt Details'
   if (pathname.match(/^\/uploads\/[^/]+$/)) return 'File Details'
   if (pathname.match(/^\/prompts\/[^/]+$/)) return 'Prompt Details'
   return 'VeoGen'
@@ -88,6 +92,7 @@ export const Sidebar = () => {
     { name: 'Files', icon: Upload, path: '/uploads' },
     { name: 'Orientations', icon: Smartphone, path: '/orientations' },
     { name: 'Promos', icon: Scissors, path: '/promos' },
+    { name: 'Adapts', icon: LayoutGrid, path: '/adapts' },
     { name: 'System Prompts', icon: FileText, path: '/prompts' },
     ...(isMaster ? [
       { name: 'Diagnostics', icon: Activity, path: '/diagnostics' },

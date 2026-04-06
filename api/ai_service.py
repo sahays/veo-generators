@@ -1,5 +1,6 @@
 """AI service — Gemini-powered video analysis and image generation."""
 
+import json
 import logging
 import os
 from collections import defaultdict
@@ -8,6 +9,7 @@ from typing import Optional
 from google import genai
 from google.genai import types
 
+from adapt_prompts import ADAPT_PROMPT_TEMPLATE, adapt_prompt_variables
 from ai_helpers import (
     compute_usage,
     extract_image_from_response,
@@ -17,6 +19,12 @@ from ai_helpers import (
 )
 from helpers import gemini_call_with_retry
 from models import Scene, SceneMetadata, AIResponseWrapper, Project
+from prompt_templates import (
+    build_collage_prompt,
+    default_promo_prompt,
+    DEFAULT_BRIEF_PROMPT,
+    SCENE_ANALYSIS_PROMPT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -117,15 +125,15 @@ class AIService:
     def _lookup_brief_template(self, prompt_id, project_type) -> str:
         """Resolve template: explicit ID > category > default. No nesting."""
         if not self.firestore_svc:
-            return _DEFAULT_BRIEF_PROMPT
+            return DEFAULT_BRIEF_PROMPT
         if prompt_id:
             return (
-                resolve_resource(self.firestore_svc, prompt_id) or _DEFAULT_BRIEF_PROMPT
+                resolve_resource(self.firestore_svc, prompt_id) or DEFAULT_BRIEF_PROMPT
             )
         category = _CATEGORY_MAP.get(project_type, "production-ad")
         return (
             resolve_resource(self.firestore_svc, "", "prompt", category)
-            or _DEFAULT_BRIEF_PROMPT
+            or DEFAULT_BRIEF_PROMPT
         )
 
     def _build_brief_contents(self, project, prompt) -> list:
@@ -136,7 +144,6 @@ class AIService:
 
     def _resolve_schema(self, schema_id, category, default_name) -> dict:
         """Resolve JSON schema from Firestore or load default."""
-        import json
 
         if self.firestore_svc:
             content = resolve_resource(
@@ -220,6 +227,55 @@ class AIService:
         ]
 
     # ------------------------------------------------------------------
+    # Adapt (multi-aspect-ratio image generation)
+    # ------------------------------------------------------------------
+
+    async def generate_adapt(
+        self,
+        source_gcs_uri: str,
+        source_mime_type: str,
+        aspect_ratio: str,
+        template_gcs_uri: str | None = None,
+        prompt_id: str = "",
+    ) -> AIResponseWrapper:
+        model_id = os.getenv("ADAPTS_MODEL", "gemini-3.1-flash-image-preview")
+
+        # Build prompt: Firestore override → default template
+        prompt_text = None
+        if prompt_id:
+            prompt_text = resolve_resource(self.firestore_svc, prompt_id)
+        if not prompt_text:
+            prompt_text = ADAPT_PROMPT_TEMPLATE
+
+        # Resolve placeholder variables
+        variables = adapt_prompt_variables(aspect_ratio, template_gcs_uri)
+        prompt = prompt_text.format(**variables)
+
+        contents: list = [
+            types.Part.from_uri(file_uri=source_gcs_uri, mime_type=source_mime_type),
+        ]
+        if template_gcs_uri:
+            contents.append(
+                types.Part.from_uri(file_uri=template_gcs_uri, mime_type="image/png")
+            )
+        contents.append(prompt)
+
+        response = await gemini_call_with_retry(
+            self.client,
+            model_id,
+            contents,
+            types.GenerateContentConfig(
+                response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(aspect_ratio=aspect_ratio),
+            ),
+        )
+        url = extract_image_from_response(response, self.storage_svc, "adapts")
+        return AIResponseWrapper(
+            data={"image_url": url, "prompt_text_used": prompt},
+            usage=image_generation_usage(model_id),
+        )
+
+    # ------------------------------------------------------------------
     # Video analysis methods
     # ------------------------------------------------------------------
 
@@ -300,7 +356,7 @@ class AIService:
         Returns scenes with active_subject hints instead of x,y coordinates.
         """
         model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3.1-pro-preview")
-        prompt_text = _SCENE_ANALYSIS_PROMPT
+        prompt_text = SCENE_ANALYSIS_PROMPT
         prompt_variables = {"mode": "scene-based", "content_type": content_type}
         if chirp_context:
             prompt_text = chirp_context + "\n\n" + prompt_text
@@ -372,7 +428,7 @@ class AIService:
         orientation: str = "16:9",
     ) -> AIResponseWrapper:
         model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
-        prompt = _build_collage_prompt(segments)
+        prompt = build_collage_prompt(segments)
         contents = [
             types.Part.from_uri(file_uri=uri, mime_type="image/png")
             for uri in screenshot_uris
@@ -463,7 +519,7 @@ class AIService:
         )
         if content:
             return content.replace("{target_duration}", str(target_duration))
-        return _default_promo_prompt(target_duration)
+        return default_promo_prompt(target_duration)
 
 
 # ------------------------------------------------------------------
@@ -502,85 +558,3 @@ def _parse_scenes(data) -> tuple:
             )
         )
     return scenes, global_style, continuity
-
-
-def _build_collage_prompt(segments: list[dict] | None) -> str:
-    """Build prompt for promo collage with optional moment context."""
-    base = (
-        "Create a stylized collage thumbnail from these video screenshots. "
-        "Arrange in a dynamic layout — NOT a simple grid. "
-        "Include a close-up crop of a person's face. "
-        "Cinematic styling: color grading, dramatic lighting, subtle vignette. "
-        "Infer a short, punchy title and render as bold text. "
-        "Style: professional broadcast quality, like ESPN or Netflix promos."
-    )
-    if not segments:
-        return base
-    lines = [
-        f"- {s.get('title', '')}: {s.get('description', '')}"
-        for s in segments
-        if s.get("title")
-    ]
-    if lines:
-        base += (
-            "\n\nKey moments:\n"
-            + "\n".join(lines)
-            + "\n\nUse these to create a relevant title.\n"
-        )
-    return base
-
-
-def _default_promo_prompt(target_duration: int) -> str:
-    return (
-        f"You are a professional video editor creating a {target_duration}-second "
-        "promo/highlight reel. Select compelling moments. "
-        f"Total duration ≈ {target_duration}s. Each segment 3-15s. "
-        "Return segments in chronological order with title, description, "
-        "timestamp_start, timestamp_end, relevance_score."
-    )
-
-
-_DEFAULT_BRIEF_PROMPT = """Act as a professional film director and scriptwriter.
-Break the following creative brief into a scene-by-scene cinematic script.
-Total length: {length} seconds.
-Each scene must be between 2 and 8 seconds.
-
-For each scene, provide:
-- A detailed visual description for video generation
-- Voice-over narration text spoken during the scene
-- A music description for background music (genre, tempo, instruments, mood)
-
-For each scene, also provide:
-- An enter_transition: how the visuals begin, connecting from the previous scene (omit for the first scene)
-- An exit_transition: how the visuals end, leading into the next scene (omit for the last scene)
-- A music_transition: how background music should flow from the previous scene — prefer continuing the same track with gradual shifts in intensity/tempo rather than abrupt changes. Use crossfades, dynamic builds, or drops to silence only for dramatic effect. Omit for the first scene.
-
-Also define a global soundtrack_style for the production's overall musical direction.
-
-Creative Brief: {concept}
-
-Return a JSON list of scenes following the requested structure."""
-
-_SCENE_ANALYSIS_PROMPT = """You are analyzing this video for smart reframing from 16:9 to 9:16 (portrait).
-
-Your job is to identify SCENES and WHO to focus on in each scene.
-
-FACE TRACK DATA may be provided above — it tells you exactly which faces were detected and their typical horizontal positions (left/center/right). Use the track labels (Track A, Track B, etc.) in your active_subject field when available.
-
-For each scene, provide:
-- start_sec and end_sec (timestamps)
-- description: what's happening
-- active_subject: WHO to focus on. Use one of:
-  * A track label: "Track A", "Track B" (preferred when tracks are provided)
-  * A spatial hint: "left", "right", "center"
-  * "largest" for the most prominent person
-- scene_type: one of "dialogue", "action", "close-up", "establishing", "wide", "general"
-
-RULES:
-- Cover the entire video with no gaps between scenes
-- Scene boundaries should be at camera cuts or significant subject changes
-- For dialogue: alternate between the speaking person's track per scene
-- For close-ups: use "center" (the face fills the frame)
-- For wide/establishing shots: use "center"
-- For action: use "largest" to track the most prominent moving subject
-- Include t=0 to the final frame"""

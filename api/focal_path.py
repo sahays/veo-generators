@@ -4,6 +4,7 @@ Pure math — no FFmpeg, no I/O. Takes raw focal points from Gemini and
 produces a smooth pan path with velocity limiting and deduplication.
 """
 
+import bisect
 import logging
 from typing import List, Tuple
 
@@ -55,7 +56,7 @@ def _interpolate_one(
         return values[0]
     if t >= times[-1]:
         return values[-1]
-    seg = next(i for i in range(len(times) - 1) if times[i] <= t <= times[i + 1])
+    seg = min(bisect.bisect_right(times, t) - 1, len(times) - 2)
     dt = times[seg + 1] - times[seg]
     if dt == 0:
         return values[seg]
@@ -141,13 +142,21 @@ def _split_by_scenes(
 ) -> List[Tuple[float, float, List[dict]]]:
     """Split focal points into per-scene segments."""
     segments = []
+    pt_times = [p["time_sec"] for p in sorted_pts]
     for i in range(len(cuts) - 1):
         start, end = cuts[i], cuts[i + 1]
-        pts = [p for p in sorted_pts if start <= p["time_sec"] <= end]
+        lo = bisect.bisect_left(pt_times, start)
+        hi = bisect.bisect_right(pt_times, end)
+        pts = sorted_pts[lo:hi]
         if not pts:
-            nearest = min(
-                sorted_pts, key=lambda p: abs(p["time_sec"] - (start + end) / 2)
-            )
+            mid = (start + end) / 2
+            idx = bisect.bisect_left(pt_times, mid)
+            candidates = []
+            if idx > 0:
+                candidates.append(sorted_pts[idx - 1])
+            if idx < len(sorted_pts):
+                candidates.append(sorted_pts[idx])
+            nearest = min(candidates, key=lambda p: abs(p["time_sec"] - mid))
             pts = [{"time_sec": start, "x": nearest["x"], "y": nearest["y"]}]
         segments.append((start, end, pts))
     return segments

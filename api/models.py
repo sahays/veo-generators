@@ -242,6 +242,7 @@ class ReframeRecord(BaseModel):
     prompt_variables: dict = Field(default_factory=dict)
     prompt_text_used: str = ""
     track_summary: str = ""
+    gemini_scenes: list = Field(default_factory=list)
     status: str = "pending"  # pending|analyzing|processing|encoding|completed|failed
     error_message: Optional[str] = None
     progress_pct: int = 0
@@ -278,6 +279,35 @@ class PromoRecord(BaseModel):
     status: str = (
         "pending"  # pending|analyzing|extracting|stitching|encoding|completed|failed
     )
+    error_message: Optional[str] = None
+    progress_pct: int = 0
+    usage: UsageMetrics = Field(default_factory=UsageMetrics)
+    signed_urls: dict = Field(default_factory=dict)
+    archived: bool = False
+    invite_code: Optional[str] = None
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    completedAt: Optional[datetime] = None
+
+
+class AdaptVariant(BaseModel):
+    aspect_ratio: str  # e.g. "16:9", "9:16", "1:1", "4:3", "4:5", "3:4"
+    status: str = "pending"  # pending | generating | completed | failed
+    output_gcs_uri: Optional[str] = None
+    prompt_text_used: Optional[str] = None
+    error_message: Optional[str] = None
+
+
+class AdaptRecord(BaseModel):
+    id: str = Field(default_factory=lambda: generate_id("adp-"))
+    source_gcs_uri: str
+    source_filename: str = ""
+    source_mime_type: str = "image/png"
+    display_name: str = ""
+    template_gcs_uri: Optional[str] = None
+    prompt_id: str = ""
+    preset_bundle: str = ""
+    variants: List[AdaptVariant] = []
+    status: str = "pending"  # pending|generating|completed|partial|failed
     error_message: Optional[str] = None
     progress_pct: int = 0
     usage: UsageMetrics = Field(default_factory=UsageMetrics)
