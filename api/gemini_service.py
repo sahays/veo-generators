@@ -1,9 +1,7 @@
-"""AI service — Gemini-powered video analysis and image generation."""
+"""Gemini service — video analysis, image generation, and content creation."""
 
-import json
 import logging
 import os
-from collections import defaultdict
 from typing import Optional
 
 from google import genai
@@ -17,36 +15,22 @@ from ai_helpers import (
     load_schema,
     resolve_resource,
 )
+from brief_helpers import parse_scenes
 from helpers import gemini_call_with_retry
-from models import Scene, SceneMetadata, AIResponseWrapper, Project
-from prompt_templates import (
-    build_collage_prompt,
-    default_promo_prompt,
-    DEFAULT_BRIEF_PROMPT,
-    SCENE_ANALYSIS_PROMPT,
-)
+from models import AIResponseWrapper, Project, Scene
+from prompt_resolver import PromptResolver, gcs_ref_url
+from prompt_templates import SCENE_ANALYSIS_PROMPT, build_collage_prompt
 
 logger = logging.getLogger(__name__)
 
-_CATEGORY_MAP = {
-    "movie": "production-movie",
-    "advertizement": "production-ad",
-    "social": "production-social",
-}
 
-
-def _gcs_ref_url(project: Optional["Project"]) -> str | None:
-    """Return GCS reference image URL if available, else None."""
-    url = project.reference_image_url if project else None
-    return url if url and url.startswith("gs://") else None
-
-
-class AIService:
+class GeminiService:
     def __init__(self, storage_svc=None, firestore_svc=None):
         self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
         self.location = os.getenv("GEMINI_REGION", "global")
         self.storage_svc = storage_svc
         self.firestore_svc = firestore_svc
+        self.prompts = PromptResolver(firestore_svc)
         self.client = genai.Client(
             vertexai=True,
             project=self.project_id,
@@ -69,19 +53,13 @@ class AIService:
         project: Optional[Project] = None,
     ) -> AIResponseWrapper:
         model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3.1-pro-preview")
-        prompt = self._resolve_brief_prompt(
-            concept,
-            length,
-            orientation,
-            prompt_id,
-            project_type,
-            project,
+        prompt = self.prompts.resolve_brief_prompt(
+            concept, length, orientation, prompt_id, project_type, project
         )
-        schema = self._resolve_schema(
+        schema = self.prompts.resolve_schema(
             schema_id, "project-analysis", "production-schema"
         )
-
-        contents = self._build_brief_contents(project, prompt)
+        contents = _build_ref_contents(project, prompt)
         response = self.client.models.generate_content(
             model=model_id,
             contents=contents,
@@ -90,8 +68,7 @@ class AIService:
                 response_schema=schema,
             ),
         )
-        scenes, global_style, continuity = _parse_scenes(response.parsed)
-        usage = compute_usage(response, model_id)
+        scenes, global_style, continuity = parse_scenes(response.parsed)
         return AIResponseWrapper(
             data={
                 "scenes": scenes,
@@ -99,88 +76,8 @@ class AIService:
                 "continuity": continuity,
                 "analysis_prompt": prompt,
             },
-            usage=usage,
+            usage=compute_usage(response, model_id),
         )
-
-    def _resolve_brief_prompt(
-        self, concept, length, orientation, prompt_id, project_type, project
-    ) -> str:
-        """Resolve and format the brief analysis prompt."""
-        template = self._lookup_brief_template(prompt_id, project_type)
-        ref_note = (
-            "A reference image is attached above — use it as a visual style guide."
-            if _gcs_ref_url(project)
-            else ""
-        )
-        return template.format_map(
-            defaultdict(
-                str,
-                length=length,
-                orientation=orientation,
-                concept=concept,
-                ref_images=ref_note,
-            )
-        )
-
-    def _lookup_brief_template(self, prompt_id, project_type) -> str:
-        """Resolve template: explicit ID > category > default. No nesting."""
-        if not self.firestore_svc:
-            return DEFAULT_BRIEF_PROMPT
-        if prompt_id:
-            return (
-                resolve_resource(self.firestore_svc, prompt_id) or DEFAULT_BRIEF_PROMPT
-            )
-        category = _CATEGORY_MAP.get(project_type, "production-ad")
-        return (
-            resolve_resource(self.firestore_svc, "", "prompt", category)
-            or DEFAULT_BRIEF_PROMPT
-        )
-
-    def _build_brief_contents(self, project, prompt) -> list:
-        ref = _gcs_ref_url(project)
-        if not ref:
-            return [prompt]
-        return [types.Part.from_uri(file_uri=ref, mime_type="image/png"), prompt]
-
-    def _resolve_schema(self, schema_id, category, default_name) -> dict:
-        """Resolve JSON schema from Firestore or load default."""
-
-        if self.firestore_svc:
-            content = resolve_resource(
-                self.firestore_svc, schema_id or "", "schema", category
-            )
-            if content:
-                return json.loads(content)
-        return load_schema(default_name)
-
-    # ------------------------------------------------------------------
-    # Scene prompt building
-    # ------------------------------------------------------------------
-
-    def _build_scene_prompt(
-        self,
-        scene: Scene,
-        project: Optional[Project],
-        orientation: Optional[str] = None,
-    ) -> str:
-        parts = []
-        if orientation:
-            parts.append(f"Aspect ratio: {orientation}.")
-        if project and project.global_style:
-            gs = project.global_style
-            parts.append(
-                f"Style: {gs.look}. Mood: {gs.mood}. Colors: {gs.color_grading}. Lighting: {gs.lighting_style}."
-            )
-        if project and project.continuity and project.continuity.characters:
-            chars = [
-                f"{c.id}: {c.description}, wearing {c.wardrobe}"
-                for c in project.continuity.characters
-            ]
-            parts.append(f"Characters: {'; '.join(chars)}.")
-        if project and project.continuity and project.continuity.setting_notes:
-            parts.append(f"Setting: {project.continuity.setting_notes}.")
-        parts.append(scene.visual_description)
-        return " ".join(parts)
 
     # ------------------------------------------------------------------
     # Frame / image generation
@@ -195,11 +92,8 @@ class AIService:
         prompt_override: Optional[str] = None,
     ) -> AIResponseWrapper:
         model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
-        prompt = prompt_override or self._build_scene_prompt(
-            scene, project, orientation
-        )
-        contents = self._build_image_contents(project, prompt)
-
+        prompt = prompt_override or _build_scene_prompt(scene, project, orientation)
+        contents = _build_ref_contents(project, prompt, style_guide=True)
         response = await gemini_call_with_retry(
             self.client,
             model_id,
@@ -217,15 +111,6 @@ class AIService:
             usage=image_generation_usage(model_id),
         )
 
-    def _build_image_contents(self, project, prompt) -> list:
-        ref = _gcs_ref_url(project)
-        if not ref:
-            return [prompt]
-        return [
-            types.Part.from_uri(file_uri=ref, mime_type="image/png"),
-            f"Use the above reference image as a style guide. {prompt}",
-        ]
-
     # ------------------------------------------------------------------
     # Adapt (multi-aspect-ratio image generation)
     # ------------------------------------------------------------------
@@ -239,15 +124,11 @@ class AIService:
         prompt_id: str = "",
     ) -> AIResponseWrapper:
         model_id = os.getenv("ADAPTS_MODEL", "gemini-3.1-flash-image-preview")
-
-        # Build prompt: Firestore override → default template
         prompt_text = None
         if prompt_id:
             prompt_text = resolve_resource(self.firestore_svc, prompt_id)
         if not prompt_text:
             prompt_text = ADAPT_PROMPT_TEMPLATE
-
-        # Resolve placeholder variables
         variables = adapt_prompt_variables(aspect_ratio, template_gcs_uri)
         prompt = prompt_text.format(**variables)
 
@@ -259,7 +140,6 @@ class AIService:
                 types.Part.from_uri(file_uri=template_gcs_uri, mime_type="image/png")
             )
         contents.append(prompt)
-
         response = await gemini_call_with_retry(
             self.client,
             model_id,
@@ -276,7 +156,7 @@ class AIService:
         )
 
     # ------------------------------------------------------------------
-    # Video analysis methods
+    # Video analysis
     # ------------------------------------------------------------------
 
     async def analyze_video_key_moments(
@@ -287,15 +167,17 @@ class AIService:
         schema_id: Optional[str] = None,
     ) -> AIResponseWrapper:
         model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3.1-pro-preview")
-        prompt = self._require_prompt(prompt_id)
-        schema = self._resolve_schema(schema_id, "key-moments", "key-moments-schema")
+        prompt = self.prompts.require_prompt(prompt_id)
+        schema = self.prompts.resolve_schema(
+            schema_id, "key-moments", "key-moments-schema"
+        )
         return await self._analyze_video(model_id, gcs_uri, mime_type, prompt, schema)
 
     async def analyze_video_for_thumbnails(
         self, gcs_uri: str, mime_type: str, prompt_id: str
     ) -> AIResponseWrapper:
         model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3.1-pro-preview")
-        prompt = self._require_prompt(prompt_id)
+        prompt = self.prompts.require_prompt(prompt_id)
         schema = load_schema("thumbnail-analysis-schema")
         return await self._analyze_video(model_id, gcs_uri, mime_type, prompt, schema)
 
@@ -351,10 +233,7 @@ class AIService:
         content_type: str = "other",
         chirp_context: str = "",
     ) -> AIResponseWrapper:
-        """Analyze video for scene-based reframing (used with MediaPipe).
-
-        Returns scenes with active_subject hints instead of x,y coordinates.
-        """
+        """Scene-based reframing analysis (used with MediaPipe)."""
         model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3.1-pro-preview")
         prompt_text = SCENE_ANALYSIS_PROMPT
         prompt_variables = {"mode": "scene-based", "content_type": content_type}
@@ -389,7 +268,7 @@ class AIService:
         prompt_id: str = "",
     ) -> AIResponseWrapper:
         model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3.1-pro-preview")
-        prompt = self._resolve_promo_prompt(prompt_id, target_duration)
+        prompt = self.prompts.resolve_promo_prompt(prompt_id, target_duration)
         schema = load_schema("promo-segments-schema")
         return await self._analyze_video(model_id, gcs_uri, mime_type, prompt, schema)
 
@@ -401,25 +280,13 @@ class AIService:
         self, screenshot_uris: list[str], prompt_id: str
     ) -> AIResponseWrapper:
         model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
-        prompt = self._require_prompt(prompt_id)
+        prompt = self.prompts.require_prompt(prompt_id)
         contents = [
             types.Part.from_uri(file_uri=uri, mime_type="image/png")
             for uri in screenshot_uris
         ]
         contents.append(prompt)
-        response = await gemini_call_with_retry(
-            self.client,
-            model_id,
-            contents,
-            types.GenerateContentConfig(
-                response_modalities=["IMAGE"],
-                image_config=types.ImageConfig(aspect_ratio="16:9"),
-            ),
-        )
-        url = extract_image_from_response(response, self.storage_svc, "thumbnails")
-        return AIResponseWrapper(
-            data={"thumbnail_url": url}, usage=image_generation_usage(model_id)
-        )
+        return await self._generate_image(model_id, contents, "16:9", "thumbnails")
 
     async def generate_promo_collage(
         self,
@@ -434,20 +301,8 @@ class AIService:
             for uri in screenshot_uris
         ]
         contents.append(prompt)
-        response = await gemini_call_with_retry(
-            self.client,
-            model_id,
-            contents,
-            types.GenerateContentConfig(
-                response_modalities=["IMAGE"],
-                image_config=types.ImageConfig(aspect_ratio=orientation),
-            ),
-        )
-        url = extract_image_from_response(
-            response, self.storage_svc, "promos/thumbnails"
-        )
-        return AIResponseWrapper(
-            data={"image_url": url}, usage=image_generation_usage(model_id)
+        return await self._generate_image(
+            model_id, contents, orientation, "promos/thumbnails"
         )
 
     async def generate_text_overlay(
@@ -455,48 +310,28 @@ class AIService:
     ) -> AIResponseWrapper:
         model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
         prompt = (
-            "Create a lower-third text overlay graphic for a professional video promo. "
-            f"The text reads: '{text.upper()}'. "
-            "Style: bold white cinematic text with a subtle dark gradient at the bottom third. "
-            "Top two-thirds should be completely black. Professional broadcast quality."
+            "Create a lower-third text overlay graphic for a professional "
+            f"video promo. The text reads: '{text.upper()}'. Style: bold "
+            "white cinematic text with a subtle dark gradient at the bottom "
+            "third. Top two-thirds should be completely black. Professional "
+            "broadcast quality."
         )
-        response = await gemini_call_with_retry(
-            self.client,
-            model_id,
-            [prompt],
-            types.GenerateContentConfig(
-                response_modalities=["IMAGE"],
-                image_config=types.ImageConfig(aspect_ratio=orientation),
-            ),
-        )
-        url = extract_image_from_response(response, self.storage_svc, "promos/overlays")
-        return AIResponseWrapper(
-            data={"image_url": url}, usage=image_generation_usage(model_id)
+        return await self._generate_image(
+            model_id, [prompt], orientation, "promos/overlays"
         )
 
     # ------------------------------------------------------------------
-    # Private helpers
+    # Shared internal helpers
     # ------------------------------------------------------------------
-
-    def _require_prompt(self, prompt_id: str) -> str:
-        """Load a prompt from Firestore, raising if not found."""
-        if not self.firestore_svc:
-            raise ValueError("Firestore service not available")
-        res = self.firestore_svc.get_resource(prompt_id)
-        if not res:
-            raise ValueError(f"Prompt resource not found: {prompt_id}")
-        return res.content
 
     async def _analyze_video(
-        self,
-        model_id: str,
-        gcs_uri: str,
-        mime_type: str,
-        prompt: str,
-        schema: dict,
+        self, model_id, gcs_uri, mime_type, prompt, schema
     ) -> AIResponseWrapper:
-        """Common pattern: video + prompt → structured JSON response."""
-        contents = [types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type), prompt]
+        """Video + prompt → structured JSON response."""
+        contents = [
+            types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type),
+            prompt,
+        ]
         response = await gemini_call_with_retry(
             self.client,
             model_id,
@@ -510,16 +345,24 @@ class AIService:
         data = response.parsed if isinstance(response.parsed, dict) else {}
         return AIResponseWrapper(data=data, usage=compute_usage(response, model_id))
 
-    def _resolve_promo_prompt(self, prompt_id: str, target_duration: int) -> str:
-        """Resolve promo prompt with variable substitution."""
-        content = (
-            resolve_resource(self.firestore_svc, prompt_id, "prompt", "promo")
-            if self.firestore_svc
-            else None
+    async def _generate_image(
+        self, model_id, contents, aspect_ratio, dest_folder
+    ) -> AIResponseWrapper:
+        """Contents → image generation → upload → response."""
+        response = await gemini_call_with_retry(
+            self.client,
+            model_id,
+            contents,
+            types.GenerateContentConfig(
+                response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(aspect_ratio=aspect_ratio),
+            ),
         )
-        if content:
-            return content.replace("{target_duration}", str(target_duration))
-        return default_promo_prompt(target_duration)
+        url = extract_image_from_response(response, self.storage_svc, dest_folder)
+        return AIResponseWrapper(
+            data={"image_url": url},
+            usage=image_generation_usage(model_id),
+        )
 
 
 # ------------------------------------------------------------------
@@ -527,34 +370,38 @@ class AIService:
 # ------------------------------------------------------------------
 
 
-def _parse_scenes(data) -> tuple:
-    """Parse Gemini response into Scene objects."""
-    global_style = continuity = None
-    if isinstance(data, dict):
-        global_style = data.get("global_style")
-        continuity = data.get("continuity")
-        data = data.get("scenes", data)
-    if not isinstance(data, list):
-        return [], None, None
-
-    scenes = []
-    for s in data:
-        metadata = s.get("metadata", {})
-        if "character" in metadata and isinstance(metadata["character"], str):
-            metadata["characters"] = [metadata.pop("character")]
-        scenes.append(
-            Scene(
-                visual_description=s["visual_description"],
-                timestamp_start=s["timestamp_start"],
-                timestamp_end=s["timestamp_end"],
-                metadata=SceneMetadata(**metadata),
-                narration=s.get("narration"),
-                narration_enabled=bool(s.get("narration")),
-                music_description=s.get("music_description"),
-                music_enabled=bool(s.get("music_description")),
-                enter_transition=s.get("enter_transition"),
-                exit_transition=s.get("exit_transition"),
-                music_transition=s.get("music_transition"),
-            )
+def _build_scene_prompt(
+    scene: Scene, project: Optional[Project], orientation: Optional[str]
+) -> str:
+    """Build a flat scene prompt from project context."""
+    parts = []
+    if orientation:
+        parts.append(f"Aspect ratio: {orientation}.")
+    if project and project.global_style:
+        gs = project.global_style
+        parts.append(
+            f"Style: {gs.look}. Mood: {gs.mood}. "
+            f"Colors: {gs.color_grading}. Lighting: {gs.lighting_style}."
         )
-    return scenes, global_style, continuity
+    if project and project.continuity and project.continuity.characters:
+        chars = [
+            f"{c.id}: {c.description}, wearing {c.wardrobe}"
+            for c in project.continuity.characters
+        ]
+        parts.append(f"Characters: {'; '.join(chars)}.")
+    if project and project.continuity and project.continuity.setting_notes:
+        parts.append(f"Setting: {project.continuity.setting_notes}.")
+    parts.append(scene.visual_description)
+    return " ".join(parts)
+
+
+def _build_ref_contents(project, prompt, style_guide: bool = False) -> list:
+    """Build contents list with optional reference image."""
+    ref = gcs_ref_url(project)
+    if not ref:
+        return [prompt]
+    prefix = "Use the above reference image as a style guide. " if style_guide else ""
+    return [
+        types.Part.from_uri(file_uri=ref, mime_type="image/png"),
+        f"{prefix}{prompt}",
+    ]

@@ -48,6 +48,6 @@ async def activate_system_resource(id: str, request: Request):
 
 @router.get("/default-schema")
 async def get_default_schema():
-    from ai_service import _load_default_schema
+    from ai_helpers import load_schema
 
-    return _load_default_schema()
+    return load_schema("production-schema")

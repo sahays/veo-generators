@@ -44,58 +44,11 @@ class AdaptsProcessor(JobProcessor):
             self.update_status(record_id, "completed", 100)
             return
 
-        total = len(variants)
-        completed = 0
-        failed = 0
-
-        # Generate each variant and update progress after each one
-        for step, idx in enumerate(pending_indices):
-            v = variants[idx]
-            try:
-                result = asyncio.run(
-                    self._generate_one(
-                        record.source_gcs_uri,
-                        record.source_mime_type,
-                        v["aspect_ratio"],
-                        record.template_gcs_uri,
-                        record.prompt_id,
-                    )
-                )
-                variants[idx]["status"] = "completed"
-                variants[idx]["output_gcs_uri"] = result["image_url"]
-                variants[idx]["prompt_text_used"] = result.get("prompt_text_used", "")
-                completed += 1
-            except Exception as e:
-                variants[idx]["status"] = "failed"
-                variants[idx]["error_message"] = str(e)
-                failed += 1
-                logger.error(
-                    f"[adapts:{record_id}] variant {v['aspect_ratio']} failed: {e}"
-                )
-
-            # Update progress after each variant
-            pct = int(((step + 1) / len(pending_indices)) * 90) + 5
-            deps.firestore_svc.update_adapt_record(
-                record_id, {"variants": variants, "progress_pct": pct}
-            )
-
-        # Final status
-        total_completed = sum(1 for v in variants if v["status"] == "completed")
-        total_failed = sum(1 for v in variants if v["status"] == "failed")
-
-        if total_completed == total:
-            status = "completed"
-        elif total_failed == total:
-            status = "failed"
-        else:
-            status = "partial"
-
-        # Accumulate image generation costs
-        usage = record.usage.dict()
-        usage["image_generations"] = usage.get("image_generations", 0) + completed
-        cost_add = completed * _IMAGE_GEN_COST
-        usage["image_cost_usd"] = usage.get("image_cost_usd", 0) + cost_add
-        usage["cost_usd"] = usage.get("cost_usd", 0) + cost_add
+        completed, failed = self._generate_variants(
+            record, record_id, variants, pending_indices
+        )
+        status = self._resolve_status(variants)
+        usage = self._build_usage(record, completed)
 
         updates = {
             "variants": variants,
@@ -106,17 +59,90 @@ class AdaptsProcessor(JobProcessor):
         self._set_completion_timestamp(updates, status)
         deps.firestore_svc.update_adapt_record(record_id, updates)
         logger.info(
-            f"[adapts:{record_id}] {status}: {total_completed}/{total} variants"
+            f"[adapts:{record_id}] {status}: "
+            f"{sum(1 for v in variants if v['status'] == 'completed')}"
+            f"/{len(variants)} variants"
         )
 
-    async def _generate_one(
-        self,
-        source_gcs_uri,
-        source_mime_type,
-        aspect_ratio,
-        template_gcs_uri,
-        prompt_id,
+    def _generate_variants(self, record, record_id, variants, pending_indices):
+        """Generate each variant sequentially, updating progress after each."""
+        completed = failed = 0
+        for step, idx in enumerate(pending_indices):
+            success = self._generate_single_variant(
+                record, record_id, variants, idx
+            )
+            if success:
+                completed += 1
+            else:
+                failed += 1
+            self._update_progress(
+                record_id, variants, step + 1, len(pending_indices)
+            )
+        return completed, failed
+
+    def _generate_single_variant(self, record, record_id, variants, idx):
+        """Generate one aspect-ratio variant. Returns True on success."""
+        v = variants[idx]
+        try:
+            result = asyncio.run(
+                self._call_gemini(
+                    record.source_gcs_uri,
+                    record.source_mime_type,
+                    v["aspect_ratio"],
+                    record.template_gcs_uri,
+                    record.prompt_id,
+                )
+            )
+            variants[idx]["status"] = "completed"
+            variants[idx]["output_gcs_uri"] = result["image_url"]
+            variants[idx]["prompt_text_used"] = result.get(
+                "prompt_text_used", ""
+            )
+            return True
+        except Exception as e:
+            variants[idx]["status"] = "failed"
+            variants[idx]["error_message"] = str(e)
+            logger.error(
+                f"[adapts:{record_id}] variant {v['aspect_ratio']} failed: {e}"
+            )
+            return False
+
+    def _update_progress(self, record_id, variants, step, total_steps):
+        """Persist variant state and progress percentage to Firestore."""
+        pct = int((step / total_steps) * 90) + 5
+        deps.firestore_svc.update_adapt_record(
+            record_id, {"variants": variants, "progress_pct": pct}
+        )
+
+    @staticmethod
+    def _resolve_status(variants) -> str:
+        """Determine aggregate status from individual variant statuses."""
+        total = len(variants)
+        total_completed = sum(1 for v in variants if v["status"] == "completed")
+        total_failed = sum(1 for v in variants if v["status"] == "failed")
+        if total_completed == total:
+            return "completed"
+        if total_failed == total:
+            return "failed"
+        return "partial"
+
+    @staticmethod
+    def _build_usage(record, completed_count) -> dict:
+        """Build updated usage dict with image generation costs."""
+        usage = record.usage.dict()
+        usage["image_generations"] = (
+            usage.get("image_generations", 0) + completed_count
+        )
+        cost_add = completed_count * _IMAGE_GEN_COST
+        usage["image_cost_usd"] = usage.get("image_cost_usd", 0) + cost_add
+        usage["cost_usd"] = usage.get("cost_usd", 0) + cost_add
+        return usage
+
+    async def _call_gemini(
+        self, source_gcs_uri, source_mime_type, aspect_ratio,
+        template_gcs_uri, prompt_id,
     ):
+        """Call Gemini to generate a single adapt variant."""
         result = await deps.ai_svc.generate_adapt(
             source_gcs_uri=source_gcs_uri,
             source_mime_type=source_mime_type,
