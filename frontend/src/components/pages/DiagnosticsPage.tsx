@@ -179,7 +179,7 @@ const ImageGenerationTest = () => {
 
   return (
     <Card 
-      title="Imagen 3: Storyboard Frame" 
+      title="Gemini 3.1: Storyboard Frame" 
       icon={ImageIcon}
       actions={
         <Button onClick={handleTest} disabled={isLoading} icon={ImageIcon}>

@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -27,6 +28,8 @@ class ReframeRequest(BaseModel):
     blurred_bg: bool = False
     sports_mode: bool = False  # deprecated — use content_type="sports"
     vertical_split: bool = False
+    model_id: Optional[str] = None
+    region: Optional[str] = None
 
 
 def _sign_reframe_urls(record: ReframeRecord) -> dict:
@@ -90,6 +93,8 @@ async def create_reframe(
         blurred_bg=body.blurred_bg,
         sports_mode=body.sports_mode,
         vertical_split=body.vertical_split,
+        model_id=body.model_id,
+        region=body.region,
         status="pending",
         invite_code=getattr(request.state, "invite_code", None),
     )

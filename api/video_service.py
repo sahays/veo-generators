@@ -4,18 +4,29 @@ import asyncio
 from typing import Optional
 from google import genai
 from google.genai import types
+from ai_helpers import resolve_model
 from models import Scene, Project
 
 
 class VideoService:
-    def __init__(self, storage_svc=None):
+    def __init__(self, storage_svc=None, firestore_svc=None):
         self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
-        self.veo_location = os.getenv("VEO_REGION", "us-central1")
+        self.veo_location = os.getenv("VEO_REGION", "global")
         self.storage_svc = storage_svc
+        self.firestore_svc = firestore_svc
 
         self.video_client = genai.Client(
             vertexai=True, project=self.project_id, location=self.veo_location
         )
+        self._clients: dict[str, genai.Client] = {self.veo_location: self.video_client}
+
+    def _get_client(self, region: str | None = None) -> genai.Client:
+        loc = region or self.veo_location
+        if loc not in self._clients:
+            self._clients[loc] = genai.Client(
+                vertexai=True, project=self.project_id, location=loc
+            )
+        return self._clients[loc]
 
     def _get_project_seed(self, project_id: str) -> int:
         return zlib.adler32(project_id.encode()) & 0x7FFFFFFF
@@ -101,8 +112,17 @@ class VideoService:
         blocking: bool = True,
         project: Optional[Project] = None,
         prompt_override: Optional[str] = None,
+        model_id: Optional[str] = None,
+        region: Optional[str] = None,
     ):
-        model_id = os.getenv("VIDEO_GEN_MODEL", "veo-3.1-generate-preview")
+        model_id = resolve_model(
+            self.firestore_svc,
+            "video",
+            "VIDEO_GEN_MODEL",
+            "veo-3.1-generate-001",
+            model_id,
+        )
+        client = self._get_client(region)
         seed = self._get_project_seed(project_id)
 
         SUPPORTED_DURATIONS = [4, 6, 8]
@@ -142,13 +162,15 @@ class VideoService:
                 gcs_uri=ref_url, mime_type="image/png"
             )
 
-        operation = self.video_client.models.generate_videos(**generate_kwargs)
+        operation = client.models.generate_videos(**generate_kwargs)
 
         if not blocking:
             return {
                 "operation_name": operation.name,
                 "status": "processing",
                 "generated_prompt": enriched_prompt,
+                "model_id": model_id,
+                "duration_seconds": duration,
             }
 
         while not operation.done:
@@ -158,9 +180,16 @@ class VideoService:
             return {
                 "video_uri": operation.result.generated_videos[0].video.uri,
                 "generated_prompt": enriched_prompt,
+                "model_id": model_id,
+                "duration_seconds": duration,
             }
 
-        return {"video_uri": "", "generated_prompt": enriched_prompt}
+        return {
+            "video_uri": "",
+            "generated_prompt": enriched_prompt,
+            "model_id": model_id,
+            "duration_seconds": duration,
+        }
 
     async def get_video_generation_status(self, operation_name: str):
         try:

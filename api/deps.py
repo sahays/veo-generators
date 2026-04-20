@@ -10,6 +10,11 @@ from diarization_service import DiarizationService
 
 logger = logging.getLogger(__name__)
 
+# Capture the real cloud region at import time.  main.py later overwrites
+# GOOGLE_CLOUD_LOCATION for the genai/ADK SDK, so infrastructure services
+# (Transcoder, Diarization) must use this snapshot instead.
+_INFRA_REGION = os.getenv("GOOGLE_CLOUD_LOCATION", "asia-south1")
+
 # Global service instances (initialized on startup)
 firestore_svc: FirestoreService | None = None
 gemini_svc: GeminiService | None = None
@@ -31,9 +36,11 @@ def init_services():
     storage_svc = StorageService()
     gemini_svc = GeminiService(storage_svc=storage_svc, firestore_svc=firestore_svc)
     ai_svc = gemini_svc  # alias for existing code
-    video_svc = VideoService(storage_svc=storage_svc)
+    video_svc = VideoService(storage_svc=storage_svc, firestore_svc=firestore_svc)
     project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
-    location = os.getenv("GOOGLE_CLOUD_LOCATION", "asia-south1")
+    # Use the region captured at import time (before main.py overrides
+    # GOOGLE_CLOUD_LOCATION for the genai/ADK SDK).
+    location = _INFRA_REGION
     transcoder_svc = TranscoderService(project_id, location)
     diarization_svc = DiarizationService(project_id, location)
     logger.info("Services initialized successfully.")

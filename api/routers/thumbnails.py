@@ -90,11 +90,15 @@ async def analyze_video_for_thumbnails(request: Request, body: dict):
     video_filename = body.get("video_filename", "")
     video_source = body.get("video_source", "upload")
     production_id = body.get("production_id")
+    model_id = body.get("model_id")
+    region = body.get("region")
     try:
         result = await deps.ai_svc.analyze_video_for_thumbnails(
             gcs_uri=gcs_uri,
             mime_type=mime_type,
             prompt_id=prompt_id,
+            model_id=model_id,
+            region=region,
         )
         analysis_data = result.data if hasattr(result, "data") else result.get("data")
         moments = analysis_data.get("key_moments", []) if analysis_data else []

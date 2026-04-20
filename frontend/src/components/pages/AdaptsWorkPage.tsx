@@ -5,6 +5,7 @@ import {
   AlertCircle, CheckCircle2, ExternalLink,
 } from 'lucide-react'
 import { Button } from '@/components/Common'
+import { ModelRegionPicker } from '@/components/ModelRegionPicker'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -41,6 +42,9 @@ export const AdaptsWorkPage = () => {
   // Template state
   const [templateImage, setTemplateImage] = useState<ImageUploadItem | null>(null)
   const [showTemplateSelector, setShowTemplateSelector] = useState(false)
+
+  // Model/region config
+  const [modelConfig, setModelConfig] = useState<{ modelId?: string; region?: string }>({})
 
   // Aspect ratio state
   const [selectedRatios, setSelectedRatios] = useState<string[]>([])
@@ -81,6 +85,8 @@ export const AdaptsWorkPage = () => {
         source_mime_type: selectedImage.mime_type,
         template_gcs_uri: templateImage?.gcs_uri || undefined,
         aspect_ratios: selectedRatios,
+        model_id: modelConfig.modelId,
+        region: modelConfig.region,
       })
       navigate(`/adapts/${result.id}`, { replace: true })
     } catch (err: any) {
@@ -378,7 +384,8 @@ export const AdaptsWorkPage = () => {
 
       <ErrorDisplay error={error} />
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-4">
+        <ModelRegionPicker capability="image" value={modelConfig} onChange={setModelConfig} className="mt-2" />
         <Button
           icon={LayoutGrid}
           onClick={handleGenerate}

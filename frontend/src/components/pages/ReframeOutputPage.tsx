@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { ModelPill } from '@/components/ModelPill'
+import { ServicesUsedPanel } from '@/components/pricing/ServicesUsedPanel'
 
 type Section = 'mediapipe' | 'prompt' | 'gemini' | 'focal-points' | 'chirp'
 
@@ -180,9 +182,12 @@ export const ReframeOutputPage = () => {
       </button>
 
       <div className="space-y-1">
-        <h1 className="text-lg font-heading font-bold text-foreground">
-          {SECTION_TITLES[section || ''] || 'Output'}
-        </h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-lg font-heading font-bold text-foreground">
+            {SECTION_TITLES[section || ''] || 'Output'}
+          </h1>
+          <ModelPill modelName={record?.usage?.model_name} />
+        </div>
         <p className="text-sm text-muted-foreground">{title}</p>
       </div>
 
@@ -193,6 +198,8 @@ export const ReframeOutputPage = () => {
         {section === 'focal-points' && renderFocalPoints()}
         {section === 'chirp' && renderChirp()}
       </div>
+
+      {id && <ServicesUsedPanel feature="reframe" recordId={id} />}
     </div>
   )
 }

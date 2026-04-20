@@ -4,14 +4,14 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 
 import deps
-from helpers import accumulate_image_cost, accumulate_veo_cost, parse_timestamp
+from cost_tracking import accumulate_transcoder_cost, accumulate_veo_cost_on
+from helpers import accumulate_image_cost, parse_timestamp
 from models import ProjectStatus
+from pricing_config import DEFAULT_VIDEO_MODEL
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/productions", tags=["render"])
-
-VEO_COST_PER_SECOND = 0.40  # Veo 3.1 Standard
 
 
 async def _poll_veo_operation(operation_name: str, timeout: int = 600) -> dict:
@@ -105,6 +105,11 @@ async def _generate_scene_video(production_id: str, scene, production):
     if scene_updates:
         deps.firestore_svc.update_scene(production_id, scene.id, scene_updates)
 
+    # Stash resolved video model on the scene object so _poll_scene_video
+    # can cost-account with the correct rate.
+    if result.get("model_id"):
+        scene._video_model_id = result["model_id"]
+
     return result
 
 
@@ -121,14 +126,15 @@ async def _poll_scene_video(production_id: str, scene):
             scene.id,
             {"status": "completed", "video_url": veo_status["video_uri"]},
         )
-        # Track Veo cost
+        # Track Veo cost using the actual model that ran
         try:
             veo_start = parse_timestamp(scene.timestamp_start)
             veo_end = parse_timestamp(scene.timestamp_end)
             veo_duration = max(4, min(8, int(veo_end - veo_start)))
         except (ValueError, IndexError):
             veo_duration = 8
-        accumulate_veo_cost(production_id, veo_duration, VEO_COST_PER_SECOND)
+        model_id = getattr(scene, "_video_model_id", None) or DEFAULT_VIDEO_MODEL
+        accumulate_veo_cost_on("production", production_id, veo_duration, model_id)
         return True
     else:
         error_msg = veo_status.get("error") or veo_status.get(
@@ -189,6 +195,25 @@ async def _stitch_production(production_id: str, production):
         if job_state == "SUCCEEDED":
             deps.firestore_svc.update_production(
                 production_id, {"status": ProjectStatus.COMPLETED}
+            )
+            # Accumulate transcoder cost — HD output, minutes = sum of scene durations
+            total_seconds = 0.0
+            for s in production.scenes:
+                try:
+                    total_seconds += max(
+                        4,
+                        min(
+                            8,
+                            int(
+                                parse_timestamp(s.timestamp_end)
+                                - parse_timestamp(s.timestamp_start)
+                            ),
+                        ),
+                    )
+                except (ValueError, IndexError):
+                    total_seconds += 8
+            accumulate_transcoder_cost(
+                "production", production_id, total_seconds / 60.0
             )
             logger.info(f"Production {production_id} completed successfully")
             return

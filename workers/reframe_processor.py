@@ -6,6 +6,10 @@ import os
 import time
 
 import deps
+from cost_tracking import (
+    accumulate_diarization_cost,
+    accumulate_transcoder_cost,
+)
 from models import FocalPoint, SpeakerSegment
 
 from base_processor import JobProcessor, TempFileManager
@@ -189,6 +193,7 @@ class ReframeProcessor(JobProcessor):
             )
             logger.info(f"[reframe:{record_id}] Chirp 3: {len(segments)} segments")
             chirp_context = _format_chirp_context(segments)
+            accumulate_diarization_cost("reframe", record_id, probe["duration"] / 60.0)
         except Exception as e:
             raise RuntimeError(f"Chirp 3 diarization failed: {e}") from e
         return chirp_context
@@ -210,6 +215,8 @@ class ReframeProcessor(JobProcessor):
                 mime_type="video/mp4",
                 content_type=content_type,
                 chirp_context=context,
+                model_id=getattr(record, "model_id", None),
+                region=getattr(record, "region", None),
             )
         )
         scenes = result.data.get("scenes", [])
@@ -286,6 +293,7 @@ class ReframeProcessor(JobProcessor):
             blurred_bg=record.blurred_bg,
         )
         self._poll_transcoder(record_id, job_name)
+        accumulate_transcoder_cost("reframe", record_id, probe["duration"] / 60.0)
         return output_uri
 
     def _poll_transcoder(self, record_id, job_name):

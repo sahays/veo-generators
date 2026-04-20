@@ -11,3 +11,6 @@ python-dotenv
 slowapi
 opencv-python-headless
 mediapipe
+google-adk
+google-cloud-aiplatform
+httpx

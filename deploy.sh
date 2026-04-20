@@ -23,7 +23,7 @@ WORKER_IMAGE_NAME="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/${WOR
 
 # Model Configs
 OPTIMIZE_PROMPT_MODEL=${OPTIMIZE_PROMPT_MODEL:-gemini-3-pro-preview}
-STORYBOARD_MODEL=${STORYBOARD_MODEL:-gemini-3-pro-image-preview}
+STORYBOARD_MODEL=${STORYBOARD_MODEL:-gemini-3.1-flash-image-preview}
 VIDEO_GEN_MODEL=${VIDEO_GEN_MODEL:-veo-3.1-generate-001}
 
 # Execute comprehensive pre-deployment checks

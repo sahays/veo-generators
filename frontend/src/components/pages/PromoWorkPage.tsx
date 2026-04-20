@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { ServicesUsedPanel } from '@/components/pricing/ServicesUsedPanel'
 import {
   Scissors, Loader2, ArrowLeft, Download, RotateCcw,
 } from 'lucide-react'
 import { Button, AnchorHeading } from '@/components/Common'
+import { ModelRegionPicker } from '@/components/ModelRegionPicker'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -13,6 +15,7 @@ import { PromptSelector } from '@/components/shared/PromptSelector'
 import { ProgressBar } from '@/components/shared/ProgressBar'
 import { ErrorDisplay } from '@/components/shared/ErrorDisplay'
 import { WorkPageHeader } from '@/components/shared/WorkPageHeader'
+import { ModelPill } from '@/components/ModelPill'
 import type { UploadItem, ProductionItem } from '@/components/shared/VideoSourceSelector'
 import type { SystemResource } from '@/types/project'
 
@@ -54,6 +57,9 @@ export const PromoWorkPage = () => {
   const [productions, setProductions] = useState<ProductionItem[]>([])
   const [uploads, setUploads] = useState<UploadItem[]>([])
   const [loadingSources, setLoadingSources] = useState(false)
+
+  // Model/region config
+  const [modelConfig, setModelConfig] = useState<{ modelId?: string; region?: string }>({})
 
   // Duration state
   const [targetDuration, setTargetDuration] = useState(60)
@@ -118,6 +124,8 @@ export const PromoWorkPage = () => {
         target_duration: targetDuration,
         text_overlay: textOverlay,
         generate_thumbnail: generateThumbnail,
+        model_id: modelConfig.modelId,
+        region: modelConfig.region,
       })
       navigate(`/promos/${result.id}`, { replace: true })
     } catch (err: any) {
@@ -178,6 +186,7 @@ export const PromoWorkPage = () => {
           statusConfig={STATUS_CONFIG}
           activeStatuses={ACTIVE_STATUSES}
         >
+          <ModelPill modelName={record.usage?.model_name} />
           {record.target_duration && (
             <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-slate-500/10 text-slate-600 border border-slate-500/20">
               {record.target_duration}s target
@@ -409,7 +418,8 @@ export const PromoWorkPage = () => {
         </div>
       )}
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-4">
+        <ModelRegionPicker capability="text" value={modelConfig} onChange={setModelConfig} className="mt-2" />
         <Button
           icon={Scissors}
           onClick={handleGeneratePromo}
@@ -419,6 +429,8 @@ export const PromoWorkPage = () => {
           {submitting ? 'Starting...' : 'Generate Promo'}
         </Button>
       </div>
+
+      {id && <ServicesUsedPanel feature="promo" recordId={id} />}
     </div>
   )
 }

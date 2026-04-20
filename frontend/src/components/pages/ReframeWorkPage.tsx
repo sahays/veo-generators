@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { Button, AnchorHeading } from '@/components/Common'
 import { Select } from '@/components/UI'
+import { ModelRegionPicker } from '@/components/ModelRegionPicker'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { usePolling } from '@/hooks/usePolling'
@@ -66,6 +67,9 @@ export const ReframeWorkPage = () => {
   const [uploads, setUploads] = useState<UploadItem[]>([])
   const [loadingSources, setLoadingSources] = useState(false)
 
+  // Model/region config
+  const [modelConfig, setModelConfig] = useState<{ modelId?: string; region?: string }>({})
+
   // Options
   const [contentType, setContentType] = useState('other')
   const [blurredBg, setBlurredBg] = useState(false)
@@ -118,6 +122,8 @@ export const ReframeWorkPage = () => {
         content_type: contentType,
         blurred_bg: blurredBg,
         vertical_split: verticalSplit,
+        model_id: modelConfig.modelId,
+        region: modelConfig.region,
       })
       navigate(`/orientations/${result.id}`, { replace: true })
     } catch (err: any) {
@@ -416,7 +422,8 @@ export const ReframeWorkPage = () => {
 
       <ErrorDisplay error={error} />
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-4">
+        <ModelRegionPicker capability="text" value={modelConfig} onChange={setModelConfig} className="mt-2" />
         <Button
           icon={Smartphone}
           onClick={handleStartReframe}

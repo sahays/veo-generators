@@ -79,11 +79,68 @@ export interface UsageMetrics {
   model_name: string
   cost_usd: number
   image_generations: number
+  image_input_tokens?: number
+  image_output_tokens?: number
   image_cost_usd: number
   veo_videos: number
   veo_seconds: number
   veo_unit_cost: number
   veo_cost_usd: number
+  transcoder_minutes?: number
+  transcoder_cost_usd?: number
+  diarization_minutes?: number
+  diarization_cost_usd?: number
+}
+
+export interface ServiceLineItem {
+  id: string
+  label: string
+  unit: 'token' | 'image' | 'second' | 'minute'
+  units: number
+  unit_cost_usd: number
+  subtotal_usd: number
+}
+
+export interface FeaturePricing {
+  feature: string
+  services: ServiceLineItem[]
+  total_usd: number
+  confidence?: 'high' | 'medium' | 'low'
+  notes?: string
+}
+
+export type FeatureId = 'production' | 'adapts' | 'reframe' | 'promo' | 'key_moments' | 'thumbnails'
+
+export interface PricingRatesResponse {
+  text_models: Record<string, {
+    label: string
+    tiers: { threshold_tokens: number | null; input_per_token: number; output_per_token: number }[]
+  }>
+  image_models: Record<string, {
+    label: string
+    input_per_token: number
+    output_per_token: number
+  }>
+  video_models: Record<string, { label: string; per_second: number }>
+  flat_services: Record<string, { label: string; unit: string; unit_cost_usd: number }>
+}
+
+export interface PricingFeaturesResponse {
+  features: Record<FeatureId, { services: { id: string; label: string; unit: string; unit_cost_usd: number }[] }>
+}
+
+export interface PricingEstimateRequest {
+  feature: FeatureId
+  source_duration_seconds?: number
+  video_length_seconds?: number
+  scene_count?: number
+  video_model?: string
+  text_model?: string
+  image_model?: string
+  variant_count?: number
+  segment_count?: number
+  has_title_card?: boolean
+  thumbnail_count?: number
 }
 
 export interface MediaFile {

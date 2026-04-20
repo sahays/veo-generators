@@ -9,10 +9,11 @@ from google.genai import types
 
 from adapt_prompts import ADAPT_PROMPT_TEMPLATE, adapt_prompt_variables
 from ai_helpers import (
+    compute_image_usage,
     compute_usage,
     extract_image_from_response,
-    image_generation_usage,
     load_schema,
+    resolve_model,
     resolve_resource,
 )
 from brief_helpers import parse_scenes
@@ -36,6 +37,15 @@ class GeminiService:
             project=self.project_id,
             location=self.location,
         )
+        self._clients: dict[str, genai.Client] = {self.location: self.client}
+
+    def _get_client(self, region: str | None = None) -> genai.Client:
+        loc = region or self.location
+        if loc not in self._clients:
+            self._clients[loc] = genai.Client(
+                vertexai=True, project=self.project_id, location=loc
+            )
+        return self._clients[loc]
 
     # ------------------------------------------------------------------
     # Brief analysis (production planning)
@@ -51,8 +61,17 @@ class GeminiService:
         schema_id: Optional[str] = None,
         project_type: Optional[str] = None,
         project: Optional[Project] = None,
+        model_id: Optional[str] = None,
+        region: Optional[str] = None,
     ) -> AIResponseWrapper:
-        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3.1-pro-preview")
+        model_id = resolve_model(
+            self.firestore_svc,
+            "text",
+            "OPTIMIZE_PROMPT_MODEL",
+            "gemini-3.1-pro-preview",
+            model_id,
+        )
+        client = self._get_client(region)
         prompt = self.prompts.resolve_brief_prompt(
             concept, length, orientation, prompt_id, project_type, project
         )
@@ -60,7 +79,7 @@ class GeminiService:
             schema_id, "project-analysis", "production-schema"
         )
         contents = _build_ref_contents(project, prompt)
-        response = self.client.models.generate_content(
+        response = client.models.generate_content(
             model=model_id,
             contents=contents,
             config=types.GenerateContentConfig(
@@ -90,12 +109,21 @@ class GeminiService:
         orientation: str,
         project: Optional[Project] = None,
         prompt_override: Optional[str] = None,
+        model_id: Optional[str] = None,
+        region: Optional[str] = None,
     ) -> AIResponseWrapper:
-        model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
+        model_id = resolve_model(
+            self.firestore_svc,
+            "image",
+            "STORYBOARD_MODEL",
+            "gemini-3.1-flash-image-preview",
+            model_id,
+        )
+        client = self._get_client(region)
         prompt = prompt_override or _build_scene_prompt(scene, project, orientation)
         contents = _build_ref_contents(project, prompt, style_guide=True)
         response = await gemini_call_with_retry(
-            self.client,
+            client,
             model_id,
             contents,
             types.GenerateContentConfig(
@@ -108,7 +136,7 @@ class GeminiService:
         )
         return AIResponseWrapper(
             data={"image_url": url, "generated_prompt": prompt},
-            usage=image_generation_usage(model_id),
+            usage=compute_image_usage(response, model_id),
         )
 
     # ------------------------------------------------------------------
@@ -122,8 +150,16 @@ class GeminiService:
         aspect_ratio: str,
         template_gcs_uri: str | None = None,
         prompt_id: str = "",
+        model_id: Optional[str] = None,
+        region: Optional[str] = None,
     ) -> AIResponseWrapper:
-        model_id = os.getenv("ADAPTS_MODEL", "gemini-3.1-flash-image-preview")
+        model_id = resolve_model(
+            self.firestore_svc,
+            "image",
+            "ADAPTS_MODEL",
+            "gemini-3.1-flash-image-preview",
+            model_id,
+        )
         prompt_text = None
         if prompt_id:
             prompt_text = resolve_resource(self.firestore_svc, prompt_id)
@@ -140,8 +176,9 @@ class GeminiService:
                 types.Part.from_uri(file_uri=template_gcs_uri, mime_type="image/png")
             )
         contents.append(prompt)
+        client = self._get_client(region)
         response = await gemini_call_with_retry(
-            self.client,
+            client,
             model_id,
             contents,
             types.GenerateContentConfig(
@@ -152,7 +189,7 @@ class GeminiService:
         url = extract_image_from_response(response, self.storage_svc, "adapts")
         return AIResponseWrapper(
             data={"image_url": url, "prompt_text_used": prompt},
-            usage=image_generation_usage(model_id),
+            usage=compute_image_usage(response, model_id),
         )
 
     # ------------------------------------------------------------------
@@ -165,21 +202,46 @@ class GeminiService:
         mime_type: str,
         prompt_id: str,
         schema_id: Optional[str] = None,
+        model_id: Optional[str] = None,
+        region: Optional[str] = None,
     ) -> AIResponseWrapper:
-        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3.1-pro-preview")
+        model_id = resolve_model(
+            self.firestore_svc,
+            "text",
+            "OPTIMIZE_PROMPT_MODEL",
+            "gemini-3.1-pro-preview",
+            model_id,
+        )
+        client = self._get_client(region)
         prompt = self.prompts.require_prompt(prompt_id)
         schema = self.prompts.resolve_schema(
             schema_id, "key-moments", "key-moments-schema"
         )
-        return await self._analyze_video(model_id, gcs_uri, mime_type, prompt, schema)
+        return await self._analyze_video(
+            client, model_id, gcs_uri, mime_type, prompt, schema
+        )
 
     async def analyze_video_for_thumbnails(
-        self, gcs_uri: str, mime_type: str, prompt_id: str
+        self,
+        gcs_uri: str,
+        mime_type: str,
+        prompt_id: str,
+        model_id: Optional[str] = None,
+        region: Optional[str] = None,
     ) -> AIResponseWrapper:
-        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3.1-pro-preview")
+        model_id = resolve_model(
+            self.firestore_svc,
+            "text",
+            "OPTIMIZE_PROMPT_MODEL",
+            "gemini-3.1-pro-preview",
+            model_id,
+        )
+        client = self._get_client(region)
         prompt = self.prompts.require_prompt(prompt_id)
         schema = load_schema("thumbnail-analysis-schema")
-        return await self._analyze_video(model_id, gcs_uri, mime_type, prompt, schema)
+        return await self._analyze_video(
+            client, model_id, gcs_uri, mime_type, prompt, schema
+        )
 
     async def analyze_video_focal_points(
         self,
@@ -188,10 +250,19 @@ class GeminiService:
         prompt_id: str = "",
         content_type: str = "other",
         chirp_context: str = "",
+        model_id: Optional[str] = None,
+        region: Optional[str] = None,
     ) -> AIResponseWrapper:
         from reframe_strategies import resolve_prompt
 
-        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3.1-pro-preview")
+        model_id = resolve_model(
+            self.firestore_svc,
+            "text",
+            "OPTIMIZE_PROMPT_MODEL",
+            "gemini-3.1-pro-preview",
+            model_id,
+        )
+        client = self._get_client(region)
         prompt_text, prompt_variables = None, {}
         if prompt_id and self.firestore_svc:
             content = resolve_resource(self.firestore_svc, prompt_id)
@@ -208,7 +279,7 @@ class GeminiService:
             prompt_text,
         ]
         response = await gemini_call_with_retry(
-            self.client,
+            client,
             model_id,
             contents,
             types.GenerateContentConfig(
@@ -232,9 +303,18 @@ class GeminiService:
         mime_type: str = "video/mp4",
         content_type: str = "other",
         chirp_context: str = "",
+        model_id: Optional[str] = None,
+        region: Optional[str] = None,
     ) -> AIResponseWrapper:
         """Scene-based reframing analysis (used with MediaPipe)."""
-        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3.1-pro-preview")
+        model_id = resolve_model(
+            self.firestore_svc,
+            "text",
+            "OPTIMIZE_PROMPT_MODEL",
+            "gemini-3.1-pro-preview",
+            model_id,
+        )
+        client = self._get_client(region)
         prompt_text = SCENE_ANALYSIS_PROMPT
         prompt_variables = {"mode": "scene-based", "content_type": content_type}
         if chirp_context:
@@ -246,7 +326,7 @@ class GeminiService:
             prompt_text,
         ]
         response = await gemini_call_with_retry(
-            self.client,
+            client,
             model_id,
             contents,
             types.GenerateContentConfig(
@@ -266,35 +346,68 @@ class GeminiService:
         mime_type: str = "video/mp4",
         target_duration: int = 60,
         prompt_id: str = "",
+        model_id: Optional[str] = None,
+        region: Optional[str] = None,
     ) -> AIResponseWrapper:
-        model_id = os.getenv("OPTIMIZE_PROMPT_MODEL", "gemini-3.1-pro-preview")
+        model_id = resolve_model(
+            self.firestore_svc,
+            "text",
+            "OPTIMIZE_PROMPT_MODEL",
+            "gemini-3.1-pro-preview",
+            model_id,
+        )
+        client = self._get_client(region)
         prompt = self.prompts.resolve_promo_prompt(prompt_id, target_duration)
         schema = load_schema("promo-segments-schema")
-        return await self._analyze_video(model_id, gcs_uri, mime_type, prompt, schema)
+        return await self._analyze_video(
+            client, model_id, gcs_uri, mime_type, prompt, schema
+        )
 
     # ------------------------------------------------------------------
     # Collage / overlay generation
     # ------------------------------------------------------------------
 
     async def generate_thumbnail_collage(
-        self, screenshot_uris: list[str], prompt_id: str
+        self,
+        screenshot_uris: list[str],
+        prompt_id: str,
+        model_id: Optional[str] = None,
+        region: Optional[str] = None,
     ) -> AIResponseWrapper:
-        model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
+        model_id = resolve_model(
+            self.firestore_svc,
+            "image",
+            "STORYBOARD_MODEL",
+            "gemini-3.1-flash-image-preview",
+            model_id,
+        )
+        client = self._get_client(region)
         prompt = self.prompts.require_prompt(prompt_id)
         contents = [
             types.Part.from_uri(file_uri=uri, mime_type="image/png")
             for uri in screenshot_uris
         ]
         contents.append(prompt)
-        return await self._generate_image(model_id, contents, "16:9", "thumbnails")
+        return await self._generate_image(
+            client, model_id, contents, "16:9", "thumbnails"
+        )
 
     async def generate_promo_collage(
         self,
         screenshot_uris: list[str],
         segments: list[dict] | None = None,
         orientation: str = "16:9",
+        model_id: Optional[str] = None,
+        region: Optional[str] = None,
     ) -> AIResponseWrapper:
-        model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
+        model_id = resolve_model(
+            self.firestore_svc,
+            "image",
+            "STORYBOARD_MODEL",
+            "gemini-3.1-flash-image-preview",
+            model_id,
+        )
+        client = self._get_client(region)
         prompt = build_collage_prompt(segments)
         contents = [
             types.Part.from_uri(file_uri=uri, mime_type="image/png")
@@ -302,13 +415,24 @@ class GeminiService:
         ]
         contents.append(prompt)
         return await self._generate_image(
-            model_id, contents, orientation, "promos/thumbnails"
+            client, model_id, contents, orientation, "promos/thumbnails"
         )
 
     async def generate_text_overlay(
-        self, text: str, orientation: str = "16:9"
+        self,
+        text: str,
+        orientation: str = "16:9",
+        model_id: Optional[str] = None,
+        region: Optional[str] = None,
     ) -> AIResponseWrapper:
-        model_id = os.getenv("STORYBOARD_MODEL", "gemini-3-pro-image-preview")
+        model_id = resolve_model(
+            self.firestore_svc,
+            "image",
+            "STORYBOARD_MODEL",
+            "gemini-3.1-flash-image-preview",
+            model_id,
+        )
+        client = self._get_client(region)
         prompt = (
             "Create a lower-third text overlay graphic for a professional "
             f"video promo. The text reads: '{text.upper()}'. Style: bold "
@@ -317,7 +441,7 @@ class GeminiService:
             "broadcast quality."
         )
         return await self._generate_image(
-            model_id, [prompt], orientation, "promos/overlays"
+            client, model_id, [prompt], orientation, "promos/overlays"
         )
 
     # ------------------------------------------------------------------
@@ -325,7 +449,7 @@ class GeminiService:
     # ------------------------------------------------------------------
 
     async def _analyze_video(
-        self, model_id, gcs_uri, mime_type, prompt, schema
+        self, client, model_id, gcs_uri, mime_type, prompt, schema
     ) -> AIResponseWrapper:
         """Video + prompt → structured JSON response."""
         contents = [
@@ -333,7 +457,7 @@ class GeminiService:
             prompt,
         ]
         response = await gemini_call_with_retry(
-            self.client,
+            client,
             model_id,
             contents,
             types.GenerateContentConfig(
@@ -346,11 +470,11 @@ class GeminiService:
         return AIResponseWrapper(data=data, usage=compute_usage(response, model_id))
 
     async def _generate_image(
-        self, model_id, contents, aspect_ratio, dest_folder
+        self, client, model_id, contents, aspect_ratio, dest_folder
     ) -> AIResponseWrapper:
         """Contents → image generation → upload → response."""
         response = await gemini_call_with_retry(
-            self.client,
+            client,
             model_id,
             contents,
             types.GenerateContentConfig(
@@ -361,7 +485,7 @@ class GeminiService:
         url = extract_image_from_response(response, self.storage_svc, dest_folder)
         return AIResponseWrapper(
             data={"image_url": url},
-            usage=image_generation_usage(model_id),
+            usage=compute_image_usage(response, model_id),
         )
 
 

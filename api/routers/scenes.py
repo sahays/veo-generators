@@ -8,10 +8,11 @@ from helpers import (
     build_flat_image_prompt,
     build_flat_video_prompt,
     accumulate_image_cost,
-    accumulate_veo_cost,
     parse_timestamp,
 )
+from cost_tracking import accumulate_veo_cost_on
 from models import AIResponseWrapper, ProjectStatus
+from pricing_config import DEFAULT_VIDEO_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,8 @@ async def generate_scene_frame(
                 id, scene_id, {"visual_description": new_desc}
             )
 
+    frame_model_id = body.get("model_id") if body else None
+    frame_region = body.get("region") if body else None
     try:
         result = await deps.ai_svc.generate_frame(
             id,
@@ -89,6 +92,8 @@ async def generate_scene_frame(
             production.orientation,
             project=production,
             prompt_override=prompt_override,
+            model_id=frame_model_id,
+            region=frame_region,
         )
     except Exception as e:
         logger.error(f"Frame generation failed for scene {scene_id}: {e}")
@@ -137,20 +142,51 @@ async def generate_scene_video(
                 id, scene_id, {"visual_description": new_desc}
             )
 
+    video_model_id = body.get("model_id") if body else None
+    video_region = body.get("region") if body else None
     deps.firestore_svc.update_scene(id, scene_id, {"status": "generating"})
-    result = await deps.video_svc.generate_scene_video(
-        id, scene, blocking=False, project=production, prompt_override=prompt_override
-    )
+    try:
+        result = await deps.video_svc.generate_scene_video(
+            id,
+            scene,
+            blocking=False,
+            project=production,
+            prompt_override=prompt_override,
+            model_id=video_model_id,
+            region=video_region,
+        )
+    except Exception as e:
+        logger.error(f"Video generation failed for scene {scene_id}: {e}")
+        error_msg = f"Video generation failed for scene {scene_id}: {e}"
+        deps.firestore_svc.update_scene(
+            id, scene_id, {"status": "failed", "error_message": str(e)}
+        )
+        deps.firestore_svc.update_production(
+            id, {"status": ProjectStatus.FAILED, "error_message": error_msg}
+        )
+        raise HTTPException(status_code=500, detail=error_msg)
 
-    # Calculate Veo cost based on scene duration
-    VEO_COST_PER_SECOND = 0.40  # Veo 3.1 Standard
+    # Resolve actual Veo model from the result (video_service reports what it used)
+    resolved_video_model = (
+        (result.get("model_id") if isinstance(result, dict) else None)
+        or video_model_id
+        or DEFAULT_VIDEO_MODEL
+    )
+    reported_duration = (
+        result.get("duration_seconds") if isinstance(result, dict) else None
+    )
     try:
         veo_start = parse_timestamp(scene.timestamp_start)
         veo_end = parse_timestamp(scene.timestamp_end)
         veo_duration = max(4, min(8, int(veo_end - veo_start)))
     except (ValueError, IndexError):
         veo_duration = 8
-    accumulate_veo_cost(id, veo_duration, VEO_COST_PER_SECOND)
+    accumulate_veo_cost_on(
+        "production",
+        id,
+        reported_duration or veo_duration,
+        resolved_video_model,
+    )
 
     if isinstance(result, dict) and "operation_name" in result:
         if result.get("generated_prompt"):

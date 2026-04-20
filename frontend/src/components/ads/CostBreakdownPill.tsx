@@ -2,13 +2,19 @@ import { useState, useRef, useEffect } from 'react'
 import { Cpu } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const GEMINI_INPUT_RATE = 0.000002
-const GEMINI_OUTPUT_RATE = 0.000012
-
+/**
+ * CostBreakdownPill — compact cost indicator with a detail popover.
+ *
+ * Prefer passing `subtotals` (from the /pricing/usage API) for a generic
+ * breakdown. The legacy token / image / Veo props remain for Production
+ * until all callers migrate to the API-driven variant.
+ */
 interface CostBreakdownPillProps {
-  inputTokens: number
-  outputTokens: number
   totalCost: number
+  subtotals?: { label: string; cost: number; detail?: string }[]
+  // Legacy (Production-only) fields
+  inputTokens?: number
+  outputTokens?: number
   imageGenerations?: number
   imageCost?: number
   veoVideos?: number
@@ -18,7 +24,19 @@ interface CostBreakdownPillProps {
   className?: string
 }
 
-export const CostBreakdownPill = ({ inputTokens, outputTokens, totalCost, imageGenerations, imageCost, veoVideos, veoSeconds, veoUnitCost, veoCost, className }: CostBreakdownPillProps) => {
+export const CostBreakdownPill = ({
+  totalCost,
+  subtotals,
+  inputTokens,
+  outputTokens,
+  imageGenerations,
+  imageCost,
+  veoVideos,
+  veoSeconds,
+  veoUnitCost,
+  veoCost,
+  className,
+}: CostBreakdownPillProps) => {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -31,25 +49,27 @@ export const CostBreakdownPill = ({ inputTokens, outputTokens, totalCost, imageG
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  const geminiInputCost = inputTokens * GEMINI_INPUT_RATE
-  const geminiOutputCost = outputTokens * GEMINI_OUTPUT_RATE
-  const geminiTotal = geminiInputCost + geminiOutputCost
-  const actualImageCost = imageCost || 0
-  const actualVeoCost = veoCost || 0
-
-  const fmt = (n: number) => n >= 0.01 ? `$${n.toFixed(3)}` : `$${n.toFixed(4)}`
+  const fmt = (n: number) => (n >= 0.01 ? `$${n.toFixed(3)}` : `$${n.toFixed(4)}`)
+  const hasLegacyTokens = inputTokens !== undefined || outputTokens !== undefined
 
   return (
-    <div ref={ref} className={cn("relative inline-flex", className)}>
+    <div ref={ref} className={cn('relative inline-flex', className)}>
       <button
-        onClick={(e) => { e.stopPropagation(); setOpen(!open) }}
+        onClick={(e) => {
+          e.stopPropagation()
+          setOpen(!open)
+        }}
         className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-accent/10 border border-accent/20 text-[9px] font-mono font-bold text-accent-dark hover:bg-accent/20 transition-colors"
       >
         <Cpu size={10} />
-        <span>IN:{formatCount(inputTokens)}</span>
-        <span className="text-muted-foreground">|</span>
-        <span>OUT:{formatCount(outputTokens)}</span>
-        <span className="text-muted-foreground">|</span>
+        {hasLegacyTokens && (
+          <>
+            <span>IN:{formatCount(inputTokens || 0)}</span>
+            <span className="text-muted-foreground">|</span>
+            <span>OUT:{formatCount(outputTokens || 0)}</span>
+            <span className="text-muted-foreground">|</span>
+          </>
+        )}
         <span>{fmt(totalCost)}</span>
       </button>
 
@@ -60,26 +80,37 @@ export const CostBreakdownPill = ({ inputTokens, outputTokens, totalCost, imageG
         >
           <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Cost Breakdown</p>
           <div className="space-y-1.5 text-xs font-mono">
-            <Row label="Input tokens" value={inputTokens.toLocaleString()} cost={fmt(geminiInputCost)} />
-            <Row label="Output tokens" value={outputTokens.toLocaleString()} cost={fmt(geminiOutputCost)} />
-            <div className="border-t border-border/50 pt-1.5">
-              <Row label="Gemini subtotal" cost={fmt(geminiTotal)} bold />
-            </div>
-            {(imageGenerations ?? 0) > 0 && (
-              <div className="border-t border-border/50 pt-1.5">
-                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Images</p>
-                <Row label="Frames generated" value={String(imageGenerations)} />
-                <Row label="Images subtotal" cost={fmt(actualImageCost)} bold />
-              </div>
-            )}
-            {(veoVideos ?? 0) > 0 && (
-              <div className="border-t border-border/50 pt-1.5">
-                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Videos</p>
-                <Row label="Videos generated" value={String(veoVideos)} />
-                <Row label="Total seconds" value={String(veoSeconds)} />
-                <Row label="Unit cost" value={`${fmt(veoUnitCost || 0)}/s`} />
-                <Row label="Videos subtotal" cost={fmt(actualVeoCost)} bold />
-              </div>
+            {subtotals && subtotals.length > 0 ? (
+              <>
+                {subtotals.map((s, i) => (
+                  <Row key={i} label={s.label} value={s.detail} cost={fmt(s.cost)} />
+                ))}
+              </>
+            ) : (
+              <>
+                {hasLegacyTokens && (
+                  <>
+                    <Row label="Input tokens" value={(inputTokens || 0).toLocaleString()} />
+                    <Row label="Output tokens" value={(outputTokens || 0).toLocaleString()} />
+                  </>
+                )}
+                {(imageGenerations ?? 0) > 0 && (
+                  <div className="border-t border-border/50 pt-1.5">
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Images</p>
+                    <Row label="Frames generated" value={String(imageGenerations)} />
+                    <Row label="Images subtotal" cost={fmt(imageCost || 0)} bold />
+                  </div>
+                )}
+                {(veoVideos ?? 0) > 0 && (
+                  <div className="border-t border-border/50 pt-1.5">
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Videos</p>
+                    <Row label="Videos generated" value={String(veoVideos)} />
+                    <Row label="Total seconds" value={String(veoSeconds)} />
+                    <Row label="Unit cost" value={`${fmt(veoUnitCost || 0)}/s`} />
+                    <Row label="Videos subtotal" cost={fmt(veoCost || 0)} bold />
+                  </div>
+                )}
+              </>
             )}
             <div className="border-t border-border/50 pt-1.5">
               <Row label="Total" cost={fmt(totalCost)} bold />
@@ -92,7 +123,7 @@ export const CostBreakdownPill = ({ inputTokens, outputTokens, totalCost, imageG
 }
 
 const Row = ({ label, value, cost, bold }: { label: string; value?: string; cost?: string; bold?: boolean }) => (
-  <div className={cn("flex items-center justify-between gap-2", bold && "font-bold")}>
+  <div className={cn('flex items-center justify-between gap-2', bold && 'font-bold')}>
     <span className="text-muted-foreground">{label}</span>
     <span className="flex items-center gap-2">
       {value && <span className="text-foreground/60">{value}</span>}

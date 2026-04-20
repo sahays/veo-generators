@@ -48,6 +48,8 @@ async def analyze_production(request: Request, id: str, body: dict = {}):
 
     prompt_id = body.get("prompt_id")
     schema_id = body.get("schema_id")
+    model_id = body.get("model_id")
+    region = body.get("region")
 
     deps.firestore_svc.update_production(id, {"status": ProjectStatus.ANALYZING})
     try:
@@ -60,6 +62,8 @@ async def analyze_production(request: Request, id: str, body: dict = {}):
             schema_id=schema_id,
             project_type=p.type,
             project=p,
+            model_id=model_id,
+            region=region,
         )
     except Exception as e:
         logger.error(f"Analysis failed for production {id}: {e}")

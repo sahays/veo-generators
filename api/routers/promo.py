@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -26,6 +27,8 @@ class PromoRequest(BaseModel):
     target_duration: int = 60
     text_overlay: bool = False
     generate_thumbnail: bool = False
+    model_id: Optional[str] = None
+    region: Optional[str] = None
 
 
 def _sign_promo_urls(record: PromoRecord) -> dict:
@@ -94,6 +97,8 @@ async def create_promo(body: PromoRequest, request: Request):
         target_duration=body.target_duration,
         text_overlay=body.text_overlay,
         generate_thumbnail=body.generate_thumbnail,
+        model_id=body.model_id,
+        region=body.region,
         status="pending",
         invite_code=getattr(request.state, "invite_code", None),
     )

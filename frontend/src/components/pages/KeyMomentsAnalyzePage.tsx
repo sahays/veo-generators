@@ -1,12 +1,15 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
+import { ServicesUsedPanel } from '@/components/pricing/ServicesUsedPanel'
 import { motion } from 'framer-motion'
 import {
   Zap, Loader2, Play, Clock, Tag, ArrowLeft, Upload,
   Film, FileVideo, ChevronRight, Pencil, Check,
 } from 'lucide-react'
 import { Button, Card, AnchorHeading } from '@/components/Common'
+import { ModelPill } from '@/components/ModelPill'
 import { Select } from '@/components/UI'
+import { ModelRegionPicker } from '@/components/ModelRegionPicker'
 import { api } from '@/lib/api'
 import { cn, getTimeAgo, formatFileSize, parseTimestamp } from '@/lib/utils'
 import type { KeyMoment, KeyMomentsAnalysis, SystemResource, KeyMomentsRecord, CompletedProductionSource, UploadRecord } from '@/types/project'
@@ -46,10 +49,16 @@ export const KeyMomentsAnalyzePage = () => {
   const [prompts, setPrompts] = useState<SystemResource[]>([])
   const [promptId, setPromptId] = useState('')
 
+  // Model/region config
+  const [modelConfig, setModelConfig] = useState<{ modelId?: string; region?: string }>({})
+
   // Analysis state
   const [analyzing, setAnalyzing] = useState(false)
   const [analysis, setAnalysis] = useState<KeyMomentsAnalysis | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Model name (from record usage)
+  const [modelName, setModelName] = useState<string | undefined>()
 
   // View mode loading
   const [loadingRecord, setLoadingRecord] = useState(false)
@@ -75,6 +84,7 @@ export const KeyMomentsAnalyzePage = () => {
         setVideoFilename(record.display_name || record.video_filename)
         setVideoSource(record.video_source)
         setProductionId(record.production_id)
+        setModelName(record.usage?.model_name)
         setAnalysis({
           key_moments: record.key_moments,
           video_summary: record.video_summary,
@@ -159,6 +169,8 @@ export const KeyMomentsAnalyzePage = () => {
         video_filename: videoFilename,
         video_source: videoSource,
         production_id: productionId,
+        model_id: modelConfig.modelId,
+        region: modelConfig.region,
       })
       setAnalysis(result.data)
       if (result.id) {
@@ -233,7 +245,10 @@ export const KeyMomentsAnalyzePage = () => {
                   <Pencil size={12} className="text-muted-foreground" />
                 </button>
               )}
-              <p className="text-sm text-muted-foreground mt-1">Key Moments Analysis</p>
+              <div className="flex items-center gap-2 mt-1">
+                <p className="text-sm text-muted-foreground">Key Moments Analysis</p>
+                <ModelPill modelName={modelName} />
+              </div>
             </>
           ) : (
             <>
@@ -411,14 +426,17 @@ export const KeyMomentsAnalyzePage = () => {
               </p>
             )}
           </div>
-          <Button
-            icon={analyzing ? Loader2 : Zap}
-            onClick={handleAnalyze}
-            disabled={analyzing || !promptId}
-            className={cn(analyzing && "[&_svg]:animate-spin")}
-          >
-            {analyzing ? 'Analyzing...' : 'Analyze Video'}
-          </Button>
+          <div className="flex flex-col items-end gap-2">
+            <ModelRegionPicker capability="text" value={modelConfig} onChange={setModelConfig} className="mt-2" />
+            <Button
+              icon={analyzing ? Loader2 : Zap}
+              onClick={handleAnalyze}
+              disabled={analyzing || !promptId}
+              className={cn(analyzing && "[&_svg]:animate-spin")}
+            >
+              {analyzing ? 'Analyzing...' : 'Analyze Video'}
+            </Button>
+          </div>
         </div>
       )}
 
@@ -503,6 +521,7 @@ export const KeyMomentsAnalyzePage = () => {
           </div>
         </div>
       )}
+      {id && <div className="mt-6"><ServicesUsedPanel feature="key_moments" recordId={id} /></div>}
     </motion.div>
   )
 }

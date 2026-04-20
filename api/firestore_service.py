@@ -13,6 +13,7 @@ from models import (
     ReframeRecord,
     PromoRecord,
     AdaptRecord,
+    AIModel,
 )
 
 
@@ -31,6 +32,7 @@ class FirestoreService:
         self.reframe_collection = self.db.collection(f"{prefix}_reframes")
         self.promo_collection = self.db.collection(f"{prefix}_promos")
         self.adapts_collection = self.db.collection(f"{prefix}_adapts")
+        self.models_collection = self.db.collection(f"{prefix}_models")
 
     # --- Generic CRUD helpers ---
 
@@ -159,6 +161,9 @@ class FirestoreService:
 
     def create_key_moments_analysis(self, record: KeyMomentsRecord):
         self._create_record(self.key_moments_collection, record)
+
+    def update_key_moments_analysis(self, record_id: str, updates: dict):
+        self._update_record(self.key_moments_collection, record_id, updates)
 
     def delete_key_moments_analysis(self, record_id: str):
         self._delete_record(self.key_moments_collection, record_id)
@@ -296,3 +301,41 @@ class FirestoreService:
 
     def delete_invite_code(self, code_id: str):
         self._delete_record(self.invite_codes_collection, code_id)
+
+    # --- AI Models ---
+
+    def get_ai_models(self) -> List[AIModel]:
+        return self._get_records(self.models_collection, AIModel, include_archived=True)
+
+    def get_ai_model(self, model_id: str) -> Optional[AIModel]:
+        return self._get_record(self.models_collection, AIModel, model_id)
+
+    def create_ai_model(self, model: AIModel):
+        self._create_record(self.models_collection, model)
+
+    def update_ai_model(self, model_id: str, updates: dict):
+        self._update_record(self.models_collection, model_id, updates)
+
+    def delete_ai_model(self, model_id: str):
+        self._delete_record(self.models_collection, model_id)
+
+    def get_default_model(self, capability: str) -> Optional[AIModel]:
+        models = self.get_ai_models()
+        for m in models:
+            if m.capability == capability and m.is_default and m.is_active:
+                return m
+        return None
+
+    def set_model_default(self, model_id: str):
+        model = self.get_ai_model(model_id)
+        if not model:
+            return
+        all_models = self.get_ai_models()
+        batch = self.db.batch()
+        for m in all_models:
+            if m.capability == model.capability and m.is_default:
+                batch.update(
+                    self.models_collection.document(m.id), {"is_default": False}
+                )
+        batch.update(self.models_collection.document(model_id), {"is_default": True})
+        batch.commit()

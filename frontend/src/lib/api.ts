@@ -127,11 +127,11 @@ export const api = {
         body: JSON.stringify(updates),
       })
     },
-    analyze: async (id: string, prompt_id?: string, schema_id?: string): Promise<any> => {
+    analyze: async (id: string, prompt_id?: string, schema_id?: string, model_id?: string, region?: string): Promise<any> => {
       const res = await authFetch(`${API_BASE_URL}/productions/${id}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt_id, schema_id }),
+        body: JSON.stringify({ prompt_id, schema_id, model_id, region }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
@@ -261,7 +261,7 @@ export const api = {
       if (!res.ok) throw new Error(`Failed to get key moments analysis: ${res.status}`)
       return res.json()
     },
-    analyze: async (data: { gcs_uri: string; mime_type?: string; prompt_id: string; schema_id?: string; video_filename?: string; video_source?: string; production_id?: string }): Promise<any> => {
+    analyze: async (data: { gcs_uri: string; mime_type?: string; prompt_id: string; schema_id?: string; video_filename?: string; video_source?: string; production_id?: string; model_id?: string; region?: string }): Promise<any> => {
       const res = await authFetch(`${API_BASE_URL}/key-moments/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -304,7 +304,7 @@ export const api = {
       if (!res.ok) throw new Error(`Failed to get thumbnail record: ${res.status}`)
       return res.json()
     },
-    analyze: async (data: { gcs_uri: string; mime_type?: string; prompt_id: string; video_filename?: string; video_source?: string; production_id?: string }): Promise<any> => {
+    analyze: async (data: { gcs_uri: string; mime_type?: string; prompt_id: string; video_filename?: string; video_source?: string; production_id?: string; model_id?: string; region?: string }): Promise<any> => {
       const res = await authFetch(`${API_BASE_URL}/thumbnails/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -523,7 +523,7 @@ export const api = {
       if (!res.ok) throw new Error(`Failed to get reframe record: ${res.status}`)
       return res.json()
     },
-    create: async (data: { gcs_uri: string; source_filename?: string; mime_type?: string; prompt_id?: string; content_type?: string; blurred_bg?: boolean; sports_mode?: boolean; vertical_split?: boolean }): Promise<any> => {
+    create: async (data: { gcs_uri: string; source_filename?: string; mime_type?: string; prompt_id?: string; content_type?: string; blurred_bg?: boolean; sports_mode?: boolean; vertical_split?: boolean; model_id?: string; region?: string }): Promise<any> => {
       const res = await authFetch(`${API_BASE_URL}/reframe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -575,7 +575,7 @@ export const api = {
       if (!res.ok) throw new Error(`Failed to get promo: ${res.status}`)
       return res.json()
     },
-    create: async (data: { gcs_uri: string; source_filename?: string; prompt_id?: string; target_duration?: number; text_overlay?: boolean; generate_thumbnail?: boolean }): Promise<any> => {
+    create: async (data: { gcs_uri: string; source_filename?: string; prompt_id?: string; target_duration?: number; text_overlay?: boolean; generate_thumbnail?: boolean; model_id?: string; region?: string }): Promise<any> => {
       const res = await authFetch(`${API_BASE_URL}/promo`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -627,7 +627,7 @@ export const api = {
       if (!res.ok) throw new Error(`Failed to get adapt: ${res.status}`)
       return res.json()
     },
-    create: async (data: { gcs_uri: string; source_filename?: string; source_mime_type?: string; template_gcs_uri?: string; preset_bundle?: string; aspect_ratios?: string[] }): Promise<any> => {
+    create: async (data: { gcs_uri: string; source_filename?: string; source_mime_type?: string; template_gcs_uri?: string; preset_bundle?: string; aspect_ratios?: string[]; model_id?: string; region?: string }): Promise<any> => {
       const res = await authFetch(`${API_BASE_URL}/adapts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -693,5 +693,95 @@ export const api = {
       })
       return res.json()
     }
-  }
+  },
+  chat: {
+    sendMessage: async (message: string, history: { role: string; content: string }[] = []): Promise<{ response: string; role: string; agent?: string; data?: any }> => {
+      const res = await authFetch(`${API_BASE_URL}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, history }),
+      })
+      if (!res.ok) throw new Error(`Chat failed: ${res.status}`)
+      return res.json()
+    }
+  },
+  models: {
+    list: async (): Promise<any[]> => {
+      const res = await authFetch(`${API_BASE_URL}/models`)
+      if (!res.ok) throw new Error(`Failed to list models: ${res.status}`)
+      return res.json()
+    },
+    defaults: async (): Promise<Record<string, any>> => {
+      const res = await authFetch(`${API_BASE_URL}/models/defaults`)
+      if (!res.ok) throw new Error(`Failed to get defaults: ${res.status}`)
+      return res.json()
+    },
+    regions: async (): Promise<string[]> => {
+      const res = await authFetch(`${API_BASE_URL}/models/regions`)
+      if (!res.ok) throw new Error(`Failed to list regions: ${res.status}`)
+      return res.json()
+    },
+    create: async (data: { name: string; code: string; provider: string; capability: string; regions?: string[]; is_default?: boolean }): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/models`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.detail || `Failed to create model: ${res.status}`)
+      }
+      return res.json()
+    },
+    setDefault: async (id: string): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/models/${id}/set-default`, { method: 'POST' })
+      if (!res.ok) throw new Error(`Failed to set default: ${res.status}`)
+    },
+    update: async (id: string, data: Record<string, any>): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/models/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error(`Failed to update model: ${res.status}`)
+    },
+    delete: async (id: string): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/models/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`Failed to delete model: ${res.status}`)
+    },
+    seed: async (): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/models/seed`, { method: 'POST' })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.detail || `Failed to seed models: ${res.status}`)
+      }
+      return res.json()
+    },
+  },
+  pricing: {
+    rates: async (): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/pricing/rates`)
+      if (!res.ok) throw new Error(`Failed to load pricing rates: ${res.status}`)
+      return res.json()
+    },
+    features: async (): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/pricing/features`)
+      if (!res.ok) throw new Error(`Failed to load pricing features: ${res.status}`)
+      return res.json()
+    },
+    estimate: async (body: any): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/pricing/estimate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) throw new Error(`Failed to estimate: ${res.status}`)
+      return res.json()
+    },
+    usage: async (feature: string, recordId: string): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/pricing/usage/${feature}/${recordId}`)
+      if (!res.ok) throw new Error(`Failed to load usage: ${res.status}`)
+      return res.json()
+    },
+  },
 }

@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Menu, X, Clapperboard, Zap, Image as ImageIcon, Smartphone, Scissors, LayoutGrid,
-  ChevronLeft, ChevronRight, Terminal,
+  ChevronLeft, ChevronRight, Terminal, Bot, Settings, Cpu,
   FileText, Sun, Moon, Activity, Upload, Shield, LogOut
 } from 'lucide-react'
 import { useLayoutStore } from '@/store/useLayoutStore'
@@ -42,6 +42,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/adapts': 'Adapts',
   '/adapts/create': 'New Adapt',
   '/invite-codes': 'Invite Codes',
+  '/models': 'AI Models',
+  '/chat': 'Ask Aanya',
 }
 
 function getPageTitle(pathname: string): string {
@@ -86,15 +88,20 @@ export const Sidebar = () => {
   }, [pageTitle])
 
   const navItems: NavItem[] = [
+    { name: 'Ask Aanya', icon: Bot, path: '/chat' },
     { name: 'Productions', icon: Clapperboard, path: '/productions' },
     { name: 'Key Moments', icon: Zap, path: '/key-moments' },
     { name: 'Thumbnails', icon: ImageIcon, path: '/thumbnails' },
-    { name: 'Files', icon: Upload, path: '/uploads' },
     { name: 'Orientations', icon: Smartphone, path: '/orientations' },
     { name: 'Promos', icon: Scissors, path: '/promos' },
     { name: 'Adapts', icon: LayoutGrid, path: '/adapts' },
+  ]
+
+  const settingsItems: NavItem[] = [
+    { name: 'Files', icon: Upload, path: '/uploads' },
     { name: 'System Prompts', icon: FileText, path: '/prompts' },
     ...(isMaster ? [
+      { name: 'Models', icon: Cpu, path: '/models' },
       { name: 'Diagnostics', icon: Activity, path: '/diagnostics' },
       { name: 'Invite Codes', icon: Shield, path: '/invite-codes' },
     ] : []),
@@ -155,6 +162,35 @@ export const Sidebar = () => {
 
         <nav className="flex-1 py-4 overflow-y-auto no-scrollbar">
           {navItems.map((item) => (
+            <NavLink
+              key={item.name}
+              to={item.path}
+              onClick={() => setSidebarOpen(false)}
+              className={({ isActive }) => cn(
+                "flex items-center gap-4 w-full px-6 py-3 transition-all duration-200 group cursor-pointer",
+                "hover:bg-sidebar-text/10",
+                isActive && "bg-sidebar-text/15 font-semibold",
+                isSidebarCollapsed && "justify-center px-0"
+              )}
+            >
+              <item.icon size={20} className="shrink-0 transition-colors" />
+              {!isSidebarCollapsed && (
+                <span className="text-sm font-medium">{item.name}</span>
+              )}
+            </NavLink>
+          ))}
+
+          <div className={cn(
+            "flex items-center gap-3 px-6 pt-6 pb-2",
+            isSidebarCollapsed && "justify-center px-0"
+          )}>
+            {isSidebarCollapsed ? (
+              <Settings size={16} className="opacity-40" />
+            ) : (
+              <span className="text-xs font-semibold uppercase tracking-wider opacity-40">Settings</span>
+            )}
+          </div>
+          {settingsItems.map((item) => (
             <NavLink
               key={item.name}
               to={item.path}

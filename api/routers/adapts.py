@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -49,6 +50,8 @@ class AdaptRequest(BaseModel):
     prompt_id: str = ""
     preset_bundle: str = ""
     aspect_ratios: list[str] = []
+    model_id: Optional[str] = None
+    region: Optional[str] = None
 
 
 def _sign_adapt_urls(record: AdaptRecord) -> dict:
@@ -130,6 +133,8 @@ async def create_adapt(body: AdaptRequest, request: Request):
         template_gcs_uri=body.template_gcs_uri or None,
         prompt_id=body.prompt_id,
         preset_bundle=body.preset_bundle,
+        model_id=body.model_id,
+        region=body.region,
         variants=variants,
         status="pending",
         invite_code=getattr(request.state, "invite_code", None),

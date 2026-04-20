@@ -3,8 +3,11 @@ import { motion } from 'framer-motion'
 import { ArrowLeft, Play, FileText, LayoutGrid, Cpu, CheckCircle2, Plus, Loader2, Eye, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button, Card, AnchorHeading } from '@/components/Common'
+import { ModelRegionPicker } from '@/components/ModelRegionPicker'
 import { PromptModal } from '@/components/ads/PromptModal'
 import { CostBreakdownPill } from '@/components/ads/CostBreakdownPill'
+import { ServicesUsedPanel } from '@/components/pricing/ServicesUsedPanel'
+import { ModelPill } from '@/components/ModelPill'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import type { Project, Scene } from '@/types/project'
@@ -17,6 +20,7 @@ export const ProductionSummary = () => {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const [isLoading, setIsLoading] = useState(false)
+  const [modelConfig, setModelConfig] = useState<{ modelId?: string; region?: string }>({})
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null)
   const [showAnalysisPrompt, setShowAnalysisPrompt] = useState(false)
 
@@ -94,6 +98,7 @@ export const ProductionSummary = () => {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <ModelRegionPicker capability="text" value={modelConfig} onChange={setModelConfig} className="mt-2" />
           <Button variant="ghost" icon={FileText} onClick={() => navigate(`/productions/${id}/script`)}>View Technical Script</Button>
           {isMaster && <Button icon={Plus} onClick={handleStartFresh}>New Production</Button>}
         </div>
@@ -161,6 +166,7 @@ export const ProductionSummary = () => {
 
         {/* Sidebar: Metadata & Metrics */}
         <div className="space-y-6">
+          <ServicesUsedPanel feature="production" recordId={id} />
           <Card id="resource-usage" title="Resource Usage" icon={Cpu}>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -202,8 +208,8 @@ export const ProductionSummary = () => {
                   <span className="font-medium">{tempProjectData.video_length}s</span>
                 </div>
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-muted-foreground">AI Models</span>
-                  <span className="font-medium">Veo 3, Imagen</span>
+                  <span className="text-muted-foreground">AI Model</span>
+                  <ModelPill modelName={totalUsage?.model_name} />
                 </div>
              </div>
           </Card>

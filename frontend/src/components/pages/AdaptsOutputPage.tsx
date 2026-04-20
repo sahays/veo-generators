@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { ModelPill } from '@/components/ModelPill'
+import { ServicesUsedPanel } from '@/components/pricing/ServicesUsedPanel'
 import type { AdaptRecord } from '@/types/project'
 
 export const AdaptsOutputPage = () => {
@@ -63,9 +65,12 @@ export const AdaptsOutputPage = () => {
       </button>
 
       <div className="space-y-1">
-        <h1 className="text-lg font-heading font-bold text-foreground">
-          Adapt Prompt — {variant.aspect_ratio}
-        </h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-lg font-heading font-bold text-foreground">
+            Adapt Prompt — {variant.aspect_ratio}
+          </h1>
+          <ModelPill modelName={record?.usage?.model_name} />
+        </div>
         <p className="text-sm text-muted-foreground">{title}</p>
       </div>
 
@@ -99,6 +104,8 @@ export const AdaptsOutputPage = () => {
           </p>
         )}
       </div>
+
+      {id && <ServicesUsedPanel feature="adapts" recordId={id} />}
     </div>
   )
 }

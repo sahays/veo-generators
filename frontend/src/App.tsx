@@ -10,6 +10,7 @@ import { PromptsPage } from './components/pages/PromptsPage'
 import { PromptDetailPage } from './components/pages/PromptDetailPage'
 import { KeyMomentsLandingPage } from './components/pages/KeyMomentsLandingPage'
 import { KeyMomentsAnalyzePage } from './components/pages/KeyMomentsAnalyzePage'
+import { ChatPage } from './components/pages/ChatPage'
 import { ThumbnailsLandingPage } from './components/pages/ThumbnailsLandingPage'
 import { ThumbnailsWorkPage } from './components/pages/ThumbnailsWorkPage'
 import { ReframeLandingPage } from './components/pages/ReframeLandingPage'
@@ -22,7 +23,9 @@ import { AdaptsWorkPage } from './components/pages/AdaptsWorkPage'
 import { AdaptsOutputPage } from './components/pages/AdaptsOutputPage'
 import { UploadsPage } from './components/pages/UploadsPage'
 import { InviteCodesPage } from './components/pages/InviteCodesPage'
+import { ModelsPage } from './components/pages/ModelsPage'
 import { InviteCodeGate } from './components/InviteCodeGate'
+import { ChatWidget } from './components/chat/ChatWidget'
 import { useAuthStore } from './store/useAuthStore'
 import { api } from './lib/api'
 
@@ -67,7 +70,10 @@ function App() {
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-6 md:p-8">
           <div className="max-w-4xl mx-auto w-full">
             <Routes>
-              <Route path="/" element={<Navigate to="/productions" replace />} />
+              <Route path="/" element={<Navigate to="/chat" replace />} />
+
+              {/* AI Co-Pilot / Ask Aanya */}
+              <Route path="/chat" element={<ChatPage />} />
 
               {/* Productions Routes */}
               <Route path="/productions" element={<ProjectList />} />
@@ -104,17 +110,16 @@ function App() {
               <Route path="/adapts/:id/prompt" element={<AdaptsOutputPage />} />
               <Route path="/adapts/:id/prompt/:variantIndex" element={<AdaptsOutputPage />} />
 
-              {/* Uploads */}
+              {/* Settings — Files & Prompts readable by all */}
               <Route path="/uploads" element={<UploadsPage />} />
               <Route path="/uploads/:id" element={<UploadsPage />} />
-
-              {/* System Prompts (view for all, edit for master) */}
               <Route path="/prompts" element={<PromptsPage />} />
               <Route path="/prompts/:id" element={<PromptDetailPage />} />
 
-              {/* Admin (master only) */}
+              {/* Settings — master only */}
               {isMaster && (
                 <>
+                  <Route path="/models" element={<ModelsPage />} />
                   <Route path="/diagnostics" element={<DiagnosticsPage />} />
                   <Route path="/invite-codes" element={<InviteCodesPage />} />
                 </>
@@ -126,6 +131,7 @@ function App() {
           </div>
         </main>
       </div>
+      <ChatWidget />
     </div>
   )
 }

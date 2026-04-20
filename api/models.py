@@ -44,16 +44,78 @@ class SystemResource(BaseModel):
 
 
 class UsageMetrics(BaseModel):
+    """Facts about a job run. Cost fields are denormalized caches — the
+    authoritative cost is always computed by `/pricing/usage` from these
+    facts against current rates in `pricing_config`."""
+
+    # --- facts (authoritative) ---
     input_tokens: int = 0
     output_tokens: int = 0
     model_name: str = ""
-    cost_usd: float = 0.0
     image_generations: int = 0
-    image_cost_usd: float = 0.0
+    image_input_tokens: int = 0
+    image_output_tokens: int = 0
+    image_model_name: str = ""
     veo_videos: int = 0
     veo_seconds: int = 0
+    veo_model_id: str = ""
+    transcoder_minutes: float = 0.0
+    transcoder_tier: str = ""  # "sd" | "hd" | "4k"
+    diarization_minutes: float = 0.0
+
+    # --- provenance ---
+    pricing_confidence: str = "high"  # "high" | "medium" | "low"
+    pricing_notes: str = ""
+
+    # --- denormalized cost caches (recomputed from facts each write) ---
+    cost_usd: float = 0.0
+    image_cost_usd: float = 0.0
     veo_unit_cost: float = 0.0
     veo_cost_usd: float = 0.0
+    transcoder_cost_usd: float = 0.0
+    diarization_cost_usd: float = 0.0
+
+
+class ServiceLineItem(BaseModel):
+    """One line in a pricing breakdown — one row in the 'Services used' panel."""
+
+    id: str
+    label: str
+    unit: str  # "token" | "image" | "second" | "minute"
+    units: float
+    unit_cost_usd: float
+    subtotal_usd: float
+
+
+class FeaturePricing(BaseModel):
+    """Pricing info for a single feature — used by /pricing/features + /pricing/usage."""
+
+    feature: str
+    services: List[ServiceLineItem]
+    total_usd: float
+    confidence: Optional[str] = None  # "high" | "medium" | "low" (usage responses only)
+    notes: Optional[str] = None
+
+
+class PricingEstimateRequest(BaseModel):
+    """Pre-run estimate request. Feature-specific fields are optional."""
+
+    feature: str
+    # Common
+    source_duration_seconds: Optional[float] = None
+    # Production
+    video_length_seconds: Optional[float] = None
+    scene_count: Optional[int] = None
+    video_model: Optional[str] = None
+    text_model: Optional[str] = None
+    image_model: Optional[str] = None
+    # Adapts
+    variant_count: Optional[int] = None
+    # Promo
+    segment_count: Optional[int] = None
+    has_title_card: Optional[bool] = None
+    # Thumbnails
+    thumbnail_count: Optional[int] = None
 
 
 class GlobalStyle(BaseModel):
@@ -234,6 +296,8 @@ class ReframeRecord(BaseModel):
     blurred_bg: bool = False
     sports_mode: bool = False
     vertical_split: bool = False
+    model_id: Optional[str] = None
+    region: Optional[str] = None
     output_gcs_uri: Optional[str] = None
     focal_points: List[FocalPoint] = []
     scene_changes: List[SceneChange] = []
@@ -273,6 +337,8 @@ class PromoRecord(BaseModel):
     target_duration: int = 60  # seconds
     text_overlay: bool = False
     generate_thumbnail: bool = False
+    model_id: Optional[str] = None
+    region: Optional[str] = None
     thumbnail_gcs_uri: Optional[str] = None
     segments: List[PromoSegment] = []
     output_gcs_uri: Optional[str] = None
@@ -306,6 +372,8 @@ class AdaptRecord(BaseModel):
     template_gcs_uri: Optional[str] = None
     prompt_id: str = ""
     preset_bundle: str = ""
+    model_id: Optional[str] = None
+    region: Optional[str] = None
     variants: List[AdaptVariant] = []
     status: str = "pending"  # pending|generating|completed|partial|failed
     error_message: Optional[str] = None
@@ -372,6 +440,70 @@ class CreateInviteCodeRequest(BaseModel):
 
 class ValidateCodeRequest(BaseModel):
     code: str
+
+
+class ModelCapability(str, Enum):
+    TEXT = "text"
+    IMAGE = "image"
+    VIDEO = "video"
+
+
+AVAILABLE_REGIONS = [
+    "global",
+    # US
+    "us-central1",
+    "us-east1",
+    "us-east4",
+    "us-east5",
+    "us-west1",
+    "us-west4",
+    "us-south1",
+    # Americas
+    "northamerica-northeast1",
+    "southamerica-east1",
+    # Europe
+    "europe-west1",
+    "europe-west2",
+    "europe-west3",
+    "europe-west4",
+    "europe-west6",
+    "europe-west8",
+    "europe-west9",
+    "europe-north1",
+    "europe-central2",
+    # Asia-Pacific
+    "asia-south1",
+    "asia-southeast1",
+    "asia-east2",
+    "asia-northeast1",
+    "asia-northeast3",
+    "australia-southeast1",
+    # Middle East
+    "me-west1",
+    "me-central1",
+    "me-central2",
+]
+
+
+class AIModel(BaseModel):
+    id: str = Field(default_factory=lambda: generate_id("mdl-"))
+    name: str
+    code: str
+    provider: str
+    capability: ModelCapability
+    regions: list = Field(default_factory=lambda: ["global"])
+    is_default: bool = False
+    is_active: bool = True
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+
+
+class CreateAIModelRequest(BaseModel):
+    name: str
+    code: str
+    provider: str
+    capability: str
+    regions: list = Field(default_factory=lambda: ["global"])
+    is_default: bool = False
 
 
 class AIResponseWrapper(BaseModel):

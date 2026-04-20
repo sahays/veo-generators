@@ -8,6 +8,7 @@ import uuid as _uuid
 from concurrent.futures import ThreadPoolExecutor
 
 import deps
+from cost_tracking import accumulate_image_cost_on
 from models import PromoSegment
 
 from base_processor import JobProcessor, TempFileManager
@@ -82,6 +83,8 @@ class PromoProcessor(JobProcessor):
                 mime_type="video/mp4",
                 target_duration=record.target_duration,
                 prompt_id=record.prompt_id,
+                model_id=getattr(record, "model_id", None),
+                region=getattr(record, "region", None),
             )
         )
         segments_raw = result.data.get("segments", [])
@@ -222,6 +225,13 @@ class PromoProcessor(JobProcessor):
             )
         )
         uri = result.data["image_url"]
+        accumulate_image_cost_on(
+            "promo",
+            record_id,
+            result.usage.cost_usd,
+            input_tokens=result.usage.image_input_tokens,
+            output_tokens=result.usage.image_output_tokens,
+        )
         deps.firestore_svc.update_promo_record(record_id, {"thumbnail_gcs_uri": uri})
         return uri
 
@@ -307,6 +317,13 @@ class PromoProcessor(JobProcessor):
             )
         )
         uri = result.data["image_url"]
+        accumulate_image_cost_on(
+            "promo",
+            record_id,
+            result.usage.cost_usd,
+            input_tokens=result.usage.image_input_tokens,
+            output_tokens=result.usage.image_output_tokens,
+        )
         segments_raw[i]["overlay_gcs_uri"] = uri
         deps.firestore_svc.update_promo_record(record_id, {"segments": segments_raw})
         return uri

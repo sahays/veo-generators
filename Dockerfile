@@ -29,9 +29,11 @@ COPY --from=frontend-build /app/frontend/dist ./static
 
 # Expose port (Cloud Run sets $PORT environment variable)
 ENV PORT=8080
-ENV OPTIMIZE_PROMPT_MODEL=gemini-3-preview
-ENV STORYBOARD_MODEL=imagen/nano-banana
-ENV VIDEO_GEN_MODEL=veo-3
+ENV OPTIMIZE_PROMPT_MODEL=gemini-3.1-pro-preview
+ENV STORYBOARD_MODEL=gemini-3.1-flash-image-preview
+ENV VIDEO_GEN_MODEL=veo-3.1-generate-001
+ENV GEMINI_AGENT_ORCHESTRATOR=gemini-3.1-flash-lite-preview
+ENV GOOGLE_GENAI_USE_VERTEXAI=true
 EXPOSE 8080
 
 # Run the application

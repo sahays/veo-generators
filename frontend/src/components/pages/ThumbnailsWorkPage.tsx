@@ -1,12 +1,15 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
+import { ServicesUsedPanel } from '@/components/pricing/ServicesUsedPanel'
 import { motion } from 'framer-motion'
 import {
   Upload, Image, Loader2, ArrowLeft, Download,
   Film, FileVideo, ChevronRight, Camera, Sparkles, Tag, Pencil, Check,
 } from 'lucide-react'
 import { Button, Card, AnchorHeading } from '@/components/Common'
+import { ModelPill } from '@/components/ModelPill'
 import { Select } from '@/components/UI'
+import { ModelRegionPicker } from '@/components/ModelRegionPicker'
 import { api } from '@/lib/api'
 import { cn, getTimeAgo, formatFileSize, parseTimestamp } from '@/lib/utils'
 import type { ThumbnailRecord, ThumbnailScreenshot, SystemResource, CompletedProductionSource, UploadRecord } from '@/types/project'
@@ -43,6 +46,9 @@ export const ThumbnailsWorkPage = () => {
   const [collagePrompts, setCollagePrompts] = useState<SystemResource[]>([])
   const [collagePromptId, setCollagePromptId] = useState('')
 
+  // Model/region config
+  const [modelConfig, setModelConfig] = useState<{ modelId?: string; region?: string }>({})
+
   // Analysis state
   const [analyzing, setAnalyzing] = useState(false)
   const [screenshots, setScreenshots] = useState<(ThumbnailScreenshot & { localUrl?: string })[]>([])
@@ -58,6 +64,9 @@ export const ThumbnailsWorkPage = () => {
   const [generatingCollage, setGeneratingCollage] = useState(false)
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
   const [recordStatus, setRecordStatus] = useState<string>('analyzing')
+
+  // Model name (from record usage)
+  const [modelName, setModelName] = useState<string | undefined>()
 
   // View mode loading
   const [loadingRecord, setLoadingRecord] = useState(false)
@@ -91,6 +100,7 @@ export const ThumbnailsWorkPage = () => {
         setVideoSource(record.video_source)
         setProductionId(record.production_id)
         setVideoSummary(record.video_summary || null)
+        setModelName((record as any).usage?.model_name)
         setScreenshots(record.screenshots.map(s => ({
           ...s,
           localUrl: s.signed_url,
@@ -225,6 +235,8 @@ export const ThumbnailsWorkPage = () => {
         video_filename: videoFilename,
         video_source: videoSource,
         production_id: productionId,
+        model_id: modelConfig.modelId,
+        region: modelConfig.region,
       })
 
       const data = result.data
@@ -339,7 +351,10 @@ export const ThumbnailsWorkPage = () => {
                   <Pencil size={12} className="text-muted-foreground" />
                 </button>
               )}
-              <p className="text-sm text-muted-foreground mt-1">Thumbnail Details</p>
+              <div className="flex items-center gap-2 mt-1">
+                <p className="text-sm text-muted-foreground">Thumbnail Details</p>
+                <ModelPill modelName={modelName} />
+              </div>
             </>
           ) : (
             <>
@@ -514,14 +529,17 @@ export const ThumbnailsWorkPage = () => {
               </p>
             )}
           </div>
-          <Button
-            icon={analyzing ? Loader2 : Camera}
-            onClick={handleAnalyze}
-            disabled={analyzing || !analysisPromptId}
-            className={cn("shrink-0 py-2.5", analyzing && "[&_svg]:animate-spin")}
-          >
-            {analyzing ? 'Identifying...' : 'Identify Moments'}
-          </Button>
+          <div className="flex flex-col items-end gap-2">
+            <ModelRegionPicker capability="text" value={modelConfig} onChange={setModelConfig} className="mt-2" />
+            <Button
+              icon={analyzing ? Loader2 : Camera}
+              onClick={handleAnalyze}
+              disabled={analyzing || !analysisPromptId}
+              className={cn("shrink-0 py-2.5", analyzing && "[&_svg]:animate-spin")}
+            >
+              {analyzing ? 'Identifying...' : 'Identify Moments'}
+            </Button>
+          </div>
         </div>
       )}
 
@@ -669,6 +687,7 @@ export const ThumbnailsWorkPage = () => {
           </div>
         </div>
       )}
+      {id && <div className="mt-6"><ServicesUsedPanel feature="thumbnails" recordId={id} /></div>}
     </motion.div>
   )
 }
