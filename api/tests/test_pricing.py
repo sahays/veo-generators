@@ -80,13 +80,12 @@ class TestVeoDispatch:
 
     def test_fast_cheaper_than_standard(self):
         standard = cost_for_veo("veo-3.1-generate-001", 8)
-        fast = cost_for_veo("veo-3.1-fast-generate-preview", 8)
+        fast = cost_for_veo("veo-3.1-fast-generate-001", 8)
         assert fast < standard
         assert fast == pytest.approx(8 * 0.15)
 
-    def test_lite_cheapest(self):
-        lite = cost_for_veo("veo-3.1-lite-generate-preview", 8)
-        assert lite == pytest.approx(8 * 0.05)
+    def test_lite_rate(self):
+        assert cost_for_veo("veo-3.1-lite-generate-001", 8) == pytest.approx(8 * 0.05)
 
     def test_unknown_model_falls_back_to_standard(self):
         assert veo_rate_for("not-a-real-model") == VEO_STANDARD
@@ -138,7 +137,7 @@ class TestEstimator:
 
     def test_estimator_production(self):
         from models import PricingEstimateRequest
-        from routers.pricing import _estimate_production
+        from pricing_estimator import _estimate_production
 
         req = PricingEstimateRequest(
             feature="production",
@@ -155,7 +154,7 @@ class TestEstimator:
 
     def test_estimator_adapts_scales_with_variant_count(self):
         from models import PricingEstimateRequest
-        from routers.pricing import _estimate_adapts
+        from pricing_estimator import _estimate_adapts
 
         one = _estimate_adapts(
             PricingEstimateRequest(feature="adapts", variant_count=1)
@@ -167,7 +166,7 @@ class TestEstimator:
 
     def test_estimator_reframe_scales_with_duration(self):
         from models import PricingEstimateRequest
-        from routers.pricing import _estimate_reframe
+        from pricing_estimator import _estimate_reframe
 
         short = _estimate_reframe(
             PricingEstimateRequest(feature="reframe", source_duration_seconds=60)
@@ -200,14 +199,14 @@ class TestUsageNormalization:
 
     def test_empty_usage_produces_no_items(self):
         from models import UsageMetrics
-        from routers.pricing import _usage_to_line_items
+        from pricing_usage import usage_to_line_items as _usage_to_line_items
 
-        items = _usage_to_line_items(UsageMetrics(), "adapts")
+        items = _usage_to_line_items(UsageMetrics())
         assert items == []
 
     def test_reframe_usage_produces_text_plus_flat_services(self):
         from models import UsageMetrics
-        from routers.pricing import _usage_to_line_items
+        from pricing_usage import usage_to_line_items as _usage_to_line_items
 
         usage = UsageMetrics(
             input_tokens=10_000,
@@ -219,7 +218,7 @@ class TestUsageNormalization:
             transcoder_minutes=1.0,
             transcoder_cost_usd=0.030,
         )
-        items = _usage_to_line_items(usage, "reframe")
+        items = _usage_to_line_items(usage)
         ids = [i.id for i in items]
         assert "gemini_text" in ids
         assert "diarization" in ids
@@ -229,7 +228,7 @@ class TestUsageNormalization:
         """The sum of line-item subtotals should equal the record's cost_usd
         within floating-point tolerance."""
         from models import UsageMetrics
-        from routers.pricing import _usage_to_line_items
+        from pricing_usage import usage_to_line_items as _usage_to_line_items
 
         usage = UsageMetrics(
             input_tokens=1000,
@@ -244,6 +243,6 @@ class TestUsageNormalization:
         # Adjust cost_usd to be the correct sum of components.
         text_only_cost = 1000 * 2e-6 + 500 * 12e-6  # 0.008
         usage.cost_usd = text_only_cost + usage.veo_cost_usd
-        items = _usage_to_line_items(usage, "production")
+        items = _usage_to_line_items(usage)
         total = sum(i.subtotal_usd for i in items)
         assert total == pytest.approx(usage.cost_usd, abs=1e-6)

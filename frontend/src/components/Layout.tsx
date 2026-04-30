@@ -2,7 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Menu, X, Clapperboard, Zap, Image as ImageIcon, Smartphone, Scissors, LayoutGrid,
   ChevronLeft, ChevronRight, Terminal, Bot, Settings, Cpu,
-  FileText, Sun, Moon, Activity, Upload, Shield, LogOut
+  FileText, Sun, Moon, Activity, Upload, Shield, LogOut, User
 } from 'lucide-react'
 import { useLayoutStore } from '@/store/useLayoutStore'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -44,6 +44,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/invite-codes': 'Invite Codes',
   '/models': 'AI Models',
   '/chat': 'Ask Aanya',
+  '/avatars': 'Avatars',
+  '/avatars/create': 'New Avatar',
 }
 
 function getPageTitle(pathname: string): string {
@@ -61,6 +63,7 @@ function getPageTitle(pathname: string): string {
   if (pathname.match(/^\/adapts\/[^/]+$/)) return 'Adapt Details'
   if (pathname.match(/^\/uploads\/[^/]+$/)) return 'File Details'
   if (pathname.match(/^\/prompts\/[^/]+$/)) return 'Prompt Details'
+  if (pathname.match(/^\/avatars\/[^/]+$/)) return 'Avatar'
   return 'VeoGen'
 }
 
@@ -88,7 +91,8 @@ export const Sidebar = () => {
   }, [pageTitle])
 
   const navItems: NavItem[] = [
-    { name: 'Ask Aanya', icon: Bot, path: '/chat' },
+    ...(isMaster ? [{ name: 'Ask Aanya', icon: Bot, path: '/chat' }] : []),
+    ...(isMaster ? [{ name: 'Avatars', icon: User, path: '/avatars' }] : []),
     { name: 'Productions', icon: Clapperboard, path: '/productions' },
     { name: 'Key Moments', icon: Zap, path: '/key-moments' },
     { name: 'Thumbnails', icon: ImageIcon, path: '/thumbnails' },

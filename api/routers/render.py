@@ -4,8 +4,12 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 
 import deps
-from cost_tracking import accumulate_transcoder_cost, accumulate_veo_cost_on
-from helpers import accumulate_image_cost, parse_timestamp
+from cost_tracking import (
+    accumulate_image_cost_on,
+    accumulate_transcoder_cost,
+    accumulate_veo_cost_on,
+)
+from helpers import parse_timestamp
 from models import ProjectStatus
 from pricing_config import DEFAULT_VIDEO_MODEL
 
@@ -48,7 +52,14 @@ async def _generate_scene_frame(production_id: str, scene, production):
             scene_updates["generated_prompt"] = frame_result.data["generated_prompt"]
             scene_updates["image_prompt"] = frame_result.data["generated_prompt"]
         deps.firestore_svc.update_scene(production_id, scene.id, scene_updates)
-        accumulate_image_cost(production_id, frame_result.usage.cost_usd)
+        accumulate_image_cost_on(
+            "production",
+            production_id,
+            frame_result.usage.cost_usd,
+            input_tokens=frame_result.usage.image_input_tokens,
+            output_tokens=frame_result.usage.image_output_tokens,
+            model_name=frame_result.usage.image_model_name,
+        )
         # Update scene object for video step (needs thumbnail_url)
         scene.thumbnail_url = gcs_uri
         return True

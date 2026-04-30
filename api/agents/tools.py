@@ -18,12 +18,31 @@ _JOB_ENDPOINT_PREFIXES = {
     "adapts": "/api/v1/adapts",
 }
 
+# Module-level singleton — one AsyncClient + ASGITransport shared across all
+# tool invocations. Closing is handled by the FastAPI shutdown hook in main.py.
+_client: Optional[httpx.AsyncClient] = None
 
-def _get_app():
-    """Lazy import to break circular dependency (tools → main → routers → agents → tools)."""
-    from main import app
 
-    return app
+def _get_client() -> httpx.AsyncClient:
+    global _client
+    if _client is None:
+        # Lazy import to break circular dep (tools → main → routers → agents → tools).
+        from main import app
+
+        _client = httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url=BASE_URL,
+            timeout=_TIMEOUT,
+        )
+    return _client
+
+
+async def close_client() -> None:
+    """Close the shared AsyncClient. Called from FastAPI shutdown."""
+    global _client
+    if _client is not None:
+        await _client.aclose()
+        _client = None
 
 
 async def _api_call(
@@ -34,37 +53,25 @@ async def _api_call(
     params: Optional[Dict[str, Any]] = None,
 ) -> Any:
     """Make an authenticated API call through the FastAPI app."""
-    headers = {
-        "X-Invite-Code": invite_code,
-        "User-Agent": "VeoAgent/1.0",
-    }
-    transport = httpx.ASGITransport(app=_get_app())
-    async with httpx.AsyncClient(
-        transport=transport, base_url=BASE_URL, timeout=_TIMEOUT
-    ) as client:
-        response = await client.request(
-            method,
-            path,
-            headers=headers,
-            json=json,
-            params=params,
-            follow_redirects=True,
+    headers = {"X-Invite-Code": invite_code, "User-Agent": "VeoAgent/1.0"}
+    client = _get_client()
+    response = await client.request(
+        method, path, headers=headers, json=json, params=params, follow_redirects=True
+    )
+    if response.status_code >= 400:
+        logger.error(
+            "API Error %s on %s: %s", response.status_code, path, response.text
         )
-        if response.status_code >= 400:
-            logger.error(
-                "API Error %s on %s: %s", response.status_code, path, response.text
-            )
-            detail = response.text
-            try:
-                detail = response.json()
-            except Exception:
-                pass
-            return {"error": f"API returned {response.status_code}", "detail": detail}
-
+        detail = response.text
         try:
-            return response.json()
+            detail = response.json()
         except Exception:
-            return {"error": "Non-JSON response", "detail": response.text}
+            pass
+        return {"error": f"API returned {response.status_code}", "detail": detail}
+    try:
+        return response.json()
+    except Exception:
+        return {"error": "Non-JSON response", "detail": response.text}
 
 
 # ── Generic helpers to reduce repetition ─────────────────────────────

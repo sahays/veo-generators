@@ -44,7 +44,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 export const PromoWorkPage = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  useAuthStore()
+  const { isMaster } = useAuthStore()
   const isViewMode = !!id
 
   // Video source state
@@ -214,9 +214,11 @@ export const PromoWorkPage = () => {
         {record.status === 'failed' && (
           <div className="space-y-3">
             {record.error_message && <ErrorDisplay error={record.error_message} size="md" />}
-            <Button icon={retrying ? Loader2 : RotateCcw} onClick={handleRetry} disabled={retrying}>
-              {retrying ? 'Retrying...' : 'Retry'}
-            </Button>
+            {isMaster && (
+              <Button icon={retrying ? Loader2 : RotateCcw} onClick={handleRetry} disabled={retrying}>
+                {retrying ? 'Retrying...' : 'Retry'}
+              </Button>
+            )}
           </div>
         )}
 

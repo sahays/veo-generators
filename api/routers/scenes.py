@@ -3,14 +3,13 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 
 import deps
+from cost_tracking import accumulate_image_cost_on, accumulate_veo_cost_on
 from helpers import (
     build_prompt_data,
     build_flat_image_prompt,
     build_flat_video_prompt,
-    accumulate_image_cost,
     parse_timestamp,
 )
-from cost_tracking import accumulate_veo_cost_on
 from models import AIResponseWrapper, ProjectStatus
 from pricing_config import DEFAULT_VIDEO_MODEL
 
@@ -112,7 +111,14 @@ async def generate_scene_frame(
         scene_updates["generated_prompt"] = result.data["generated_prompt"]
         scene_updates["image_prompt"] = result.data["generated_prompt"]
     deps.firestore_svc.update_scene(id, scene_id, scene_updates)
-    accumulate_image_cost(id, result.usage.cost_usd)
+    accumulate_image_cost_on(
+        "production",
+        id,
+        result.usage.cost_usd,
+        input_tokens=result.usage.image_input_tokens,
+        output_tokens=result.usage.image_output_tokens,
+        model_name=result.usage.image_model_name,
+    )
     # Return signed URL for immediate display
     result.data["image_url"] = deps.storage_svc.get_signed_url(gcs_uri)
     return result

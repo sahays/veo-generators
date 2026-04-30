@@ -85,11 +85,23 @@ def main() -> None:
 
     deps.init_services()
 
+    # Reclaim any avatar turns that were mid-render when the previous worker
+    # died so they can be re-picked on the next poll cycle.
+    try:
+        reclaimed = deps.firestore_svc.reclaim_orphan_avatar_turns()
+        if reclaimed:
+            logger.info(f"Reclaimed {reclaimed} orphan avatar turn(s)")
+    except Exception as e:
+        logger.warning(f"Avatar orphan reclaim failed: {e}")
+
     from reframe_processor import ReframeProcessor
     from promo_processor import PromoProcessor
     from adapts_processor import AdaptsProcessor
+    from avatar_processor import AvatarProcessor
 
-    worker = UnifiedWorker([ReframeProcessor(), PromoProcessor(), AdaptsProcessor()])
+    worker = UnifiedWorker(
+        [ReframeProcessor(), PromoProcessor(), AdaptsProcessor(), AvatarProcessor()]
+    )
     worker.start()
 
 

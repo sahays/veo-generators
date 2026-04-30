@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
+import { useAuthStore } from '@/store/useAuthStore'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { UploadRecord, CompressedVariant } from '@/types/project'
 
@@ -49,12 +50,14 @@ const UploadCard = ({
   onArchive,
   onCompress,
   compressingResolution,
+  canEdit,
 }: {
   record: UploadRecord
   onClick: () => void
   onArchive: (e: React.MouseEvent) => void
   onCompress?: (resolution: string, e: React.MouseEvent) => void
   compressingResolution?: string | null
+  canEdit: boolean
 }) => {
   const TypeIcon = FILE_TYPE_ICONS[record.file_type] || FileIcon
   const isChild = !!record.parent_upload_id
@@ -104,7 +107,7 @@ const UploadCard = ({
       </div>
 
       {/* Row 4: Inline compress actions (video originals only) */}
-      {record.file_type === 'video' && !isChild && (
+      {canEdit && record.file_type === 'video' && !isChild && (
         <div className="flex items-center gap-2 mb-2">
           {(['480p', '720p'] as const).map((res) => {
             const existing = record.compressed_variants.find(v => v.resolution === res)
@@ -146,15 +149,17 @@ const UploadCard = ({
       )}
 
       {/* Row 5: Archive button */}
-      <div className="flex items-center justify-end">
-        <button
-          onClick={onArchive}
-          className="p-1 -m-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
-          title="Archive"
-        >
-          <Archive size={12} />
-        </button>
-      </div>
+      {canEdit && (
+        <div className="flex items-center justify-end">
+          <button
+            onClick={onArchive}
+            className="p-1 -m-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+            title="Archive"
+          >
+            <Archive size={12} />
+          </button>
+        </div>
+      )}
     </motion.button>
   )
 }
@@ -254,6 +259,7 @@ const UploadProgress = ({ filename, progress, error }: { filename: string; progr
 // --- Detail View ---
 const UploadDetailView = ({ id }: { id: string }) => {
   const navigate = useNavigate()
+  const { isMaster } = useAuthStore()
   const [record, setRecord] = useState<UploadRecord | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isEditingName, setIsEditingName] = useState(false)
@@ -367,7 +373,7 @@ const UploadDetailView = ({ id }: { id: string }) => {
               />
               <button type="submit" className="text-accent hover:text-accent-dark"><Check size={16} /></button>
             </form>
-          ) : (
+          ) : isMaster ? (
             <button
               className="flex items-center gap-2 text-base font-heading font-bold text-foreground hover:text-accent-dark transition-colors"
               onClick={() => { setEditName(record.display_name || record.filename); setIsEditingName(true) }}
@@ -375,6 +381,10 @@ const UploadDetailView = ({ id }: { id: string }) => {
               {record.display_name || record.filename}
               <Pencil size={12} className="text-muted-foreground" />
             </button>
+          ) : (
+            <span className="text-base font-heading font-bold text-foreground">
+              {record.display_name || record.filename}
+            </span>
           )}
         </div>
         <div className="grid grid-cols-2 gap-3 text-xs">
@@ -473,6 +483,7 @@ type FilterType = 'all' | 'video' | 'image'
 
 const UploadsLandingView = () => {
   const navigate = useNavigate()
+  const { isMaster } = useAuthStore()
   const [records, setRecords] = useState<UploadRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [filter, setFilter] = useState<FilterType>('all')
@@ -637,7 +648,7 @@ const UploadsLandingView = () => {
       </div>
 
       {/* Upload zone */}
-      <UploadZone onUpload={handleUpload} />
+      {isMaster && <UploadZone onUpload={handleUpload} />}
 
       {/* Upload progress */}
       {uploading.length > 0 && (
@@ -660,7 +671,9 @@ const UploadsLandingView = () => {
           </div>
           <h4 className="text-base font-heading font-bold text-foreground mb-1">No files yet</h4>
           <p className="text-sm text-muted-foreground max-w-xs">
-            Drag and drop files above or click to browse. Files can be used across all features.
+            {isMaster
+              ? 'Drag and drop files above or click to browse. Files can be used across all features.'
+              : 'No files have been uploaded yet.'}
           </p>
         </motion.div>
       ) : filteredRecords.length === 0 ? (
@@ -677,6 +690,7 @@ const UploadsLandingView = () => {
               onArchive={(e) => { e.stopPropagation(); handleArchive(record.id) }}
               onCompress={(res) => handleCompress(record.id, res)}
               compressingResolution={compressingMap[record.id]}
+              canEdit={isMaster}
             />
           ))}
         </div>

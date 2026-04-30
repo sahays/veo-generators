@@ -25,6 +25,7 @@ from routers import (
     chat,
     models,
     pricing,
+    avatars,
 )
 
 # Suppress the "non-text parts" warning from google-genai/adk which is noisy when using tools
@@ -47,6 +48,20 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Veo Production API", version="1.0.0")
+
+# Methods that mutate state — restricted to master users by default.
+WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+# POST endpoints that don't mutate persistent state and are safe for guests.
+READ_ONLY_WRITES = {
+    "/api/v1/auth/validate",
+    "/api/v1/pricing/estimate",
+}
+
+# Path prefixes that are master-only on every method, including reads.
+# (Avatars are master-only end-to-end while the Vertex Live preview is
+# allowlist-pending.)
+MASTER_ONLY_PREFIXES = ("/api/v1/avatars",)
 
 
 # Bot protection middleware
@@ -111,6 +126,25 @@ async def validate_invite_code(request: Request, call_next):
     request.state.invite_code = invite_code
     request.state.is_master = result.get("is_master", False)
 
+    # Master-only path prefixes: every method (including GETs) requires master.
+    if not request.state.is_master and any(
+        path.startswith(prefix) for prefix in MASTER_ONLY_PREFIXES
+    ):
+        return JSONResponse(
+            status_code=403, content={"detail": "Master access required"}
+        )
+
+    # Only master users can mutate state. Allowlisted POSTs (login, pricing
+    # estimates) are read-only computations and remain open to guests.
+    if (
+        request.method in WRITE_METHODS
+        and path not in READ_ONLY_WRITES
+        and not request.state.is_master
+    ):
+        return JSONResponse(
+            status_code=403, content={"detail": "Master access required"}
+        )
+
     response = await call_next(request)
     return response
 
@@ -132,6 +166,7 @@ for r in [
     chat,
     models,
     pricing,
+    avatars,
 ]:
     app.include_router(r.router)
 
@@ -139,6 +174,13 @@ for r in [
 @app.on_event("startup")
 async def startup_event():
     deps.init_services()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    from agents.tools import close_client
+
+    await close_client()
 
 
 @app.get("/health")

@@ -1,5 +1,7 @@
 # --- Stage 1: Build Frontend ---
 FROM node:24-slim AS frontend-build
+ARG VITE_GUEST_INVITE_CODE=""
+ENV VITE_GUEST_INVITE_CODE=$VITE_GUEST_INVITE_CODE
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm install --registry=https://registry.npmjs.org/

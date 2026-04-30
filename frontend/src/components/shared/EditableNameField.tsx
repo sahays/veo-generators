@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Pencil, Check } from 'lucide-react'
+import { useAuthStore } from '@/store/useAuthStore'
 
 interface EditableNameFieldProps {
   value: string
@@ -8,10 +9,17 @@ interface EditableNameFieldProps {
 }
 
 export const EditableNameField = ({ value, onSave, defaultText = 'Untitled' }: EditableNameFieldProps) => {
+  const { isMaster } = useAuthStore()
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState('')
 
   const displayValue = value || defaultText
+
+  if (!isMaster) {
+    return (
+      <h2 className="text-lg font-heading font-bold text-foreground">{displayValue}</h2>
+    )
+  }
 
   if (isEditing) {
     return (

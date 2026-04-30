@@ -1,18 +1,18 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 import deps
 from helpers import (
-    get_or_404,
     list_completed_production_sources,
     list_video_upload_sources,
     require_firestore,
     sign_record_urls,
 )
 from models import ReframeRecord
+from routers._crud import register_crud_routes
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class ReframeRequest(BaseModel):
     region: Optional[str] = None
 
 
-def _sign_reframe_urls(record: ReframeRecord) -> dict:
+def _sign(record: ReframeRecord) -> dict:
     return sign_record_urls(
         record,
         {"source_gcs_uri": "source_signed_url", "output_gcs_uri": "output_signed_url"},
@@ -42,49 +42,40 @@ def _sign_reframe_urls(record: ReframeRecord) -> dict:
     )
 
 
-@router.get("")
-async def list_reframes(request: Request, archived: bool = False):
-    require_firestore()
-    records = deps.firestore_svc.get_reframe_records(include_archived=archived)
-    return [_sign_reframe_urls(r) for r in records]
+register_crud_routes(
+    router,
+    resource_label="Reframe record",
+    getter=lambda rid: deps.firestore_svc.get_reframe_record(rid),
+    updater=lambda rid, u: deps.firestore_svc.update_reframe_record(rid, u),
+    deleter=lambda rid: deps.firestore_svc.delete_reframe_record(rid),
+    lister=lambda include_archived=False: deps.firestore_svc.get_reframe_records(
+        include_archived=include_archived
+    ),
+    sign_one=_sign,
+    include_retry=True,
+)
 
 
 @router.get("/sources/uploads")
 async def list_reframe_upload_sources():
-    """List uploaded videos that can be reframed."""
     return list_video_upload_sources()
 
 
 @router.get("/sources/productions")
 async def list_reframe_production_sources():
-    """List completed productions with signed final video URLs."""
     return list_completed_production_sources(
         extra_fields={"orientation": "orientation"}
     )
 
 
-@router.get("/{record_id}")
-async def get_reframe(record_id: str):
-    require_firestore()
-    record = get_or_404(
-        deps.firestore_svc.get_reframe_record, record_id, "Reframe record"
-    )
-    return _sign_reframe_urls(record)
-
-
 @router.post("")
-async def create_reframe(
-    body: ReframeRequest,
-    request: Request,
-):
+async def create_reframe(body: ReframeRequest, request: Request):
     """Create a reframe job. Worker picks it up from Firestore."""
     require_firestore()
-
     # Backward compat: sports_mode=True maps to content_type="sports"
     content_type = body.content_type
     if body.sports_mode and content_type == "other":
         content_type = "sports"
-
     record = ReframeRecord(
         source_gcs_uri=body.gcs_uri,
         source_filename=body.source_filename,
@@ -99,50 +90,4 @@ async def create_reframe(
         invite_code=getattr(request.state, "invite_code", None),
     )
     deps.firestore_svc.create_reframe_record(record)
-
     return {"id": record.id, "status": record.status}
-
-
-@router.post("/{record_id}/retry")
-async def retry_reframe(record_id: str):
-    """Reset a failed reframe to pending so the worker retries it."""
-    require_firestore()
-    record = get_or_404(
-        deps.firestore_svc.get_reframe_record, record_id, "Reframe record"
-    )
-    if record.status in ("pending", "completed"):
-        raise HTTPException(400, f"Cannot retry a {record.status} reframe")
-    deps.firestore_svc.update_reframe_record(
-        record_id,
-        {"status": "pending", "error_message": None, "progress_pct": 0},
-    )
-    return {"id": record_id, "status": "pending"}
-
-
-@router.patch("/{record_id}")
-async def update_reframe(record_id: str, body: dict):
-    require_firestore()
-    get_or_404(deps.firestore_svc.get_reframe_record, record_id, "Reframe record")
-    updates = {}
-    if "display_name" in body:
-        updates["display_name"] = str(body["display_name"]).strip()
-    if not updates:
-        raise HTTPException(400, "No valid fields to update")
-    deps.firestore_svc.update_reframe_record(record_id, updates)
-    return {"status": "updated"}
-
-
-@router.post("/{record_id}/archive")
-async def archive_reframe(record_id: str):
-    require_firestore()
-    get_or_404(deps.firestore_svc.get_reframe_record, record_id, "Reframe record")
-    deps.firestore_svc.update_reframe_record(record_id, {"archived": True})
-    return {"status": "archived"}
-
-
-@router.delete("/{record_id}")
-async def delete_reframe(record_id: str):
-    require_firestore()
-    get_or_404(deps.firestore_svc.get_reframe_record, record_id, "Reframe record")
-    deps.firestore_svc.delete_reframe_record(record_id)
-    return {"status": "deleted"}

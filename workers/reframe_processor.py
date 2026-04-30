@@ -24,18 +24,12 @@ class ReframeProcessor(JobProcessor):
     def name(self) -> str:
         return "reframe"
 
+    @property
+    def firestore_update_method(self) -> str:
+        return "update_reframe_record"
+
     def get_pending_records(self) -> list:
         return deps.firestore_svc.get_reframe_records(include_archived=False)
-
-    def update_status(
-        self, record_id: str, status: str, progress: int, **extra
-    ) -> None:
-        updates = {"status": status, "progress_pct": progress, **extra}
-        self._set_completion_timestamp(updates, status)
-        deps.firestore_svc.update_reframe_record(record_id, updates)
-
-    def mark_failed(self, record_id: str, error_message: str) -> None:
-        self.update_status(record_id, "failed", 0, error_message=error_message)
 
     def process(self, record) -> None:
         record_id = record.id

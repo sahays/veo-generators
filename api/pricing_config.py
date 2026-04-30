@@ -143,8 +143,8 @@ VEO_LITE = FlatRate("veo_lite", "Veo 3.1 Lite", "second", 0.05)
 
 VEO_BY_MODEL: dict[str, FlatRate] = {
     "veo-3.1-generate-001": VEO_STANDARD,
-    "veo-3.1-fast-generate-preview": VEO_FAST,
-    "veo-3.1-lite-generate-preview": VEO_LITE,
+    "veo-3.1-fast-generate-001": VEO_FAST,
+    "veo-3.1-lite-generate-001": VEO_LITE,
 }
 
 

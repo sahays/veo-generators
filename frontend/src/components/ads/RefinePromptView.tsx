@@ -11,6 +11,7 @@ import { Button, Card } from '@/components/Common'
 import { PromptModal } from '@/components/ads/PromptModal'
 import { CostBreakdownPill } from '@/components/ads/CostBreakdownPill'
 import { useProjectStore } from '@/store/useProjectStore'
+import { useAuthStore } from '@/store/useAuthStore'
 
 import type { Scene } from '@/types/project'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -60,6 +61,7 @@ const ErrorBadge = ({ message }: { message: string }) => {
 
 export const RefinePromptView = () => {
   const { tempProjectData, updateScene, addScene, setActiveProject, setTempProjectData } = useProjectStore()
+  const { isMaster } = useAuthStore()
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
 
@@ -86,7 +88,7 @@ export const RefinePromptView = () => {
   }, [id])
 
   const isGenerating = ['generating', 'stitching'].includes((tempProjectData as any)?.status)
-  const isReadOnly = isGenerating
+  const isReadOnly = isGenerating || !isMaster
   const scenes = tempProjectData?.scenes || []
 
   // Call real Gemini analysis if no scenes exist
@@ -320,12 +322,15 @@ export const RefinePromptView = () => {
               return (
                 <div className="flex items-center gap-3">
                   <ErrorBadge message={errMsg} />
-                  <Button icon={isStartingRender ? Loader2 : RotateCcw} onClick={onGenerateAll} disabled={isStartingRender}>
-                    {isStartingRender ? 'Starting...' : 'Retry'}
-                  </Button>
+                  {isMaster && (
+                    <Button icon={isStartingRender ? Loader2 : RotateCcw} onClick={onGenerateAll} disabled={isStartingRender}>
+                      {isStartingRender ? 'Starting...' : 'Retry'}
+                    </Button>
+                  )}
                 </div>
               )
             }
+            if (!isMaster) return null
             const totalCredits = scenes.length * 7 // 2 (frame) + 5 (video) per scene
             return (
               <Button icon={isStartingRender ? Loader2 : Play} onClick={onGenerateAll} disabled={isStartingRender}>

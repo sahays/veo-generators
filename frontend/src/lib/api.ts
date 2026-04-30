@@ -25,7 +25,9 @@ function getInviteCode(): string {
 }
 
 function handleAuthError(res: Response) {
-  if (res.status === 403) {
+  // 401 = invite code missing/invalid → drop auth and re-gate.
+  // 403 = valid user but not master → leave the session alone.
+  if (res.status === 401) {
     useAuthStore.getState().logout()
   }
 }
@@ -784,4 +786,123 @@ export const api = {
       return res.json()
     },
   },
+  avatars: {
+    list: async (): Promise<any[]> => {
+      const res = await authFetch(`${API_BASE_URL}/avatars`)
+      if (!res.ok) throw new Error(`Failed to list avatars: ${res.status}`)
+      return res.json()
+    },
+    get: async (id: string): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/avatars/${id}`)
+      if (!res.ok) throw new Error(`Failed to get avatar: ${res.status}`)
+      return res.json()
+    },
+    create: async (data: {
+      name: string
+      image_gcs_uri?: string
+      style?: string
+      persona_prompt?: string
+      version?: 'v1' | 'v2'
+      voice?: string
+      preset_name?: string
+      language?: string
+      default_greeting?: string
+      enable_grounding?: boolean
+    }): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/avatars`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.detail || `Failed to create avatar: ${res.status}`)
+      }
+      return res.json()
+    },
+    update: async (
+      id: string,
+      data: { name?: string; style?: string; persona_prompt?: string; voice?: string }
+    ): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/avatars/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.detail || `Failed to update avatar: ${res.status}`)
+      }
+    },
+    archive: async (id: string): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/avatars/${id}/archive`, { method: 'POST' })
+      if (!res.ok) throw new Error(`Failed to archive avatar: ${res.status}`)
+    },
+    delete: async (id: string): Promise<void> => {
+      const res = await authFetch(`${API_BASE_URL}/avatars/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`Failed to delete avatar: ${res.status}`)
+    },
+    ask: async (
+      id: string,
+      data: { question: string; history?: { role: string; content: string }[]; model_id?: string; region?: string }
+    ): Promise<{ turn_id: string; answer_text: string; status: string }> => {
+      const res = await authFetch(`${API_BASE_URL}/avatars/${id}/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.detail || `Ask failed: ${res.status}`)
+      }
+      return res.json()
+    },
+    askAudio: async (
+      id: string,
+      audio: Blob,
+      history?: { role: string; content: string }[],
+    ): Promise<{ turn_id: string; answer_text: string; status: string }> => {
+      const fd = new FormData()
+      const ext = audio.type.includes('ogg') ? 'ogg' : audio.type.includes('mp4') ? 'm4a' : 'webm'
+      fd.append('audio', audio, `q.${ext}`)
+      if (history && history.length) fd.append('history', JSON.stringify(history))
+      const res = await authFetch(`${API_BASE_URL}/avatars/${id}/ask-audio`, {
+        method: 'POST',
+        body: fd,
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.detail || `Ask failed: ${res.status}`)
+      }
+      return res.json()
+    },
+    listTurns: async (id: string): Promise<any[]> => {
+      const res = await authFetch(`${API_BASE_URL}/avatars/${id}/turns`)
+      if (!res.ok) throw new Error(`Failed to list turns: ${res.status}`)
+      return res.json()
+    },
+    getTurn: async (turnId: string): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/avatars/turns/${turnId}`)
+      if (!res.ok) throw new Error(`Failed to get turn: ${res.status}`)
+      return res.json()
+    },
+    liveConfig: async (id: string): Promise<any> => {
+      const res = await authFetch(`${API_BASE_URL}/avatars/${id}/live-config`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.detail || `Failed to load live config: ${res.status}`)
+      }
+      return res.json()
+    },
+  },
+}
+
+// Build a wss:// URL for the v2 live session, with the invite code in the
+// query string (WebSocket upgrades can't carry custom headers).
+export function buildAvatarLiveUrl(avatarId: string): string {
+  const inviteCode = getInviteCode()
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const host = window.location.host
+  const qs = new URLSearchParams({ invite_code: inviteCode }).toString()
+  return `${proto}//${host}/api/v1/avatars/${avatarId}/live?${qs}`
 }

@@ -6,12 +6,12 @@ from pydantic import BaseModel
 
 import deps
 from helpers import (
-    get_or_404,
     list_image_upload_sources,
     require_firestore,
     sign_record_urls,
 )
 from models import AdaptRecord, AdaptVariant
+from routers._crud import register_crud_routes
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ class AdaptRequest(BaseModel):
     region: Optional[str] = None
 
 
-def _sign_adapt_urls(record: AdaptRecord) -> dict:
+def _sign(record: AdaptRecord) -> dict:
     uri_fields = {"source_gcs_uri": "source_signed_url"}
     if record.template_gcs_uri:
         uri_fields["template_gcs_uri"] = "template_signed_url"
@@ -65,7 +65,6 @@ def _sign_adapt_urls(record: AdaptRecord) -> dict:
             record.id, {"signed_urls": cache}
         ),
     )
-    # Sign variant output URIs
     if deps.storage_svc and data.get("variants"):
         for variant in data["variants"]:
             gcs_uri = variant.get("output_gcs_uri")
@@ -74,58 +73,62 @@ def _sign_adapt_urls(record: AdaptRecord) -> dict:
     return data
 
 
-@router.get("")
-async def list_adapts(request: Request, archived: bool = False):
-    require_firestore()
-    records = deps.firestore_svc.get_adapt_records(include_archived=archived)
-    return [_sign_adapt_urls(r) for r in records]
+def _adapt_retry_updates(record: AdaptRecord) -> dict:
+    """Custom retry: also reset failed variants to pending."""
+    variants = [v.dict() for v in record.variants]
+    for v in variants:
+        if v["status"] == "failed":
+            v["status"] = "pending"
+            v["error_message"] = None
+            v["output_gcs_uri"] = None
+    return {
+        "status": "pending",
+        "error_message": None,
+        "progress_pct": 0,
+        "variants": variants,
+    }
+
+
+register_crud_routes(
+    router,
+    resource_label="Adapt record",
+    getter=lambda rid: deps.firestore_svc.get_adapt_record(rid),
+    updater=lambda rid, u: deps.firestore_svc.update_adapt_record(rid, u),
+    deleter=lambda rid: deps.firestore_svc.delete_adapt_record(rid),
+    lister=lambda include_archived=False: deps.firestore_svc.get_adapt_records(
+        include_archived=include_archived
+    ),
+    sign_one=_sign,
+    include_retry=True,
+    retry_updates_fn=_adapt_retry_updates,
+)
 
 
 @router.get("/sources/uploads")
 async def list_adapt_upload_sources():
-    """List uploaded images that can be adapted."""
     return list_image_upload_sources()
 
 
 @router.get("/presets")
 async def list_preset_bundles():
-    """Return available aspect ratio preset bundles."""
-    return {
-        "presets": PRESET_BUNDLES,
-        "all_ratios": ALL_RATIOS,
-    }
-
-
-@router.get("/{record_id}")
-async def get_adapt(record_id: str):
-    require_firestore()
-    record = get_or_404(deps.firestore_svc.get_adapt_record, record_id, "Adapt record")
-    return _sign_adapt_urls(record)
+    return {"presets": PRESET_BUNDLES, "all_ratios": ALL_RATIOS}
 
 
 @router.post("")
 async def create_adapt(body: AdaptRequest, request: Request):
     """Create an adapt job. Worker picks it up from Firestore."""
     require_firestore()
-
-    # Resolve aspect ratios from preset + explicit list
     ratios = list(body.aspect_ratios)
     if body.preset_bundle and body.preset_bundle in PRESET_BUNDLES:
         ratios.extend(PRESET_BUNDLES[body.preset_bundle]["ratios"])
-
-    # Deduplicate while preserving order
     seen = set()
     unique_ratios = []
     for r in ratios:
         if r not in seen and r in ALL_RATIOS:
             seen.add(r)
             unique_ratios.append(r)
-
     if not unique_ratios:
         raise HTTPException(400, "No valid aspect ratios selected")
-
-    variants = [AdaptVariant(aspect_ratio=r) for r in unique_ratios]
-
     record = AdaptRecord(
         source_gcs_uri=body.gcs_uri,
         source_filename=body.source_filename,
@@ -135,67 +138,9 @@ async def create_adapt(body: AdaptRequest, request: Request):
         preset_bundle=body.preset_bundle,
         model_id=body.model_id,
         region=body.region,
-        variants=variants,
+        variants=[AdaptVariant(aspect_ratio=r) for r in unique_ratios],
         status="pending",
         invite_code=getattr(request.state, "invite_code", None),
     )
     deps.firestore_svc.create_adapt_record(record)
-
     return {"id": record.id, "status": record.status}
-
-
-@router.post("/{record_id}/retry")
-async def retry_adapt(record_id: str):
-    """Reset a failed/partial adapt to pending so the worker retries."""
-    require_firestore()
-    record = get_or_404(deps.firestore_svc.get_adapt_record, record_id, "Adapt record")
-    if record.status in ("pending", "completed"):
-        raise HTTPException(400, f"Cannot retry a {record.status} adapt")
-
-    # Reset failed variants to pending
-    variants = [v.dict() for v in record.variants]
-    for v in variants:
-        if v["status"] == "failed":
-            v["status"] = "pending"
-            v["error_message"] = None
-            v["output_gcs_uri"] = None
-
-    deps.firestore_svc.update_adapt_record(
-        record_id,
-        {
-            "status": "pending",
-            "error_message": None,
-            "progress_pct": 0,
-            "variants": variants,
-        },
-    )
-    return {"id": record_id, "status": "pending"}
-
-
-@router.patch("/{record_id}")
-async def update_adapt(record_id: str, body: dict):
-    require_firestore()
-    get_or_404(deps.firestore_svc.get_adapt_record, record_id, "Adapt record")
-    updates = {}
-    if "display_name" in body:
-        updates["display_name"] = str(body["display_name"]).strip()
-    if not updates:
-        raise HTTPException(400, "No valid fields to update")
-    deps.firestore_svc.update_adapt_record(record_id, updates)
-    return {"status": "updated"}
-
-
-@router.post("/{record_id}/archive")
-async def archive_adapt(record_id: str):
-    require_firestore()
-    get_or_404(deps.firestore_svc.get_adapt_record, record_id, "Adapt record")
-    deps.firestore_svc.update_adapt_record(record_id, {"archived": True})
-    return {"status": "archived"}
-
-
-@router.delete("/{record_id}")
-async def delete_adapt(record_id: str):
-    require_firestore()
-    get_or_404(deps.firestore_svc.get_adapt_record, record_id, "Adapt record")
-    deps.firestore_svc.delete_adapt_record(record_id)
-    return {"status": "deleted"}

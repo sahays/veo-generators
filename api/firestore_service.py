@@ -14,6 +14,8 @@ from models import (
     PromoRecord,
     AdaptRecord,
     AIModel,
+    Avatar,
+    AvatarTurn,
 )
 
 
@@ -33,6 +35,8 @@ class FirestoreService:
         self.promo_collection = self.db.collection(f"{prefix}_promos")
         self.adapts_collection = self.db.collection(f"{prefix}_adapts")
         self.models_collection = self.db.collection(f"{prefix}_models")
+        self.avatars_collection = self.db.collection(f"{prefix}_avatars")
+        self.avatar_turns_collection = self.db.collection(f"{prefix}_avatar_turns")
 
     # --- Generic CRUD helpers ---
 
@@ -339,3 +343,70 @@ class FirestoreService:
                 )
         batch.update(self.models_collection.document(model_id), {"is_default": True})
         batch.commit()
+
+    # --- Avatars ---
+
+    def get_avatars(self, include_archived: bool = False) -> List[Avatar]:
+        return self._get_records(self.avatars_collection, Avatar, include_archived)
+
+    def get_avatar(self, avatar_id: str) -> Optional[Avatar]:
+        return self._get_record(self.avatars_collection, Avatar, avatar_id)
+
+    def create_avatar(self, avatar: Avatar):
+        self._create_record(self.avatars_collection, avatar)
+
+    def update_avatar(self, avatar_id: str, updates: dict):
+        self._update_record(self.avatars_collection, avatar_id, updates)
+
+    def delete_avatar(self, avatar_id: str):
+        self._delete_record(self.avatars_collection, avatar_id)
+
+    # --- Avatar Turns ---
+
+    def get_avatar_turns(
+        self, avatar_id: Optional[str] = None, include_archived: bool = False
+    ) -> List[AvatarTurn]:
+        records = self._get_records(
+            self.avatar_turns_collection, AvatarTurn, include_archived
+        )
+        if avatar_id:
+            records = [r for r in records if r.avatar_id == avatar_id]
+        return records
+
+    def get_pending_avatar_turns(self) -> List[AvatarTurn]:
+        records = self._get_records(
+            self.avatar_turns_collection, AvatarTurn, include_archived=False
+        )
+        return [r for r in records if r.status == "pending"]
+
+    def reclaim_orphan_avatar_turns(self) -> int:
+        """Flip any `generating` avatar turns back to `pending`.
+
+        Called on worker startup so a turn that was being rendered when the
+        previous worker died can be re-picked. Safe under single-instance
+        worker config (only one worker ever processes turns).
+        Returns the count of reclaimed turns.
+        """
+        records = self._get_records(
+            self.avatar_turns_collection, AvatarTurn, include_archived=False
+        )
+        orphans = [r for r in records if r.status == "generating"]
+        for r in orphans:
+            self._update_record(
+                self.avatar_turns_collection,
+                r.id,
+                {"status": "pending", "progress_pct": 0},
+            )
+        return len(orphans)
+
+    def get_avatar_turn(self, turn_id: str) -> Optional[AvatarTurn]:
+        return self._get_record(self.avatar_turns_collection, AvatarTurn, turn_id)
+
+    def create_avatar_turn(self, turn: AvatarTurn):
+        self._create_record(self.avatar_turns_collection, turn)
+
+    def update_avatar_turn(self, turn_id: str, updates: dict):
+        self._update_record(self.avatar_turns_collection, turn_id, updates)
+
+    def delete_avatar_turn(self, turn_id: str):
+        self._delete_record(self.avatar_turns_collection, turn_id)

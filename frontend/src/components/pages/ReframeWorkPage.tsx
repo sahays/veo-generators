@@ -8,6 +8,7 @@ import { Button, AnchorHeading } from '@/components/Common'
 import { Select } from '@/components/UI'
 import { ModelRegionPicker } from '@/components/ModelRegionPicker'
 import { api } from '@/lib/api'
+import { useAuthStore } from '@/store/useAuthStore'
 import { cn } from '@/lib/utils'
 import { usePolling } from '@/hooks/usePolling'
 import { VideoSourceSelector } from '@/components/shared/VideoSourceSelector'
@@ -54,6 +55,7 @@ const CONTENT_TYPE_BADGE: Record<string, { label: string; className: string }> =
 export const ReframeWorkPage = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { isMaster } = useAuthStore()
   const isViewMode = !!id
 
   // Video source state
@@ -212,9 +214,11 @@ export const ReframeWorkPage = () => {
         {record.status === 'failed' && (
           <div className="space-y-3">
             {record.error_message && <ErrorDisplay error={record.error_message} size="md" />}
-            <Button icon={retrying ? Loader2 : RotateCcw} onClick={handleRetry} disabled={retrying}>
-              {retrying ? 'Retrying...' : 'Retry'}
-            </Button>
+            {isMaster && (
+              <Button icon={retrying ? Loader2 : RotateCcw} onClick={handleRetry} disabled={retrying}>
+                {retrying ? 'Retrying...' : 'Retry'}
+              </Button>
+            )}
           </div>
         )}
 

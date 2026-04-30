@@ -51,7 +51,7 @@ export const InviteCodeGate = () => {
               <KeyRound size={28} className="text-accent" />
             </motion.div>
             <h1 className="text-2xl font-heading font-bold text-foreground">VeoGen</h1>
-            <p className="text-sm text-muted-foreground mt-1">Enter your invite code to continue</p>
+            <p className="text-sm text-muted-foreground mt-1">Enter your master invite code to continue</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -63,7 +63,7 @@ export const InviteCodeGate = () => {
                   setCode(e.target.value)
                   setError('')
                 }}
-                placeholder="Enter invite code"
+                placeholder="Enter master invite code"
                 autoFocus
                 className="w-full px-4 py-3 rounded-xl bg-muted border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition-all text-sm"
               />

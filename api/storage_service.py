@@ -50,6 +50,11 @@ class StorageService:
         blob = self.bucket.blob(path)
         blob.download_to_filename(local_path)
 
+    def download_bytes(self, gcs_uri: str) -> bytes:
+        """Read a GCS object into memory."""
+        path = gcs_uri.replace(f"gs://{self.bucket_name}/", "")
+        return self.bucket.blob(path).download_as_bytes()
+
     def upload_from_file(
         self, local_path: str, gcs_uri: str, content_type: str = "video/mp4"
     ) -> str:

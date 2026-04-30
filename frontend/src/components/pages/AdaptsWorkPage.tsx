@@ -31,7 +31,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 export const AdaptsWorkPage = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  useAuthStore()
+  const { isMaster } = useAuthStore()
   const isViewMode = !!id
 
   // Image source state
@@ -173,9 +173,11 @@ export const AdaptsWorkPage = () => {
         {record.status === 'failed' && (
           <div className="space-y-3">
             {record.error_message && <ErrorDisplay error={record.error_message} size="md" />}
-            <Button icon={retrying ? Loader2 : RotateCcw} onClick={handleRetry} disabled={retrying}>
-              {retrying ? 'Retrying...' : 'Retry'}
-            </Button>
+            {isMaster && (
+              <Button icon={retrying ? Loader2 : RotateCcw} onClick={handleRetry} disabled={retrying}>
+                {retrying ? 'Retrying...' : 'Retry'}
+              </Button>
+            )}
           </div>
         )}
 
@@ -185,9 +187,11 @@ export const AdaptsWorkPage = () => {
               <AlertCircle size={16} />
               {failedVariants.length} variant{failedVariants.length !== 1 ? 's' : ''} failed
             </div>
-            <Button icon={retrying ? Loader2 : RotateCcw} onClick={handleRetry} disabled={retrying}>
-              {retrying ? 'Retrying...' : 'Retry Failed'}
-            </Button>
+            {isMaster && (
+              <Button icon={retrying ? Loader2 : RotateCcw} onClick={handleRetry} disabled={retrying}>
+                {retrying ? 'Retrying...' : 'Retry Failed'}
+              </Button>
+            )}
           </div>
         )}
 

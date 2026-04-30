@@ -11,6 +11,7 @@ import { ModelPill } from '@/components/ModelPill'
 import { Select } from '@/components/UI'
 import { ModelRegionPicker } from '@/components/ModelRegionPicker'
 import { api } from '@/lib/api'
+import { useAuthStore } from '@/store/useAuthStore'
 import { cn, getTimeAgo, formatFileSize, parseTimestamp } from '@/lib/utils'
 import type { ThumbnailRecord, ThumbnailScreenshot, SystemResource, CompletedProductionSource, UploadRecord } from '@/types/project'
 
@@ -19,6 +20,7 @@ type VideoSourceTab = 'productions' | 'past-uploads'
 export const ThumbnailsWorkPage = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { isMaster } = useAuthStore()
   const isViewMode = !!id
 
   // Video source state
@@ -344,12 +346,14 @@ export const ThumbnailsWorkPage = () => {
                     className="text-2xl font-heading font-bold text-foreground bg-muted px-2 py-0.5 rounded border border-border focus:outline-none focus:ring-1 focus:ring-accent" />
                   <button type="submit" className="text-accent hover:text-accent-dark"><Check size={16} /></button>
                 </form>
-              ) : (
+              ) : isMaster ? (
                 <button className="flex items-center gap-2 text-2xl font-heading text-foreground tracking-tight hover:text-accent-dark transition-colors"
                   onClick={() => { setEditName(videoFilename || ''); setIsEditingName(true) }}>
                   {videoFilename || 'Untitled'}
                   <Pencil size={12} className="text-muted-foreground" />
                 </button>
+              ) : (
+                <h2 className="text-2xl font-heading text-foreground tracking-tight">{videoFilename || 'Untitled'}</h2>
               )}
               <div className="flex items-center gap-2 mt-1">
                 <p className="text-sm text-muted-foreground">Thumbnail Details</p>
