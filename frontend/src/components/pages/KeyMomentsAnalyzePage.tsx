@@ -2,27 +2,18 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ServicesUsedPanel } from '@/components/pricing/ServicesUsedPanel'
 import { motion } from 'framer-motion'
-import {
-  Zap, Loader2, Play, Clock, Tag, ArrowLeft, Upload,
-  Film, FileVideo, ChevronRight, Pencil, Check,
-} from 'lucide-react'
-import { Button, Card, AnchorHeading } from '@/components/Common'
+import { Zap, Loader2, ArrowLeft, Upload, Pencil, Check } from 'lucide-react'
+import { Button, Card } from '@/components/Common'
 import { ModelPill } from '@/components/ModelPill'
 import { Select } from '@/components/UI'
 import { ModelRegionPicker } from '@/components/ModelRegionPicker'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/useAuthStore'
-import { cn, getTimeAgo, formatFileSize, parseTimestamp } from '@/lib/utils'
-import type { KeyMoment, KeyMomentsAnalysis, SystemResource, KeyMomentsRecord, CompletedProductionSource, UploadRecord } from '@/types/project'
-
-function formatTimestamp(ts: string): string {
-  const secs = parseTimestamp(ts)
-  const m = Math.floor(secs / 60)
-  const s = Math.floor(secs % 60)
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
-
-type VideoSourceTab = 'productions' | 'past-uploads'
+import { cn, parseTimestamp } from '@/lib/utils'
+import { useVideoSourceState } from '@/hooks/useVideoSourceState'
+import { KeyMomentsSourcePicker } from '@/components/pages/keyMoments/KeyMomentsSourcePicker'
+import { KeyMomentsTimeline } from '@/components/pages/keyMoments/KeyMomentsTimeline'
+import type { KeyMomentsAnalysis, SystemResource, KeyMomentsRecord, CompletedProductionSource, UploadRecord } from '@/types/project'
 
 export const KeyMomentsAnalyzePage = () => {
   const { id } = useParams<{ id: string }>()
@@ -30,22 +21,24 @@ export const KeyMomentsAnalyzePage = () => {
   const { isMaster } = useAuthStore()
   const isViewMode = !!id
 
-  // Video source state
-  const [sourceTab, setSourceTab] = useState<VideoSourceTab>('productions')
-  const [videoUrl, setVideoUrl] = useState<string | null>(null)
-  const [gcsUri, setGcsUri] = useState<string | null>(null)
-  const [videoFilename, setVideoFilename] = useState('')
+  const {
+    sourceTab, setSourceTab,
+    videoUrl, gcsUri, videoFilename, setVideoFilename,
+    productions, uploads, loading: loadingSources,
+    select,
+  } = useVideoSourceState<UploadRecord, CompletedProductionSource>(
+    {
+      loadUploads: () => api.uploads.list({ file_type: 'video' }),
+      loadProductions: () => api.keyMoments.listProductionSources(),
+    },
+    { initialTab: 'productions', enabled: !isViewMode },
+  )
   const [videoSource, setVideoSource] = useState<'upload' | 'production'>('upload')
   const [productionId, setProductionId] = useState<string | undefined>()
 
   // Name editing
   const [isEditingName, setIsEditingName] = useState(false)
   const [editName, setEditName] = useState('')
-
-  // Source data
-  const [productions, setProductions] = useState<CompletedProductionSource[]>([])
-  const [uploads, setUploads] = useState<UploadRecord[]>([])
-  const [loadingSources, setLoadingSources] = useState(false)
 
   // Prompt state
   const [prompts, setPrompts] = useState<SystemResource[]>([])
@@ -81,9 +74,11 @@ export const KeyMomentsAnalyzePage = () => {
     setLoadingRecord(true)
     api.keyMoments.get(id)
       .then((record: KeyMomentsRecord) => {
-        setVideoUrl(record.video_signed_url || null)
-        setGcsUri(record.video_gcs_uri)
-        setVideoFilename(record.display_name || record.video_filename)
+        select(
+          record.video_signed_url || null,
+          record.video_gcs_uri,
+          record.display_name || record.video_filename,
+        )
         setVideoSource(record.video_source)
         setProductionId(record.production_id)
         setModelName(record.usage?.model_name)
@@ -95,21 +90,6 @@ export const KeyMomentsAnalyzePage = () => {
       .catch((err) => setError(err.message || 'Failed to load analysis'))
       .finally(() => setLoadingRecord(false))
   }, [id])
-
-  // Load source data when tabs are shown (fresh mode only)
-  useEffect(() => {
-    if (isViewMode || videoUrl) return
-    setLoadingSources(true)
-    Promise.all([
-      api.keyMoments.listProductionSources().catch(() => []),
-      api.uploads.list({ file_type: 'video' }).catch(() => []),
-    ])
-      .then(([prods, uploadRecords]) => {
-        setProductions(prods)
-        setUploads(uploadRecords)
-      })
-      .finally(() => setLoadingSources(false))
-  }, [isViewMode, videoUrl])
 
   // Auto-pause at moment end
   const handleTimeUpdate = useCallback(() => {
@@ -131,9 +111,7 @@ export const KeyMomentsAnalyzePage = () => {
   }, [handleTimeUpdate])
 
   const handleSelectProduction = (prod: CompletedProductionSource) => {
-    setVideoUrl(prod.video_signed_url)
-    setGcsUri(prod.final_video_url)
-    setVideoFilename(prod.name)
+    select(prod.video_signed_url, prod.final_video_url, prod.name)
     setVideoSource('production')
     setProductionId(prod.id)
     setAnalysis(null)
@@ -141,9 +119,7 @@ export const KeyMomentsAnalyzePage = () => {
   }
 
   const handleSelectUpload = (record: UploadRecord) => {
-    setVideoUrl(record.signed_url || null)
-    setGcsUri(record.gcs_uri)
-    setVideoFilename(record.display_name || record.filename)
+    select(record.signed_url || null, record.gcs_uri, record.display_name || record.filename)
     setVideoSource('upload')
     setProductionId(undefined)
     setAnalysis(null)
@@ -151,9 +127,7 @@ export const KeyMomentsAnalyzePage = () => {
   }
 
   const handleChangeVideo = () => {
-    setVideoUrl(null)
-    setGcsUri(null)
-    setVideoFilename('')
+    select(null, null, '')
     setVideoSource('upload')
     setProductionId(undefined)
     setAnalysis(null)
@@ -202,11 +176,6 @@ export const KeyMomentsAnalyzePage = () => {
       </div>
     )
   }
-
-  const tabs: { key: VideoSourceTab; label: string; icon: typeof Film }[] = [
-    { key: 'productions', label: 'Productions', icon: Film },
-    { key: 'past-uploads', label: 'Files', icon: FileVideo },
-  ]
 
   return (
     <motion.div
@@ -272,119 +241,17 @@ export const KeyMomentsAnalyzePage = () => {
         )}
       </div>
 
-      {/* Video Source Selection (fresh mode, no video selected) */}
       {!isViewMode && !videoUrl && (
-        <Card className="overflow-visible">
-          {/* Tab bar */}
-          <div className="px-5 pt-5 pb-3">
-            <div className="flex gap-1 bg-muted/50 rounded-lg p-1">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => setSourceTab(tab.key)}
-                  className={cn(
-                    "flex items-center gap-1.5 flex-1 justify-center px-3 py-2 rounded-md text-xs font-medium transition-all cursor-pointer",
-                    sourceTab === tab.key
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <tab.icon size={14} />
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Tab content */}
-          <div className="px-5 pb-5">
-            {loadingSources ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="animate-spin text-accent" size={24} />
-              </div>
-            ) : (
-              <>
-                {/* Productions tab */}
-                {sourceTab === 'productions' && (
-                  <div>
-                    {productions.length === 0 ? (
-                      <p className="text-xs text-muted-foreground py-8 text-center">
-                        No completed productions with video found.
-                      </p>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {productions.map((prod) => (
-                          <button
-                            key={prod.id}
-                            onClick={() => handleSelectProduction(prod)}
-                            className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card hover:border-accent/50 hover:bg-accent/5 transition-all text-left cursor-pointer group"
-                          >
-                            <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center shrink-0">
-                              <Film size={16} className="text-indigo-600" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-medium text-foreground truncate group-hover:text-accent-dark transition-colors">
-                                {prod.name}
-                              </p>
-                              <p className="text-[10px] text-muted-foreground">
-                                {prod.type}
-                              </p>
-                            </div>
-                            <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Past Uploads tab */}
-                {sourceTab === 'past-uploads' && (
-                  <div>
-                    {uploads.length === 0 ? (
-                      <div className="text-center py-8">
-                        <p className="text-xs text-muted-foreground mb-2">
-                          No video files found.
-                        </p>
-                        <button
-                          onClick={() => navigate('/uploads')}
-                          className="text-xs text-accent hover:text-accent-dark transition-colors"
-                        >
-                          Go to Files to add videos
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {uploads.map((record) => (
-                          <button
-                            key={record.id}
-                            onClick={() => handleSelectUpload(record)}
-                            className="flex items-center gap-3 w-full p-3 rounded-lg border border-border bg-card hover:border-accent/50 hover:bg-accent/5 transition-all text-left cursor-pointer group"
-                          >
-                            <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
-                              <FileVideo size={16} className="text-accent-dark" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-medium text-foreground truncate group-hover:text-accent-dark transition-colors">
-                                {record.display_name || record.filename}
-                              </p>
-                              <p className="text-[10px] text-muted-foreground">
-                                {formatFileSize(record.file_size_bytes)}
-                                {record.resolution_label && ` · ${record.resolution_label}`}
-                                {' · '}{getTimeAgo(record.createdAt)}
-                              </p>
-                            </div>
-                            <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </Card>
+        <KeyMomentsSourcePicker
+          sourceTab={sourceTab}
+          setSourceTab={setSourceTab}
+          productions={productions}
+          uploads={uploads}
+          loading={loadingSources}
+          onSelectProduction={handleSelectProduction}
+          onSelectUpload={handleSelectUpload}
+          onNavigateUploads={() => navigate('/uploads')}
+        />
       )}
 
       {/* Video Player */}
@@ -458,72 +325,12 @@ export const KeyMomentsAnalyzePage = () => {
         </Card>
       )}
 
-      {/* Key Moments Grid */}
       {analysis && analysis.key_moments.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Clock size={16} className="text-accent-dark" />
-            <AnchorHeading id="key-moments-list" className="text-base font-heading font-bold text-foreground">
-              {analysis.key_moments.length} Key Moments
-            </AnchorHeading>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {analysis.key_moments.map((moment: KeyMoment, i: number) => (
-              <motion.button
-                key={i}
-                onClick={() => seekToMoment(i)}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.03 }}
-                className={cn(
-                  "text-left p-4 rounded-xl border transition-all cursor-pointer",
-                  "hover:border-accent/50 hover:bg-accent/5",
-                  activeMomentIndex === i
-                    ? "border-accent bg-accent/10 shadow-md ring-2 ring-accent/20"
-                    : "border-border bg-card"
-                )}
-              >
-                {/* Timestamp + Category */}
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[10px] font-mono font-bold text-accent-dark bg-accent/10 px-1.5 py-0.5 rounded flex items-center gap-1">
-                    <Play size={8} className={cn(
-                      activeMomentIndex === i ? "fill-accent-dark" : ""
-                    )} />
-                    {formatTimestamp(moment.timestamp_start)} - {formatTimestamp(moment.timestamp_end)}
-                  </span>
-                  {moment.category && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">
-                      {moment.category}
-                    </span>
-                  )}
-                </div>
-
-                {/* Title */}
-                <p className="text-xs font-bold text-foreground line-clamp-1 mb-1">
-                  {moment.title}
-                </p>
-
-                {/* Description */}
-                <p className="text-[11px] text-muted-foreground line-clamp-3 leading-relaxed mb-2">
-                  {moment.description}
-                </p>
-
-                {/* Tags */}
-                {moment.tags && moment.tags.length > 0 && (
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <Tag size={8} className="text-muted-foreground shrink-0" />
-                    {moment.tags.map((tag, j) => (
-                      <span key={j} className="text-[9px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </motion.button>
-            ))}
-          </div>
-        </div>
+        <KeyMomentsTimeline
+          moments={analysis.key_moments}
+          activeMomentIndex={activeMomentIndex}
+          onSeek={seekToMoment}
+        />
       )}
       {id && <div className="mt-6"><ServicesUsedPanel feature="key_moments" recordId={id} /></div>}
     </motion.div>

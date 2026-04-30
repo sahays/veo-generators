@@ -7,6 +7,7 @@ from helpers import (
     get_or_404,
     list_completed_production_sources,
     require_firestore,
+    sign_record_urls,
 )
 from models import ThumbnailRecord, ThumbnailScreenshot
 from routers._crud import register_crud_routes
@@ -17,34 +18,24 @@ router = APIRouter(prefix="/api/v1/thumbnails", tags=["thumbnails"])
 
 
 def _sign(record: ThumbnailRecord) -> dict:
-    """Return record dict with signed URLs for video, screenshots, and thumbnail."""
-    data = record.dict()
-    if not deps.storage_svc:
-        return data
-    cache = data.get("signed_urls") or {}
-    dirty = False
-
-    def _resolve(gcs_uri: str) -> str:
-        nonlocal dirty
-        if not gcs_uri:
-            return ""
-        if not gcs_uri.startswith("gs://"):
-            return gcs_uri
-        url, changed = deps.storage_svc.resolve_cached_url(gcs_uri, cache)
-        if changed:
-            dirty = True
-        return url
-
-    if record.video_gcs_uri:
-        data["video_signed_url"] = _resolve(record.video_gcs_uri)
-    for screenshot in data.get("screenshots", []):
-        if screenshot.get("gcs_uri"):
-            screenshot["signed_url"] = _resolve(screenshot["gcs_uri"])
-    if record.thumbnail_gcs_uri:
-        data["thumbnail_signed_url"] = _resolve(record.thumbnail_gcs_uri)
-    if dirty and deps.firestore_svc:
-        deps.firestore_svc.update_thumbnail_record(record.id, {"signed_urls": cache})
-    data.pop("signed_urls", None)
+    """Sign top-level video/thumbnail URIs plus per-screenshot URIs."""
+    data = sign_record_urls(
+        record,
+        {
+            "video_gcs_uri": "video_signed_url",
+            "thumbnail_gcs_uri": "thumbnail_signed_url",
+        },
+        lambda cache: deps.firestore_svc.update_thumbnail_record(
+            record.id, {"signed_urls": cache}
+        ),
+    )
+    if deps.storage_svc:
+        screenshot_cache: dict = {}
+        for shot in data.get("screenshots", []):
+            uri = shot.get("gcs_uri")
+            if uri:
+                url, _ = deps.storage_svc.resolve_cached_url(uri, screenshot_cache)
+                shot["signed_url"] = url
     return data
 
 

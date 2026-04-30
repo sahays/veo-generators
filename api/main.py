@@ -26,6 +26,7 @@ from routers import (
     models,
     pricing,
     avatars,
+    avatars_live,
 )
 
 # Suppress the "non-text parts" warning from google-genai/adk which is noisy when using tools
@@ -167,6 +168,7 @@ for r in [
     models,
     pricing,
     avatars,
+    avatars_live,
 ]:
     app.include_router(r.router)
 

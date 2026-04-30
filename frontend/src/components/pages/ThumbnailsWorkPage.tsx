@@ -3,19 +3,20 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ServicesUsedPanel } from '@/components/pricing/ServicesUsedPanel'
 import { motion } from 'framer-motion'
 import {
-  Upload, Image, Loader2, ArrowLeft, Download,
-  Film, FileVideo, ChevronRight, Camera, Sparkles, Tag, Pencil, Check,
+  Upload, Loader2, ArrowLeft, Camera, Sparkles, Pencil, Check,
 } from 'lucide-react'
-import { Button, Card, AnchorHeading } from '@/components/Common'
+import { Button, Card } from '@/components/Common'
 import { ModelPill } from '@/components/ModelPill'
 import { Select } from '@/components/UI'
 import { ModelRegionPicker } from '@/components/ModelRegionPicker'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/useAuthStore'
-import { cn, getTimeAgo, formatFileSize, parseTimestamp } from '@/lib/utils'
+import { cn, parseTimestamp } from '@/lib/utils'
+import { useVideoSourceState } from '@/hooks/useVideoSourceState'
+import { ThumbnailsResult } from '@/components/pages/thumbnails/ThumbnailsResult'
+import { ThumbnailsScreenshotGrid } from '@/components/pages/thumbnails/ThumbnailsScreenshotGrid'
+import { ThumbnailsSourcePicker } from '@/components/pages/thumbnails/ThumbnailsSourcePicker'
 import type { ThumbnailRecord, ThumbnailScreenshot, SystemResource, CompletedProductionSource, UploadRecord } from '@/types/project'
-
-type VideoSourceTab = 'productions' | 'past-uploads'
 
 export const ThumbnailsWorkPage = () => {
   const { id } = useParams<{ id: string }>()
@@ -23,22 +24,24 @@ export const ThumbnailsWorkPage = () => {
   const { isMaster } = useAuthStore()
   const isViewMode = !!id
 
-  // Video source state
-  const [sourceTab, setSourceTab] = useState<VideoSourceTab>('productions')
-  const [videoUrl, setVideoUrl] = useState<string | null>(null)
-  const [gcsUri, setGcsUri] = useState<string | null>(null)
-  const [videoFilename, setVideoFilename] = useState('')
+  const {
+    sourceTab, setSourceTab,
+    videoUrl, gcsUri, videoFilename, setVideoFilename,
+    productions, uploads, loading: loadingSources,
+    select,
+  } = useVideoSourceState<UploadRecord, CompletedProductionSource>(
+    {
+      loadUploads: () => api.uploads.list({ file_type: 'video' }),
+      loadProductions: () => api.thumbnails.listProductionSources(),
+    },
+    { initialTab: 'productions', enabled: !isViewMode },
+  )
   const [videoSource, setVideoSource] = useState<'upload' | 'production'>('upload')
   const [productionId, setProductionId] = useState<string | undefined>()
 
   // Name editing
   const [isEditingName, setIsEditingName] = useState(false)
   const [editName, setEditName] = useState('')
-
-  // Source data
-  const [productions, setProductions] = useState<CompletedProductionSource[]>([])
-  const [uploads, setUploads] = useState<UploadRecord[]>([])
-  const [loadingSources, setLoadingSources] = useState(false)
 
   // Analysis prompt state
   const [analysisPrompts, setAnalysisPrompts] = useState<SystemResource[]>([])
@@ -96,9 +99,11 @@ export const ThumbnailsWorkPage = () => {
     setLoadingRecord(true)
     api.thumbnails.get(id)
       .then((record: ThumbnailRecord) => {
-        setVideoUrl(record.video_signed_url || null)
-        setGcsUri(record.video_gcs_uri)
-        setVideoFilename(record.display_name || record.video_filename)
+        select(
+          record.video_signed_url || null,
+          record.video_gcs_uri,
+          record.display_name || record.video_filename,
+        )
         setVideoSource(record.video_source)
         setProductionId(record.production_id)
         setVideoSummary(record.video_summary || null)
@@ -117,25 +122,8 @@ export const ThumbnailsWorkPage = () => {
       .finally(() => setLoadingRecord(false))
   }, [id])
 
-  // Load source data when tabs are shown (fresh mode only)
-  useEffect(() => {
-    if (isViewMode || videoUrl) return
-    setLoadingSources(true)
-    Promise.all([
-      api.thumbnails.listProductionSources().catch(() => []),
-      api.uploads.list({ file_type: 'video' }).catch(() => []),
-    ])
-      .then(([prods, uploadRecords]) => {
-        setProductions(prods)
-        setUploads(uploadRecords)
-      })
-      .finally(() => setLoadingSources(false))
-  }, [isViewMode, videoUrl])
-
   const handleSelectProduction = (prod: CompletedProductionSource) => {
-    setVideoUrl(prod.video_signed_url)
-    setGcsUri(prod.final_video_url)
-    setVideoFilename(prod.name)
+    select(prod.video_signed_url, prod.final_video_url, prod.name)
     setVideoSource('production')
     setProductionId(prod.id)
     setScreenshots([])
@@ -144,9 +132,7 @@ export const ThumbnailsWorkPage = () => {
   }
 
   const handleSelectUpload = (record: UploadRecord) => {
-    setVideoUrl(record.signed_url || null)
-    setGcsUri(record.gcs_uri)
-    setVideoFilename(record.display_name || record.filename)
+    select(record.signed_url || null, record.gcs_uri, record.display_name || record.filename)
     setVideoSource('upload')
     setProductionId(undefined)
     setScreenshots([])
@@ -155,9 +141,7 @@ export const ThumbnailsWorkPage = () => {
   }
 
   const handleChangeVideo = () => {
-    setVideoUrl(null)
-    setGcsUri(null)
-    setVideoFilename('')
+    select(null, null, '')
     setVideoSource('upload')
     setProductionId(undefined)
     setScreenshots([])
@@ -306,11 +290,6 @@ export const ThumbnailsWorkPage = () => {
   const showCollageSection = (recordStatus === 'screenshots_ready' || recordStatus === 'generating' || recordStatus === 'completed') && screenshotsCaptured
   const showResultSection = recordStatus === 'completed' && thumbnailUrl
 
-  const tabs: { key: VideoSourceTab; label: string; icon: typeof Film }[] = [
-    { key: 'productions', label: 'Productions', icon: Film },
-    { key: 'past-uploads', label: 'Files', icon: FileVideo },
-  ]
-
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.98 }}
@@ -378,115 +357,17 @@ export const ThumbnailsWorkPage = () => {
         )}
       </div>
 
-      {/* Video Source Selection (fresh mode, no video selected) */}
       {!isViewMode && !videoUrl && (
-        <Card className="overflow-visible">
-          <div className="px-5 pt-5 pb-3">
-            <div className="flex gap-1 bg-muted/50 rounded-lg p-1">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => setSourceTab(tab.key)}
-                  className={cn(
-                    "flex items-center gap-1.5 flex-1 justify-center px-3 py-2 rounded-md text-xs font-medium transition-all cursor-pointer",
-                    sourceTab === tab.key
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <tab.icon size={14} />
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="px-5 pb-5">
-            {loadingSources ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="animate-spin text-accent" size={24} />
-              </div>
-            ) : (
-              <>
-                {sourceTab === 'productions' && (
-                  <div>
-                    {productions.length === 0 ? (
-                      <p className="text-xs text-muted-foreground py-8 text-center">
-                        No completed productions with video found.
-                      </p>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {productions.map((prod) => (
-                          <button
-                            key={prod.id}
-                            onClick={() => handleSelectProduction(prod)}
-                            className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card hover:border-accent/50 hover:bg-accent/5 transition-all text-left cursor-pointer group"
-                          >
-                            <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center shrink-0">
-                              <Film size={16} className="text-indigo-600" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-medium text-foreground truncate group-hover:text-accent-dark transition-colors">
-                                {prod.name}
-                              </p>
-                              <p className="text-[10px] text-muted-foreground">
-                                {prod.type}
-                              </p>
-                            </div>
-                            <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {sourceTab === 'past-uploads' && (
-                  <div>
-                    {uploads.length === 0 ? (
-                      <div className="text-center py-8">
-                        <p className="text-xs text-muted-foreground mb-2">
-                          No video files found.
-                        </p>
-                        <button
-                          onClick={() => navigate('/uploads')}
-                          className="text-xs text-accent hover:text-accent-dark transition-colors"
-                        >
-                          Go to Files to add videos
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {uploads.map((record) => (
-                          <button
-                            key={record.id}
-                            onClick={() => handleSelectUpload(record)}
-                            className="flex items-center gap-3 w-full p-3 rounded-lg border border-border bg-card hover:border-accent/50 hover:bg-accent/5 transition-all text-left cursor-pointer group"
-                          >
-                            <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
-                              <FileVideo size={16} className="text-accent-dark" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-medium text-foreground truncate group-hover:text-accent-dark transition-colors">
-                                {record.display_name || record.filename}
-                              </p>
-                              <p className="text-[10px] text-muted-foreground">
-                                {formatFileSize(record.file_size_bytes)}
-                                {record.resolution_label && ` · ${record.resolution_label}`}
-                                {' · '}{getTimeAgo(record.createdAt)}
-                              </p>
-                            </div>
-                            <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </Card>
+        <ThumbnailsSourcePicker
+          sourceTab={sourceTab}
+          setSourceTab={setSourceTab}
+          productions={productions}
+          uploads={uploads}
+          loading={loadingSources}
+          onSelectProduction={handleSelectProduction}
+          onSelectUpload={handleSelectUpload}
+          onNavigateUploads={() => navigate('/uploads')}
+        />
       )}
 
       {/* Section 1: Video Player + Analyze */}
@@ -561,72 +442,12 @@ export const ThumbnailsWorkPage = () => {
         </Card>
       )}
 
-      {/* Section 2: Screenshots Grid */}
       {hasScreenshots && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Camera size={16} className="text-accent-dark" />
-            <AnchorHeading id="screenshots" className="text-base font-heading font-bold text-foreground">
-              {screenshots.length} Screenshots {capturing ? 'Capturing...' : 'Captured'}
-            </AnchorHeading>
-            {capturing && (
-              <span className="text-xs text-muted-foreground">
-                ({captureProgress}/{screenshots.length})
-              </span>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {screenshots.map((screenshot, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
-                className="rounded-xl border border-border bg-card overflow-hidden"
-              >
-                {/* Screenshot image */}
-                <div className="aspect-video bg-black relative">
-                  {screenshot.localUrl ? (
-                    <img
-                      src={screenshot.localUrl}
-                      alt={screenshot.title}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <Loader2 className="animate-spin text-accent" size={20} />
-                    </div>
-                  )}
-                  {/* Timestamp badge */}
-                  <span className="absolute top-2 left-2 text-[9px] font-mono font-bold text-white bg-black/70 px-1.5 py-0.5 rounded">
-                    {screenshot.timestamp}
-                  </span>
-                </div>
-
-                {/* Info */}
-                <div className="p-3 space-y-1.5">
-                  <p className="text-xs font-bold text-foreground line-clamp-1">
-                    {screenshot.title}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground line-clamp-2 leading-relaxed">
-                    {screenshot.visual_characteristics}
-                  </p>
-                  {screenshot.tags && screenshot.tags.length > 0 && (
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <Tag size={8} className="text-muted-foreground shrink-0" />
-                      {screenshot.tags.slice(0, 3).map((tag, j) => (
-                        <span key={j} className="text-[8px] px-1 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
+        <ThumbnailsScreenshotGrid
+          screenshots={screenshots}
+          capturing={capturing}
+          captureProgress={captureProgress}
+        />
       )}
 
       {/* Section 3: Collage Generation */}
@@ -661,36 +482,7 @@ export const ThumbnailsWorkPage = () => {
         </div>
       )}
 
-      {/* Section 4: Result */}
-      {showResultSection && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Image size={16} className="text-accent-dark" />
-            <AnchorHeading id="generated-thumbnail" className="text-base font-heading font-bold text-foreground">
-              Generated Thumbnail
-            </AnchorHeading>
-          </div>
-
-          <div className="rounded-2xl overflow-hidden border border-border shadow-2xl" style={{ aspectRatio: '16/9' }}>
-            <img
-              src={thumbnailUrl}
-              alt="Generated thumbnail"
-              className="w-full h-full object-cover"
-            />
-          </div>
-
-          <div className="flex justify-end">
-            <a
-              href={thumbnailUrl}
-              download="thumbnail.png"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors"
-            >
-              <Download size={16} />
-              Download Thumbnail
-            </a>
-          </div>
-        </div>
-      )}
+      {showResultSection && thumbnailUrl && <ThumbnailsResult thumbnailUrl={thumbnailUrl} />}
       {id && <div className="mt-6"><ServicesUsedPanel feature="thumbnails" recordId={id} /></div>}
     </motion.div>
   )

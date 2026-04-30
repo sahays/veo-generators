@@ -1,6 +1,5 @@
 """Reframe job processor — analyzes focal points and crops landscape video to portrait."""
 
-import asyncio
 import logging
 import os
 import time
@@ -13,6 +12,7 @@ from cost_tracking import (
 from models import FocalPoint, SpeakerSegment
 
 from base_processor import JobProcessor, TempFileManager
+from _reframe_helpers import format_chirp_context, format_track_summary
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ class ReframeProcessor(JobProcessor):
         )
 
     def _run_ai_reframe(self, record, record_id, src_path, out_path, probe, tmp):
-        """AI reframe: diarize → Gemini scenes → MediaPipe detect → merge → smooth → crop."""
+        """AI reframe: diarize → MediaPipe detect → Gemini scenes → merge → smooth → crop."""
         from reframe_service import execute_reframe
         from reframe_strategies import get_strategy
 
@@ -98,41 +98,22 @@ class ReframeProcessor(JobProcessor):
         has_audio = probe.get("has_audio", True)
 
         chirp_context = self._run_diarization(
-            record,
-            record_id,
-            src_path,
-            probe,
-            tmp,
-            strategy,
-            has_audio,
+            record, record_id, src_path, probe, tmp, strategy, has_audio
         )
 
-        # Step 3a: MediaPipe detects faces/poses (where) — runs BEFORE Gemini
         self.update_status(record_id, "processing", 15)
         tracked_frames = self._run_mediapipe(record_id, src_path)
-        track_summary = _format_track_summary(tracked_frames)
+        track_summary = format_track_summary(tracked_frames)
         deps.firestore_svc.update_reframe_record(
             record_id, {"track_summary": track_summary}
         )
 
-        # Step 3b: Gemini analyzes scenes (what + who) — informed by tracks
         scenes = self._analyze_scenes(
-            record,
-            record_id,
-            content_type,
-            chirp_context,
-            track_summary,
+            record, record_id, content_type, chirp_context, track_summary
         )
-
-        # Step 4: Merge scenes with tracks → focal points
         focal_raw = self._merge_scenes_and_tracks(
-            record_id,
-            scenes,
-            tracked_frames,
-            probe["duration"],
+            record_id, scenes, tracked_frames, probe["duration"]
         )
-
-        # Step 5: Smooth path
         keypoints = self._smooth(record_id, focal_raw, probe, strategy)
 
         self.update_status(record_id, "processing", 45)
@@ -186,7 +167,7 @@ class ReframeProcessor(JobProcessor):
                 {"speaker_segments": [SpeakerSegment(**s).dict() for s in segments]},
             )
             logger.info(f"[reframe:{record_id}] Chirp 3: {len(segments)} segments")
-            chirp_context = _format_chirp_context(segments)
+            chirp_context = format_chirp_context(segments)
             accumulate_diarization_cost("reframe", record_id, probe["duration"] / 60.0)
         except Exception as e:
             raise RuntimeError(f"Chirp 3 diarization failed: {e}") from e
@@ -306,102 +287,3 @@ class ReframeProcessor(JobProcessor):
                 record_id, "encoding", min(90, 75 + int(elapsed / timeout * 15))
             )
         raise RuntimeError("Transcoder job timed out")
-
-    def _run_async(self, coro):
-        """Run an async coroutine from the synchronous process method."""
-        loop = asyncio.new_event_loop()
-        try:
-            return loop.run_until_complete(coro)
-        finally:
-            loop.close()
-
-
-def _format_chirp_context(speaker_segments: list) -> str:
-    """Format Chirp diarization as concise context for Gemini.
-
-    Filters out noise (segments <1s) and keeps only significant speaker
-    turns to avoid overwhelming Gemini with hundreds of micro-segments.
-    """
-    if not speaker_segments:
-        return ""
-
-    # Filter: drop segments <2s, keep top 30 longest to avoid overwhelming Gemini
-    significant = [s for s in speaker_segments if s["end_sec"] - s["start_sec"] >= 2.0]
-    if not significant:
-        significant = speaker_segments[:10]
-    significant.sort(key=lambda s: s["start_sec"])
-    if len(significant) > 30:
-        # Keep the 30 longest segments (most meaningful speaker turns)
-        by_dur = sorted(
-            significant, key=lambda s: s["end_sec"] - s["start_sec"], reverse=True
-        )[:30]
-        significant = sorted(by_dur, key=lambda s: s["start_sec"])
-
-    lines = [
-        "=== SPEAKER DIARIZATION ===",
-        "These are the major speaker turns detected from audio analysis.",
-        "Use these to determine WHO is speaking WHEN and place focal points accordingly.",
-        "Each speaker occupies a different position in the frame — track the active speaker.",
-        "",
-    ]
-    for seg in significant:
-        dur = seg["end_sec"] - seg["start_sec"]
-        lines.append(
-            f"[{seg['start_sec']:.1f}s - {seg['end_sec']:.1f}s] {seg['speaker_id']} ({dur:.0f}s)"
-        )
-
-    unique = sorted(set(s["speaker_id"] for s in significant))
-    lines.append("")
-    lines.append(
-        f"{len(significant)} speaker turns, {len(unique)} speakers: {', '.join(unique)}"
-    )
-    return "\n".join(lines)
-
-
-def _format_track_summary(tracked_frames: list) -> str:
-    """Summarize MediaPipe tracks as context for Gemini.
-
-    Tells Gemini exactly which face tracks exist and their typical
-    horizontal positions so it can reference them by ID.
-    """
-    if not tracked_frames:
-        return ""
-
-    # Collect per-track stats
-    track_data: dict[int, list[float]] = {}
-    for frame in tracked_frames:
-        for t in frame.get("tracks", []):
-            tid = t["track_id"]
-            track_data.setdefault(tid, []).append(t["x"])
-
-    if not track_data:
-        return ""
-
-    # Keep only tracks visible in ≥5% of frames (filter noise)
-    min_frames = max(3, len(tracked_frames) * 0.05)
-    stable = {tid: xs for tid, xs in track_data.items() if len(xs) >= min_frames}
-    if not stable:
-        stable = dict(sorted(track_data.items(), key=lambda kv: -len(kv[1]))[:5])
-
-    lines = [
-        "=== DETECTED FACES (from frame analysis) ===",
-        "These are the face tracks detected in the video.",
-        "For each scene, reference a track by its label (e.g. 'Track A').",
-        "",
-    ]
-    for i, (tid, xs) in enumerate(sorted(stable.items(), key=lambda kv: -len(kv[1]))):
-        avg_x = sum(xs) / len(xs)
-        position = "left" if avg_x < 0.4 else "right" if avg_x > 0.6 else "center"
-        pct = len(xs) / len(tracked_frames) * 100
-        label = chr(ord("A") + i) if i < 26 else str(tid)
-        lines.append(
-            f"- Track {label}: typically at x≈{avg_x:.2f} ({position}), "
-            f"visible in {pct:.0f}% of frames"
-        )
-
-    lines.append("")
-    lines.append(
-        f"{len(stable)} main tracks detected. Use 'Track A', 'Track B', etc. "
-        f"as active_subject, or 'left'/'right'/'center' for spatial hints."
-    )
-    return "\n".join(lines)

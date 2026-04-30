@@ -1,5 +1,6 @@
 """Base class for worker job processors and shared utilities."""
 
+import asyncio
 import logging
 import pathlib
 import tempfile
@@ -75,3 +76,11 @@ class JobProcessor(ABC):
         """Add completedAt to updates dict for terminal statuses."""
         if status in ("completed", "failed"):
             updates["completedAt"] = datetime.utcnow()
+
+    def _run_async(self, coro):
+        """Drive an async coroutine from sync `process` code on its own loop."""
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()

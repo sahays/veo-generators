@@ -2,14 +2,17 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ServicesUsedPanel } from '@/components/pricing/ServicesUsedPanel'
 import {
-  Scissors, Loader2, ArrowLeft, Download, RotateCcw,
+  Scissors, Loader2, ArrowLeft, RotateCcw,
 } from 'lucide-react'
-import { Button, AnchorHeading } from '@/components/Common'
+import { Button } from '@/components/Common'
+import { PromoCompleted } from '@/components/pages/promo/PromoCompleted'
 import { ModelRegionPicker } from '@/components/ModelRegionPicker'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/useAuthStore'
 import { usePolling } from '@/hooks/usePolling'
+import { useVideoSourceState } from '@/hooks/useVideoSourceState'
+import { buildStatusConfig } from '@/hooks/jobStatus'
 import { VideoSourceSelector } from '@/components/shared/VideoSourceSelector'
 import { PromptSelector } from '@/components/shared/PromptSelector'
 import { ProgressBar } from '@/components/shared/ProgressBar'
@@ -19,27 +22,21 @@ import { ModelPill } from '@/components/ModelPill'
 import type { UploadItem, ProductionItem } from '@/components/shared/VideoSourceSelector'
 import type { SystemResource } from '@/types/project'
 
-type VideoSourceTab = 'productions' | 'past-uploads'
-
-interface PromoSegment {
-  title: string
-  timestamp_start: string
-  timestamp_end: string
-  description: string
-  overlay_signed_url?: string
-}
-
 const ACTIVE_STATUSES = ['pending', 'analyzing', 'extracting', 'stitching', 'encoding']
 
-const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  pending: { label: 'Preparing to analyze...', color: 'text-amber-500' },
-  analyzing: { label: 'Analyzing video with AI...', color: 'text-amber-500' },
-  extracting: { label: 'Extracting best moments...', color: 'text-blue-500' },
-  stitching: { label: 'Stitching promo together...', color: 'text-indigo-500' },
-  encoding: { label: 'Encoding final output...', color: 'text-purple-500' },
-  completed: { label: 'Promo complete', color: 'text-emerald-500' },
-  failed: { label: 'Promo generation failed', color: 'text-red-500' },
-}
+const STATUS_CONFIG = buildStatusConfig(
+  {
+    pending: { label: 'Preparing to analyze...', color: 'text-amber-500' },
+    analyzing: { label: 'Analyzing video with AI...', color: 'text-amber-500' },
+    extracting: { label: 'Extracting best moments...', color: 'text-blue-500' },
+    stitching: { label: 'Stitching promo together...', color: 'text-indigo-500' },
+    encoding: { label: 'Encoding final output...', color: 'text-purple-500' },
+  },
+  {
+    completed: { label: 'Promo complete', color: 'text-emerald-500' },
+    failed: { label: 'Promo generation failed', color: 'text-red-500' },
+  },
+)
 
 export const PromoWorkPage = () => {
   const { id } = useParams<{ id: string }>()
@@ -47,70 +44,48 @@ export const PromoWorkPage = () => {
   const { isMaster } = useAuthStore()
   const isViewMode = !!id
 
-  // Video source state
-  const [sourceTab, setSourceTab] = useState<VideoSourceTab>('past-uploads')
-  const [videoUrl, setVideoUrl] = useState<string | null>(null)
-  const [gcsUri, setGcsUri] = useState<string | null>(null)
-  const [videoFilename, setVideoFilename] = useState('')
+  const {
+    sourceTab, setSourceTab,
+    videoUrl, gcsUri, videoFilename,
+    productions, uploads, loading: loadingSources,
+    select,
+  } = useVideoSourceState<UploadItem, ProductionItem>(
+    {
+      loadUploads: () => api.promo.listUploadSources(),
+      loadProductions: () => api.promo.listProductionSources(),
+    },
+    { enabled: !isViewMode },
+  )
 
-  // Source data
-  const [productions, setProductions] = useState<ProductionItem[]>([])
-  const [uploads, setUploads] = useState<UploadItem[]>([])
-  const [loadingSources, setLoadingSources] = useState(false)
-
-  // Model/region config
   const [modelConfig, setModelConfig] = useState<{ modelId?: string; region?: string }>({})
-
-  // Duration state
   const [targetDuration, setTargetDuration] = useState(60)
-
-  // Prompt state
   const [prompts, setPrompts] = useState<SystemResource[]>([])
   const [promptId, setPromptId] = useState('')
-
-  // Options
   const [textOverlay, setTextOverlay] = useState(false)
   const [generateThumbnail, setGenerateThumbnail] = useState(false)
-
-  // Processing state
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // View mode polling
   const { record, loading: recordLoading, error: pollError } = usePolling(
     id,
     api.promo.get,
     ACTIVE_STATUSES,
   )
 
-  // Load sources and prompts for create mode
   useEffect(() => {
     if (isViewMode) return
-    setLoadingSources(true)
-    Promise.all([
-      api.promo.listUploadSources().catch(() => []),
-      api.promo.listProductionSources().catch(() => []),
-      api.system.listResources('prompt', 'promo').catch(() => []),
-    ]).then(([ups, prods, promoPrompts]) => {
-      setUploads(ups)
-      setProductions(prods)
+    api.system.listResources('prompt', 'promo').catch(() => []).then((promoPrompts) => {
       setPrompts(promoPrompts)
       const active = promoPrompts.find((p: SystemResource) => p.is_active)
       if (active) setPromptId(active.id)
-    }).finally(() => setLoadingSources(false))
+    })
   }, [isViewMode])
 
-  const handleSelectUpload = (upload: UploadItem) => {
-    setVideoUrl(upload.video_signed_url)
-    setGcsUri(upload.gcs_uri)
-    setVideoFilename(upload.display_name || upload.filename)
-  }
+  const handleSelectUpload = (upload: UploadItem) =>
+    select(upload.video_signed_url, upload.gcs_uri, upload.display_name || upload.filename)
 
-  const handleSelectProduction = (prod: ProductionItem) => {
-    setVideoUrl(prod.video_signed_url)
-    setGcsUri(prod.final_video_url)
-    setVideoFilename(prod.name)
-  }
+  const handleSelectProduction = (prod: ProductionItem) =>
+    select(prod.video_signed_url, prod.final_video_url, prod.name)
 
   const handleGeneratePromo = async () => {
     if (!gcsUri) return
@@ -222,82 +197,7 @@ export const PromoWorkPage = () => {
           </div>
         )}
 
-        {record.status === 'completed' && (
-          <div className="space-y-6">
-            {record.output_signed_url && (
-              <div className="space-y-2">
-                <AnchorHeading id="promo-output" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Promo Output</AnchorHeading>
-                <div className="aspect-video bg-black rounded-xl overflow-hidden border border-border max-w-2xl">
-                  <video
-                    src={record.output_signed_url}
-                    controls
-                    className="w-full h-full object-contain"
-                  />
-                </div>
-              </div>
-            )}
-
-            {record.output_signed_url && (
-              <div className="flex gap-3">
-                <a
-                  href={record.output_signed_url}
-                  download
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-dark transition-colors"
-                >
-                  <Download size={16} /> Download Promo
-                </a>
-              </div>
-            )}
-
-            {record.thumbnail_signed_url && (
-              <div className="space-y-2">
-                <AnchorHeading id="title-card" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Title Card</AnchorHeading>
-                <img
-                  src={record.thumbnail_signed_url}
-                  alt="Title card collage"
-                  className="rounded-xl border border-border max-w-md"
-                />
-              </div>
-            )}
-
-            {record.segments && record.segments.length > 0 && (
-              <div className="space-y-3">
-                <AnchorHeading id="selected-moments" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Selected Moments</AnchorHeading>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {record.segments.map((seg: PromoSegment, i: number) => (
-                    <div
-                      key={i}
-                      className="glass bg-card p-4 rounded-xl border border-border"
-                    >
-                      {seg.overlay_signed_url && (
-                        <img
-                          src={seg.overlay_signed_url}
-                          alt={seg.title}
-                          className="w-full rounded-lg mb-2 bg-black"
-                        />
-                      )}
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[10px] font-mono text-muted-foreground">
-                          {seg.timestamp_start} - {seg.timestamp_end}
-                        </span>
-                      </div>
-                      <h4 className="text-sm font-heading font-bold text-foreground mb-1">{seg.title}</h4>
-                      <p className="text-xs text-muted-foreground line-clamp-2">{seg.description}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {record.usage && record.usage.cost_usd > 0 && (
-              <div className="text-xs text-muted-foreground">
-                AI cost: ${record.usage.cost_usd.toFixed(4)} ({record.usage.input_tokens + record.usage.output_tokens} tokens)
-              </div>
-            )}
-          </div>
-        )}
+        {record.status === 'completed' && <PromoCompleted record={record} />}
       </div>
     )
   }

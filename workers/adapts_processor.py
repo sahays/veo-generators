@@ -1,6 +1,5 @@
 """Adapts job processor — generates image variants across multiple aspect ratios."""
 
-import asyncio
 import logging
 
 import deps
@@ -88,7 +87,7 @@ class AdaptsProcessor(JobProcessor):
         """Generate one aspect-ratio variant. Returns usage dict on success, None on failure."""
         v = variants[idx]
         try:
-            wrapper = asyncio.run(
+            wrapper = self._run_async(
                 self._call_gemini(
                     record.source_gcs_uri,
                     record.source_mime_type,

@@ -71,12 +71,17 @@ class FirestoreService:
     def list_resources(
         self, resource_type: Optional[str] = None, category: Optional[str] = None
     ) -> List[SystemResource]:
-        resources = self._all_resources()
+        # Push the type filter to Firestore (single-field indexes are auto).
+        # Category stays Python-side to avoid forcing a composite index.
+        query = self.resources_collection
         if resource_type:
-            resources = [r for r in resources if r.type == resource_type]
+            query = query.where("type", "==", resource_type)
+        records = [SystemResource(**doc.to_dict()) for doc in query.stream()]
+        records.sort(key=lambda r: r.createdAt or "", reverse=True)
+        records = [r for r in records if not getattr(r, "archived", False)]
         if category:
-            resources = [r for r in resources if r.category == category]
-        return resources
+            records = [r for r in records if r.category == category]
+        return records
 
     def get_resource(self, resource_id: str) -> Optional[SystemResource]:
         return self._get_record(self.resources_collection, SystemResource, resource_id)
@@ -137,17 +142,13 @@ class FirestoreService:
         production = self.get_production(production_id)
         if not production:
             return
-
-        updated_scenes = []
-        for scene in production.scenes:
-            if scene.id == scene_id:
-                scene_dict = scene.dict()
-                scene_dict.update(updates)
-                updated_scenes.append(scene_dict)
-            else:
-                updated_scenes.append(scene.dict())
-
-        self.update_production(production_id, {"scenes": updated_scenes})
+        # Dict-by-id mutation: O(n) once instead of branching per scene.
+        scenes_by_id = {s.id: s.dict() for s in production.scenes}
+        target = scenes_by_id.get(scene_id)
+        if not target:
+            return
+        target.update(updates)
+        self.update_production(production_id, {"scenes": list(scenes_by_id.values())})
 
     # --- Key Moments ---
 

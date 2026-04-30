@@ -45,6 +45,31 @@ def sign_record_urls(
     return data
 
 
+def _resolve_with_recovery(gcs_uri: str, cache: dict) -> tuple[str, bool]:
+    """Resolve a possibly-stale signed URL: try to recover the gs:// form if
+    the field already holds an https URL. Returns (resolved_url, dirty)."""
+    if not gcs_uri:
+        return "", False
+    if not gcs_uri.startswith("gs://"):
+        recovered = deps.storage_svc.recover_gcs_uri(gcs_uri)
+        if not recovered:
+            return gcs_uri, False
+        gcs_uri = recovered
+    url, changed = deps.storage_svc.resolve_cached_url(gcs_uri, cache)
+    return url, changed
+
+
+def _sign_scene_urls(scene: dict, cache: dict, thumbnails_only: bool) -> bool:
+    dirty = False
+    if scene.get("thumbnail_url"):
+        scene["thumbnail_url"], changed = _resolve_with_recovery(scene["thumbnail_url"], cache)
+        dirty = dirty or changed
+    if not thumbnails_only and scene.get("video_url"):
+        scene["video_url"], changed = _resolve_with_recovery(scene["video_url"], cache)
+        dirty = dirty or changed
+    return dirty
+
+
 def sign_production_urls(production: Project, thumbnails_only: bool = False) -> dict:
     """Return a dict with media URLs resolved from cache.
 
@@ -58,31 +83,13 @@ def sign_production_urls(production: Project, thumbnails_only: bool = False) -> 
     cache = data.get("signed_urls") or {}
     dirty = False
 
-    def _resolve(gcs_uri: str) -> str:
-        nonlocal dirty
-        if not gcs_uri:
-            return ""
-        if not gcs_uri.startswith("gs://"):
-            recovered = deps.storage_svc.recover_gcs_uri(gcs_uri)
-            if recovered:
-                gcs_uri = recovered
-            else:
-                return gcs_uri
-        url, changed = deps.storage_svc.resolve_cached_url(gcs_uri, cache)
-        if changed:
-            dirty = True
-        return url
-
     for scene in data.get("scenes", []):
-        if scene.get("thumbnail_url"):
-            scene["thumbnail_url"] = _resolve(scene["thumbnail_url"])
-        if not thumbnails_only and scene.get("video_url"):
-            scene["video_url"] = _resolve(scene["video_url"])
+        dirty = _sign_scene_urls(scene, cache, thumbnails_only) or dirty
     if not thumbnails_only:
-        if data.get("final_video_url"):
-            data["final_video_url"] = _resolve(data["final_video_url"])
-        if data.get("reference_image_url"):
-            data["reference_image_url"] = _resolve(data["reference_image_url"])
+        for field in ("final_video_url", "reference_image_url"):
+            if data.get(field):
+                data[field], changed = _resolve_with_recovery(data[field], cache)
+                dirty = dirty or changed
 
     if dirty and deps.firestore_svc:
         deps.firestore_svc.update_production(production.id, {"signed_urls": cache})

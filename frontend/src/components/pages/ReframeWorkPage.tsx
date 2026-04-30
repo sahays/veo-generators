@@ -1,36 +1,38 @@
-import { useState, useEffect } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
-import {
-  Smartphone, Loader2, ArrowLeft, Download, RotateCcw,
-  ExternalLink,
-} from 'lucide-react'
-import { Button, AnchorHeading } from '@/components/Common'
+import { useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { Smartphone, Loader2, ArrowLeft, RotateCcw } from 'lucide-react'
+import { Button } from '@/components/Common'
 import { Select } from '@/components/UI'
 import { ModelRegionPicker } from '@/components/ModelRegionPicker'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/useAuthStore'
 import { cn } from '@/lib/utils'
 import { usePolling } from '@/hooks/usePolling'
+import { useVideoSourceState } from '@/hooks/useVideoSourceState'
+import { buildStatusConfig } from '@/hooks/jobStatus'
 import { VideoSourceSelector } from '@/components/shared/VideoSourceSelector'
+import { ReframeCompleted } from '@/components/pages/reframe/ReframeCompleted'
+import { ReframePipelineLinks } from '@/components/pages/reframe/ReframePipelineLinks'
 
 import { ProgressBar } from '@/components/shared/ProgressBar'
 import { ErrorDisplay } from '@/components/shared/ErrorDisplay'
 import { WorkPageHeader } from '@/components/shared/WorkPageHeader'
 import type { UploadItem, ProductionItem } from '@/components/shared/VideoSourceSelector'
 
-
-type VideoSourceTab = 'productions' | 'past-uploads'
-
 const ACTIVE_STATUSES = ['pending', 'analyzing', 'processing', 'encoding']
 
-const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  pending: { label: 'Preparing to analyze...', color: 'text-amber-500' },
-  analyzing: { label: 'Analyzing video with AI...', color: 'text-amber-500' },
-  processing: { label: 'Reframing video...', color: 'text-blue-500' },
-  encoding: { label: 'Encoding final output...', color: 'text-purple-500' },
-  completed: { label: 'Reframe complete', color: 'text-emerald-500' },
-  failed: { label: 'Reframe failed', color: 'text-red-500' },
-}
+const STATUS_CONFIG = buildStatusConfig(
+  {
+    pending: { label: 'Preparing to analyze...', color: 'text-amber-500' },
+    analyzing: { label: 'Analyzing video with AI...', color: 'text-amber-500' },
+    processing: { label: 'Reframing video...', color: 'text-blue-500' },
+    encoding: { label: 'Encoding final output...', color: 'text-purple-500' },
+  },
+  {
+    completed: { label: 'Reframe complete', color: 'text-emerald-500' },
+    failed: { label: 'Reframe failed', color: 'text-red-500' },
+  },
+)
 
 const CONTENT_TYPE_OPTIONS = [
   { value: 'movies', label: 'Movies', description: 'Films, drama, scripted — follows characters and story' },
@@ -58,60 +60,40 @@ export const ReframeWorkPage = () => {
   const { isMaster } = useAuthStore()
   const isViewMode = !!id
 
-  // Video source state
-  const [sourceTab, setSourceTab] = useState<VideoSourceTab>('past-uploads')
-  const [videoUrl, setVideoUrl] = useState<string | null>(null)
-  const [gcsUri, setGcsUri] = useState<string | null>(null)
-  const [videoFilename, setVideoFilename] = useState('')
+  const {
+    sourceTab, setSourceTab,
+    videoUrl, gcsUri, videoFilename,
+    productions, uploads, loading: loadingSources,
+    select,
+  } = useVideoSourceState<UploadItem, ProductionItem>(
+    {
+      loadUploads: () => api.reframe.listUploadSources(),
+      loadProductions: () =>
+        api.reframe
+          .listProductionSources()
+          .then((prods) => prods.filter((p: ProductionItem) => p.orientation === '16:9')),
+    },
+    { enabled: !isViewMode },
+  )
 
-  // Source data
-  const [productions, setProductions] = useState<ProductionItem[]>([])
-  const [uploads, setUploads] = useState<UploadItem[]>([])
-  const [loadingSources, setLoadingSources] = useState(false)
-
-  // Model/region config
   const [modelConfig, setModelConfig] = useState<{ modelId?: string; region?: string }>({})
-
-  // Options
   const [contentType, setContentType] = useState('other')
   const [blurredBg, setBlurredBg] = useState(false)
   const [verticalSplit, setVerticalSplit] = useState(false)
-
-  // Processing state
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // View mode polling
   const { record, loading: recordLoading, error: pollError } = usePolling(
     id,
     api.reframe.get,
     ACTIVE_STATUSES,
   )
 
-  // Load sources and prompts for create mode
-  useEffect(() => {
-    if (isViewMode) return
-    setLoadingSources(true)
-    Promise.all([
-      api.reframe.listUploadSources().catch(() => []),
-      api.reframe.listProductionSources().catch(() => []),
-    ]).then(([ups, prods]) => {
-      setUploads(ups)
-      setProductions(prods.filter((p: ProductionItem) => p.orientation === '16:9'))
-    }).finally(() => setLoadingSources(false))
-  }, [isViewMode])
+  const handleSelectUpload = (upload: UploadItem) =>
+    select(upload.video_signed_url, upload.gcs_uri, upload.display_name || upload.filename)
 
-  const handleSelectUpload = (upload: UploadItem) => {
-    setVideoUrl(upload.video_signed_url)
-    setGcsUri(upload.gcs_uri)
-    setVideoFilename(upload.display_name || upload.filename)
-  }
-
-  const handleSelectProduction = (prod: ProductionItem) => {
-    setVideoUrl(prod.video_signed_url)
-    setGcsUri(prod.final_video_url)
-    setVideoFilename(prod.name)
-  }
+  const handleSelectProduction = (prod: ProductionItem) =>
+    select(prod.video_signed_url, prod.final_video_url, prod.name)
 
   const handleStartReframe = async () => {
     if (!gcsUri) return
@@ -222,113 +204,17 @@ export const ReframeWorkPage = () => {
           </div>
         )}
 
-        {/* AI Pipeline Output Links — in pipeline order */}
-        {!record.vertical_split && (hasTrackSummary || hasPrompt || geminiScenes?.length || focalPoints?.length || speakerSegments?.length) && (
-          <div className="flex flex-wrap gap-2">
-            {hasTrackSummary && (
-              <Link
-                to={`/orientations/${record.id}/mediapipe`}
-                target="_blank"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
-              >
-                MediaPipe <ExternalLink size={12} />
-              </Link>
-            )}
-            {speakerSegments && speakerSegments.length > 0 && (
-              <Link
-                to={`/orientations/${record.id}/chirp`}
-                target="_blank"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
-              >
-                Chirp <ExternalLink size={12} />
-              </Link>
-            )}
-            {hasPrompt && (
-              <Link
-                to={`/orientations/${record.id}/prompt`}
-                target="_blank"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
-              >
-                Prompt <ExternalLink size={12} />
-              </Link>
-            )}
-            {geminiScenes && geminiScenes.length > 0 && (
-              <Link
-                to={`/orientations/${record.id}/gemini`}
-                target="_blank"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
-              >
-                Gemini <ExternalLink size={12} />
-              </Link>
-            )}
-            {focalPoints && focalPoints.length > 0 && (
-              <Link
-                to={`/orientations/${record.id}/focal-points`}
-                target="_blank"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
-              >
-                Focal Points <ExternalLink size={12} />
-              </Link>
-            )}
-          </div>
-        )}
+        <ReframePipelineLinks
+          recordId={record.id}
+          vertical_split={record.vertical_split}
+          hasTrackSummary={hasTrackSummary}
+          hasPrompt={hasPrompt}
+          hasGeminiScenes={!!(geminiScenes && geminiScenes.length > 0)}
+          hasFocalPoints={!!(focalPoints && focalPoints.length > 0)}
+          hasSpeakerSegments={!!(speakerSegments && speakerSegments.length > 0)}
+        />
 
-        {record.status === 'completed' && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-              {record.source_signed_url && (
-                <div className="space-y-2">
-                  <AnchorHeading id="original-video" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Original (16:9)</AnchorHeading>
-                  <div className="aspect-video bg-black rounded-xl overflow-hidden border border-border">
-                    <video
-                      src={record.source_signed_url}
-                      controls
-                      className="w-full h-full object-contain"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {record.output_signed_url && (
-                <div className="space-y-2">
-                  <AnchorHeading id="reframed-video" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Reframed ({record.blurred_bg ? '4:5' : '9:16'})
-                  </AnchorHeading>
-                  <div className={cn(
-                    "bg-black rounded-xl overflow-hidden border border-border",
-                    record.blurred_bg ? "aspect-[4/5] max-w-sm" : "aspect-[9/16] max-w-xs"
-                  )}>
-                    <video
-                      src={record.output_signed_url}
-                      controls
-                      className="w-full h-full object-contain"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {record.output_signed_url && (
-              <div className="flex gap-3">
-                <a
-                  href={record.output_signed_url}
-                  download
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-dark transition-colors"
-                >
-                  <Download size={16} /> Download {record.blurred_bg ? '4:5' : '9:16'} Video
-                </a>
-              </div>
-            )}
-
-            {record.usage && record.usage.cost_usd > 0 && (
-              <div className="text-xs text-muted-foreground">
-                AI cost: ${record.usage.cost_usd.toFixed(4)} ({record.usage.input_tokens + record.usage.output_tokens} tokens)
-              </div>
-            )}
-          </div>
-        )}
+        {record.status === 'completed' && <ReframeCompleted record={record} />}
       </div>
     )
   }
