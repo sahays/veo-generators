@@ -62,9 +62,12 @@ export class GeminiLiveSession extends EventTarget {
 
   sendAudioChunk(pcm16: ArrayBuffer) {
     const data = bytesToBase64(new Uint8Array(pcm16))
+    // Vertex Live API expects realtimeInput.audio (single Blob); the legacy
+    // mediaChunks shape is silently ignored on this surface — text turns work
+    // because realtimeInput.text is unambiguous.
     this._send({
       realtimeInput: {
-        mediaChunks: [{ mimeType: 'audio/pcm;rate=16000', data }],
+        audio: { mimeType: 'audio/pcm;rate=16000', data },
       },
     })
   }
