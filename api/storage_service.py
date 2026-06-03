@@ -69,10 +69,10 @@ class StorageService:
         path = gcs_uri.replace(f"gs://{self.bucket_name}/", "")
         blob = self.bucket.blob(path)
 
-        from google.auth.transport import requests
-
-        request = requests.Request()
-        self.credentials.refresh(request)
+        if not self.credentials.valid:
+            from google.auth.transport import requests
+            request = requests.Request()
+            self.credentials.refresh(request)
 
         expires_at = datetime.now(timezone.utc) + SIGN_DURATION
         url = blob.generate_signed_url(
@@ -119,10 +119,10 @@ class StorageService:
         """Generate a v4 signed PUT URL for direct-to-GCS uploads (30-min expiry)."""
         blob = self.bucket.blob(destination_path)
 
-        from google.auth.transport import requests
-
-        request = requests.Request()
-        self.credentials.refresh(request)
+        if not self.credentials.valid:
+            from google.auth.transport import requests
+            request = requests.Request()
+            self.credentials.refresh(request)
 
         upload_expiry = timedelta(minutes=30)
         expires_at = datetime.now(timezone.utc) + upload_expiry

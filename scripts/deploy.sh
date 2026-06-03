@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+# Find project root
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$SCRIPT_DIR/.."
+cd "$PROJECT_ROOT"
+
 # Load environment variables from .env file
 if [ -f .env ]; then
     echo "📄 Loading configuration from .env..."
@@ -27,13 +32,20 @@ STORYBOARD_MODEL=${STORYBOARD_MODEL:-gemini-3.1-flash-image-preview}
 VIDEO_GEN_MODEL=${VIDEO_GEN_MODEL:-veo-3.1-generate-001}
 
 # Execute comprehensive pre-deployment checks
-./pre-deploy.sh
+./scripts/pre-deploy.sh
 
 # Run backend tests (abort on failure)
 echo "🧪 Running Backend Tests..."
-python3 -m venv .test_venv
-source .test_venv/bin/activate
-pip install -q pytest httpx -r api/requirements.txt
+if [ -d "api/venv" ]; then
+    echo "📦 Using existing virtual environment at api/venv..."
+    source api/venv/bin/activate
+else
+    echo "📦 Creating virtual environment at .test_venv..."
+    python3 -m venv .test_venv || { echo "❌ Failed to create virtual environment. Ensure python3-venv is installed."; exit 1; }
+    source .test_venv/bin/activate
+    pip install -q pytest httpx -r api/requirements.txt
+fi
+
 cd api
 if python3 -m pytest tests/ -v --no-header 2>&1 | grep -q "no tests ran"; then
     echo "⚠️  No tests found. Skipping."
@@ -41,13 +53,16 @@ elif python3 -m pytest tests/ -v; then
     echo "✅ All tests passed."
 else
     echo "❌ Tests failed. Aborting deployment."
-    cd ..
-    deactivate && rm -rf .test_venv
+    cd "$PROJECT_ROOT"
+    if [ -d ".test_venv" ]; then
+        deactivate && rm -rf .test_venv
+    fi
     exit 1
 fi
-cd ..
-deactivate
-rm -rf .test_venv
+cd "$PROJECT_ROOT"
+if [ -d ".test_venv" ]; then
+    deactivate && rm -rf .test_venv
+fi
 
 echo "🚀 Starting deployment for $SERVICE_NAME..."
 

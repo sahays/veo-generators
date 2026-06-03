@@ -11,7 +11,8 @@ warnings.filterwarnings("ignore", message=".*non-text parts in the response.*")
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from google.adk import Runner  # noqa: E402
-from google.adk.runners import InMemorySessionService, types  # noqa: E402
+from google.adk.sessions import InMemorySessionService  # noqa: E402
+from google.genai import types  # noqa: E402
 from agents.factory import create_orchestrator, get_agent_context  # noqa: E402
 
 

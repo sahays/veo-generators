@@ -8,7 +8,8 @@ from pydantic import BaseModel
 from google.adk import Runner
 from google.adk.events.event import Event
 from google.adk.events.event_actions import EventActions
-from google.adk.runners import InMemorySessionService, types
+from google.adk.sessions import InMemorySessionService
+from google.genai import types
 from agents.factory import create_orchestrator, get_agent_context
 
 logger = logging.getLogger(__name__)
