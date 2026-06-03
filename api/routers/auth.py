@@ -1,6 +1,6 @@
 import os
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 MASTER_INVITE_CODE = os.getenv("MASTER_INVITE_CODE", "")
+
+# Default validity granted when promoting a code to power user. Power status
+# reuses the code's own expiry, so promotion sets expires_at this far out.
+POWER_DEFAULT_DAYS = 14
 
 
 def _get_master_code() -> str:
@@ -30,32 +34,36 @@ def _require_master(request: Request):
 
 
 def validate_code(code: str) -> dict:
-    """Validate an invite code. Returns {valid, is_master}."""
+    """Validate an invite code. Returns {valid, is_master, is_power}.
+
+    Master is a superset of power, so master codes report is_power=True too.
+    Power status reuses the code's expiry, so an expired code is rejected
+    outright (and therefore never reports is_power)."""
     if _is_master(code):
         logger.info("Auth validate: master code accepted")
-        return {"valid": True, "is_master": True}
+        return {"valid": True, "is_master": True, "is_power": True}
 
     if not deps.firestore_svc:
         logger.warning("Auth validate: firestore service not available")
-        return {"valid": False, "is_master": False}
+        return {"valid": False, "is_master": False, "is_power": False}
 
     invite = deps.firestore_svc.get_invite_code_by_value(code)
     if not invite:
         logger.info("Auth validate: code not found in firestore")
-        return {"valid": False, "is_master": False}
+        return {"valid": False, "is_master": False, "is_power": False}
 
     if not invite.is_active:
         logger.info(f"Auth validate: code '{invite.label or invite.id}' is inactive")
-        return {"valid": False, "is_master": False}
+        return {"valid": False, "is_master": False, "is_power": False}
 
     if invite.expires_at and invite.expires_at.replace(
         tzinfo=invite.expires_at.tzinfo or timezone.utc
     ) < datetime.now(timezone.utc):
         logger.info(f"Auth validate: code '{invite.label or invite.id}' is expired")
-        return {"valid": False, "is_master": False}
+        return {"valid": False, "is_master": False, "is_power": False}
 
     logger.info(f"Auth validate: invite code '{invite.label or invite.id}' accepted")
-    return {"valid": True, "is_master": False}
+    return {"valid": True, "is_master": False, "is_power": bool(invite.is_power)}
 
 
 @router.post("/validate")
@@ -158,6 +166,47 @@ async def activate_code(code_id: str, request: Request):
 
     deps.firestore_svc.update_invite_code(code_id, {"is_active": True})
     return {"status": "activated"}
+
+
+@router.post("/codes/{code_id}/promote")
+async def promote_code(code_id: str, request: Request):
+    """Promote an invite code to power user.
+
+    Grants full feature access (everything except invite-code management) and
+    sets a default 14-day expiry. Power status reuses the code's expiry, so it
+    can be extended via the normal expiry-update flow and revoked via demote.
+    """
+    _require_master(request)
+    if not deps.firestore_svc:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+
+    invite = deps.firestore_svc.get_invite_code(code_id)
+    if not invite:
+        raise HTTPException(status_code=404, detail="Code not found")
+
+    expires_at = datetime.now(timezone.utc) + timedelta(days=POWER_DEFAULT_DAYS)
+    deps.firestore_svc.update_invite_code(
+        code_id,
+        {"is_power": True, "is_active": True, "expires_at": expires_at},
+    )
+    return {"status": "promoted", "expires_at": expires_at.isoformat()}
+
+
+@router.post("/codes/{code_id}/demote")
+async def demote_code(code_id: str, request: Request):
+    """Revoke power-user status, returning the code to ordinary guest access.
+
+    The code itself stays active and keeps its current expiry."""
+    _require_master(request)
+    if not deps.firestore_svc:
+        raise HTTPException(status_code=503, detail="Service unavailable")
+
+    invite = deps.firestore_svc.get_invite_code(code_id)
+    if not invite:
+        raise HTTPException(status_code=404, detail="Code not found")
+
+    deps.firestore_svc.update_invite_code(code_id, {"is_power": False})
+    return {"status": "demoted"}
 
 
 @router.delete("/codes/{code_id}")

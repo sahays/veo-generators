@@ -16,7 +16,7 @@ import { api } from '@/lib/api'
 
 export const ProductionSummary = () => {
   const { tempProjectData, setTempProjectData, setActiveProject } = useProjectStore()
-  const { isMaster } = useAuthStore()
+  const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const [isLoading, setIsLoading] = useState(false)
@@ -100,7 +100,7 @@ export const ProductionSummary = () => {
         <div className="flex items-center gap-3">
           <ModelRegionPicker capability="text" value={modelConfig} onChange={setModelConfig} className="mt-2" />
           <Button variant="ghost" icon={FileText} onClick={() => navigate(`/productions/${id}/script`)}>View Technical Script</Button>
-          {isMaster && <Button icon={Plus} onClick={handleStartFresh}>New Production</Button>}
+          {canWrite && <Button icon={Plus} onClick={handleStartFresh}>New Production</Button>}
         </div>
       </div>
 

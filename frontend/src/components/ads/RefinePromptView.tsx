@@ -18,7 +18,7 @@ import { api } from '@/lib/api'
 
 export const RefinePromptView = () => {
   const { tempProjectData, updateScene, addScene, setActiveProject, setTempProjectData } = useProjectStore()
-  const { isMaster } = useAuthStore()
+  const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
 
@@ -45,7 +45,7 @@ export const RefinePromptView = () => {
   }, [id])
 
   const isGenerating = ['generating', 'stitching'].includes((tempProjectData as any)?.status)
-  const isReadOnly = isGenerating || !isMaster
+  const isReadOnly = isGenerating || !canWrite
   const scenes = tempProjectData?.scenes || []
 
   // Call real Gemini analysis if no scenes exist
@@ -279,7 +279,7 @@ export const RefinePromptView = () => {
               return (
                 <div className="flex items-center gap-3">
                   <ErrorBadge message={errMsg} />
-                  {isMaster && (
+                  {canWrite && (
                     <Button icon={isStartingRender ? Loader2 : RotateCcw} onClick={onGenerateAll} disabled={isStartingRender}>
                       {isStartingRender ? 'Starting...' : 'Retry'}
                     </Button>
@@ -287,7 +287,7 @@ export const RefinePromptView = () => {
                 </div>
               )
             }
-            if (!isMaster) return null
+            if (!canWrite) return null
             const totalCredits = scenes.length * 7 // 2 (frame) + 5 (video) per scene
             return (
               <Button icon={isStartingRender ? Loader2 : Play} onClick={onGenerateAll} disabled={isStartingRender}>

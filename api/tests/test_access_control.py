@@ -2,6 +2,8 @@
 
 Verifies that:
 - Master users can hit any endpoint.
+- Power users can hit every write + the privileged-only (avatars) prefix, but
+  are blocked from invite-code management.
 - Guests (valid non-master code) can hit GETs and the allowlisted POSTs.
 - Guests are blocked from any other write method with HTTP 403.
 - Aanya (POST /api/v1/chat) is blocked for guests.
@@ -18,13 +20,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 MASTER_CODE = "test-master-code"
 GUEST_CODE = "test-guest-code"
+POWER_CODE = "test-power-code"
 
 os.environ["MASTER_INVITE_CODE"] = MASTER_CODE
 
 
 @pytest.fixture
 def client(monkeypatch):
-    """TestClient over the real app, with firestore mocked to recognize GUEST_CODE."""
+    """TestClient over the real app, with firestore mocked to recognize the
+    guest and power invite codes."""
     from fastapi.testclient import TestClient
 
     import deps
@@ -40,10 +44,21 @@ def client(monkeypatch):
         expires_at=None,
         createdAt=datetime.now(timezone.utc),
     )
+    power_invite = InviteCode(
+        id="inv-power",
+        code=POWER_CODE,
+        label="power",
+        is_active=True,
+        is_power=True,
+        daily_credits=1000,
+        expires_at=None,
+        createdAt=datetime.now(timezone.utc),
+    )
+    by_value = {GUEST_CODE: guest_invite, POWER_CODE: power_invite}
 
     fake_firestore = MagicMock()
     fake_firestore.get_invite_code_by_value = MagicMock(
-        side_effect=lambda code: guest_invite if code == GUEST_CODE else None
+        side_effect=lambda code: by_value.get(code)
     )
     monkeypatch.setattr(deps, "firestore_svc", fake_firestore)
 
@@ -58,13 +73,17 @@ def _guest_headers():
     return {"X-Invite-Code": GUEST_CODE}
 
 
+def _power_headers():
+    return {"X-Invite-Code": POWER_CODE}
+
+
 class TestGuestBlockedFromWrites:
     def test_post_productions_blocked_for_guest(self, client):
         res = client.post(
             "/api/v1/productions", headers=_guest_headers(), json={"name": "x"}
         )
         assert res.status_code == 403
-        assert "Master access required" in res.json()["detail"]
+        assert "Privileged access required" in res.json()["detail"]
 
     def test_patch_blocked_for_guest(self, client):
         res = client.patch(
@@ -120,6 +139,54 @@ class TestMasterCanWrite:
             "/api/v1/productions", headers=_master_headers(), json={"name": "x"}
         )
         assert res.status_code != 403
+
+
+class TestPowerUser:
+    def test_power_can_write(self, client):
+        # Power users pass the write gate (downstream may 4xx on missing deps).
+        res = client.post(
+            "/api/v1/productions", headers=_power_headers(), json={"name": "x"}
+        )
+        assert res.status_code != 403
+
+    def test_power_can_use_chat(self, client):
+        res = client.post(
+            "/api/v1/chat", headers=_power_headers(), json={"message": "hi"}
+        )
+        assert res.status_code != 403
+
+    def test_power_can_access_avatars(self, client):
+        # Avatars are a privileged-only prefix; power users share the allowlist.
+        res = client.get("/api/v1/avatars", headers=_power_headers())
+        assert res.status_code != 403
+
+    def test_power_blocked_from_listing_invite_codes(self, client):
+        # Invite-code management stays master-only.
+        res = client.get("/api/v1/auth/codes", headers=_power_headers())
+        assert res.status_code == 403
+
+    def test_power_blocked_from_promoting_codes(self, client):
+        res = client.post(
+            "/api/v1/auth/codes/inv-guest/promote", headers=_power_headers()
+        )
+        assert res.status_code == 403
+
+    def test_validate_reports_power_flag(self, client):
+        res = client.post(
+            "/api/v1/auth/validate",
+            headers=_power_headers(),
+            json={"code": POWER_CODE},
+        )
+        body = res.json()
+        assert body["valid"] is True
+        assert body["is_master"] is False
+        assert body["is_power"] is True
+
+
+class TestGuestBlockedFromPrivilegedPrefix:
+    def test_guest_blocked_from_avatars(self, client):
+        res = client.get("/api/v1/avatars", headers=_guest_headers())
+        assert res.status_code == 403
 
 
 class TestMissingCode:

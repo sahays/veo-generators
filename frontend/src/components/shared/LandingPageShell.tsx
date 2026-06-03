@@ -35,7 +35,7 @@ export const LandingPageShell = <T extends { id: string }>({
   gridClassName = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4',
 }: LandingPageShellProps<T>) => {
   const navigate = useNavigate()
-  const { isMaster } = useAuthStore()
+  const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
   const [records, setRecords] = useState<T[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -65,7 +65,7 @@ export const LandingPageShell = <T extends { id: string }>({
           <h2 className="text-xl font-heading text-foreground tracking-tight">{title}</h2>
           <p className="text-xs text-muted-foreground">{resolvedSubtitle}</p>
         </div>
-        {isMaster && (
+        {canWrite && (
           <Button icon={Icon} onClick={() => navigate(createPath)}>
             {btnLabel}
           </Button>
@@ -88,7 +88,7 @@ export const LandingPageShell = <T extends { id: string }>({
           </div>
           <h4 className="text-base font-heading font-bold text-foreground mb-1">{emptyTitle}</h4>
           <p className="text-sm text-muted-foreground max-w-xs mb-5">{emptyDescription}</p>
-          {isMaster && (
+          {canWrite && (
             <Button icon={Icon} onClick={() => navigate(createPath)}>
               {btnLabel}
             </Button>
@@ -101,7 +101,7 @@ export const LandingPageShell = <T extends { id: string }>({
               record,
               () => navigate(`${detailPath}/${record.id}`),
               (e) => { e.stopPropagation(); handleArchive(record.id) },
-              isMaster,
+              canWrite,
             )
           )}
         </div>

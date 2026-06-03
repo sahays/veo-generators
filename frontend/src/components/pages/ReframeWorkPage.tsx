@@ -57,7 +57,7 @@ const CONTENT_TYPE_BADGE: Record<string, { label: string; className: string }> =
 export const ReframeWorkPage = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { isMaster } = useAuthStore()
+  const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
   const isViewMode = !!id
 
   const {
@@ -196,7 +196,7 @@ export const ReframeWorkPage = () => {
         {record.status === 'failed' && (
           <div className="space-y-3">
             {record.error_message && <ErrorDisplay error={record.error_message} size="md" />}
-            {isMaster && (
+            {canWrite && (
               <Button icon={retrying ? Loader2 : RotateCcw} onClick={handleRetry} disabled={retrying}>
                 {retrying ? 'Retrying...' : 'Retry'}
               </Button>

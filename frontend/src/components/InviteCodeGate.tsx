@@ -20,7 +20,7 @@ export const InviteCodeGate = () => {
     try {
       const result = await api.auth.validate(code.trim())
       if (result.valid) {
-        login(code.trim(), result.is_master)
+        login(code.trim(), result.is_master, result.is_power)
       } else {
         setError('Invalid invite code')
       }

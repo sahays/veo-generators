@@ -37,7 +37,7 @@ const STATUS_CONFIG = buildStatusConfig(
 export const AdaptsWorkPage = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { isMaster } = useAuthStore()
+  const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
   const isViewMode = !!id
 
   // Image source state
@@ -179,7 +179,7 @@ export const AdaptsWorkPage = () => {
         {record.status === 'failed' && (
           <div className="space-y-3">
             {record.error_message && <ErrorDisplay error={record.error_message} size="md" />}
-            {isMaster && (
+            {canWrite && (
               <Button icon={retrying ? Loader2 : RotateCcw} onClick={handleRetry} disabled={retrying}>
                 {retrying ? 'Retrying...' : 'Retry'}
               </Button>
@@ -193,7 +193,7 @@ export const AdaptsWorkPage = () => {
               <AlertCircle size={16} />
               {failedVariants.length} variant{failedVariants.length !== 1 ? 's' : ''} failed
             </div>
-            {isMaster && (
+            {canWrite && (
               <Button icon={retrying ? Loader2 : RotateCcw} onClick={handleRetry} disabled={retrying}>
                 {retrying ? 'Retrying...' : 'Retry Failed'}
               </Button>

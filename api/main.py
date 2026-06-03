@@ -59,10 +59,10 @@ READ_ONLY_WRITES = {
     "/api/v1/pricing/estimate",
 }
 
-# Path prefixes that are master-only on every method, including reads.
-# (Avatars are master-only end-to-end while the Vertex Live preview is
-# allowlist-pending.)
-MASTER_ONLY_PREFIXES = ("/api/v1/avatars",)
+# Path prefixes that require a privileged user (master OR power) on every
+# method, including reads. (Avatars are gated end-to-end while the Vertex Live
+# preview is allowlist-pending; power users share the same allowlist as master.)
+PRIVILEGED_ONLY_PREFIXES = ("/api/v1/avatars",)
 
 
 # Bot protection middleware
@@ -126,24 +126,29 @@ async def validate_invite_code(request: Request, call_next):
         return JSONResponse(status_code=401, content={"detail": "Invalid invite code"})
     request.state.invite_code = invite_code
     request.state.is_master = result.get("is_master", False)
+    request.state.is_power = result.get("is_power", False)
+    # Power users share every privilege with master users except invite-code
+    # management (which the auth router gates on master directly).
+    is_privileged = request.state.is_master or request.state.is_power
 
-    # Master-only path prefixes: every method (including GETs) requires master.
-    if not request.state.is_master and any(
-        path.startswith(prefix) for prefix in MASTER_ONLY_PREFIXES
+    # Privileged-only path prefixes: every method (including GETs) requires a
+    # master or power user.
+    if not is_privileged and any(
+        path.startswith(prefix) for prefix in PRIVILEGED_ONLY_PREFIXES
     ):
         return JSONResponse(
-            status_code=403, content={"detail": "Master access required"}
+            status_code=403, content={"detail": "Privileged access required"}
         )
 
-    # Only master users can mutate state. Allowlisted POSTs (login, pricing
-    # estimates) are read-only computations and remain open to guests.
+    # Only master/power users can mutate state. Allowlisted POSTs (login,
+    # pricing estimates) are read-only computations and remain open to guests.
     if (
         request.method in WRITE_METHODS
         and path not in READ_ONLY_WRITES
-        and not request.state.is_master
+        and not is_privileged
     ):
         return JSONResponse(
-            status_code=403, content={"detail": "Master access required"}
+            status_code=403, content={"detail": "Privileged access required"}
         )
 
     response = await call_next(request)

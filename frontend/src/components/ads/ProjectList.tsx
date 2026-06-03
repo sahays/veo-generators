@@ -128,7 +128,7 @@ const ProjectCard = ({ project, onClick, onArchive, showArchive }: { project: Pr
 export const ProjectList = () => {
   const { setActiveProject, setTempProjectData } = useProjectStore()
   const navigate = useNavigate()
-  const { isMaster } = useAuthStore()
+  const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -175,7 +175,7 @@ export const ProjectList = () => {
             {projects.length} project{projects.length !== 1 ? 's' : ''}
           </p>
         </div>
-        {isMaster && <Button icon={Plus} onClick={handleNewProject}>New Production</Button>}
+        {canWrite && <Button icon={Plus} onClick={handleNewProject}>New Production</Button>}
       </div>
 
       {loading ? (
@@ -196,7 +196,7 @@ export const ProjectList = () => {
           <p className="text-sm text-muted-foreground max-w-xs mb-5">
             Create your first ad generation project to get started.
           </p>
-          {isMaster && <Button icon={Plus} onClick={handleNewProject}>Create First Production</Button>}
+          {canWrite && <Button icon={Plus} onClick={handleNewProject}>Create First Production</Button>}
         </motion.div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
@@ -206,7 +206,7 @@ export const ProjectList = () => {
               project={project}
               onClick={() => handleOpenProject(project.id)}
               onArchive={(e) => { e.stopPropagation(); handleArchive(project.id) }}
-              showArchive={isMaster}
+              showArchive={canWrite}
             />
           ))}
         </div>

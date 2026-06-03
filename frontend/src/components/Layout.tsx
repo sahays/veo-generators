@@ -73,7 +73,9 @@ export const Sidebar = () => {
     setSidebarOpen,
     theme, toggleTheme
   } = useLayoutStore()
-  const { isMaster, logout } = useAuthStore()
+  const { isMaster, isPower, logout } = useAuthStore()
+  // Power users have full feature access except invite-code management.
+  const canWrite = isMaster || isPower
 
   const location = useLocation()
   const pageTitle = getPageTitle(location.pathname)
@@ -91,8 +93,8 @@ export const Sidebar = () => {
   }, [pageTitle])
 
   const navItems: NavItem[] = [
-    ...(isMaster ? [{ name: 'Ask Aanya', icon: Bot, path: '/chat' }] : []),
-    ...(isMaster ? [{ name: 'Avatars', icon: User, path: '/avatars' }] : []),
+    ...(canWrite ? [{ name: 'Ask Aanya', icon: Bot, path: '/chat' }] : []),
+    ...(canWrite ? [{ name: 'Avatars', icon: User, path: '/avatars' }] : []),
     { name: 'Productions', icon: Clapperboard, path: '/productions' },
     { name: 'Key Moments', icon: Zap, path: '/key-moments' },
     { name: 'Thumbnails', icon: ImageIcon, path: '/thumbnails' },
@@ -104,9 +106,11 @@ export const Sidebar = () => {
   const settingsItems: NavItem[] = [
     { name: 'Files', icon: Upload, path: '/uploads' },
     { name: 'System Prompts', icon: FileText, path: '/prompts' },
-    ...(isMaster ? [
+    ...(canWrite ? [
       { name: 'Models', icon: Cpu, path: '/models' },
       { name: 'Diagnostics', icon: Activity, path: '/diagnostics' },
+    ] : []),
+    ...(isMaster ? [
       { name: 'Invite Codes', icon: Shield, path: '/invite-codes' },
     ] : []),
   ]

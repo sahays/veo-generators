@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Shield, Trash2, Ban, CheckCircle, Shuffle, Pencil, Check, X, CalendarClock } from 'lucide-react'
+import { Plus, Shield, Trash2, Ban, CheckCircle, Shuffle, Pencil, Check, X, CalendarClock, Zap, ZapOff } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Button } from '@/components/Common'
 import { Modal } from '@/components/Modal'
@@ -11,10 +11,14 @@ interface InviteCode {
   code: string
   label: string
   is_active: boolean
+  is_power: boolean
   daily_credits: number
   expires_at: string | null
   createdAt: string
 }
+
+// Default validity granted on promotion (mirrors POWER_DEFAULT_DAYS on the API).
+const POWER_DEFAULT_DAYS = 14
 
 const EXPIRY_OPTIONS = [
   { value: '', label: 'No expiry' },
@@ -130,6 +134,26 @@ export const InviteCodesPage = () => {
     fetchCodes()
   }
 
+  const handlePromote = async (id: string) => {
+    if (!confirm(`Promote to power user? Grants full access to every feature except invite codes, with a default ${POWER_DEFAULT_DAYS}-day expiry (extendable below).`)) return
+    try {
+      await api.auth.promoteCode(id)
+      fetchCodes()
+    } catch (err) {
+      console.error('Failed to promote code', err)
+    }
+  }
+
+  const handleDemote = async (id: string) => {
+    if (!confirm('Remove power-user access? The code stays active as a regular guest with its current expiry.')) return
+    try {
+      await api.auth.demoteCode(id)
+      fetchCodes()
+    } catch (err) {
+      console.error('Failed to demote code', err)
+    }
+  }
+
   const handleDelete = async (id: string) => {
     if (!confirm('Permanently delete this invite code?')) return
     await api.auth.deleteCode(id)
@@ -198,6 +222,12 @@ export const InviteCodesPage = () => {
                     )}>
                       {isExpired ? 'Expired' : isActive ? 'Active' : 'Revoked'}
                     </span>
+                    {code.is_power && (
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                        <Zap size={10} className="fill-current" />
+                        Power
+                      </span>
+                    )}
                     {isEditingLimit ? (
                       <span className="inline-flex items-center gap-1">
                         <input
@@ -276,6 +306,25 @@ export const InviteCodesPage = () => {
                 </div>
 
                 <div className="flex items-center gap-1">
+                  {code.is_power ? (
+                    <Button
+                      variant="ghost"
+                      icon={ZapOff}
+                      onClick={() => handleDemote(code.id)}
+                      className="text-xs px-2 py-1 text-amber-600 hover:text-amber-700 dark:text-amber-400"
+                    >
+                      Remove Power
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      icon={Zap}
+                      onClick={() => handlePromote(code.id)}
+                      className="text-xs px-2 py-1 text-amber-600 hover:text-amber-700 dark:text-amber-400"
+                    >
+                      Make Power
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     icon={CalendarClock}

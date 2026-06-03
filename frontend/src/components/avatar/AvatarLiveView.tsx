@@ -20,7 +20,7 @@ interface Props {
 
 export const AvatarLiveView = ({ avatar }: Props) => {
   const navigate = useNavigate()
-  const { isMaster } = useAuthStore()
+  const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [muted, setMuted] = useState(false)
@@ -35,7 +35,7 @@ export const AvatarLiveView = ({ avatar }: Props) => {
 
   const live = useAvatarLiveSession({
     avatarId: avatar.id,
-    enabled: isMaster && !disconnected,
+    enabled: canWrite && !disconnected,
     canvasRef,
   })
 
@@ -95,7 +95,7 @@ export const AvatarLiveView = ({ avatar }: Props) => {
               : ''}
           </p>
         </div>
-        {isMaster && (
+        {canWrite && (
           <button
             onClick={() => setEditing(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors shrink-0"

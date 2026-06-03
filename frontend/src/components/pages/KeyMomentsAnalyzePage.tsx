@@ -18,7 +18,7 @@ import type { KeyMomentsAnalysis, SystemResource, KeyMomentsRecord, CompletedPro
 export const KeyMomentsAnalyzePage = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { isMaster } = useAuthStore()
+  const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
   const isViewMode = !!id
 
   const {
@@ -209,7 +209,7 @@ export const KeyMomentsAnalyzePage = () => {
                     className="text-2xl font-heading font-bold text-foreground bg-muted px-2 py-0.5 rounded border border-border focus:outline-none focus:ring-1 focus:ring-accent" />
                   <button type="submit" className="text-accent hover:text-accent-dark"><Check size={16} /></button>
                 </form>
-              ) : isMaster ? (
+              ) : canWrite ? (
                 <button className="flex items-center gap-2 text-2xl font-heading text-foreground tracking-tight hover:text-accent-dark transition-colors"
                   onClick={() => { setEditName(videoFilename || ''); setIsEditingName(true) }}>
                   {videoFilename || 'Untitled'}

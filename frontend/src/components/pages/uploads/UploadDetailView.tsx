@@ -22,7 +22,7 @@ import type { UploadRecord } from '@/types/project'
 
 export const UploadDetailView = ({ id }: { id: string }) => {
   const navigate = useNavigate()
-  const { isMaster } = useAuthStore()
+  const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
   const [record, setRecord] = useState<UploadRecord | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isEditingName, setIsEditingName] = useState(false)
@@ -134,7 +134,7 @@ export const UploadDetailView = ({ id }: { id: string }) => {
                 <Check size={16} />
               </button>
             </form>
-          ) : isMaster ? (
+          ) : canWrite ? (
             <button
               className="flex items-center gap-2 text-base font-heading font-bold text-foreground hover:text-accent-dark transition-colors"
               onClick={() => {

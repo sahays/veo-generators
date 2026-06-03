@@ -28,7 +28,7 @@ export const UploadsPage = () => {
 
 const UploadsLandingView = () => {
   const navigate = useNavigate()
-  const { isMaster } = useAuthStore()
+  const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
   const [records, setRecords] = useState<UploadRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [filter, setFilter] = useState<FilterType>('all')
@@ -181,7 +181,7 @@ const UploadsLandingView = () => {
         ))}
       </div>
 
-      {isMaster && <UploadZone onUpload={handleUpload} />}
+      {canWrite && <UploadZone onUpload={handleUpload} />}
 
       {uploading.length > 0 && (
         <div className="space-y-2">
@@ -207,7 +207,7 @@ const UploadsLandingView = () => {
           </div>
           <h4 className="text-base font-heading font-bold text-foreground mb-1">No files yet</h4>
           <p className="text-sm text-muted-foreground max-w-xs">
-            {isMaster
+            {canWrite
               ? 'Drag and drop files above or click to browse. Files can be used across all features.'
               : 'No files have been uploaded yet.'}
           </p>
@@ -229,7 +229,7 @@ const UploadsLandingView = () => {
               }}
               onCompress={(res) => handleCompress(record.id, res)}
               compressingResolution={compressingMap[record.id]}
-              canEdit={isMaster}
+              canEdit={canWrite}
             />
           ))}
         </div>

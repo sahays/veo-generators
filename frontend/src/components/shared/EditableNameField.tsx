@@ -9,13 +9,13 @@ interface EditableNameFieldProps {
 }
 
 export const EditableNameField = ({ value, onSave, defaultText = 'Untitled' }: EditableNameFieldProps) => {
-  const { isMaster } = useAuthStore()
+  const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState('')
 
   const displayValue = value || defaultText
 
-  if (!isMaster) {
+  if (!canWrite) {
     return (
       <h2 className="text-lg font-heading font-bold text-foreground">{displayValue}</h2>
     )

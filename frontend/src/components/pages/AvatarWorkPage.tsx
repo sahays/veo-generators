@@ -15,7 +15,7 @@ import { STYLE_LABELS, VOICE_TURN_MARKER } from '@/types/avatar'
 export const AvatarWorkPage = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { isMaster } = useAuthStore()
+  const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
 
   const [avatar, setAvatar] = useState<Avatar | null>(null)
   const [turns, setTurns] = useState<AvatarTurn[]>([])
@@ -183,7 +183,7 @@ export const AvatarWorkPage = () => {
               : ' · No persona set'}
           </p>
         </div>
-        {isMaster && (
+        {canWrite && (
           <button
             onClick={() => setEditing(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors shrink-0"
@@ -234,9 +234,9 @@ export const AvatarWorkPage = () => {
         <AvatarChatInput
           onSubmitText={handleAsk}
           onSubmitAudio={handleAskAudio}
-          disabled={!isMaster || submitting || isGenerating}
+          disabled={!canWrite || submitting || isGenerating}
           disabledReason={
-            !isMaster
+            !canWrite
               ? 'Master users only.'
               : isGenerating
                 ? 'Generating reply…'

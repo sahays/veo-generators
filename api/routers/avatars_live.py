@@ -167,13 +167,16 @@ def _build_setup_frame(avatar: Avatar) -> dict:
 
 def _validate_ws_invite_code(code: Optional[str]) -> bool:
     """HTTP middleware doesn't run on WebSocket upgrades — repeat its checks
-    inline. Avatars are master-only end-to-end (see MASTER_ONLY_PREFIXES)."""
+    inline. Avatars are a privileged-only feature (see
+    PRIVILEGED_ONLY_PREFIXES): master and power users only."""
     if not code:
         return False
     from routers.auth import validate_code
 
     result = validate_code(code)
-    return bool(result.get("valid") and result.get("is_master"))
+    return bool(
+        result.get("valid") and (result.get("is_master") or result.get("is_power"))
+    )
 
 
 # ---------------------------------------------------------------------------

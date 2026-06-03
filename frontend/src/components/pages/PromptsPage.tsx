@@ -54,7 +54,7 @@ export const PromptsPage = () => {
   const [selectedInitialData, setSelectedInitialData] = useState<Partial<SystemResource> | undefined>()
   const [isReadOnly, setIsReadOnly] = useState(false)
   const navigate = useNavigate()
-  const { isMaster } = useAuthStore()
+  const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
 
   const fetchResources = async () => {
     setLoading(true)
@@ -124,7 +124,7 @@ export const PromptsPage = () => {
       {activeTab === 'prompt' && (
         <>
           {/* Create button (master only) */}
-          {isMaster && (
+          {canWrite && (
             <div className="flex justify-end">
               <Button icon={Plus} onClick={handleCreateNew}>
                 Create New Prompt
@@ -200,7 +200,7 @@ export const PromptsPage = () => {
                           >
                             <Eye size={15} />
                           </button>
-                          {isMaster && (
+                          {canWrite && (
                             <button
                               onClick={() => handleIterate(res)}
                               className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"

@@ -10,7 +10,7 @@ import {
 export const auth = {
   validate: async (
     code: string,
-  ): Promise<{ valid: boolean; is_master: boolean }> => {
+  ): Promise<{ valid: boolean; is_master: boolean; is_power: boolean }> => {
     // Doesn't go through authFetch — login is open and uses raw fetch.
     const res = await fetch(
       `${API_BASE_URL}/auth/validate`,
@@ -38,6 +38,18 @@ export const auth = {
     requestVoid(
       `${API_BASE_URL}/auth/codes/${id}/activate`,
       'Failed to activate code',
+      { method: 'POST' },
+    ),
+  promoteCode: (id: string) =>
+    requestVoid(
+      `${API_BASE_URL}/auth/codes/${id}/promote`,
+      'Failed to promote code',
+      { method: 'POST' },
+    ),
+  demoteCode: (id: string) =>
+    requestVoid(
+      `${API_BASE_URL}/auth/codes/${id}/demote`,
+      'Failed to demote code',
       { method: 'POST' },
     ),
   deleteCode: (id: string) =>

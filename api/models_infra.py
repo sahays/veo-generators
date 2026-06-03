@@ -55,6 +55,10 @@ class InviteCode(BaseModel):
     code: str
     label: str = ""
     is_active: bool = True
+    # Power users have full access to every feature except invite-code
+    # management. Power status reuses the code's own `expires_at` — when the
+    # code expires the power grant lapses with it.
+    is_power: bool = False
     daily_credits: int = 250
     expires_at: Optional[datetime] = None
     createdAt: datetime = Field(default_factory=datetime.utcnow)
