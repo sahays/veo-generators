@@ -32,7 +32,11 @@ export const ReframeCompleted = ({ record }: Props) => (
           <div
             className={cn(
               'bg-black rounded-xl overflow-hidden border border-border',
-              record.blurred_bg ? 'aspect-[4/5] max-w-sm' : 'aspect-[9/16] max-w-xs',
+              // Output file is always 9:16 (1080x1920). In blurred-bg mode the
+              // 4:5 content sits inside that frame with blur on top/bottom — so
+              // the container must be 9:16, else the portrait video pillarboxes
+              // (black bars left/right).
+              'aspect-[9/16] max-w-xs',
             )}
           >
             <video src={record.output_signed_url} controls className="w-full h-full object-contain" />
