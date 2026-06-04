@@ -11,7 +11,8 @@ import { Select } from '@/components/UI'
 import { ModelRegionPicker } from '@/components/ModelRegionPicker'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/useAuthStore'
-import { cn, parseTimestamp } from '@/lib/utils'
+import { cn } from '@/lib/utils'
+import { captureVideoFrames } from '@/lib/captureFrames'
 import { useVideoSourceState } from '@/hooks/useVideoSourceState'
 import { ThumbnailsResult } from '@/components/pages/thumbnails/ThumbnailsResult'
 import { ThumbnailsScreenshotGrid } from '@/components/pages/thumbnails/ThumbnailsScreenshotGrid'
@@ -159,43 +160,21 @@ export const ThumbnailsWorkPage = () => {
 
     setCapturing(true)
     setCaptureProgress(0)
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
 
-    const captured: { index: number; gcs_uri: string; signed_url: string }[] = []
-
-    for (let i = 0; i < moments.length; i++) {
-      const moment = moments[i]
-      const startSec = parseTimestamp(moment.timestamp_start)
-      const endSec = parseTimestamp(moment.timestamp_end)
-      const midpoint = (startSec + endSec) / 2
-
-      video.currentTime = midpoint
-      await new Promise<void>(resolve => {
-        video.addEventListener('seeked', () => resolve(), { once: true })
-      })
-
-      canvas.width = video.videoWidth
-      canvas.height = video.videoHeight
-      ctx.drawImage(video, 0, 0)
-
-      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
-      if (!blob) continue
-
-      const file = new File([blob], `screenshot-${i}.png`, { type: 'image/png' })
-      const result = await api.assets.upload(file)
-      captured.push({ index: i, gcs_uri: result.gcs_uri, signed_url: result.signed_url })
-
+    const captured = await captureVideoFrames(video, canvas, moments, frame => {
       setScreenshots(prev => {
         const updated = [...prev]
-        if (updated[i]) {
-          updated[i] = { ...updated[i], gcs_uri: result.gcs_uri, localUrl: result.signed_url }
+        if (updated[frame.index]) {
+          updated[frame.index] = {
+            ...updated[frame.index],
+            gcs_uri: frame.gcs_uri,
+            localUrl: frame.signed_url,
+          }
         }
         return updated
       })
-
-      setCaptureProgress(i + 1)
-    }
+      setCaptureProgress(frame.index + 1)
+    })
 
     if (captured.length > 0) {
       await api.thumbnails.saveScreenshots(

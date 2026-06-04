@@ -4,9 +4,11 @@ from fastapi import APIRouter, HTTPException, Request
 
 import deps
 from helpers import (
+    apply_indexed_uris,
     get_or_404,
     list_completed_production_sources,
     require_firestore,
+    sign_nested_list_uris,
     sign_record_urls,
 )
 from models import ThumbnailRecord, ThumbnailScreenshot
@@ -29,13 +31,7 @@ def _sign(record: ThumbnailRecord) -> dict:
             record.id, {"signed_urls": cache}
         ),
     )
-    if deps.storage_svc:
-        screenshot_cache: dict = {}
-        for shot in data.get("screenshots", []):
-            uri = shot.get("gcs_uri")
-            if uri:
-                url, _ = deps.storage_svc.resolve_cached_url(uri, screenshot_cache)
-                shot["signed_url"] = url
+    sign_nested_list_uris(data, "screenshots")
     return data
 
 
@@ -118,13 +114,9 @@ async def save_thumbnail_screenshots(record_id: str, request: dict):
     record = get_or_404(
         deps.firestore_svc.get_thumbnail_record, record_id, "Thumbnail record"
     )
-    incoming = request.get("screenshots", [])
-    updated_screenshots = [s.dict() for s in record.screenshots]
-    for item in incoming:
-        idx = item.get("index")
-        gcs_uri = item.get("gcs_uri")
-        if idx is not None and 0 <= idx < len(updated_screenshots) and gcs_uri:
-            updated_screenshots[idx]["gcs_uri"] = gcs_uri
+    updated_screenshots = apply_indexed_uris(
+        [s.dict() for s in record.screenshots], request.get("screenshots", [])
+    )
     deps.firestore_svc.update_thumbnail_record(
         record_id,
         {"screenshots": updated_screenshots, "status": "screenshots_ready"},

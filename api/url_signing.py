@@ -72,6 +72,27 @@ def sign_record_urls(
     return data
 
 
+def sign_nested_list_uris(
+    data: dict,
+    list_key: str,
+    uri_field: str = "gcs_uri",
+    out_field: str = "signed_url",
+) -> None:
+    """Sign each item's GCS URI inside a nested list, in place.
+
+    Shared by records that embed a list of media items (thumbnail screenshots,
+    key-moment frames). Adds `out_field` to each item that has a `uri_field`.
+    """
+    if not deps.storage_svc:
+        return
+    cache: dict = {}
+    for item in data.get(list_key) or []:
+        uri = item.get(uri_field)
+        if uri:
+            url, _ = deps.storage_svc.resolve_cached_url(uri, cache)
+            item[out_field] = url
+
+
 def _resolve_with_recovery(gcs_uri: str, cache: dict) -> tuple[str, bool]:
     """Resolve a possibly-stale signed URL: try to recover the gs:// form if
     the field already holds an https URL. Returns (resolved_url, dirty)."""

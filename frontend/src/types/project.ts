@@ -213,6 +213,8 @@ export interface KeyMoment {
   timestamp_end: string
   category?: string
   tags?: string[]
+  frame_gcs_uri?: string
+  frame_signed_url?: string
 }
 
 export interface KeyMomentsAnalysis {

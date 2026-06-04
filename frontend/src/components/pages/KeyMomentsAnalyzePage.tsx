@@ -10,6 +10,7 @@ import { ModelRegionPicker } from '@/components/ModelRegionPicker'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/useAuthStore'
 import { cn, parseTimestamp } from '@/lib/utils'
+import { captureVideoFrames } from '@/lib/captureFrames'
 import { useVideoSourceState } from '@/hooks/useVideoSourceState'
 import { KeyMomentsSourcePicker } from '@/components/pages/keyMoments/KeyMomentsSourcePicker'
 import { KeyMomentsTimeline } from '@/components/pages/keyMoments/KeyMomentsTimeline'
@@ -60,13 +61,25 @@ export const KeyMomentsAnalyzePage = () => {
 
   // Player state
   const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
   const videoContainerRef = useRef<HTMLDivElement>(null)
   const [activeMomentIndex, setActiveMomentIndex] = useState<number | null>(null)
+
+  // Frame-thumbnail capture state
+  const [videoReady, setVideoReady] = useState(false)
+  const [capturing, setCapturing] = useState(false)
+  const captureStartedRef = useRef(false)
 
   // Fetch prompts on mount
   useEffect(() => {
     api.system.listResources('prompt', 'key-moments').then(setPrompts).catch(console.error)
   }, [])
+
+  // Reset capture readiness whenever the source video changes.
+  useEffect(() => {
+    setVideoReady(false)
+    captureStartedRef.current = false
+  }, [videoUrl])
 
   // If view mode, fetch the record
   useEffect(() => {
@@ -167,6 +180,46 @@ export const KeyMomentsAnalyzePage = () => {
     setActiveMomentIndex(index)
     videoContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }
+
+  // Capture a still frame for each moment (seek → canvas → upload), then persist.
+  const captureFrames = async (rid: string, moments: KeyMomentsAnalysis['key_moments']) => {
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    if (!video || !canvas) return
+    setCapturing(true)
+    const captured = await captureVideoFrames(video, canvas, moments, frame => {
+      setAnalysis(prev => {
+        if (!prev) return prev
+        const km = [...prev.key_moments]
+        if (km[frame.index]) {
+          km[frame.index] = {
+            ...km[frame.index],
+            frame_gcs_uri: frame.gcs_uri,
+            frame_signed_url: frame.signed_url,
+          }
+        }
+        return { ...prev, key_moments: km }
+      })
+    })
+    if (captured.length > 0) {
+      await api.keyMoments.saveFrames(
+        rid,
+        captured.map(c => ({ index: c.index, gcs_uri: c.gcs_uri })),
+      )
+    }
+    setCapturing(false)
+  }
+
+  // Auto-capture frames once the video is ready, for any moments missing one.
+  // Writers only (capturing uploads + persists); guests just view saved frames.
+  useEffect(() => {
+    if (!canWrite || !id || !videoReady || !analysis) return
+    const moments = analysis.key_moments
+    if (!moments?.length || moments.every(m => m.frame_signed_url)) return
+    if (captureStartedRef.current) return
+    captureStartedRef.current = true
+    captureFrames(id, moments)
+  }, [canWrite, id, videoReady, analysis])
 
   if (loadingRecord) {
     return (
@@ -269,10 +322,13 @@ export const KeyMomentsAnalyzePage = () => {
             <video
               ref={videoRef}
               controls
+              crossOrigin="anonymous"
+              onLoadedData={() => setVideoReady(true)}
               className="w-full h-full"
               src={videoUrl}
             />
           </div>
+          <canvas ref={canvasRef} className="hidden" />
         </div>
       )}
 
@@ -330,6 +386,7 @@ export const KeyMomentsAnalyzePage = () => {
           moments={analysis.key_moments}
           activeMomentIndex={activeMomentIndex}
           onSeek={seekToMoment}
+          capturing={capturing}
         />
       )}
       {id && <div className="mt-6"><ServicesUsedPanel feature="key_moments" recordId={id} /></div>}

@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Clock, Play, Tag } from 'lucide-react'
+import { Clock, Loader2, Play, Tag } from 'lucide-react'
 import { AnchorHeading } from '@/components/Common'
 import { cn, parseTimestamp } from '@/lib/utils'
 import type { KeyMoment } from '@/types/project'
@@ -8,6 +8,7 @@ interface Props {
   moments: KeyMoment[]
   activeMomentIndex: number | null
   onSeek: (index: number) => void
+  capturing?: boolean
 }
 
 const formatTimestamp = (ts: string) => {
@@ -17,7 +18,7 @@ const formatTimestamp = (ts: string) => {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-export const KeyMomentsTimeline = ({ moments, activeMomentIndex, onSeek }: Props) => (
+export const KeyMomentsTimeline = ({ moments, activeMomentIndex, onSeek, capturing }: Props) => (
   <div className="space-y-4">
     <div className="flex items-center gap-2">
       <Clock size={16} className="text-accent-dark" />
@@ -45,6 +46,22 @@ export const KeyMomentsTimeline = ({ moments, activeMomentIndex, onSeek }: Props
               : 'border-border bg-card',
           )}
         >
+          {(moment.frame_signed_url || capturing) && (
+            <div className="aspect-video bg-black rounded-lg overflow-hidden mb-2 relative">
+              {moment.frame_signed_url ? (
+                <img
+                  src={moment.frame_signed_url}
+                  alt={moment.title}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <Loader2 className="animate-spin text-accent" size={18} />
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center gap-2 mb-2">
             <span className="text-[10px] font-mono font-bold text-accent-dark bg-accent/10 px-1.5 py-0.5 rounded flex items-center gap-1">
               <Play size={8} className={cn(activeMomentIndex === i ? 'fill-accent-dark' : '')} />

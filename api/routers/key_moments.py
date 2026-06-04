@@ -4,7 +4,11 @@ from fastapi import APIRouter, HTTPException, Request
 
 import deps
 from helpers import (
+    apply_indexed_uris,
+    get_or_404,
     list_completed_production_sources,
+    require_firestore,
+    sign_nested_list_uris,
     sign_record_urls,
 )
 from models import KeyMomentsRecord
@@ -16,13 +20,16 @@ router = APIRouter(prefix="/api/v1/key-moments", tags=["key-moments"])
 
 
 def _sign(record: KeyMomentsRecord) -> dict:
-    return sign_record_urls(
+    """Sign the source video plus each moment's captured frame."""
+    data = sign_record_urls(
         record,
         {"video_gcs_uri": "video_signed_url"},
         lambda cache: deps.firestore_svc.update_key_moments_analysis(
             record.id, {"signed_urls": cache}
         ),
     )
+    sign_nested_list_uris(data, "key_moments", "frame_gcs_uri", "frame_signed_url")
+    return data
 
 
 # Standard CRUD
@@ -86,3 +93,21 @@ async def analyze_key_moments(request: Request, body: dict):
     )
     deps.firestore_svc.create_key_moments_analysis(record)
     return {"id": record.id, "data": analysis_data, "usage": record.usage.dict()}
+
+
+@router.post("/{record_id}/frames")
+async def save_key_moment_frames(record_id: str, request: dict):
+    """Persist browser-captured still frames (one per moment) onto the record."""
+    require_firestore()
+    record = get_or_404(
+        deps.firestore_svc.get_key_moments_analysis, record_id, "Analysis"
+    )
+    updated_moments = apply_indexed_uris(
+        [m.dict() for m in record.key_moments],
+        request.get("frames", []),
+        uri_field="frame_gcs_uri",
+    )
+    deps.firestore_svc.update_key_moments_analysis(
+        record_id, {"key_moments": updated_moments}
+    )
+    return {"status": "frames_saved"}

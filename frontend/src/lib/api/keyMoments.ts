@@ -31,4 +31,10 @@ export const keyMoments = {
       `${API_BASE_URL}/key-moments/sources/productions`,
       'Failed to list production sources',
     ),
+  saveFrames: (id: string, frames: { index: number; gcs_uri: string }[]) =>
+    postJson<any>(
+      `${API_BASE_URL}/key-moments/${id}/frames`,
+      { frames },
+      'Failed to save frames',
+    ),
 }

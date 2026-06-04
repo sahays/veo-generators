@@ -11,6 +11,7 @@ from models import Project, Scene
 from url_signing import (  # noqa: F401
     sign_record_urls,
     sign_records_concurrently,
+    sign_nested_list_uris,
     sign_production_urls,
     list_video_upload_sources,
     list_image_upload_sources,
@@ -35,6 +36,23 @@ def get_or_404(get_fn, record_id: str, name: str = "Record"):
     if not record:
         raise HTTPException(status_code=404, detail=f"{name} not found")
     return record
+
+
+def apply_indexed_uris(
+    items: list[dict], incoming: list[dict], uri_field: str = "gcs_uri"
+) -> list[dict]:
+    """Apply client-captured `[{index, gcs_uri}]` entries onto `items[index][uri_field]`.
+
+    Shared by endpoints that persist browser-captured frames into a record's
+    nested list (thumbnail screenshots, key-moment frames). Mutates and returns
+    `items`.
+    """
+    for entry in incoming:
+        idx = entry.get("index")
+        gcs_uri = entry.get("gcs_uri")
+        if idx is not None and 0 <= idx < len(items) and gcs_uri:
+            items[idx][uri_field] = gcs_uri
+    return items
 
 
 # --- Gemini API ---

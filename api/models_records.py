@@ -18,6 +18,7 @@ class KeyMomentModel(BaseModel):
     timestamp_end: str
     category: Optional[str] = None
     tags: List[str] = []
+    frame_gcs_uri: str = ""  # still frame captured at the moment's midpoint
 
 
 class KeyMomentsRecord(BaseModel):
