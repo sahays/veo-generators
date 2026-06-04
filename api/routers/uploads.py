@@ -6,7 +6,12 @@ from typing import Optional
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 import deps
-from helpers import get_or_404, require_firestore, sign_record_urls
+from helpers import (
+    get_or_404,
+    require_firestore,
+    sign_record_urls,
+    sign_records_concurrently,
+)
 from models import (
     CompressedVariant,
     UploadCompleteRequest,
@@ -84,7 +89,7 @@ async def list_uploads(archived: bool = False, file_type: Optional[str] = None):
     records = deps.firestore_svc.get_upload_records(
         include_archived=archived, file_type=file_type
     )
-    return [_sign_upload_urls(r) for r in records]
+    return await sign_records_concurrently(records, _sign_upload_urls)
 
 
 @router.post("/assets/upload/init")
@@ -170,9 +175,7 @@ def _ensure_compress_services() -> None:
         raise HTTPException(status_code=503, detail="Service not initialized")
 
 
-def _start_compression(
-    record: UploadRecord, resolution: str
-) -> CompressedVariant:
+def _start_compression(record: UploadRecord, resolution: str) -> CompressedVariant:
     job_name, output_uri = deps.transcoder_svc.compress_video(
         record.id, record.gcs_uri, resolution
     )
@@ -187,9 +190,7 @@ def _start_compression(
         v.dict() for v in record.compressed_variants if v.resolution != resolution
     ]
     updated.append(variant.dict())
-    deps.firestore_svc.update_upload_record(
-        record.id, {"compressed_variants": updated}
-    )
+    deps.firestore_svc.update_upload_record(record.id, {"compressed_variants": updated})
     return variant
 
 
@@ -220,9 +221,7 @@ async def compress_upload(record_id: str, request: dict):
     }
 
 
-def _materialize_succeeded_variant(
-    record: UploadRecord, variant: dict
-) -> None:
+def _materialize_succeeded_variant(record: UploadRecord, variant: dict) -> None:
     """Create the child UploadRecord that points at the compressed file
     so it shows up in upload pickers as a separate selectable resolution."""
     if variant.get("child_upload_id"):

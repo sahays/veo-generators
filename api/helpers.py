@@ -10,6 +10,7 @@ from models import Project, Scene
 # Re-export from split modules so existing imports keep working
 from url_signing import (  # noqa: F401
     sign_record_urls,
+    sign_records_concurrently,
     sign_production_urls,
     list_video_upload_sources,
     list_image_upload_sources,

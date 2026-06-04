@@ -14,7 +14,12 @@ from pydantic import BaseModel
 
 import deps
 import avatar_service
-from helpers import get_or_404, require_firestore, sign_record_urls
+from helpers import (
+    get_or_404,
+    require_firestore,
+    sign_record_urls,
+    sign_records_concurrently,
+)
 from models import (
     AskAvatarRequest,
     Avatar,
@@ -245,7 +250,7 @@ async def list_avatar_turns(avatar_id: str):
     require_firestore()
     get_or_404(deps.firestore_svc.get_avatar, avatar_id, "Avatar")
     turns = deps.firestore_svc.get_avatar_turns(avatar_id=avatar_id)
-    return [_sign_turn(t) for t in turns]
+    return await sign_records_concurrently(turns, _sign_turn)
 
 
 @router.get("/turns/{turn_id}")

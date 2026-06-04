@@ -154,7 +154,9 @@ async def _poll_scene_video(production_id: str, scene) -> bool:
         )
         return True
 
-    error = veo_status.get("error") or veo_status.get("message", "Video generation failed")
+    error = veo_status.get("error") or veo_status.get(
+        "message", "Video generation failed"
+    )
     logger.error(f"Veo failed for scene {scene.id}: {error}")
     _fail_scene(production_id, scene.id, error)
     _fail_production(production_id, f"Video failed for {scene.id}: {error}")

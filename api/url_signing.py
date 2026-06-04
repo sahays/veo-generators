@@ -1,9 +1,36 @@
 """URL signing utilities for GCS resources."""
 
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Optional
 
 import deps
 from models import Project
+
+# Cap on concurrent signing threads. Each signature is a blocking IAM signBlob
+# round-trip, so parallelism turns a list's N sequential round-trips into ~1.
+_SIGN_MAX_WORKERS = 16
+
+
+async def sign_records_concurrently(records, sign_fn: Callable) -> list[dict]:
+    """Sign a list of records in parallel, off the event loop.
+
+    `sign_fn(record) -> dict` is a blocking signer (it performs IAM signBlob
+    network calls). Running each in a worker thread parallelizes the round-trips
+    and keeps the asyncio event loop responsive.
+    """
+    return list(await asyncio.gather(*(asyncio.to_thread(sign_fn, r) for r in records)))
+
+
+def sign_values_concurrently(values: list, fn: Callable) -> list:
+    """Apply a blocking signer `fn` to each value concurrently (sync context).
+
+    Preserves input order. Used by the synchronous source-list helpers.
+    """
+    if not values:
+        return []
+    with ThreadPoolExecutor(max_workers=_SIGN_MAX_WORKERS) as ex:
+        return list(ex.map(fn, values))
 
 
 def sign_record_urls(
@@ -62,7 +89,9 @@ def _resolve_with_recovery(gcs_uri: str, cache: dict) -> tuple[str, bool]:
 def _sign_scene_urls(scene: dict, cache: dict, thumbnails_only: bool) -> bool:
     dirty = False
     if scene.get("thumbnail_url"):
-        scene["thumbnail_url"], changed = _resolve_with_recovery(scene["thumbnail_url"], cache)
+        scene["thumbnail_url"], changed = _resolve_with_recovery(
+            scene["thumbnail_url"], cache
+        )
         dirty = dirty or changed
     if not thumbnails_only and scene.get("video_url"):
         scene["video_url"], changed = _resolve_with_recovery(scene["video_url"], cache)
@@ -121,14 +150,15 @@ def list_upload_sources(
 
     require_firestore()
     uploads = deps.firestore_svc.get_upload_records(file_type=file_type)
+    signed = sign_values_concurrently([u.gcs_uri for u in uploads], _sign_gcs_uri)
     results = []
-    for u in uploads:
+    for u, signed_url in zip(uploads, signed):
         entry = {
             "id": u.id,
             "filename": u.filename,
             "display_name": u.display_name or "",
             "gcs_uri": u.gcs_uri,
-            url_key: _sign_gcs_uri(u.gcs_uri),
+            url_key: signed_url,
             "file_size_bytes": u.file_size_bytes,
             "createdAt": u.createdAt.isoformat() if u.createdAt else None,
         }
@@ -164,13 +194,16 @@ def list_completed_production_sources(
     completed = [
         p for p in productions if p.status.value == "completed" and p.final_video_url
     ]
+    signed = sign_values_concurrently(
+        [p.final_video_url for p in completed], _sign_gcs_uri
+    )
     results = []
-    for p in completed:
+    for p, signed_url in zip(completed, signed):
         entry = {
             "id": p.id,
             "name": p.name,
             "final_video_url": p.final_video_url,
-            "video_signed_url": _sign_gcs_uri(p.final_video_url),
+            "video_signed_url": signed_url,
             "createdAt": p.createdAt.isoformat() if p.createdAt else None,
         }
         if extra_fields:

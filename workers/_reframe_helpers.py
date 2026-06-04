@@ -15,9 +15,7 @@ def format_chirp_context(speaker_segments: list) -> str:
     if not speaker_segments:
         return ""
 
-    significant = [
-        s for s in speaker_segments if s["end_sec"] - s["start_sec"] >= 2.0
-    ]
+    significant = [s for s in speaker_segments if s["end_sec"] - s["start_sec"] >= 2.0]
     if not significant:
         significant = speaker_segments[:10]
     significant.sort(key=lambda s: s["start_sec"])

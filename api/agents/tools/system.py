@@ -29,6 +29,4 @@ async def list_system_prompts(
     params: dict = {"type": "prompt"}
     if category:
         params["category"] = category
-    return await api_call(
-        "GET", "/api/v1/system/resources", invite_code, params=params
-    )
+    return await api_call("GET", "/api/v1/system/resources", invite_code, params=params)

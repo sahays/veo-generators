@@ -14,6 +14,7 @@ from typing import Callable, Optional
 from fastapi import HTTPException, Request
 
 from helpers import get_or_404, require_firestore
+from url_signing import sign_records_concurrently
 
 
 def _default_retry_updates(_record) -> dict:
@@ -54,7 +55,7 @@ def register_crud_routes(
         async def _list(request: Request, archived: bool = False):
             require_firestore()
             records = lister(include_archived=archived)
-            return [_sign_for_list(r) for r in records]
+            return await sign_records_concurrently(records, _sign_for_list)
 
     if include_get:
 

@@ -161,7 +161,7 @@ async def generate_thumbnail_collage(request: Request, record_id: str, body: dic
             record_id, {"status": "screenshots_ready"}
         )
         raise HTTPException(status_code=500, detail=str(e))
-    thumbnail_gcs_uri = result.data.get("thumbnail_url")
+    thumbnail_gcs_uri = result.data.get("image_url")
     signed_url = (
         deps.storage_svc.get_signed_url(thumbnail_gcs_uri)
         if thumbnail_gcs_uri

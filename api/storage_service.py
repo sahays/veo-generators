@@ -1,4 +1,5 @@
 import os
+import threading
 import google.auth
 from datetime import datetime, timedelta, timezone
 from google.cloud import storage
@@ -13,6 +14,8 @@ class StorageService:
         self.bucket_name = os.getenv("GCS_BUCKET", f"{self.project_id}-veogen-assets")
         self.client = storage.Client(project=self.project_id)
         self.credentials, self.project = google.auth.default()
+        # Guards credential refresh when signing runs across multiple threads.
+        self._cred_lock = threading.Lock()
 
         # Ensure bucket exists
         try:
@@ -64,15 +67,24 @@ class StorageService:
         blob.upload_from_filename(local_path, content_type=content_type)
         return gcs_uri
 
+    def _ensure_credentials(self) -> None:
+        """Refresh credentials if expired. Thread-safe (double-checked locking)
+        so concurrent signing threads don't race on a shared refresh."""
+        if self.credentials.valid:
+            return
+        with self._cred_lock:
+            if self.credentials.valid:
+                return
+            from google.auth.transport import requests
+
+            self.credentials.refresh(requests.Request())
+
     def _generate_signed_url(self, gcs_uri: str) -> dict:
         """Generate a signed URL and return it with expiration metadata."""
         path = gcs_uri.replace(f"gs://{self.bucket_name}/", "")
         blob = self.bucket.blob(path)
 
-        if not self.credentials.valid:
-            from google.auth.transport import requests
-            request = requests.Request()
-            self.credentials.refresh(request)
+        self._ensure_credentials()
 
         expires_at = datetime.now(timezone.utc) + SIGN_DURATION
         url = blob.generate_signed_url(
@@ -119,10 +131,7 @@ class StorageService:
         """Generate a v4 signed PUT URL for direct-to-GCS uploads (30-min expiry)."""
         blob = self.bucket.blob(destination_path)
 
-        if not self.credentials.valid:
-            from google.auth.transport import requests
-            request = requests.Request()
-            self.credentials.refresh(request)
+        self._ensure_credentials()
 
         upload_expiry = timedelta(minutes=30)
         expires_at = datetime.now(timezone.utc) + upload_expiry

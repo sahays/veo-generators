@@ -37,11 +37,21 @@ class PromoProcessor(JobProcessor):
                 record_id, src_path, segments_raw, tmp
             )
             maybe_prepend_title_card(
-                record, record_id, src_path, segments_raw, segment_paths, tmp,
+                record,
+                record_id,
+                src_path,
+                segments_raw,
+                segment_paths,
+                tmp,
                 self._run_async,
             )
             maybe_apply_text_overlays(
-                record, record_id, src_path, segments_raw, segment_paths, tmp,
+                record,
+                record_id,
+                src_path,
+                segments_raw,
+                segment_paths,
+                tmp,
                 self._run_async,
             )
             output_uri = self._normalize_and_stitch(
@@ -131,7 +141,9 @@ class PromoProcessor(JobProcessor):
         results = []
         with ThreadPoolExecutor(max_workers=4) as pool:
             futures = {
-                pool.submit(extract_segment, src_path, t["path"], t["start"], t["end"]): t
+                pool.submit(
+                    extract_segment, src_path, t["path"], t["start"], t["end"]
+                ): t
                 for t in tasks
             }
             for future in futures:

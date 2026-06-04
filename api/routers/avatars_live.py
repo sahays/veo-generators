@@ -132,7 +132,7 @@ def _build_system_instruction(avatar: Avatar) -> str:
     text = avatar_service.build_system_instruction(avatar)
     if avatar.default_greeting:
         text += (
-            f'\n\nOpen the conversation by saying exactly: '
+            f"\n\nOpen the conversation by saying exactly: "
             f'"{avatar.default_greeting.strip()}"'
         )
     return text
@@ -228,9 +228,7 @@ def _sniff_client_text(avatar_id: str, snippet: str, sniffed: set[str]) -> None:
     for tag in CLIENT_SNIFF_TAGS:
         if tag in snippet and tag not in sniffed:
             sniffed.add(tag)
-            logger.info(
-                f"[avatar:{avatar_id}] client→upstream first {tag}: {snippet}"
-            )
+            logger.info(f"[avatar:{avatar_id}] client→upstream first {tag}: {snippet}")
 
 
 def _log_upstream_text(
@@ -287,12 +285,16 @@ async def _relay_client_to_upstream(
                 _sniff_client_text(avatar_id, payload[:120], sniffed)
             await upstream_ws.send(payload)
             forwarded += 1
-        logger.info(f"[avatar:{avatar_id}] client→upstream: client disconnected {tail()}")
+        logger.info(
+            f"[avatar:{avatar_id}] client→upstream: client disconnected {tail()}"
+        )
     except asyncio.CancelledError:
         logger.info(f"[avatar:{avatar_id}] client→upstream: cancelled {tail()}")
         raise
     except WebSocketDisconnect:
-        logger.info(f"[avatar:{avatar_id}] client→upstream: WebSocketDisconnect {tail()}")
+        logger.info(
+            f"[avatar:{avatar_id}] client→upstream: WebSocketDisconnect {tail()}"
+        )
         return
     except Exception as e:
         logger.exception(
@@ -413,7 +415,9 @@ async def avatar_live(ws: WebSocket, avatar_id: str):
     logger.info(f"[avatar:{avatar_id}] live ws upgrade requested")
 
     if not _validate_ws_invite_code(ws.query_params.get("invite_code")):
-        logger.warning(f"[avatar:{avatar_id}] live ws rejected: invalid/missing invite code")
+        logger.warning(
+            f"[avatar:{avatar_id}] live ws rejected: invalid/missing invite code"
+        )
         await ws.close(code=4401)
         return
     if not deps.firestore_svc:
