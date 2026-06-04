@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Zap, Clock, Tag, Archive, Upload, Film } from 'lucide-react'
+import { Zap, Clock, Tag, Archive, Upload, Film, Image as ImageIcon } from 'lucide-react'
 import { cn, getTimeAgo } from '@/lib/utils'
 import { api } from '@/lib/api'
 import { LandingPageShell } from '@/components/shared/LandingPageShell'
@@ -50,6 +50,31 @@ const AnalysisCard = ({ record, onClick, onArchive, showArchive }: {
         <p className="text-xs text-muted-foreground line-clamp-2 mb-3 leading-relaxed">
           {record.video_summary}
         </p>
+      )}
+
+      {/* Frame thumbnails preview (first few moments) */}
+      {record.key_moments && record.key_moments.length > 0 && (
+        <div className="flex gap-2 mb-3 overflow-hidden">
+          {record.key_moments.slice(0, 4).map((moment, i) => (
+            <div
+              key={i}
+              className="relative w-20 shrink-0 aspect-video rounded-md overflow-hidden bg-muted border border-border/50"
+            >
+              {moment.frame_signed_url ? (
+                <img src={moment.frame_signed_url} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <ImageIcon size={12} className="text-muted-foreground/40" />
+                </div>
+              )}
+            </div>
+          ))}
+          {record.key_moments.length > 4 && (
+            <div className="w-10 shrink-0 aspect-video rounded-md bg-accent/10 flex items-center justify-center text-[10px] font-bold text-accent-dark border border-accent/20">
+              +{record.key_moments.length - 4}
+            </div>
+          )}
+        </div>
       )}
 
       {firstMoment?.tags && firstMoment.tags.length > 0 && (

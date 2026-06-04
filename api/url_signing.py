@@ -77,16 +77,21 @@ def sign_nested_list_uris(
     list_key: str,
     uri_field: str = "gcs_uri",
     out_field: str = "signed_url",
+    limit: Optional[int] = None,
 ) -> None:
     """Sign each item's GCS URI inside a nested list, in place.
 
     Shared by records that embed a list of media items (thumbnail screenshots,
     key-moment frames). Adds `out_field` to each item that has a `uri_field`.
+    `limit` signs only the first N items (e.g. a preview strip in list views).
     """
     if not deps.storage_svc:
         return
     cache: dict = {}
-    for item in data.get(list_key) or []:
+    items = data.get(list_key) or []
+    if limit is not None:
+        items = items[:limit]
+    for item in items:
         uri = item.get(uri_field)
         if uri:
             url, _ = deps.storage_svc.resolve_cached_url(uri, cache)

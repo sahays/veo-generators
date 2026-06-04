@@ -18,9 +18,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/key-moments", tags=["key-moments"])
 
+# How many moment frames the landing-page card previews (strip + "+N").
+PREVIEW_FRAME_COUNT = 4
 
-def _sign(record: KeyMomentsRecord) -> dict:
-    """Sign the source video plus each moment's captured frame."""
+
+def _sign_frames(record: KeyMomentsRecord, frame_limit: int | None) -> dict:
+    """Sign the source video plus each moment's captured frame.
+
+    `frame_limit` caps how many frames are signed (the list view only previews
+    a few, so it avoids signing every frame of every record)."""
     data = sign_record_urls(
         record,
         {"video_gcs_uri": "video_signed_url"},
@@ -28,8 +34,20 @@ def _sign(record: KeyMomentsRecord) -> dict:
             record.id, {"signed_urls": cache}
         ),
     )
-    sign_nested_list_uris(data, "key_moments", "frame_gcs_uri", "frame_signed_url")
+    sign_nested_list_uris(
+        data, "key_moments", "frame_gcs_uri", "frame_signed_url", limit=frame_limit
+    )
     return data
+
+
+def _sign(record: KeyMomentsRecord) -> dict:
+    """Detail view: sign every moment frame."""
+    return _sign_frames(record, None)
+
+
+def _sign_list(record: KeyMomentsRecord) -> dict:
+    """List view: sign only the preview frames shown on the card."""
+    return _sign_frames(record, PREVIEW_FRAME_COUNT)
 
 
 # Standard CRUD
@@ -43,6 +61,7 @@ register_crud_routes(
         include_archived=include_archived
     ),
     sign_one=_sign,
+    sign_list=_sign_list,
 )
 
 

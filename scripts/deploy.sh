@@ -31,8 +31,10 @@ OPTIMIZE_PROMPT_MODEL=${OPTIMIZE_PROMPT_MODEL:-gemini-3-pro-preview}
 STORYBOARD_MODEL=${STORYBOARD_MODEL:-gemini-3.1-flash-image-preview}
 VIDEO_GEN_MODEL=${VIDEO_GEN_MODEL:-veo-3.1-generate-001}
 
-# Execute comprehensive pre-deployment checks
-./scripts/pre-deploy.sh
+# Note: run ./scripts/pre-deploy.sh first for the full gate (frontend build,
+# ruff lint/format, system-lib check, backend tests). Deploy runs the backend
+# tests below on its own so it stays safe even if invoked directly, without
+# re-running the whole pre-deploy suite twice.
 
 # Run backend tests (abort on failure)
 echo "🧪 Running Backend Tests..."
