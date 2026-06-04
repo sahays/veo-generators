@@ -155,7 +155,6 @@ class TestCreateReframePayload:
             "content_type",
             "blurred_bg",
             "sports_mode",
-            "vertical_split",
         }
         assert set(payload.keys()).issubset(valid_fields)
 

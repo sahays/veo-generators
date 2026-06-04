@@ -141,8 +141,7 @@ const ReframeFields: React.FC<{ params: Record<string, any>; resolved: Record<st
         ))}
       </select>
     </div>
-    <ToggleField label="Blurred background" checked={params.blurred_bg} onChange={v => onChange({ ...params, blurred_bg: v, ...(v ? { vertical_split: false } : {}) })} disabled={disabled} />
-    <ToggleField label="Vertical split" checked={params.vertical_split} onChange={v => onChange({ ...params, vertical_split: v, ...(v ? { blurred_bg: false } : {}) })} disabled={disabled} />
+    <ToggleField label="Blurred background" checked={params.blurred_bg} onChange={v => onChange({ ...params, blurred_bg: v })} disabled={disabled} />
   </div>
 )
 

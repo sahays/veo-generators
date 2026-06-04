@@ -74,7 +74,6 @@ def _make_editor_tools(invite_code: str) -> list:
                 "source_filename": source_filename,
                 "content_type": content_type,
                 "blurred_bg": False,
-                "vertical_split": False,
             },
             {
                 "source_name": display_name(source_filename, gcs_uri),

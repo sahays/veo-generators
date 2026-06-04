@@ -20,7 +20,6 @@ from focal_path import smooth_focal_path
 from reframe_filters import (
     build_blurred_bg_filter,
     build_crop_filter,
-    build_vertical_split_filter,
 )
 
 # Re-export for backward compatibility (workers import from here)
@@ -28,47 +27,12 @@ __all__ = [
     "ffprobe_video",
     "smooth_focal_path",
     "execute_reframe",
-    "execute_vertical_split",
 ]
 
 logger = logging.getLogger(__name__)
 
 MAX_KEYPOINTS_PER_CHUNK = 80
 NUM_PARALLEL_WORKERS = int(os.environ.get("FFMPEG_WORKERS", "0")) or os.cpu_count() or 4
-
-
-# ---------------------------------------------------------------------------
-# Vertical split
-# ---------------------------------------------------------------------------
-
-
-def execute_vertical_split(
-    src_path: str,
-    out_path: str,
-    src_w: int,
-    src_h: int,
-    has_audio: bool = True,
-) -> str:
-    """Split landscape video into two halves stacked vertically."""
-    from ffmpeg_runner import _FILTER_PLACEHOLDER
-
-    logger.info(f"Vertical split: {src_w}x{src_h}, audio: {has_audio}")
-    parts = [
-        ["ffmpeg", "-y", "-i", src_path],
-        [_FILTER_PLACEHOLDER],
-        ["-map", "[v]", "-map", "0:a?"],
-        ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "23"],
-        ["-c:a", "copy"] if has_audio else ["-an"],
-        ["-movflags", "+faststart", out_path],
-    ]
-    cmd = [arg for part in parts for arg in part]
-    run_ffmpeg_with_filter(
-        cmd,
-        build_vertical_split_filter(src_w, src_h),
-        filter_flag="-/filter_complex",
-        label="vertical-split",
-    )
-    return out_path
 
 
 # ---------------------------------------------------------------------------

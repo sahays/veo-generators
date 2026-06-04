@@ -15,7 +15,6 @@ export const reframe = {
     content_type?: string
     blurred_bg?: boolean
     sports_mode?: boolean
-    vertical_split?: boolean
     model_id?: string
     region?: string
   }) => postJson<any>(`${API_BASE_URL}/reframe`, data, 'Reframe failed'),

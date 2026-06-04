@@ -8,7 +8,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from reframe_filters import (
     build_crop_filter,
     build_blurred_bg_filter,
-    build_vertical_split_filter,
     _to_pixel_keypoints,
 )
 
@@ -107,27 +106,6 @@ class TestBlurredBgFilter:
         kps = [(0.0, 0.2, 0.5), (5.0, 0.8, 0.5)]
         f = build_blurred_bg_filter(kps, 1920, 1080)
         assert "clip(" in f
-
-
-# ---------------------------------------------------------------------------
-# Vertical split filter
-# ---------------------------------------------------------------------------
-
-
-class TestVerticalSplitFilter:
-    def test_1920x1080(self):
-        f = build_vertical_split_filter(1920, 1080)
-        assert "vstack=inputs=3" in f
-        assert "1080x2" in f  # white divider
-        assert "959" in f  # half panel height
-
-    def test_1280x720(self):
-        f = build_vertical_split_filter(1280, 720)
-        assert "vstack" in f
-
-    def test_640x360(self):
-        f = build_vertical_split_filter(640, 360)
-        assert "vstack" in f
 
 
 # ---------------------------------------------------------------------------

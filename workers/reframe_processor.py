@@ -38,10 +38,7 @@ class ReframeProcessor(JobProcessor):
             src_path, probe = self._download_and_probe(record, record_id, tmp)
             out_path = tmp.create(suffix=".mp4")
 
-            if record.vertical_split:
-                self._run_vertical_split(record_id, src_path, out_path, probe)
-            else:
-                self._run_ai_reframe(record, record_id, src_path, out_path, probe, tmp)
+            self._run_ai_reframe(record, record_id, src_path, out_path, probe, tmp)
 
             self.update_status(record_id, "processing", 65)
             output_uri = self._upload_and_encode(record, record_id, out_path, probe)
@@ -73,20 +70,6 @@ class ReframeProcessor(JobProcessor):
                 "Reframe requires 16:9 or wider."
             )
         return src_path, probe
-
-    def _run_vertical_split(self, record_id, src_path, out_path, probe):
-        """Vertical split path: no AI, just split and stack."""
-        from reframe_service import execute_vertical_split
-
-        self.update_status(record_id, "processing", 45)
-        logger.info(f"[reframe:{record_id}] Running vertical split...")
-        execute_vertical_split(
-            src_path=src_path,
-            out_path=out_path,
-            src_w=probe["width"],
-            src_h=probe["height"],
-            has_audio=probe.get("has_audio", True),
-        )
 
     def _run_ai_reframe(self, record, record_id, src_path, out_path, probe, tmp):
         """AI reframe: diarize → MediaPipe detect → Gemini scenes → merge → smooth → crop."""

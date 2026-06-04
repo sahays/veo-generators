@@ -1,7 +1,7 @@
 """FFmpeg filter string generation for smart reframing.
 
 Pure string construction — no subprocess calls. Generates crop/scale/blur
-filter expressions for 9:16, 4:5, and vertical-split reframing modes.
+filter expressions for the 9:16 crop and 4:5 blurred-background reframing modes.
 """
 
 from typing import List, Tuple
@@ -87,22 +87,6 @@ def _blurred_bg_base(out_w: int, out_h: int) -> str:
     return (
         f"[0:v]scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
         f"crop={out_w}:{out_h},gblur=sigma=40[bg]"
-    )
-
-
-def build_vertical_split_filter(src_w: int, src_h: int) -> str:
-    """Two 4:3 crops stacked vertically with divider (1080x1920 output)."""
-    crop_w = min(int(src_h * 4 / 3), src_w)
-    right_x = max(0, src_w - crop_w)
-    half_h = 959
-
-    return (
-        f"[0:v]crop={crop_w}:{src_h}:0:0,scale=-1:{half_h},"
-        f"crop=1080:{half_h}:(iw-1080)/2:0[top];"
-        f"[0:v]crop={crop_w}:{src_h}:{right_x}:0,scale=-1:{half_h},"
-        f"crop=1080:{half_h}:(iw-1080)/2:0[bot];"
-        f"color=white:1080x2:d=1[div];"
-        f"[top][div][bot]vstack=inputs=3[v]"
     )
 
 

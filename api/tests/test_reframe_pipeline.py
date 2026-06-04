@@ -2,7 +2,7 @@
 produce correct FFmpeg commands and filter strings.
 
 No actual FFmpeg execution — tests the command building and filter generation
-for every combination of: content_type × blurred_bg × vertical_split × source size.
+for every combination of: content_type × blurred_bg × source size.
 """
 
 import sys
@@ -13,7 +13,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from reframe_filters import (
     build_crop_filter,
     build_blurred_bg_filter,
-    build_vertical_split_filter,
 )
 from reframe_strategies import get_strategy, STRATEGY_CONFIG
 from focal_path import smooth_focal_path
@@ -164,42 +163,6 @@ class TestBlurredBg45:
             f = build_blurred_bg_filter(kps, 1920, 1080)
             assert "1080:1920" in f
             assert "overlay" in f
-
-
-# ---------------------------------------------------------------------------
-# Mode: vertical split (vertical_split=True)
-# ---------------------------------------------------------------------------
-
-
-class TestVerticalSplit:
-    """Vertical split → two 4:3 crops stacked → 1080×1920."""
-
-    def test_filter_for_all_sources(self):
-        for name, (w, h) in SOURCES.items():
-            f = build_vertical_split_filter(w, h)
-            assert "vstack=inputs=3" in f, f"{name}: missing vstack"
-
-    def test_cmd_splice_filter_complex(self):
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-i",
-            "src.mp4",
-            _FILTER_PLACEHOLDER,
-            "-map",
-            "[v]",
-            "-map",
-            "0:a?",
-            "-c:v",
-            "libx264",
-            "-c:a",
-            "copy",
-            "out.mp4",
-        ]
-        result = _splice_filter(cmd, "-/filter_complex", "/tmp/split.txt")
-        fi = result.index("-/filter_complex")
-        mi = result.index("-map")
-        assert fi < mi
 
 
 # ---------------------------------------------------------------------------

@@ -3,7 +3,6 @@ import { ExternalLink } from 'lucide-react'
 
 interface Props {
   recordId: string
-  vertical_split?: boolean
   hasTrackSummary: boolean
   hasPrompt: boolean
   hasGeminiScenes: boolean
@@ -16,7 +15,6 @@ const linkClass =
 
 export const ReframePipelineLinks = ({
   recordId,
-  vertical_split,
   hasTrackSummary,
   hasPrompt,
   hasGeminiScenes,
@@ -24,7 +22,6 @@ export const ReframePipelineLinks = ({
   hasSpeakerSegments,
 }: Props) => {
   if (
-    vertical_split ||
     !(hasTrackSummary || hasPrompt || hasGeminiScenes || hasFocalPoints || hasSpeakerSegments)
   ) return null
   return (

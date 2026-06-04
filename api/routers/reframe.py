@@ -27,7 +27,6 @@ class ReframeRequest(BaseModel):
     content_type: str = "other"
     blurred_bg: bool = False
     sports_mode: bool = False  # deprecated — use content_type="sports"
-    vertical_split: bool = False
     model_id: Optional[str] = None
     region: Optional[str] = None
 
@@ -83,7 +82,6 @@ async def create_reframe(body: ReframeRequest, request: Request):
         content_type=content_type,
         blurred_bg=body.blurred_bg,
         sports_mode=body.sports_mode,
-        vertical_split=body.vertical_split,
         model_id=body.model_id,
         region=body.region,
         status="pending",

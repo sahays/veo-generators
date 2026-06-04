@@ -79,7 +79,6 @@ export const ReframeWorkPage = () => {
   const [modelConfig, setModelConfig] = useState<{ modelId?: string; region?: string }>({})
   const [contentType, setContentType] = useState('other')
   const [blurredBg, setBlurredBg] = useState(false)
-  const [verticalSplit, setVerticalSplit] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -105,7 +104,6 @@ export const ReframeWorkPage = () => {
         source_filename: videoFilename,
         content_type: contentType,
         blurred_bg: blurredBg,
-        vertical_split: verticalSplit,
         model_id: modelConfig.modelId,
         region: modelConfig.region,
       })
@@ -184,11 +182,6 @@ export const ReframeWorkPage = () => {
               Blurred BG
             </span>
           )}
-          {record.vertical_split && (
-            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-cyan-500/10 text-cyan-600 border border-cyan-500/20">
-              Vertical Split
-            </span>
-          )}
         </WorkPageHeader>
 
         {isProcessing && <ProgressBar progress={record.progress_pct} />}
@@ -206,7 +199,6 @@ export const ReframeWorkPage = () => {
 
         <ReframePipelineLinks
           recordId={record.id}
-          vertical_split={record.vertical_split}
           hasTrackSummary={hasTrackSummary}
           hasPrompt={hasPrompt}
           hasGeminiScenes={!!(geminiScenes && geminiScenes.length > 0)}
@@ -259,7 +251,7 @@ export const ReframeWorkPage = () => {
         </div>
       )}
 
-      {videoUrl && !verticalSplit && (
+      {videoUrl && (
         <div className="space-y-2">
           <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Content Type</h3>
           <Select
@@ -279,7 +271,7 @@ export const ReframeWorkPage = () => {
             <input
               type="checkbox"
               checked={blurredBg}
-              onChange={(e) => { setBlurredBg(e.target.checked); if (e.target.checked) setVerticalSplit(false) }}
+              onChange={(e) => setBlurredBg(e.target.checked)}
               className="w-4 h-4 rounded border-border text-accent focus:ring-accent/30 cursor-pointer"
             />
             <div>
@@ -287,23 +279,7 @@ export const ReframeWorkPage = () => {
                 Blurred background fill
               </span>
               <p className="text-xs text-muted-foreground">
-                4:5 output with blurred fill on the sides — wider than 9:16
-              </p>
-            </div>
-          </label>
-          <label className="flex items-center gap-3 cursor-pointer group">
-            <input
-              type="checkbox"
-              checked={verticalSplit}
-              onChange={(e) => { setVerticalSplit(e.target.checked); if (e.target.checked) setBlurredBg(false) }}
-              className="w-4 h-4 rounded border-border text-accent focus:ring-accent/30 cursor-pointer"
-            />
-            <div>
-              <span className="text-sm font-medium text-foreground group-hover:text-accent-dark transition-colors">
-                Vertical split screen
-              </span>
-              <p className="text-xs text-muted-foreground">
-                Split the landscape frame into left/right halves stacked vertically — no AI analysis needed
+                4:5 video centered with a blurred fill on top &amp; bottom — keeps more of the frame than the standard 9:16 crop
               </p>
             </div>
           </label>
