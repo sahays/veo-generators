@@ -6,6 +6,7 @@ from fastapi import HTTPException
 
 import deps
 from models import Project, Scene
+from prompt_templates import PHYSICAL_REALISM_DIRECTIVE
 
 # Re-export from split modules so existing imports keep working
 from url_signing import (  # noqa: F401
@@ -140,6 +141,7 @@ def build_flat_image_prompt(data: dict) -> str:
 def build_flat_video_prompt(data: dict) -> str:
     """Build a flat text prompt for video generation."""
     parts = _build_video_base_parts(data)
+    parts.append(PHYSICAL_REALISM_DIRECTIVE)
     _append_transitions(parts, data)
     _append_narration(parts, data)
     _append_music(parts, data)
@@ -184,11 +186,13 @@ def _build_video_base_parts(data: dict) -> list[str]:
 
 
 def _append_transitions(parts: list[str], data: dict):
-    """Append transition directives to prompt parts."""
-    if data.get("enter_transition"):
-        parts.append(data["enter_transition"])
-    if data.get("exit_transition"):
-        parts.append(data["exit_transition"])
+    """Append transition directives to prompt parts.
+
+    Visual enter/exit transitions are intentionally NOT sent to Veo: it
+    generates each clip in isolation, so "connecting" language makes it morph
+    objects in-frame. Transitions are applied at stitch time. Only the audio
+    (music) transition is kept here.
+    """
     if data.get("music_transition"):
         parts.append(f"Music transition: {data['music_transition']}")
 

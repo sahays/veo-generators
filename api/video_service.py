@@ -6,6 +6,7 @@ from google import genai
 from google.genai import types
 from ai_helpers import resolve_model
 from models import Scene, Project
+from prompt_templates import PHYSICAL_REALISM_DIRECTIVE, VEO_NEGATIVE_PROMPT
 
 
 class VideoService:
@@ -80,11 +81,11 @@ class VideoService:
         if project and project.continuity and project.continuity.setting_notes:
             parts.append(f"Setting: {project.continuity.setting_notes}.")
         parts.append(scene.visual_description)
+        parts.append(PHYSICAL_REALISM_DIRECTIVE)
 
-        if scene.enter_transition:
-            parts.append(scene.enter_transition)
-        if scene.exit_transition:
-            parts.append(scene.exit_transition)
+        # Visual enter/exit transitions are intentionally NOT sent to Veo: it
+        # generates each clip in isolation, so "connecting" language makes it
+        # morph objects in-frame. Transitions are applied at stitch time.
         if scene.music_transition:
             parts.append(f"Music transition: {scene.music_transition}")
 
@@ -149,6 +150,7 @@ class VideoService:
                 generate_audio=True,
                 person_generation="allow_all",
                 resolution="720p",
+                negative_prompt=VEO_NEGATIVE_PROMPT,
             ),
         }
 

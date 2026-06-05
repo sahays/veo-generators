@@ -37,19 +37,46 @@ def default_promo_prompt(target_duration: int) -> str:
     )
 
 
+# Appended to every video-generation prompt sent to Veo. Veo renders each scene
+# literally and in isolation, so it needs an explicit instruction to keep the
+# physics coherent (no morphing, floating, clipping, or vanishing props).
+PHYSICAL_REALISM_DIRECTIVE = (
+    "Maintain strict physical realism: objects stay solid and obey gravity; "
+    "nothing morphs into something else, teleports, floats, melts, or appears "
+    "or disappears; props being held or handed over remain visible and "
+    "consistent; people and objects move around furniture and walls, never "
+    "through them. Render one continuous, physically plausible action."
+)
+
+# Passed as the Veo `negative_prompt` to suppress the common artifact classes.
+VEO_NEGATIVE_PROMPT = (
+    "morphing, warping, objects transforming into other objects, shape-shifting, "
+    "teleporting, objects or people appearing or disappearing, floating or "
+    "levitating objects, objects defying gravity, people or objects passing "
+    "through walls or furniture, melting, extra limbs, deformed hands, "
+    "distorted faces, duplicated objects, physically impossible motion, flickering"
+)
+
 DEFAULT_BRIEF_PROMPT = """Act as a professional film director and scriptwriter.
 Break the following creative brief into a scene-by-scene cinematic script.
 Total length: {length} seconds.
 Each scene must be between 2 and 8 seconds.
 
+PHYSICAL REALISM RULES (critical — each scene is rendered literally and in isolation by the video model):
+- Each scene is ONE clear, continuous, physically plausible action. Do not stack multiple distinct actions into a single scene.
+- Objects are solid and obey gravity. They never morph into other objects, teleport, melt, float, or appear/disappear mid-scene.
+- A prop handed between characters stays visible and consistent throughout the scene.
+- Characters and objects move around furniture and walls, never through them.
+- If the story needs a "transformation" or a change of object/place, express it as a hard CUT between two separate scenes — never an in-frame morph.
+
 For each scene, provide:
-- A detailed visual description for video generation
+- A detailed visual description for video generation, written as a single coherent action
 - Voice-over narration text spoken during the scene
 - A music description for background music (genre, tempo, instruments, mood)
 
 For each scene, also provide:
-- An enter_transition: how the visuals begin, connecting from the previous scene (omit for the first scene)
-- An exit_transition: how the visuals end, leading into the next scene (omit for the last scene)
+- An enter_transition: a CAMERA or LIGHTING move only (e.g. "slow push-in", "fade up from black", "whip-pan"). Never describe objects changing form. Omit for the first scene.
+- An exit_transition: a CAMERA or LIGHTING move only (e.g. "hold then cut", "fade to black"). Never describe objects changing form. Omit for the last scene.
 - A music_transition: how background music should flow from the previous scene — prefer continuing the same track with gradual shifts in intensity/tempo rather than abrupt changes. Use crossfades, dynamic builds, or drops to silence only for dramatic effect. Omit for the first scene.
 
 Also define a global soundtrack_style for the production's overall musical direction.
