@@ -118,6 +118,12 @@ async def list_preset_bundles():
 async def create_adapt(body: AdaptRequest, request: Request):
     """Create an adapt job. Worker picks it up from Firestore."""
     require_firestore()
+    if not body.gcs_uri.startswith("gs://"):
+        # Adapts resize an image; guard against a non-image reference (e.g. a
+        # production ID) so it fails clearly instead of erroring in the worker.
+        raise HTTPException(
+            400, f"gcs_uri must be a gs:// image URI, got: {body.gcs_uri!r}"
+        )
     ratios = list(body.aspect_ratios)
     if body.preset_bundle and body.preset_bundle in PRESET_BUNDLES:
         ratios.extend(PRESET_BUNDLES[body.preset_bundle]["ratios"])

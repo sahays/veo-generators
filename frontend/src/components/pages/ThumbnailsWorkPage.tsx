@@ -80,6 +80,10 @@ export const ThumbnailsWorkPage = () => {
   // Ref to skip view-mode fetch after create flow navigates
   const justCreatedRef = useRef(false)
 
+  // Auto-capture coordination for records opened by id (e.g. created via chat)
+  const [videoReady, setVideoReady] = useState(false)
+  const captureStartedRef = useRef(false)
+
   // Video ref
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -186,6 +190,24 @@ export const ThumbnailsWorkPage = () => {
 
     setCapturing(false)
   }
+
+  // Records opened by id (e.g. created by Aanya) arrive with screenshot
+  // metadata but no captured frames. Capture them once the video is ready so
+  // the collage section becomes available — mirrors the Key Moments page.
+  useEffect(() => {
+    if (!canWrite || !id || !videoReady) return
+    if (recordStatus !== 'screenshots_ready') return
+    if (!screenshots.length) return
+    if (screenshots.some(s => s.gcs_uri || s.localUrl)) return
+    if (captureStartedRef.current) return
+    captureStartedRef.current = true
+    const moments = screenshots.map(s => {
+      const [start, end] = (s.timestamp || '').split('-')
+      return { timestamp_start: start || '0:00', timestamp_end: end || start || '0:00' }
+    })
+    captureScreenshots(recordId || id, moments)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canWrite, id, videoReady, recordStatus, screenshots])
 
   const handleAnalyze = async () => {
     if (!gcsUri || !analysisPromptId) return
@@ -365,6 +387,7 @@ export const ThumbnailsWorkPage = () => {
               ref={videoRef}
               controls
               crossOrigin="anonymous"
+              onLoadedData={() => setVideoReady(true)}
               className="w-full h-full"
               src={videoUrl}
             />

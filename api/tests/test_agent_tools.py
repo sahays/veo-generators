@@ -335,3 +335,288 @@ class TestJobStatusEndpoints:
             assert _JOB_ENDPOINT_PREFIXES[job_type] == expected_prefix, (
                 f"{job_type}: expected {expected_prefix}, got {_JOB_ENDPOINT_PREFIXES[job_type]}"
             )
+
+
+# ---------------------------------------------------------------------------
+# Editor prompt pickers — list prompts for a category AND open the picker widget
+# ---------------------------------------------------------------------------
+
+
+class TestEditorPromptPickers:
+    """The editor's prompt-lister tools must return the formatted prompt list
+    AND set the `prompt_picker` request context so the frontend renders
+    PromptPicker(category). This is what lets a user choose an analysis prompt
+    for key moments / thumbnails from chat."""
+
+    def _run_lister(self, monkeypatch, category, tool_name, label, prompts):
+        import asyncio
+
+        from agents import _shared
+        from agents._shared import (
+            get_agent_context,
+            make_prompt_lister,
+            reset_agent_context,
+        )
+
+        async def fake_list_system_prompts(invite_code, cat=None):
+            assert cat == category
+            return prompts
+
+        monkeypatch.setattr(
+            _shared.agent_tools, "list_system_prompts", fake_list_system_prompts
+        )
+        reset_agent_context()
+        tool = make_prompt_lister("code-1", category, tool_name, label)
+        text = asyncio.run(tool())
+        return text, get_agent_context()
+
+    def test_key_moment_prompts_open_picker(self, monkeypatch):
+        prompts = [{"id": "res-1", "name": "Highlights", "description": "Find peaks"}]
+        text, ctx = self._run_lister(
+            monkeypatch,
+            "key-moments",
+            "list_key_moment_prompts",
+            "Key Moments",
+            prompts,
+        )
+        assert ctx.get("prompt_picker") == "key-moments"
+        assert "Highlights" in text and "res-1" in text
+
+    def test_thumbnail_prompts_open_picker(self, monkeypatch):
+        prompts = [{"id": "res-9", "name": "Poster", "description": "Movie poster"}]
+        text, ctx = self._run_lister(
+            monkeypatch, "thumbnails", "list_thumbnail_prompts", "Thumbnail", prompts
+        )
+        assert ctx.get("prompt_picker") == "thumbnails"
+        assert "Poster" in text and "res-9" in text
+
+    def test_empty_prompts_still_opens_picker(self, monkeypatch):
+        text, ctx = self._run_lister(
+            monkeypatch, "key-moments", "list_key_moment_prompts", "Key Moments", []
+        )
+        assert ctx.get("prompt_picker") == "key-moments"
+        assert "No Key Moments prompts" in text
+
+    def test_tool_name_is_set_for_function_tool(self):
+        from agents._shared import make_prompt_lister
+
+        tool = make_prompt_lister(
+            "c", "thumbnails", "list_thumbnail_prompts", "Thumbnail"
+        )
+        assert tool.__name__ == "list_thumbnail_prompts"
+
+    def test_editor_exposes_both_prompt_pickers(self):
+        from agents.specialists.editor import _make_editor_tools
+
+        names = {getattr(f, "__name__", "") for f in _make_editor_tools("code-1")}
+        assert "list_key_moment_prompts" in names
+        assert "list_thumbnail_prompts" in names
+
+
+# ---------------------------------------------------------------------------
+# Source resolution — turn a production/upload reference into a gs:// URI
+# (prevents the agent passing a bare production ID as the video, which made
+#  the model return an opaque 500 INTERNAL).
+# ---------------------------------------------------------------------------
+
+
+class TestResolveSourceUri:
+    def _run(self, monkeypatch, ref, prods, ups):
+        import asyncio
+
+        from agents import _shared
+        from agents._shared import resolve_source_uri
+
+        async def fake_api_call(method, path, invite_code, **kwargs):
+            if "productions" in path:
+                return prods
+            if "uploads" in path:
+                return ups
+            return {}
+
+        monkeypatch.setattr(_shared, "api_call", fake_api_call)
+        return asyncio.run(resolve_source_uri("code", ref))
+
+    def test_passes_through_gs_uri(self, monkeypatch):
+        assert self._run(monkeypatch, "gs://b/v.mp4", [], []) == "gs://b/v.mp4"
+
+    def test_resolves_production_id_to_final_video(self, monkeypatch):
+        prods = [
+            {
+                "id": "p-lqnjjvyt",
+                "name": "My Trailer",
+                "final_video_url": "gs://b/p-lqnjjvyt/final.mp4",
+            }
+        ]
+        assert (
+            self._run(monkeypatch, "p-lqnjjvyt", prods, [])
+            == "gs://b/p-lqnjjvyt/final.mp4"
+        )
+
+    def test_resolves_production_by_name_case_insensitive(self, monkeypatch):
+        prods = [{"id": "p-1", "name": "My Trailer", "final_video_url": "gs://b/x.mp4"}]
+        assert self._run(monkeypatch, "my trailer", prods, []) == "gs://b/x.mp4"
+
+    def test_resolves_upload_by_filename(self, monkeypatch):
+        ups = [
+            {
+                "id": "u-1",
+                "filename": "clip.mp4",
+                "display_name": "Clip",
+                "gcs_uri": "gs://b/clip.mp4",
+            }
+        ]
+        assert self._run(monkeypatch, "clip.mp4", [], ups) == "gs://b/clip.mp4"
+
+    def test_unmatched_returns_none(self, monkeypatch):
+        assert self._run(monkeypatch, "p-unknown", [], []) is None
+
+    def _run_image(self, monkeypatch, ref, images):
+        import asyncio
+
+        from agents import _shared
+        from agents._shared import resolve_source_uri
+
+        async def fake_api_call(method, path, invite_code, **kwargs):
+            assert "/adapts/sources/uploads" in path  # image kind never hits videos
+            return images
+
+        monkeypatch.setattr(_shared, "api_call", fake_api_call)
+        return asyncio.run(resolve_source_uri("code", ref, kind="image"))
+
+    def test_image_kind_resolves_image_upload(self, monkeypatch):
+        images = [
+            {
+                "id": "img-1",
+                "filename": "poster.png",
+                "display_name": "Poster",
+                "gcs_uri": "gs://b/poster.png",
+                "mime_type": "image/png",
+            }
+        ]
+        assert self._run_image(monkeypatch, "poster", images) == "gs://b/poster.png"
+
+    def test_image_kind_passes_through_gs_uri(self, monkeypatch):
+        # gs:// short-circuits before any API call
+        assert self._run_image(monkeypatch, "gs://b/i.png", []) == "gs://b/i.png"
+
+    def test_image_kind_unmatched_returns_none(self, monkeypatch):
+        assert self._run_image(monkeypatch, "p-lqnjjvyt", []) is None
+
+
+class TestEditorProposeResolvesSource:
+    """propose_* must resolve a reference to gs:// or open the picker — never
+    forward a bare id to the job (which 500s the model)."""
+
+    def test_thumbnails_opens_picker_on_unmatched_ref(self, monkeypatch):
+        import asyncio
+
+        from agents import _shared
+        from agents._shared import get_agent_context, reset_agent_context
+        from agents.specialists import editor as editor_mod
+
+        async def fake_api_call(method, path, invite_code, **kwargs):
+            return []  # nothing matches
+
+        monkeypatch.setattr(_shared, "api_call", fake_api_call)
+        reset_agent_context()
+        tools = {f.__name__: f for f in editor_mod._make_editor_tools("code")}
+        msg = asyncio.run(tools["propose_thumbnails"]("p-lqnjjvyt", "res-1"))
+        ctx = get_agent_context()
+        assert "selector" in msg.lower()
+        assert ctx.get("source_picker") is True
+        assert "confirmation" not in ctx
+
+    def test_thumbnails_resolves_production_id(self, monkeypatch):
+        import asyncio
+
+        from agents import _shared
+        from agents._shared import get_agent_context, reset_agent_context
+        from agents.specialists import editor as editor_mod
+
+        prods = [{"id": "p-9", "name": "Trailer", "final_video_url": "gs://b/f.mp4"}]
+
+        async def fake_api_call(method, path, invite_code, **kwargs):
+            if "productions" in path:
+                return prods
+            if "/system/resources" in path:
+                return [{"id": "res-1", "name": "Poster"}]
+            return []
+
+        monkeypatch.setattr(_shared, "api_call", fake_api_call)
+
+        # resolve_prompt_name (called by propose) goes through agent_tools, stub it
+        async def fake_list_prompts(invite_code, category=None):
+            return [{"id": "res-1", "name": "Poster"}]
+
+        monkeypatch.setattr(
+            _shared.agent_tools, "list_system_prompts", fake_list_prompts
+        )
+        reset_agent_context()
+        tools = {f.__name__: f for f in editor_mod._make_editor_tools("code")}
+        asyncio.run(tools["propose_thumbnails"]("p-9", "res-1"))
+        conf = get_agent_context().get("confirmation")
+        assert conf is not None
+        assert conf["params"]["gcs_uri"] == "gs://b/f.mp4"
+
+
+class TestMarketerAdaptsImageSource:
+    """Adapts resize an IMAGE — the marketer must use the image catalog and the
+    image picker, never the video/production sources."""
+
+    def test_adapts_resolves_image_and_never_queries_videos(self, monkeypatch):
+        import asyncio
+
+        from agents import _shared
+        from agents._shared import get_agent_context, reset_agent_context
+        from agents.specialists import marketer as marketer_mod
+
+        images = [
+            {"id": "img-1", "display_name": "Poster", "gcs_uri": "gs://b/poster.png"}
+        ]
+
+        async def fake_api_call(method, path, invite_code, **kwargs):
+            # Image resolution must only touch the adapts image catalog.
+            assert "productions" not in path and "/promo/" not in path
+            if "/adapts/sources/uploads" in path:
+                return images
+            return []
+
+        async def fake_aspect_ratios(invite_code):
+            return {"ratios": ["1:1", "9:16"], "preset_bundles": {}}
+
+        monkeypatch.setattr(_shared, "api_call", fake_api_call)
+        monkeypatch.setattr(
+            marketer_mod.agent_tools, "list_aspect_ratios", fake_aspect_ratios
+        )
+        reset_agent_context()
+        tools = {f.__name__: f for f in marketer_mod._make_marketer_tools("code")}
+        asyncio.run(tools["propose_adapts"]("Poster", ["1:1", "9:16"]))
+        conf = get_agent_context().get("confirmation")
+        assert conf is not None
+        assert conf["params"]["gcs_uri"] == "gs://b/poster.png"
+
+    def test_adapts_opens_image_picker_on_unmatched_ref(self, monkeypatch):
+        import asyncio
+
+        from agents import _shared
+        from agents._shared import get_agent_context, reset_agent_context
+        from agents.specialists import marketer as marketer_mod
+
+        async def fake_api_call(method, path, invite_code, **kwargs):
+            return []  # no images match
+
+        monkeypatch.setattr(_shared, "api_call", fake_api_call)
+        reset_agent_context()
+        tools = {f.__name__: f for f in marketer_mod._make_marketer_tools("code")}
+        msg = asyncio.run(tools["propose_adapts"]("p-lqnjjvyt", ["1:1"]))
+        ctx = get_agent_context()
+        assert "image selector" in msg.lower()
+        assert ctx.get("source_picker") == "image"
+        assert "confirmation" not in ctx
+
+    def test_marketer_exposes_image_picker_tool(self):
+        from agents.specialists.marketer import _make_marketer_tools
+
+        names = {getattr(f, "__name__", "") for f in _make_marketer_tools("code")}
+        assert "list_available_images" in names

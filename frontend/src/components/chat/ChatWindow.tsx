@@ -3,7 +3,7 @@ import { Send, Bot, User, Loader2, Sparkles, Trash2 } from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useChatStore } from '@/store/useChatStore'
-import { VideoResultCard, VideoSourcePicker, PromptPicker, ConfirmationCard } from './ChatWidgets'
+import { VideoResultCard, VideoSourcePicker, ImageSourcePicker, PromptPicker, ConfirmationCard } from './ChatWidgets'
 import { clsx } from 'clsx'
 
 interface ChatWindowProps {
@@ -89,19 +89,25 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ showClearHistory = true 
                   />
                 )}
 
-                {msg.data?.source_picker && (
-                  <VideoSourcePicker 
-                    onSelect={(uri, name, type) => {
-                      setInputValue(`Use ${type} "${name}" (URI: ${uri})`)
+                {msg.data?.source_picker === 'image' ? (
+                  <ImageSourcePicker
+                    onSelect={(uri, name) => {
+                      sendMessage(`Use image "${name}" (URI: ${uri})`)
                     }}
                   />
-                )}
+                ) : msg.data?.source_picker ? (
+                  <VideoSourcePicker
+                    onSelect={(uri, name, type) => {
+                      sendMessage(`Use ${type} "${name}" (URI: ${uri})`)
+                    }}
+                  />
+                ) : null}
 
                 {msg.data?.prompt_picker && (
                   <PromptPicker
                     category={msg.data.prompt_picker}
                     onSelect={(id, name) => {
-                      setInputValue(`Use prompt "${name}" (ID: ${id})`)
+                      sendMessage(`Use prompt "${name}" (ID: ${id})`)
                     }}
                   />
                 )}

@@ -456,6 +456,51 @@ export const VideoSourcePicker: React.FC<{
   )
 }
 
+// --- Image Source Picker (adapts resize an image, not a video) ---
+export const ImageSourcePicker: React.FC<{
+  onSelect: (gcs_uri: string, filename: string) => void
+}> = ({ onSelect }) => {
+  const [images, setImages] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    api.adapts
+      .listUploadSources()
+      .then((imgs) => setImages(imgs))
+      .catch(() => setImages([]))
+      .finally(() => setLoading(false))
+  }, [])
+
+  return (
+    <div className="mt-3 space-y-2">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 flex items-center gap-1">
+        <Image size={10} /> Select Image
+      </p>
+      <div className="max-h-48 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+        {loading ? (
+          <div className="py-8 flex justify-center"><Clock className="animate-spin text-slate-300" size={16} /></div>
+        ) : images.length === 0 ? (
+          <p className="px-1 text-[10px] italic text-slate-400">No uploaded images found. Upload one on the Adapts page first.</p>
+        ) : (
+          images.map((img) => (
+            <button
+              key={img.id}
+              onClick={() => onSelect(img.gcs_uri, img.display_name || img.filename)}
+              className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-left text-[11px] transition-all hover:border-indigo-500 hover:bg-indigo-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-indigo-900/20"
+            >
+              <img src={img.image_signed_url} alt="" className="h-8 w-8 flex-shrink-0 rounded object-cover" />
+              <div className="flex-1 min-w-0">
+                <p className="truncate font-medium text-slate-900 dark:text-white">{img.display_name || img.filename}</p>
+                <p className="text-[9px] text-slate-500">{img.mime_type}</p>
+              </div>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
 // --- Prompt Picker Widget ---
 export const PromptPicker: React.FC<{
   category: string,

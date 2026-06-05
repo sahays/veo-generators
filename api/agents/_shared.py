@@ -15,6 +15,7 @@ from google.adk.models.google_llm import Gemini
 from google.adk.tools import FunctionTool
 
 from . import tools as agent_tools
+from .tools._client import api_call
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,82 @@ def build_specialist(
     )
 
 
+def make_prompt_lister(invite_code: str, category: str, tool_name: str, label: str):
+    """Build a tool that lists prompts for a fixed category and opens the picker.
+
+    Mirrors the director's inline `list_prompts` pattern so specialists that
+    need a prompt for a specific feature (key moments, thumbnails) can surface
+    the `PromptPicker` widget without the user knowing a prompt ID.
+    """
+
+    async def lister():
+        prompts = await agent_tools.list_system_prompts(invite_code, category)
+        # Setting prompt_picker in the request context tells the frontend to
+        # render PromptPicker(category) so the user can click a prompt.
+        _request_context.get().update({"prompt_picker": category})
+        if not isinstance(prompts, list) or not prompts:
+            return f"No {label} prompts found."
+        lines = [
+            f"- {p.get('name', 'Unnamed')} (ID: {p.get('id', '?')}): "
+            f"{p.get('description', '')}"
+            for p in prompts
+        ]
+        return f"{label} prompts:\n" + "\n".join(lines)
+
+    lister.__name__ = tool_name  # FunctionTool derives the tool name from __name__
+    lister.__doc__ = (
+        f"List {label} prompts and open a picker for the user to choose one."
+    )
+    return lister
+
+
+def _match_source(items, needle: str) -> Optional[str]:
+    """Return the gs:// URI of the item whose id/name/filename matches needle."""
+    if not isinstance(items, list):
+        return None
+    for it in items:
+        names = {
+            str(it.get("id", "")).lower(),
+            str(it.get("name", "")).lower(),
+            str(it.get("display_name", "")).lower(),
+            str(it.get("filename", "")).lower(),
+        }
+        uri = it.get("gcs_uri") or it.get("final_video_url")
+        if needle in names and uri and uri.startswith("gs://"):
+            return uri
+    return None
+
+
+async def resolve_source_uri(
+    invite_code: str, ref: str, kind: str = "video"
+) -> Optional[str]:
+    """Resolve a user-supplied source reference to a gs:// URI.
+
+    Accepts a gs:// URI (returned as-is) or an id/name/filename. The agent
+    sometimes passes a production ID (e.g. 'p-...') or a display name instead of
+    the underlying URI; resolving it here stops a bad `file_uri`/source from
+    reaching the model or worker. `kind` selects which catalog to search:
+    "video" → productions + video uploads; "image" → adapt image uploads.
+    Returns None when nothing matches so the caller can open the source picker.
+    """
+    if not ref:
+        return None
+    if ref.startswith("gs://"):
+        return ref
+    needle = ref.strip().lower()
+
+    if kind == "image":
+        imgs = await api_call("GET", "/api/v1/adapts/sources/uploads", invite_code)
+        return _match_source(imgs, needle)
+
+    prods = await api_call("GET", "/api/v1/thumbnails/sources/productions", invite_code)
+    match = _match_source(prods, needle)
+    if match:
+        return match
+    ups = await api_call("GET", "/api/v1/promo/sources/uploads", invite_code)
+    return _match_source(ups, needle)
+
+
 def make_check_job_status(invite_code: str):
     async def check_job_status(job_type: str, job_id: str):
         """Check the status of a specific job."""
@@ -119,6 +196,15 @@ def make_list_available_videos(_invite_code: str):
     return list_available_videos
 
 
+def make_list_available_images(_invite_code: str):
+    async def list_available_images():
+        """Show available image sources (for adapts, which resize an image)."""
+        _request_context.get().update({"source_picker": "image"})
+        return "I've opened the image selector for you."
+
+    return list_available_images
+
+
 __all__ = [
     "AGENT_MODEL_ID",
     "List",
@@ -129,9 +215,12 @@ __all__ = [
     "display_name",
     "get_agent_context",
     "make_check_job_status",
+    "make_list_available_images",
     "make_list_available_videos",
+    "make_prompt_lister",
     "propose_job",
     "reset_agent_context",
     "resolve_prompt_name",
+    "resolve_source_uri",
     "_request_context",
 ]

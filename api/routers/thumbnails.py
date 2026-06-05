@@ -62,9 +62,23 @@ async def analyze_video_for_thumbnails(request: Request, body: dict):
         raise HTTPException(status_code=503, detail="Service not initialized")
     gcs_uri = body.get("gcs_uri")
     prompt_id = body.get("prompt_id")
+    logger.info(
+        "thumbnails/analyze request: source=%s mime=%s prompt_id=%s gcs_uri=%r",
+        body.get("video_source"),
+        body.get("mime_type"),
+        prompt_id,
+        gcs_uri,
+    )
     if not gcs_uri or not prompt_id:
         raise HTTPException(
             status_code=400, detail="gcs_uri and prompt_id are required"
+        )
+    if not gcs_uri.startswith("gs://"):
+        # Guard against a non-video reference (e.g. a production ID) reaching
+        # the model, which returns an opaque 500 INTERNAL instead of a 400.
+        raise HTTPException(
+            status_code=400,
+            detail=f"gcs_uri must be a gs:// video URI, got: {gcs_uri!r}",
         )
     try:
         result = await deps.ai_svc.analyze_video_for_thumbnails(

@@ -82,6 +82,13 @@ async def analyze_key_moments(request: Request, body: dict):
         raise HTTPException(
             status_code=400, detail="gcs_uri and prompt_id are required"
         )
+    if not gcs_uri.startswith("gs://"):
+        # Guard against a non-video reference (e.g. a production ID) reaching
+        # the model, which returns an opaque 500 INTERNAL instead of a 400.
+        raise HTTPException(
+            status_code=400,
+            detail=f"gcs_uri must be a gs:// video URI, got: {gcs_uri!r}",
+        )
     try:
         result = await deps.ai_svc.analyze_video_key_moments(
             gcs_uri=gcs_uri,

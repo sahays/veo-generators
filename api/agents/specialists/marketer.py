@@ -7,17 +7,45 @@ from google.adk.models.google_llm import Gemini
 
 from .. import tools as agent_tools
 from .._shared import (
+    _request_context,
     build_specialist,
     display_name,
     make_check_job_status,
+    make_list_available_images,
     make_list_available_videos,
     propose_job,
+    resolve_source_uri,
 )
 
+
+def _fallback(kind: str) -> str:
+    noun = "images" if kind == "image" else "videos"
+    selector = "image" if kind == "image" else "video"
+    return (
+        f"I couldn't match that to one of your {noun}. I've opened the "
+        f"{selector} selector — pick the source and I'll continue."
+    )
+
+
+async def _resolve_or_pick(
+    invite_code: str, gcs_uri: str, kind: str = "video"
+) -> str | None:
+    resolved = await resolve_source_uri(invite_code, gcs_uri, kind=kind)
+    if not resolved:
+        _request_context.get().update(
+            {"source_picker": "image" if kind == "image" else True}
+        )
+    return resolved
+
+
 _MARKETER_ROLE = (
-    "You are the Marketing Expert. You create promos and social adaptations.\n"
-    "IMPORTANT: Call list_adapt_options() before creating adapts to show the user "
-    "valid aspect ratios and preset bundles.\n"
+    "You are the Marketing Expert. You create promos (from a VIDEO) and social "
+    "adaptations (adapts, which resize an IMAGE).\n"
+    "Open the right picker for the source before proposing:\n"
+    "- Promo: call list_available_videos() for the source video, then propose_promo().\n"
+    "- Adapt: call list_available_images() for the source image (adapts need an "
+    "image, NOT a video or production), then list_adapt_options() to show valid "
+    "aspect ratios / preset bundles, then propose_adapts().\n"
     "IMPORTANT: Use propose_* tools to create confirmation cards. "
     "Never execute jobs directly — always let the user review and confirm first."
 )
@@ -55,6 +83,9 @@ def _make_marketer_tools(invite_code: str) -> list:
         text_overlay: bool = False,
     ):
         """Propose a new promo. Returns a confirmation card."""
+        gcs_uri = await _resolve_or_pick(invite_code, gcs_uri, kind="video")
+        if not gcs_uri:
+            return _fallback("video")
         return propose_job(
             "promo",
             f"Create {target_duration // 60}-min promo",
@@ -71,7 +102,10 @@ def _make_marketer_tools(invite_code: str) -> list:
     async def propose_adapts(
         gcs_uri: str, aspect_ratios: List[str], source_filename: str = ""
     ):
-        """Propose adapting a video for multiple platforms. Returns a confirmation card."""
+        """Propose adapting an image for multiple platforms. Returns a confirmation card."""
+        gcs_uri = await _resolve_or_pick(invite_code, gcs_uri, kind="image")
+        if not gcs_uri:
+            return _fallback("image")
         data = await agent_tools.list_aspect_ratios(invite_code)
         valid = data.get("ratios", []) if isinstance(data, dict) else []
         if valid:
@@ -100,6 +134,7 @@ def _make_marketer_tools(invite_code: str) -> list:
         propose_promo,
         propose_adapts,
         make_list_available_videos(invite_code),
+        make_list_available_images(invite_code),
         make_check_job_status(invite_code),
     ]
 

@@ -5,17 +5,45 @@ from google.adk.models.google_llm import Gemini
 
 from .. import tools as agent_tools
 from .._shared import (
+    _request_context,
     build_specialist,
     display_name,
     make_check_job_status,
     make_list_available_videos,
+    make_prompt_lister,
     propose_job,
     resolve_prompt_name,
+    resolve_source_uri,
 )
+
+# Returned when a source reference can't be matched to a real gs:// video, so
+# the agent opens the picker instead of proposing a job with a bad URI.
+_SOURCE_PICKER_FALLBACK = (
+    "I couldn't match that to one of your videos. I've opened the video "
+    "selector — pick the source and I'll continue."
+)
+
+
+async def _resolve_or_pick(invite_code: str, gcs_uri: str) -> str | None:
+    """Resolve a source reference to a gs:// URI, or open the picker and bail."""
+    resolved = await resolve_source_uri(invite_code, gcs_uri)
+    if not resolved:
+        _request_context.get().update({"source_picker": True})
+    return resolved
+
 
 _EDITOR_ROLE = (
     "You are the Video Editor. You process existing videos (reframe, key moments, thumbnails).\n"
-    "IMPORTANT: Call list_content_types() before reframing to pick the correct content type.\n"
+    "Before proposing a job, gather its inputs by opening pickers for the user — never ask "
+    "them to type a URI or prompt ID:\n"
+    "- Reframe: call list_available_videos() for the source, then list_content_types() to pick "
+    "the content type, then propose_reframe().\n"
+    "- Key moments: call list_available_videos() for the source, then list_key_moment_prompts() "
+    "so the user picks an analysis prompt, then propose_key_moments().\n"
+    "- Thumbnails: call list_available_videos() for the source, then list_thumbnail_prompts() so "
+    "the user picks an analysis prompt, then propose_thumbnails(). After the thumbnail job is "
+    "confirmed, tell the user to open the result to capture frames and generate the final "
+    "collage on the Thumbnails page.\n"
     "IMPORTANT: Use propose_* tools to create confirmation cards. "
     "Never execute jobs directly — always let the user review and confirm first."
 )
@@ -58,6 +86,9 @@ def _make_editor_tools(invite_code: str) -> list:
         gcs_uri: str, content_type: str = "other", source_filename: str = ""
     ):
         """Propose a reframe. Returns a confirmation card."""
+        gcs_uri = await _resolve_or_pick(invite_code, gcs_uri)
+        if not gcs_uri:
+            return _SOURCE_PICKER_FALLBACK
         by_id = await _content_type_index(invite_code)
         if by_id and content_type not in by_id:
             return (
@@ -85,6 +116,9 @@ def _make_editor_tools(invite_code: str) -> list:
         gcs_uri: str, prompt_id: str, source_filename: str = ""
     ):
         """Propose a Key Moments analysis. Returns a confirmation card."""
+        gcs_uri = await _resolve_or_pick(invite_code, gcs_uri)
+        if not gcs_uri:
+            return _SOURCE_PICKER_FALLBACK
         return propose_job(
             "key_moments",
             "Analyze key moments",
@@ -103,6 +137,9 @@ def _make_editor_tools(invite_code: str) -> list:
         gcs_uri: str, prompt_id: str, source_filename: str = ""
     ):
         """Propose thumbnail generation/analysis. Returns a confirmation card."""
+        gcs_uri = await _resolve_or_pick(invite_code, gcs_uri)
+        if not gcs_uri:
+            return _SOURCE_PICKER_FALLBACK
         return propose_job(
             "thumbnails",
             "Generate thumbnails",
@@ -122,6 +159,12 @@ def _make_editor_tools(invite_code: str) -> list:
         list_recent_key_moments,
         list_recent_thumbnails,
         list_content_types,
+        make_prompt_lister(
+            invite_code, "key-moments", "list_key_moment_prompts", "Key Moments"
+        ),
+        make_prompt_lister(
+            invite_code, "thumbnails", "list_thumbnail_prompts", "Thumbnail"
+        ),
         propose_reframe,
         propose_key_moments,
         propose_thumbnails,
