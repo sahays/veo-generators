@@ -1,10 +1,10 @@
 # Ask Aanya — Agent Tools & API Coverage
 
 How the in-app chat assistant ("Ask Aanya") maps to backend APIs. Aanya is an
-**orchestrator** that handles pricing itself and routes everything else to three
-**specialists**. Every job-creating action is **propose → confirm**: a tool records
-a proposal that renders a confirmation card; the job only runs when the user clicks
-**Confirm** (the frontend then calls the create endpoint directly).
+**orchestrator** that routes the user's intent to one of three **specialists**.
+Every job-creating action is **propose → confirm**: a tool records a proposal that
+renders a confirmation card; the job only runs when the user clicks **Confirm** (the
+frontend then calls the create endpoint directly).
 
 - Backend agents: `api/agents/factory.py` (orchestrator), `api/agents/specialists/*`, shared helpers in `api/agents/_shared.py`, tool→API wrappers in `api/agents/tools/*`.
 - Chat endpoint: `POST /api/v1/chat` (`api/routers/chat.py`). Tools reach the API in-process via `agents/tools/_client.py`.
@@ -21,6 +21,110 @@ Routes the user's intent to the right specialist and relays its response:
 - Promos / adapts → **marketer**
 
 > Pricing/costing tools are intentionally omitted from this doc.
+
+---
+
+## Workflows — who calls what
+
+**Routing.** Every message enters through Aanya, which delegates to one specialist:
+
+```
+  User
+   │  "make a thumbnail from production X" / "create a 16:9 ad" / "adapt this image"
+   ▼
+  Aanya  (orchestrator, POST /api/v1/chat)
+   │  routes by intent
+   ├──▶ Director   productions · system prompts
+   ├──▶ Editor     reframe · key moments · thumbnails
+   └──▶ Marketer   promos · adapts
+```
+
+**The common shape.** Specialists never run a job directly. They gather inputs via
+pickers, then emit a proposal; the user confirms; the frontend calls the create endpoint:
+
+```
+  specialist ──▶ open picker(s)         (source, prompt, options)
+             ──▶ resolve source ref → gs://   (else re-open the picker)
+             ──▶ propose_*()  ──▶  ConfirmationCard
+                                        │  user clicks Confirm
+                                        ▼
+                          frontend POSTs the create endpoint
+```
+
+### Thumbnails (Editor) — full path incl. the page handoff
+
+```
+ User: "make a thumbnail from production X"
+   └─▶ Aanya ─▶ Editor
+        1. list_available_videos()   ─▶ VideoSourcePicker
+             GET /promo/sources/uploads + /promo/sources/productions
+           user picks ─▶ "Use production X (URI: gs://…)"
+        2. list_thumbnail_prompts()  ─▶ PromptPicker
+             GET /system/resources?type=prompt&category=thumbnails
+           user picks ─▶ "Use prompt … (ID: res-…)"
+        3. propose_thumbnails(gcs_uri, prompt_id)
+             └─ resolve_source_uri(video) → gs://…   └─ ConfirmationCard
+        4. Confirm ─▶ POST /api/v1/thumbnails/analyze        (frame metadata)
+        5. result "View" ─▶ /thumbnails/{id}  (page auto-captures frames)
+             ─▶ pick collage prompt ─▶ POST /api/v1/thumbnails/{id}/collage
+```
+
+### Key moments (Editor)
+
+```
+ Aanya ─▶ Editor
+   list_available_videos()       ─▶ VideoSourcePicker
+   list_key_moment_prompts()     ─▶ PromptPicker  (category=key-moments)
+   propose_key_moments(gcs_uri, prompt_id)
+        └─ resolve_source_uri(video) → ConfirmationCard
+   Confirm ─▶ POST /api/v1/key-moments/analyze
+```
+
+### Reframe (Editor)
+
+```
+ Aanya ─▶ Editor
+   list_available_videos()  ─▶ VideoSourcePicker
+   list_content_types()     ─▶ text list   (content type chosen on the card)
+   propose_reframe(gcs_uri, content_type)
+        └─ resolve_source_uri(video) → ConfirmationCard
+   Confirm ─▶ POST /api/v1/reframe
+```
+
+### Promo (Marketer) — video source
+
+```
+ Aanya ─▶ Marketer
+   list_available_videos()  ─▶ VideoSourcePicker
+   propose_promo(gcs_uri, target_duration, …)
+        └─ resolve_source_uri(video) → ConfirmationCard
+   Confirm ─▶ POST /api/v1/promo
+```
+
+### Adapts (Marketer) — image source
+
+```
+ Aanya ─▶ Marketer
+   list_available_images()  ─▶ ImageSourcePicker
+        GET /api/v1/adapts/sources/uploads
+   list_adapt_options()     ─▶ aspect ratios / preset bundles
+        GET /system/lookups/aspect-ratios
+   propose_adapts(gcs_uri, aspect_ratios)
+        └─ resolve_source_uri(image) → ConfirmationCard
+   Confirm ─▶ POST /api/v1/adapts
+```
+
+### Production (Director) — no media source
+
+```
+ Aanya ─▶ Director
+   list_prompt_categories()     GET /system/lookups/prompt-categories
+   list_prompts(category)   ─▶ PromptPicker
+        GET /system/resources?type=prompt&category=…
+   propose_production(name, base_concept, prompt_id?)
+        └─ ConfirmationCard
+   Confirm ─▶ POST /api/v1/productions
+```
 
 ---
 
