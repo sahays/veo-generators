@@ -17,15 +17,23 @@ export const SceneMediaCarousel = ({
   isGeneratingVideo,
 }: Props) => {
   const [activeSlide, setActiveSlide] = useState<'image' | 'video'>('image')
+  // Once the user manually picks a slide, stop auto-cycling so we don't yank
+  // them away from a video they're trying to watch.
+  const [pinned, setPinned] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const hasImage = !!thumbnailUrl
   const hasVideo = !!videoUrl
   const hasBoth = hasImage && hasVideo
   const isGenerating = isGeneratingFrame || isGeneratingVideo
 
-  // Auto-cycle between image and video when both exist.
+  const selectSlide = (slide: 'image' | 'video') => {
+    setPinned(true)
+    setActiveSlide(slide)
+  }
+
+  // Auto-cycle between image and video when both exist — until the user interacts.
   useEffect(() => {
-    if (!hasBoth || isGenerating) {
+    if (!hasBoth || isGenerating || pinned) {
       if (timerRef.current) clearInterval(timerRef.current)
       return
     }
@@ -33,13 +41,14 @@ export const SceneMediaCarousel = ({
       setActiveSlide((prev) => (prev === 'image' ? 'video' : 'image'))
     }, 5000)
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  }, [hasBoth, isGenerating])
+  }, [hasBoth, isGenerating, pinned])
 
-  // Show the right slide when only one media type exists.
+  // Show the right slide when only one media type exists (respect a user pin).
   useEffect(() => {
+    if (pinned) return
     if (hasVideo && !hasImage) setActiveSlide('video')
     else setActiveSlide('image')
-  }, [hasImage, hasVideo])
+  }, [hasImage, hasVideo, pinned])
 
   if (isGeneratingFrame) return <_GeneratingPlaceholder label="Generating frame..." />
   if (isGeneratingVideo) return <_GeneratingPlaceholder label="Generating video..." />
@@ -65,6 +74,8 @@ export const SceneMediaCarousel = ({
             src={videoUrl}
             controls
             playsInline
+            onPlay={() => setPinned(true)}
+            onClick={() => setPinned(true)}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -80,13 +91,13 @@ export const SceneMediaCarousel = ({
             active={activeSlide === 'image'}
             icon={<ImageIcon size={8} />}
             label="IMG"
-            onClick={() => setActiveSlide('image')}
+            onClick={() => selectSlide('image')}
           />
           <_SlideButton
             active={activeSlide === 'video'}
             icon={<Video size={8} />}
             label="VID"
-            onClick={() => setActiveSlide('video')}
+            onClick={() => selectSlide('video')}
           />
         </div>
       )}
