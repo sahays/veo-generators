@@ -2,7 +2,7 @@
 
 > AI-powered video production platform built on Google **Veo**, **Gemini**, **Imagen**, and supporting GCP media services. VeoGen turns a one-line concept into a scripted, storyboarded, rendered, and stitched video — and offers a suite of derivative tools (reframing, promos, aspect-ratio adapts, thumbnails, key-moments, and live avatars).
 
-This document describes the system at a high level: its components, how they communicate, and the principal data and control flows. For deeper detail on the job model, data schema, pricing, and failure handling, see [SYSTEM_DESIGN.md](./SYSTEM_DESIGN.md). For the end-user feature walkthrough, see [README.md](./README.md).
+This document describes the system at a high level: its components, how they communicate, and the principal data and control flows. For deeper detail on the job model, data schema, pricing, and failure handling, see [system-design.md](./system-design.md). For the end-user feature walkthrough, see [README.md](./README.md).
 
 ---
 

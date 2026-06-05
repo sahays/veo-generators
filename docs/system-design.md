@@ -1,6 +1,6 @@
 # VeoGen — System Design
 
-This document drills into the *how*: the async job model, the data schema, request lifecycles per feature, the pricing/cost engine, scaling and failure behavior, and known trade-offs. For the high-level component map, read [ARCHITECTURE.md](./ARCHITECTURE.md) first.
+This document drills into the *how*: the async job model, the data schema, request lifecycles per feature, the pricing/cost engine, scaling and failure behavior, and known trade-offs. For the high-level component map, read [architecture.md](./architecture.md) first.
 
 ---
 
