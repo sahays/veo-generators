@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 from google.cloud import storage
 
 SIGN_DURATION = timedelta(hours=48)
-REFRESH_THRESHOLD = timedelta(minutes=5)
 
 
 class StorageService:
@@ -155,19 +154,16 @@ class StorageService:
         return self.bucket.blob(path).exists()
 
     def resolve_cached_url(self, gcs_uri: str, cache: dict) -> tuple[str, bool]:
-        """Return (signed_url, changed) using cache. Only re-signs if close to expiry."""
+        """Return (signed_url, changed) for a GCS URI by signing fresh each call.
+
+        We intentionally do NOT reuse a persisted signed URL. Signatures are
+        produced via IAM signBlob using the service account's Google-managed key,
+        which rotates ~daily; once it rotates, any previously cached URL fails
+        with SignatureDoesNotMatch (403) long before its X-Goog-Expires elapses.
+        Signing fresh always uses the current key, so the browser's immediate
+        fetch succeeds. `changed` is always False so callers skip the now-dead
+        Firestore cache write-back. `cache` is accepted for signature stability.
+        """
         if not gcs_uri or not gcs_uri.startswith("gs://"):
             return gcs_uri or "", False
-
-        cached = cache.get(gcs_uri)
-        if cached and cached.get("expires_at"):
-            try:
-                expires_at = datetime.fromisoformat(cached["expires_at"])
-                if expires_at - datetime.now(timezone.utc) > REFRESH_THRESHOLD:
-                    return cached["url"], False
-            except (ValueError, TypeError):
-                pass
-
-        entry = self._generate_signed_url(gcs_uri)
-        cache[gcs_uri] = entry
-        return entry["url"], True
+        return self._generate_signed_url(gcs_uri)["url"], False
