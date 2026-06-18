@@ -3,7 +3,6 @@ import { Smartphone, Archive, Film } from 'lucide-react'
 import { cn, getTimeAgo } from '@/lib/utils'
 import { api } from '@/lib/api'
 import { LandingPageShell } from '@/components/shared/LandingPageShell'
-import { CONTENT_TYPE_BADGE } from '@/components/pages/reframe/contentTypes'
 
 const STATUS_STYLES: Record<string, string> = {
   pending: 'text-slate-600 bg-slate-500/10',
@@ -45,9 +44,6 @@ const ReframeCard = ({ record, onClick, onArchive, showArchive }: {
   onArchive: (e: React.MouseEvent) => void
   showArchive: boolean
 }) => {
-  const typeBadge = record.content_type && record.content_type !== 'other'
-    ? CONTENT_TYPE_BADGE[record.content_type]
-    : null
   return (
     <motion.button
       key={record.id}
@@ -84,11 +80,6 @@ const ReframeCard = ({ record, onClick, onArchive, showArchive }: {
           {record.status === 'processing' || record.status === 'encoding' || record.status === 'analyzing' ? (
             <span className="text-[9px] text-muted-foreground">{record.progress_pct}%</span>
           ) : null}
-          {typeBadge && (
-            <span className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border", typeBadge.className)}>
-              {typeBadge.label}
-            </span>
-          )}
           <span className={cn(
             "px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border",
             record.diagnostic_mode

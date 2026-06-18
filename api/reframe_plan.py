@@ -20,6 +20,19 @@ RUNG_TOLERANCE = 0.05  # accept a rung that covers within this of the requiremen
 KEEP_BOTH_SEPARATION = 0.30  # min face-center separation for keep-both
 STABLE_FRAC = 0.30  # a track must appear in ≥ this fraction of segment frames
 
+# Pan smoothing per Gemini scene_type → (max_velocity frac/s, deadzone frac).
+# Replaces the old global content_type setting: framing adapts per scene, so an
+# action beat and a dialogue beat in the same video pan differently.
+SCENE_TYPE_PARAMS: dict[str, Tuple[float, float]] = {
+    "dialogue": (0.10, 0.08),  # hold steady on speakers
+    "close-up": (0.08, 0.08),  # very stable
+    "action": (0.50, 0.02),  # track fast motion
+    "establishing": (0.10, 0.06),
+    "wide": (0.10, 0.06),
+    "general": (0.15, 0.05),
+}
+DEFAULT_SCENE_PARAMS: Tuple[float, float] = (0.15, 0.05)
+
 
 # ---------------------------------------------------------------------------
 # Rung selection
@@ -343,6 +356,7 @@ def reconcile(
                 "end": end,
                 "layout": d["layout"],
                 "inner_ar": rung,
+                "scene_type": scene.get("scene_type", "general"),
                 "crops": d["crops"],
                 "reason": (
                     f"C={d['C']:.2f} → {rung[0]}:{rung[1]} (covers {cov:.2f}), "
@@ -359,22 +373,21 @@ def reconcile(
     return merged
 
 
-def attach_keypoints(
-    segments: List[dict],
-    fps: float,
-    max_velocity: float = 0.15,
-    deadzone: float = 0.05,
-) -> List[dict]:
+def attach_keypoints(segments: List[dict], fps: float) -> List[dict]:
     """Smooth each crop's focal series into pan keypoints (per-segment, scene-bounded).
 
-    Replaces the static fallback keypoints with a velocity-limited path. Keypoints
-    are in absolute video time; the renderer rebases them per segment.
+    Pan velocity/deadzone are chosen per segment from its scene_type, so action
+    pans fast and dialogue holds steady. Keypoints are in absolute video time;
+    the renderer rebases them per segment.
     """
     from focal_path import smooth_focal_path
 
     for seg in segments:
         start = seg["start"]
         dur = max(0.001, seg["end"] - start)
+        max_velocity, deadzone = SCENE_TYPE_PARAMS.get(
+            seg.get("scene_type", ""), DEFAULT_SCENE_PARAMS
+        )
         for crop in seg["crops"]:
             pts = crop.get("focal_points") or [
                 {"time_sec": start, "x": crop.get("x_target", 0.5), "y": 0.5}

@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Smartphone, Loader2, ArrowLeft, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/Common'
-import { Select } from '@/components/UI'
 import { ModelRegionPicker } from '@/components/ModelRegionPicker'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -13,7 +12,6 @@ import { buildStatusConfig } from '@/hooks/jobStatus'
 import { VideoSourceSelector } from '@/components/shared/VideoSourceSelector'
 import { ReframeCompleted } from '@/components/pages/reframe/ReframeCompleted'
 import { ReframePipelineLinks } from '@/components/pages/reframe/ReframePipelineLinks'
-import { CONTENT_TYPE_OPTIONS, CONTENT_TYPE_BADGE } from '@/components/pages/reframe/contentTypes'
 
 import { ProgressBar } from '@/components/shared/ProgressBar'
 import { ErrorDisplay } from '@/components/shared/ErrorDisplay'
@@ -58,7 +56,6 @@ export const ReframeWorkPage = () => {
   )
 
   const [modelConfig, setModelConfig] = useState<{ modelId?: string; region?: string }>({})
-  const [contentType, setContentType] = useState('other')
   const [diagnosticMode, setDiagnosticMode] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -83,7 +80,6 @@ export const ReframeWorkPage = () => {
       const result = await api.reframe.create({
         gcs_uri: gcsUri,
         source_filename: videoFilename,
-        content_type: contentType,
         diagnostic_mode: diagnosticMode,
         model_id: modelConfig.modelId,
         region: modelConfig.region,
@@ -135,7 +131,6 @@ export const ReframeWorkPage = () => {
     if (!record) return null
 
     const isProcessing = ACTIVE_STATUSES.includes(record.status)
-    const badge = CONTENT_TYPE_BADGE[record.content_type] || CONTENT_TYPE_BADGE.other
     const hasPrompt = !!(record.prompt_text_used || (record.prompt_variables && Object.keys(record.prompt_variables).length > 0))
     const hasTrackSummary = !!record.track_summary
     const speakerSegments = record.speaker_segments as Array<{ speaker_id: string; start_sec: number; end_sec: number }> | undefined
@@ -153,11 +148,6 @@ export const ReframeWorkPage = () => {
           statusConfig={STATUS_CONFIG}
           activeStatuses={ACTIVE_STATUSES}
         >
-          {record.content_type && record.content_type !== 'other' && (
-            <span className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border", badge.className)}>
-              {badge.label}
-            </span>
-          )}
           {record.blurred_bg && (
             <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-600 border border-purple-500/20">
               Blurred BG
@@ -232,19 +222,6 @@ export const ReframeWorkPage = () => {
         </div>
       )}
 
-      {videoUrl && (
-        <div className="space-y-2">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Content Type</h3>
-          <Select
-            value={contentType}
-            onChange={setContentType}
-            options={CONTENT_TYPE_OPTIONS}
-            placeholder="Select content type..."
-          />
-        </div>
-      )}
-
-      {/* Prompt selector hidden — content type now drives the prompt via strategy template */}
 
       {videoUrl && (
         <div className="space-y-3">

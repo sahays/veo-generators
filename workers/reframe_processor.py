@@ -60,14 +60,11 @@ class ReframeProcessor(JobProcessor):
     def _run_diagnostic(self, record, record_id, src_path, out_path, probe, tmp):
         """Diagnostic mode: run detection, render detector overlays (no crop)."""
         from reframe_diagnostic import render_diagnostic
-        from reframe_strategies import get_strategy
 
-        content_type = record.content_type or "other"
-        strategy = get_strategy(content_type)
         has_audio = probe.get("has_audio", True)
 
         chirp_context = self._run_diarization(
-            record, record_id, src_path, probe, tmp, strategy, has_audio
+            record, record_id, src_path, probe, tmp, has_audio
         )
 
         self.update_status(record_id, "processing", 30)
@@ -89,7 +86,7 @@ class ReframeProcessor(JobProcessor):
         )
 
         scenes = self._analyze_scenes(
-            record, record_id, content_type, chirp_context, track_summary
+            record, record_id, chirp_context, track_summary
         )
 
         self.update_status(record_id, "processing", 60)
@@ -141,11 +138,8 @@ class ReframeProcessor(JobProcessor):
         from mediapipe_detection import scan_video_detections, track_faces
         from reframe_plan import attach_keypoints, reconcile
         from reframe_service import render_plan
-        from reframe_strategies import get_strategy
         from scene_detect import detect_cuts
 
-        content_type = record.content_type or "other"
-        strategy = get_strategy(content_type)
         has_audio = probe.get("has_audio", True)
         w, h, dur, fps = (
             probe["width"],
@@ -155,7 +149,7 @@ class ReframeProcessor(JobProcessor):
         )
 
         chirp_context = self._run_diarization(
-            record, record_id, src_path, probe, tmp, strategy, has_audio
+            record, record_id, src_path, probe, tmp, has_audio
         )
 
         self.update_status(record_id, "analyzing", 15)
@@ -177,14 +171,14 @@ class ReframeProcessor(JobProcessor):
         )
 
         scenes = self._analyze_scenes(
-            record, record_id, content_type, chirp_context, track_summary, cuts=cuts
+            record, record_id, chirp_context, track_summary, cuts=cuts
         )
 
         self.update_status(record_id, "processing", 40)
         segments = reconcile(
             scenes, tracked_frames, cuts, w, h, dur, person_frames=person_frames
         )
-        attach_keypoints(segments, fps, strategy["max_velocity"], strategy["deadzone"])
+        attach_keypoints(segments, fps)
         self._store_segment_plan(record_id, segments)
         logger.info(f"[reframe:{record_id}] plan: {len(segments)} segments")
 
@@ -212,17 +206,19 @@ class ReframeProcessor(JobProcessor):
         ]
         deps.firestore_svc.update_reframe_record(record_id, {"segment_plan": compact})
 
-    def _run_diarization(
-        self, record, record_id, src_path, probe, tmp, strategy, has_audio
-    ):
-        """Step 2: Chirp 3 speaker diarization (if enabled)."""
+    def _run_diarization(self, record, record_id, src_path, probe, tmp, has_audio):
+        """Step 2: Chirp 3 speaker diarization — runs whenever the source has audio.
+
+        Speaker turns only improve framing (who's talking → which face to follow);
+        Gemini ignores them when there's no dialogue, so always run when audio
+        is present rather than gating on a manual content type.
+        """
         chirp_context = ""
-        use_diarization = strategy.get("use_diarization", False)
         logger.info(
-            f"[reframe:{record_id}] Diarization: enabled={use_diarization}, "
-            f"audio={has_audio}, svc={'yes' if deps.diarization_svc else 'NO'}"
+            f"[reframe:{record_id}] Diarization: audio={has_audio}, "
+            f"svc={'yes' if deps.diarization_svc else 'NO'}"
         )
-        if not (use_diarization and has_audio and deps.diarization_svc):
+        if not (has_audio and deps.diarization_svc):
             return chirp_context
 
         self.update_status(record_id, "analyzing", 10)
@@ -259,16 +255,13 @@ class ReframeProcessor(JobProcessor):
         self,
         record,
         record_id,
-        content_type,
         chirp_context,
         track_summary="",
         cuts=None,
     ):
         """Step 3b: Gemini scene analysis, informed by cuts + MediaPipe tracks."""
         self.update_status(record_id, "analyzing", 20)
-        logger.info(
-            f"[reframe:{record_id}] Gemini scene analysis (type={content_type})"
-        )
+        logger.info(f"[reframe:{record_id}] Gemini scene analysis")
 
         # Combine Chirp + track summary as context for Gemini
         context = "\n\n".join(filter(None, [chirp_context, track_summary]))
@@ -276,7 +269,6 @@ class ReframeProcessor(JobProcessor):
             deps.ai_svc.analyze_video_scenes(
                 gcs_uri=record.source_gcs_uri,
                 mime_type="video/mp4",
-                content_type=content_type,
                 chirp_context=context,
                 cuts=cuts,
                 model_id=getattr(record, "model_id", None),
