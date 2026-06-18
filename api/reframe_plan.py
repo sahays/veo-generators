@@ -9,16 +9,23 @@ Output is a list of SegmentPlan dicts consumed by the renderer:
 """
 
 import bisect
+import math
 from typing import List, Optional, Tuple
 
 # Inner-AR rungs, tightest crop → loosest (most letterbox). Chosen by coverage.
 RUNGS: List[Tuple[int, int]] = [(9, 16), (4, 5), (1, 1), (16, 9)]
 
 MIN_DWELL = 2.0  # merge segments shorter than this (seconds)
+MAX_SEG_LEN = 5.0  # re-decide framing at least this often, even with no cut
+MERGE_X_TOL = 0.08  # only merge same-framing neighbours if the crop center agrees
 COVERAGE_MARGIN = 0.04  # safety margin added to measured detection width
 RUNG_TOLERANCE = 0.05  # accept a rung that covers within this of the requirement
 KEEP_BOTH_SEPARATION = 0.30  # min face-center separation for keep-both
 STABLE_FRAC = 0.30  # a track must appear in ≥ this fraction of segment frames
+# A single subject can never need full width — cap its coverage demand so a huge
+# (foreground / mis-measured) detection doesn't force 16:9 letterbox.
+FACE_W_CAP = 0.45  # → at most 1:1 from a single face
+PERSON_W_CAP = 0.60  # bodies are wider than faces, but still bounded
 
 # Pan smoothing per Gemini scene_type → (max_velocity frac/s, deadzone frac).
 # Replaces the old global content_type setting: framing adapts per scene, so an
@@ -242,7 +249,7 @@ def _decide_segment(scene, tracked_frames, person_frames, start, end, label_map)
             return {"layout": "keep_both", "crops": [crop], "C": min(1.0, c)}
 
         tgt = _match_track(stable, scene, label_map)
-        c = max(tgt["w"] + COVERAGE_MARGIN, c_text)
+        c = max(min(tgt["w"], FACE_W_CAP) + COVERAGE_MARGIN, c_text)
         crop = {"track_id": tgt["track_id"], "x_target": tgt["x"], "source": "face"}
         return {"layout": "single", "crops": [crop], "C": min(1.0, c)}
 
@@ -253,7 +260,7 @@ def _decide_segment(scene, tracked_frames, person_frames, start, end, label_map)
     if persons and frac >= STABLE_FRAC:
         mean_x = sum(p["x"] for p in persons) / len(persons)
         mean_w = sum(p["w"] for p in persons) / len(persons)
-        c = max(mean_w + COVERAGE_MARGIN, c_text)
+        c = max(min(mean_w, PERSON_W_CAP) + COVERAGE_MARGIN, c_text)
         crop = {"track_id": None, "x_target": mean_x, "source": "person"}
         return {"layout": "single", "crops": [crop], "C": min(1.0, c)}
 
@@ -268,8 +275,21 @@ def _decide_segment(scene, tracked_frames, person_frames, start, end, label_map)
 
 
 def _boundaries(cuts: List[float], duration: float) -> List[Tuple[float, float]]:
+    """Segment boundaries from cuts, subdivided so no segment exceeds MAX_SEG_LEN.
+
+    Subdivision makes framing robust to missed cuts: a long take (or a stretch
+    where cut detection failed) is re-decided every ~MAX_SEG_LEN seconds instead
+    of being one stale crop. Identical neighbours are recombined later by merge.
+    """
     pts = sorted({0.0, duration, *[c for c in cuts if 0.0 < c < duration]})
-    return [(pts[i], pts[i + 1]) for i in range(len(pts) - 1)]
+    out: List[Tuple[float, float]] = []
+    for i in range(len(pts) - 1):
+        a, b = pts[i], pts[i + 1]
+        n = max(1, math.ceil((b - a) / MAX_SEG_LEN))
+        step = (b - a) / n
+        for k in range(n):
+            out.append((a + k * step, b if k == n - 1 else a + (k + 1) * step))
+    return out
 
 
 def _scene_for(
@@ -287,11 +307,21 @@ def _merge_short(segments: List[dict], min_dwell: float) -> List[dict]:
     """Collapse identical neighbors and fold sub-dwell segments into the previous one."""
     if not segments:
         return []
+    def _cx(s):
+        return s["crops"][0].get("x_target", 0.5)
+
     out = [dict(segments[0])]
     for seg in segments[1:]:
         prev = out[-1]
         too_short = (seg["end"] - seg["start"]) < min_dwell
-        same = seg["inner_ar"] == prev["inner_ar"] and seg["layout"] == prev["layout"]
+        # Same framing AND the crop is on the same spot — otherwise keep separate
+        # so each subdivided cell re-frames its own subject (don't smear a pan
+        # across two different subjects).
+        same = (
+            seg["inner_ar"] == prev["inner_ar"]
+            and seg["layout"] == prev["layout"]
+            and abs(_cx(seg) - _cx(prev)) <= MERGE_X_TOL
+        )
         if same or too_short:
             # Extend prev; keep the looser rung so we never crop out the short bit.
             prev["end"] = seg["end"]

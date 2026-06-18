@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 def detect_cuts(
     video_path: str,
-    threshold: float = 27.0,
+    threshold: float = 20.0,
     min_scene_len_frames: int = 15,
 ) -> List[float]:
     """Return interior cut timestamps (seconds), sorted, excluding 0 and end.

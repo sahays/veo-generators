@@ -7,10 +7,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from reframe_plan import (
     RUNGS,
+    MAX_SEG_LEN,
     rung_coverage,
     pick_rung,
     reconcile,
     attach_keypoints,
+    _boundaries,
     _global_label_map,
     _match_track,
     _keep_both_pair,
@@ -256,3 +258,37 @@ class TestAttachKeypoints:
         # keypoints are absolute-time tuples within the segment
         assert all(0.0 <= t <= 3.0 for (t, _x, _y) in kps)
         assert all(0.0 <= x <= 1.0 for (_t, x, _y) in kps)
+
+
+# ---------------------------------------------------------------------------
+# Robustness fixes (rf-dx59lar6 regressions)
+# ---------------------------------------------------------------------------
+
+
+class TestRobustness:
+    def test_long_span_is_subdivided(self):
+        # A 5-minute stretch with no detected cuts must not be one segment.
+        bounds = _boundaries([], 300.0)
+        assert len(bounds) > 1
+        assert all((e - s) <= MAX_SEG_LEN + 1e-6 for s, e in bounds)
+        assert bounds[0][0] == 0.0 and bounds[-1][1] == 300.0
+
+    def test_huge_single_face_not_letterboxed(self):
+        # A foreground / mis-measured face (w≈0.96) must not force 16:9.
+        tracked = [_frame(t, [_tr(1, 0.3, w=0.96)]) for t in range(0, 6)]
+        scenes = [
+            {"start_sec": 0, "end_sec": 6, "scene_type": "general",
+             "active_subject": "center", "min_horizontal_coverage": 0.3}
+        ]
+        plan = reconcile(scenes, tracked, cuts=[], src_w=3840, src_h=2160, duration=6.0)
+        assert all(s["inner_ar"] != (16, 9) for s in plan)
+
+    def test_distinct_subjects_not_merged(self):
+        # Adjacent cells following different subjects stay separate (re-frame each).
+        tr = [_frame(t, [_tr(1, 0.2)]) for t in range(0, 5)]
+        tr += [_frame(t, [_tr(2, 0.8)]) for t in range(5, 10)]
+        sc = [{"start_sec": 0, "end_sec": 10, "scene_type": "general",
+               "active_subject": "largest", "min_horizontal_coverage": 0.3}]
+        plan = reconcile(sc, tr, cuts=[], src_w=3840, src_h=2160, duration=10.0)
+        xs = [round(s["crops"][0]["x_target"], 1) for s in plan]
+        assert 0.2 in xs and 0.8 in xs  # both subjects framed, not smeared
