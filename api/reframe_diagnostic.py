@@ -169,8 +169,15 @@ def _annotate_frame(frame, t, ctx):
         if tr.get("mouth") is not None:  # ASD signal (mouth-aspect-ratio)
             cap += f" m{tr['mouth']:.2f}"
         _draw_box(
-            frame, cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2,
-            _RED, thick, cap, scale,
+            frame,
+            cx - bw / 2,
+            cy - bh / 2,
+            cx + bw / 2,
+            cy + bh / 2,
+            _RED,
+            thick,
+            cap,
+            scale,
         )
 
     # Top banner: Gemini scene label.

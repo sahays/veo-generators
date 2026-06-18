@@ -333,14 +333,25 @@ class TestRobustness:
 
 def _ftrm(t, specs):
     # specs: list of (track_id, x, mouth)
-    return {"time_sec": float(t), "tracks": [
-        {"track_id": tid, "x": x, "y": 0.45, "w": 0.1, "h": 0.2,
-         "confidence": 0.9, "mouth": m} for tid, x, m in specs
-    ]}
+    return {
+        "time_sec": float(t),
+        "tracks": [
+            {
+                "track_id": tid,
+                "x": x,
+                "y": 0.45,
+                "w": 0.1,
+                "h": 0.2,
+                "confidence": 0.9,
+                "mouth": m,
+            }
+            for tid, x, m in specs
+        ],
+    }
 
 
 class TestActiveSpeaker:
-    TALK = [0.10, 0.45, 0.10, 0.50, 0.12]   # mouth oscillates → speaking
+    TALK = [0.10, 0.45, 0.10, 0.50, 0.12]  # mouth oscillates → speaking
     STILL = [0.20, 0.21, 0.20, 0.19, 0.20]  # ~steady → listening
 
     def test_picks_clear_talker(self):
@@ -360,8 +371,14 @@ class TestActiveSpeaker:
             _ftrm(t, [(1, 0.30, self.TALK[t]), (2, 0.70, self.STILL[t])])
             for t in range(5)
         ]
-        scenes = [{"start_sec": 0, "end_sec": 5, "scene_type": "dialogue",
-                   "active_subject": "both"}]
+        scenes = [
+            {
+                "start_sec": 0,
+                "end_sec": 5,
+                "scene_type": "dialogue",
+                "active_subject": "both",
+            }
+        ]
         plan = reconcile(scenes, frames, cuts=[], src_w=1920, src_h=1080, duration=5.0)
         assert plan[0]["layout"] == "single"
         assert plan[0]["crops"][0]["source"] == "speaker"
@@ -372,7 +389,13 @@ class TestActiveSpeaker:
             _ftrm(t, [(1, 0.30, self.TALK[t]), (2, 0.70, self.TALK[t])])
             for t in range(5)
         ]
-        scenes = [{"start_sec": 0, "end_sec": 5, "scene_type": "dialogue",
-                   "active_subject": "both"}]
+        scenes = [
+            {
+                "start_sec": 0,
+                "end_sec": 5,
+                "scene_type": "dialogue",
+                "active_subject": "both",
+            }
+        ]
         plan = reconcile(scenes, frames, cuts=[], src_w=1920, src_h=1080, duration=5.0)
         assert plan[0]["layout"] == "keep_both"
