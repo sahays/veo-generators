@@ -6,6 +6,17 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$SCRIPT_DIR/.."
 cd "$PROJECT_ROOT"
 
+# Optional target: which service(s) to build + deploy.
+#   ./scripts/deploy.sh          → both (default)
+#   ./scripts/deploy.sh api      → API only (frontend bundles into this image)
+#   ./scripts/deploy.sh worker   → worker only
+TARGET="${1:-all}"
+if [[ "$TARGET" != "all" && "$TARGET" != "api" && "$TARGET" != "worker" ]]; then
+    echo "Usage: $0 [all|api|worker]  (default: all)"
+    exit 1
+fi
+echo "🎯 Deploy target: $TARGET"
+
 # Load environment variables from .env file
 if [ -f .env ]; then
     echo "📄 Loading configuration from .env..."
@@ -72,50 +83,55 @@ echo "🚀 Starting deployment for $SERVICE_NAME..."
 gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
 
 # ── API Service ──────────────────────────────────────────────
-echo "📦 Building API image..."
-docker build \
-  --build-arg VITE_GUEST_INVITE_CODE="${VITE_GUEST_INVITE_CODE}" \
-  -t $IMAGE_NAME .
+if [[ "$TARGET" == "all" || "$TARGET" == "api" ]]; then
+  echo "📦 Building API image..."
+  docker build \
+    --build-arg VITE_GUEST_INVITE_CODE="${VITE_GUEST_INVITE_CODE}" \
+    -t $IMAGE_NAME .
 
-echo "📤 Pushing API image..."
-docker push $IMAGE_NAME
+  echo "📤 Pushing API image..."
+  docker push $IMAGE_NAME
 
-echo "🚀 Deploying API to Cloud Run..."
-gcloud run deploy $SERVICE_NAME \
-  --project $PROJECT_ID \
-  --image $IMAGE_NAME \
-  --platform managed \
-  --region $REGION \
-  --allow-unauthenticated \
-  --cpu 8 \
-  --memory 16Gi \
-  --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCS_BUCKET=$GCS_BUCKET,GEMINI_REGION=$GEMINI_REGION,VEO_REGION=$VEO_REGION,SERVICE_NAME=$SERVICE_NAME,OPTIMIZE_PROMPT_MODEL=$OPTIMIZE_PROMPT_MODEL,STORYBOARD_MODEL=$STORYBOARD_MODEL,VIDEO_GEN_MODEL=$VIDEO_GEN_MODEL,MASTER_INVITE_CODE=$MASTER_INVITE_CODE,AVATAR_LIVE_LOCATION=${AVATAR_LIVE_LOCATION:-us-central1},AVATAR_LIVE_PROJECT=${AVATAR_LIVE_PROJECT:-ffeldhaus-avatar-demo},AVATAR_LIVE_PRESET_NAME=${AVATAR_LIVE_PRESET_NAME:-Kira}" \
-  --port 8080
+  echo "🚀 Deploying API to Cloud Run..."
+  gcloud run deploy $SERVICE_NAME \
+    --project $PROJECT_ID \
+    --image $IMAGE_NAME \
+    --platform managed \
+    --region $REGION \
+    --allow-unauthenticated \
+    --cpu 8 \
+    --memory 16Gi \
+    --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCS_BUCKET=$GCS_BUCKET,GEMINI_REGION=$GEMINI_REGION,VEO_REGION=$VEO_REGION,SERVICE_NAME=$SERVICE_NAME,OPTIMIZE_PROMPT_MODEL=$OPTIMIZE_PROMPT_MODEL,STORYBOARD_MODEL=$STORYBOARD_MODEL,VIDEO_GEN_MODEL=$VIDEO_GEN_MODEL,MASTER_INVITE_CODE=$MASTER_INVITE_CODE,AVATAR_LIVE_LOCATION=${AVATAR_LIVE_LOCATION:-us-central1},AVATAR_LIVE_PROJECT=${AVATAR_LIVE_PROJECT:-ffeldhaus-avatar-demo},AVATAR_LIVE_PRESET_NAME=${AVATAR_LIVE_PRESET_NAME:-Kira}" \
+    --port 8080
 
-echo "✅ API deployment complete!"
+  echo "✅ API deployment complete!"
+fi
 
 # ── Worker Service ───────────────────────────────────────────
-echo "📦 Building Worker image..."
-docker build -f Dockerfile.worker -t $WORKER_IMAGE_NAME .
+if [[ "$TARGET" == "all" || "$TARGET" == "worker" ]]; then
+  echo "📦 Building Worker image..."
+  docker build -f Dockerfile.worker -t $WORKER_IMAGE_NAME .
 
-echo "📤 Pushing Worker image..."
-docker push $WORKER_IMAGE_NAME
+  echo "📤 Pushing Worker image..."
+  docker push $WORKER_IMAGE_NAME
 
-echo "🚀 Deploying Worker to Cloud Run..."
-gcloud run deploy $WORKER_SERVICE_NAME \
-  --project $PROJECT_ID \
-  --image $WORKER_IMAGE_NAME \
-  --platform managed \
-  --region $REGION \
-  --no-allow-unauthenticated \
-  --execution-environment gen2 \
-  --cpu 8 \
-  --memory 16Gi \
-  --no-cpu-throttling \
-  --timeout 3600 \
-  --min-instances 1 \
-  --max-instances 1 \
-  --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCS_BUCKET=$GCS_BUCKET,GEMINI_REGION=$GEMINI_REGION,GOOGLE_CLOUD_LOCATION=$REGION,SERVICE_NAME=$SERVICE_NAME,OPTIMIZE_PROMPT_MODEL=$OPTIMIZE_PROMPT_MODEL,WORKER_POLL_INTERVAL=5,WORKER_MAX_CONCURRENT=1"
+  echo "🚀 Deploying Worker to Cloud Run..."
+  gcloud run deploy $WORKER_SERVICE_NAME \
+    --project $PROJECT_ID \
+    --image $WORKER_IMAGE_NAME \
+    --platform managed \
+    --region $REGION \
+    --no-allow-unauthenticated \
+    --execution-environment gen2 \
+    --cpu 8 \
+    --memory 16Gi \
+    --no-cpu-throttling \
+    --timeout 3600 \
+    --min-instances 1 \
+    --max-instances 1 \
+    --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCS_BUCKET=$GCS_BUCKET,GEMINI_REGION=$GEMINI_REGION,GOOGLE_CLOUD_LOCATION=$REGION,SERVICE_NAME=$SERVICE_NAME,OPTIMIZE_PROMPT_MODEL=$OPTIMIZE_PROMPT_MODEL,WORKER_POLL_INTERVAL=5,WORKER_MAX_CONCURRENT=1"
 
-echo "✅ Worker deployment complete!"
-echo "🎉 All services deployed!"
+  echo "✅ Worker deployment complete!"
+fi
+
+echo "🎉 Deploy ($TARGET) complete!"
