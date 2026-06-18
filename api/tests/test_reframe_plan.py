@@ -277,8 +277,13 @@ class TestRobustness:
         # A foreground / mis-measured face (w≈0.96) must not force 16:9.
         tracked = [_frame(t, [_tr(1, 0.3, w=0.96)]) for t in range(0, 6)]
         scenes = [
-            {"start_sec": 0, "end_sec": 6, "scene_type": "general",
-             "active_subject": "center", "min_horizontal_coverage": 0.3}
+            {
+                "start_sec": 0,
+                "end_sec": 6,
+                "scene_type": "general",
+                "active_subject": "center",
+                "min_horizontal_coverage": 0.3,
+            }
         ]
         plan = reconcile(scenes, tracked, cuts=[], src_w=3840, src_h=2160, duration=6.0)
         assert all(s["inner_ar"] != (16, 9) for s in plan)
@@ -287,8 +292,15 @@ class TestRobustness:
         # Adjacent cells following different subjects stay separate (re-frame each).
         tr = [_frame(t, [_tr(1, 0.2)]) for t in range(0, 5)]
         tr += [_frame(t, [_tr(2, 0.8)]) for t in range(5, 10)]
-        sc = [{"start_sec": 0, "end_sec": 10, "scene_type": "general",
-               "active_subject": "largest", "min_horizontal_coverage": 0.3}]
+        sc = [
+            {
+                "start_sec": 0,
+                "end_sec": 10,
+                "scene_type": "general",
+                "active_subject": "largest",
+                "min_horizontal_coverage": 0.3,
+            }
+        ]
         plan = reconcile(sc, tr, cuts=[], src_w=3840, src_h=2160, duration=10.0)
         xs = [round(s["crops"][0]["x_target"], 1) for s in plan]
         assert 0.2 in xs and 0.8 in xs  # both subjects framed, not smeared

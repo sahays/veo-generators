@@ -307,6 +307,7 @@ def _merge_short(segments: List[dict], min_dwell: float) -> List[dict]:
     """Collapse identical neighbors and fold sub-dwell segments into the previous one."""
     if not segments:
         return []
+
     def _cx(s):
         return s["crops"][0].get("x_target", 0.5)
 
