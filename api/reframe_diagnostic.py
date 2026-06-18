@@ -165,16 +165,12 @@ def _annotate_frame(frame, t, ctx):
         if bw <= 0 or bh <= 0:
             bw = bh = 0.08 * w  # fallback marker when no box dims
         label = ctx["labels"].get(tr["track_id"], str(tr["track_id"]))
+        cap = f"Track {label} {tr.get('confidence', 0):.2f}"
+        if tr.get("mouth") is not None:  # ASD signal (mouth-aspect-ratio)
+            cap += f" m{tr['mouth']:.2f}"
         _draw_box(
-            frame,
-            cx - bw / 2,
-            cy - bh / 2,
-            cx + bw / 2,
-            cy + bh / 2,
-            _RED,
-            thick,
-            f"Track {label} {tr.get('confidence', 0):.2f}",
-            scale,
+            frame, cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2,
+            _RED, thick, cap, scale,
         )
 
     # Top banner: Gemini scene label.

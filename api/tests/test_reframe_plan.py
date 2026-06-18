@@ -12,6 +12,7 @@ from reframe_plan import (
     pick_rung,
     reconcile,
     attach_keypoints,
+    pick_active_speaker,
     _boundaries,
     _global_label_map,
     _match_track,
@@ -323,3 +324,55 @@ class TestRobustness:
         attach_keypoints(plan, fps=25)
         xs = [x for _t, x, _y in plan[0]["crops"][0]["keypoints"]]
         assert all(abs(x - 0.5) < 0.02 for x in xs), xs
+
+
+# ---------------------------------------------------------------------------
+# Active-speaker detection (Phase 2)
+# ---------------------------------------------------------------------------
+
+
+def _ftrm(t, specs):
+    # specs: list of (track_id, x, mouth)
+    return {"time_sec": float(t), "tracks": [
+        {"track_id": tid, "x": x, "y": 0.45, "w": 0.1, "h": 0.2,
+         "confidence": 0.9, "mouth": m} for tid, x, m in specs
+    ]}
+
+
+class TestActiveSpeaker:
+    TALK = [0.10, 0.45, 0.10, 0.50, 0.12]   # mouth oscillates → speaking
+    STILL = [0.20, 0.21, 0.20, 0.19, 0.20]  # ~steady → listening
+
+    def test_picks_clear_talker(self):
+        assert pick_active_speaker({1: self.TALK, 2: self.STILL}) == 1
+
+    def test_both_moving_is_ambiguous(self):
+        assert pick_active_speaker({1: self.TALK, 2: self.TALK}) is None
+
+    def test_silence_returns_none(self):
+        assert pick_active_speaker({1: self.STILL, 2: self.STILL}) is None
+
+    def test_too_few_samples_returns_none(self):
+        assert pick_active_speaker({1: [0.1, 0.5]}) is None
+
+    def test_reconcile_frames_speaker_not_keepboth(self):
+        frames = [
+            _ftrm(t, [(1, 0.30, self.TALK[t]), (2, 0.70, self.STILL[t])])
+            for t in range(5)
+        ]
+        scenes = [{"start_sec": 0, "end_sec": 5, "scene_type": "dialogue",
+                   "active_subject": "both"}]
+        plan = reconcile(scenes, frames, cuts=[], src_w=1920, src_h=1080, duration=5.0)
+        assert plan[0]["layout"] == "single"
+        assert plan[0]["crops"][0]["source"] == "speaker"
+        assert abs(plan[0]["crops"][0]["x_target"] - 0.30) < 0.05  # on the talker
+
+    def test_reconcile_both_talking_keeps_both(self):
+        frames = [
+            _ftrm(t, [(1, 0.30, self.TALK[t]), (2, 0.70, self.TALK[t])])
+            for t in range(5)
+        ]
+        scenes = [{"start_sec": 0, "end_sec": 5, "scene_type": "dialogue",
+                   "active_subject": "both"}]
+        plan = reconcile(scenes, frames, cuts=[], src_w=1920, src_h=1080, duration=5.0)
+        assert plan[0]["layout"] == "keep_both"

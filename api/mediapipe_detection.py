@@ -280,10 +280,18 @@ def scan_video_detections(video_path: str, sample_fps: float = 4.0) -> List[dict
             if not ret:
                 break
             if idx % step == 0:
+                faces = detect_faces(frame, video_w, video_h)
+                # Mouth-aspect-ratio only matters when ≥2 faces compete (ASD) —
+                # skip the landmarker cost on single-face frames.
+                if len(faces) >= 2:
+                    from active_speaker import mouth_aspect_ratio
+
+                    for f in faces:
+                        f["mouth"] = mouth_aspect_ratio(frame, f)
                 frames_data.append(
                     {
                         "time_sec": idx / video_fps,
-                        "faces": detect_faces(frame, video_w, video_h),
+                        "faces": faces,
                         "persons": detect_persons(frame, video_w, video_h),
                     }
                 )
@@ -326,6 +334,7 @@ def track_faces(frames_data: List[dict], max_distance: float = 0.15) -> List[dic
                     "w": face.get("w", 0.0),
                     "h": face.get("h", 0.0),
                     "confidence": face.get("confidence", 0.5),
+                    "mouth": face.get("mouth"),  # MAR for ASD (None if unknown)
                 }
             )
             new_prev.append({"track_id": tid, "x": face["x"], "y": face["y"]})

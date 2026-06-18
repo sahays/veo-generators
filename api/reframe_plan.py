@@ -28,6 +28,13 @@ STABLE_FRAC = 0.30  # a track must appear in ≥ this fraction of segment frames
 FACE_W_CAP = 0.45  # → at most 1:1 from a single face
 PERSON_W_CAP = 0.60  # bodies are wider than faces, but still bounded
 
+# Active-speaker detection (Phase 2): in a multi-person shot, frame the talking
+# face (mouth moving) as a single crop instead of letterboxing both. Speaking is
+# measured as the variance of each track's mouth-aspect-ratio over the segment.
+SPEAKER_MIN_SAMPLES = 3  # need this many mouth samples to judge a track
+SPEAKER_MIN_ACTIVITY = 0.03  # MAR stdev below this = not talking
+SPEAKER_DOMINANCE = 1.6  # the speaker's activity must beat the 2nd by this factor
+
 # Pan smoothing per Gemini scene_type → (max_velocity frac/s, deadzone frac).
 # Replaces the old global content_type setting: framing adapts per scene, so an
 # action beat and a dialogue beat in the same video pan differently. Deadzones
@@ -170,6 +177,45 @@ def _match_track(stable: List[dict], scene: dict, label_map: dict) -> dict:
     return max(stable, key=lambda s: s["frac"])  # most prominent
 
 
+def pick_active_speaker(track_mouth: dict) -> Optional[int]:
+    """Track id of the clearly-talking face, or None if ambiguous/silent.
+
+    `track_mouth` maps track_id → list of mouth-aspect-ratio samples over the
+    window. Talking makes the ratio oscillate (high variance); a listener's
+    mouth is ~steady. Returns a speaker only when one track's activity clearly
+    dominates — otherwise None so the caller keeps both in frame.
+    """
+    acts = {
+        tid: statistics.pstdev(v)
+        for tid, v in track_mouth.items()
+        if len(v) >= SPEAKER_MIN_SAMPLES
+    }
+    if not acts:
+        return None
+    ranked = sorted(acts.items(), key=lambda kv: -kv[1])
+    top_tid, top = ranked[0]
+    if top < SPEAKER_MIN_ACTIVITY:
+        return None  # nobody clearly talking
+    if len(ranked) > 1 and ranked[1][1] * SPEAKER_DOMINANCE > top:
+        return None  # two mouths moving → ambiguous, keep both
+    return top_tid
+
+
+def _segment_track_mouth(tracked_frames, track_ids, start, end) -> dict:
+    """Per-track mouth-aspect-ratio samples within [start, end]."""
+    ids = set(track_ids)
+    out: dict = {tid: [] for tid in ids}
+    for f in tracked_frames:
+        t = f["time_sec"]
+        if t < start or t > end:
+            continue
+        for tr in f.get("tracks", []):
+            m = tr.get("mouth")
+            if tr["track_id"] in ids and m is not None:
+                out[tr["track_id"]].append(m)
+    return out
+
+
 def _keep_both_pair(stable: List[dict], scene: dict):
     """Return the two far-apart tracks to keep, or None for a single-subject crop."""
     if len(stable) < 2:
@@ -247,6 +293,22 @@ def _decide_segment(scene, tracked_frames, person_frames, start, end, label_map)
     if stable:
         pair = _keep_both_pair(stable, scene)
         if pair:
+            # ASD: if one of the two is clearly the talking face, frame on them
+            # (large) instead of letterboxing both.
+            mouth = _segment_track_mouth(
+                tracked_frames, [s["track_id"] for s in stable], start, end
+            )
+            speaker = pick_active_speaker(mouth)
+            tgt = next((s for s in stable if s["track_id"] == speaker), None)
+            if tgt:
+                c = max(min(tgt["w"], FACE_W_CAP) + COVERAGE_MARGIN, c_text)
+                crop = {
+                    "track_id": speaker,
+                    "x_target": tgt["x"],
+                    "source": "speaker",
+                }
+                return {"layout": "single", "crops": [crop], "C": min(1.0, c)}
+
             a, b = pair
             left = min(a["x"] - a["w"] / 2, b["x"] - b["w"] / 2)
             right = max(a["x"] + a["w"] / 2, b["x"] + b["w"] / 2)
@@ -348,7 +410,7 @@ def _attach_focal_points(seg, tracked_frames, person_frames):
     start, end = seg["start"], seg["end"]
     for crop in seg["crops"]:
         src = crop.get("source")
-        if src == "face":
+        if src in ("face", "speaker"):
             pts = _track_series(tracked_frames, crop["track_id"], start, end)
         elif src == "person":
             pts = [
