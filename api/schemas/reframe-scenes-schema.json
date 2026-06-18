@@ -26,9 +26,22 @@
             "type": "string",
             "enum": ["dialogue", "action", "close-up", "establishing", "wide", "general"],
             "description": "Type of scene for framing decisions"
+          },
+          "layout": {
+            "type": "string",
+            "enum": ["single", "side_by_side", "text_card", "slide", "general"],
+            "description": "Spatial layout: 'single' (one subject), 'side_by_side' (two subjects apart, both matter), 'text_card' (full-width title/logo), 'slide' (presentation/graphic), or 'general'"
+          },
+          "requires_full_width": {
+            "type": "boolean",
+            "description": "True if essential content spans most of the frame width (full-width text/logo, slide, wide graphic) and must NOT be cropped to a narrow vertical window"
+          },
+          "min_horizontal_coverage": {
+            "type": "number",
+            "description": "Fraction of the frame WIDTH (0.0-1.0) that must remain visible to keep all essential content. ~0.3 for a single centered subject, ~0.5-0.6 for two people side by side, ~0.9-1.0 for full-width text/slides"
           }
         },
-        "required": ["start_sec", "end_sec", "description", "active_subject", "scene_type"]
+        "required": ["start_sec", "end_sec", "description", "active_subject", "scene_type", "layout", "requires_full_width", "min_horizontal_coverage"]
       }
     }
   },

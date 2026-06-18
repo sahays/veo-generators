@@ -31,6 +31,7 @@ interface ReframeRecord {
   progress_pct: number
   content_type?: string
   blurred_bg?: boolean
+  diagnostic_mode?: boolean
   source_signed_url?: string
   output_signed_url?: string
   usage?: { cost_usd?: number }
@@ -90,11 +91,11 @@ const ReframeCard = ({ record, onClick, onArchive, showArchive }: {
           )}
           <span className={cn(
             "px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border",
-            record.blurred_bg
-              ? "bg-purple-500/10 text-purple-600 border-purple-500/20"
+            record.diagnostic_mode
+              ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
               : "bg-slate-500/10 text-slate-600 border-slate-500/20",
           )}>
-            {record.blurred_bg ? 'Blurred 4:5' : 'Crop 9:16'}
+            {record.diagnostic_mode ? 'Diagnostic' : 'Adaptive 9:16'}
           </span>
         </div>
 

@@ -145,12 +145,57 @@ def _keep_both_pair(stable: List[dict], scene: dict):
 
 
 # ---------------------------------------------------------------------------
-# Per-segment decision
+# Per-frame focal series (for intra-segment panning)
 # ---------------------------------------------------------------------------
 
 
-def _decide_segment(scene, tracked_frames, start, end, label_map):
-    """Decide layout, focal target(s) and required coverage for one segment."""
+def _track_series(tracked_frames, track_id, start, end):
+    """The chosen face track's (time, x, y) samples within [start, end]."""
+    out = []
+    for f in tracked_frames:
+        t = f["time_sec"]
+        if t < start or t > end:
+            continue
+        for tr in f.get("tracks", []):
+            if tr["track_id"] == track_id:
+                out.append({"time_sec": t, "x": tr["x"], "y": tr.get("y", 0.5)})
+                break
+    return out
+
+
+def _segment_persons(person_frames, start, end):
+    """Per-frame largest person within [start, end] → {time_sec, x, y, w}."""
+    out = []
+    for f in person_frames or []:
+        t = f["time_sec"]
+        if t < start or t > end:
+            continue
+        ps = f.get("persons", [])
+        if not ps:
+            continue
+        big = max(ps, key=lambda p: p.get("w", 0.0) * p.get("h", 0.0))
+        out.append(
+            {
+                "time_sec": t,
+                "x": big["x"],
+                "y": big.get("y", 0.5),
+                "w": big.get("w", 0.0),
+            }
+        )
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Per-segment decision (always one crop in the MVP; split is Phase 3)
+# ---------------------------------------------------------------------------
+
+
+def _decide_segment(scene, tracked_frames, person_frames, start, end, label_map):
+    """Decide layout, focal target and required coverage for one segment.
+
+    Falls back to person/body detection when no stable face is present (e.g. a
+    subject walking away), then to the Gemini spatial hint.
+    """
     stable = _stable_tracks(tracked_frames, start, end)
     c_text = (
         1.0
@@ -158,33 +203,38 @@ def _decide_segment(scene, tracked_frames, start, end, label_map):
         else float(scene.get("min_horizontal_coverage") or 0.0)
     )
 
-    if not stable:
-        crops = [{"track_id": None, "x_target": _hint_x(scene)}]
-        return {"layout": "single", "crops": crops, "C": min(1.0, c_text)}
+    # Margin pads the DETECTION-measured width (for tracker slop), not Gemini's
+    # stated coverage (which is already a minimum) — avoids double-padding.
+    if stable:
+        pair = _keep_both_pair(stable, scene)
+        if pair:
+            a, b = pair
+            left = min(a["x"] - a["w"] / 2, b["x"] - b["w"] / 2)
+            right = max(a["x"] + a["w"] / 2, b["x"] + b["w"] / 2)
+            center = (a["x"] + b["x"]) / 2
+            c = max((right - left) + COVERAGE_MARGIN, c_text)
+            crop = {"track_id": None, "x_target": center, "source": "center"}
+            return {"layout": "keep_both", "crops": [crop], "C": min(1.0, c)}
 
-    pair = _keep_both_pair(stable, scene)
-    if pair:
-        a, b = pair
-        left = min(a["x"] - a["w"] / 2, b["x"] - b["w"] / 2)
-        right = max(a["x"] + a["w"] / 2, b["x"] + b["w"] / 2)
-        c_faces = max(0.0, right - left)
-        center = (a["x"] + b["x"]) / 2
-        crops = [
-            {"track_id": a["track_id"], "x_target": a["x"]},
-            {"track_id": b["track_id"], "x_target": b["x"]},
-        ]
-        c = max(c_faces, c_text) + COVERAGE_MARGIN
-        return {
-            "layout": "keep_both",
-            "crops": crops,
-            "C": min(1.0, c),
-            "center": center,
-        }
+        tgt = _match_track(stable, scene, label_map)
+        c = max(tgt["w"] + COVERAGE_MARGIN, c_text)
+        crop = {"track_id": tgt["track_id"], "x_target": tgt["x"], "source": "face"}
+        return {"layout": "single", "crops": [crop], "C": min(1.0, c)}
 
-    tgt = _match_track(stable, scene, label_map)
-    c = max(tgt["w"], c_text) + COVERAGE_MARGIN
-    crops = [{"track_id": tgt["track_id"], "x_target": tgt["x"]}]
-    return {"layout": "single", "crops": crops, "C": min(1.0, c), "center": tgt["x"]}
+    # No stable face → try person/body detection.
+    persons = _segment_persons(person_frames, start, end)
+    seg_frames = [f for f in (person_frames or []) if start <= f["time_sec"] <= end]
+    frac = len(persons) / max(1, len(seg_frames))
+    if persons and frac >= STABLE_FRAC:
+        mean_x = sum(p["x"] for p in persons) / len(persons)
+        mean_w = sum(p["w"] for p in persons) / len(persons)
+        c = max(mean_w + COVERAGE_MARGIN, c_text)
+        crop = {"track_id": None, "x_target": mean_x, "source": "person"}
+        return {"layout": "single", "crops": [crop], "C": min(1.0, c)}
+
+    # Nothing detected → Gemini spatial hint, rely on c_text.
+    crop = {"track_id": None, "x_target": _hint_x(scene), "source": "center"}
+    return {"layout": "single", "crops": [crop], "C": min(1.0, c_text)}
 
 
 # ---------------------------------------------------------------------------
@@ -230,15 +280,29 @@ def _merge_short(segments: List[dict], min_dwell: float) -> List[dict]:
     return out
 
 
-def _fill_keypoints(seg: dict) -> None:
-    """Attach static pan keypoints (crop center over the segment) for rendering.
-
-    Phase 1 replaces these with smooth_focal_path output; static centering is
-    enough for the diagnostic crop-window overlay and the spike.
-    """
-    center = seg.pop("_center", 0.5)
+def _attach_focal_points(seg, tracked_frames, person_frames):
+    """Attach the raw (time, x, y) focal series each crop should follow."""
+    start, end = seg["start"], seg["end"]
     for crop in seg["crops"]:
-        x = crop.get("x_target", center)
+        src = crop.get("source")
+        if src == "face":
+            pts = _track_series(tracked_frames, crop["track_id"], start, end)
+        elif src == "person":
+            pts = [
+                {"time_sec": p["time_sec"], "x": p["x"], "y": p["y"]}
+                for p in _segment_persons(person_frames, start, end)
+            ]
+        else:
+            pts = []
+        crop["focal_points"] = pts or [
+            {"time_sec": start, "x": crop.get("x_target", 0.5), "y": 0.5}
+        ]
+
+
+def _fill_keypoints(seg: dict) -> None:
+    """Static fallback keypoints so a segment is renderable before smoothing."""
+    for crop in seg["crops"]:
+        x = crop.get("x_target", 0.5)
         crop["keypoints"] = [(seg["start"], x, 0.5), (seg["end"], x, 0.5)]
 
 
@@ -249,8 +313,9 @@ def reconcile(
     src_w: int,
     src_h: int,
     duration: float,
+    person_frames: Optional[List[dict]] = None,
 ) -> List[dict]:
-    """Build the per-segment crop plan from cuts + Gemini scenes + MediaPipe tracks."""
+    """Build the per-segment crop plan from cuts + Gemini scenes + detections."""
     label_map = _global_label_map(tracked_frames)
     scene_starts = [s.get("start_sec", 0.0) for s in scenes]
     bounds = _boundaries(cuts, duration)
@@ -259,7 +324,7 @@ def reconcile(
     prev_rung: Optional[Tuple[int, int]] = None
     for start, end in bounds:
         scene = _scene_for(scenes, scene_starts, start, end)
-        d = _decide_segment(scene, tracked_frames, start, end, label_map)
+        d = _decide_segment(scene, tracked_frames, person_frames, start, end, label_map)
         rung = pick_rung(d["C"], src_w, src_h, prev_rung)
         prev_rung = rung
         cov = rung_coverage(rung, src_w, src_h)
@@ -270,15 +335,49 @@ def reconcile(
                 "layout": d["layout"],
                 "inner_ar": rung,
                 "crops": d["crops"],
-                "_center": d.get("center", 0.5),
                 "reason": (
                     f"C={d['C']:.2f} → {rung[0]}:{rung[1]} (covers {cov:.2f}), "
-                    f"{d['layout']}, subject={scene.get('active_subject', 'n/a')}"
+                    f"{d['layout']}, src={d['crops'][0].get('source')}, "
+                    f"hint={scene.get('active_subject', 'n/a')}"
                 ),
             }
         )
 
     merged = _merge_short(raw, MIN_DWELL)
     for seg in merged:
+        _attach_focal_points(seg, tracked_frames, person_frames)
         _fill_keypoints(seg)
     return merged
+
+
+def attach_keypoints(
+    segments: List[dict],
+    fps: float,
+    max_velocity: float = 0.15,
+    deadzone: float = 0.05,
+) -> List[dict]:
+    """Smooth each crop's focal series into pan keypoints (per-segment, scene-bounded).
+
+    Replaces the static fallback keypoints with a velocity-limited path. Keypoints
+    are in absolute video time; the renderer rebases them per segment.
+    """
+    from focal_path import smooth_focal_path
+
+    for seg in segments:
+        start = seg["start"]
+        dur = max(0.001, seg["end"] - start)
+        for crop in seg["crops"]:
+            pts = crop.get("focal_points") or [
+                {"time_sec": start, "x": crop.get("x_target", 0.5), "y": 0.5}
+            ]
+            local = [
+                {
+                    "time_sec": max(0.0, min(dur, p["time_sec"] - start)),
+                    "x": p["x"],
+                    "y": p.get("y", 0.5),
+                }
+                for p in pts
+            ]
+            kl = smooth_focal_path(local, [], dur, fps, max_velocity, deadzone)
+            crop["keypoints"] = [(t + start, x, y) for (t, x, y) in kl]
+    return segments

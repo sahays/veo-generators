@@ -10,7 +10,7 @@ from cost_tracking import (
     accumulate_text_cost_on,
     accumulate_transcoder_cost,
 )
-from models import FocalPoint, SpeakerSegment
+from models import SpeakerSegment
 
 from base_processor import JobProcessor, TempFileManager
 from _reframe_helpers import format_chirp_context, format_track_summary
@@ -137,46 +137,80 @@ class ReframeProcessor(JobProcessor):
         return src_path, probe
 
     def _run_ai_reframe(self, record, record_id, src_path, out_path, probe, tmp):
-        """AI reframe: diarize → MediaPipe detect → Gemini scenes → merge → smooth → crop."""
-        from reframe_service import execute_reframe
+        """v2 adaptive letterbox: cuts → detect → Gemini → plan → smooth → render."""
+        from mediapipe_detection import scan_video_detections, track_faces
+        from reframe_plan import attach_keypoints, reconcile
+        from reframe_service import render_plan
         from reframe_strategies import get_strategy
+        from scene_detect import detect_cuts
 
         content_type = record.content_type or "other"
         strategy = get_strategy(content_type)
         has_audio = probe.get("has_audio", True)
+        w, h, dur, fps = (
+            probe["width"],
+            probe["height"],
+            probe["duration"],
+            probe["fps"],
+        )
 
         chirp_context = self._run_diarization(
             record, record_id, src_path, probe, tmp, strategy, has_audio
         )
 
-        self.update_status(record_id, "processing", 15)
-        tracked_frames = self._run_mediapipe(record_id, src_path)
+        self.update_status(record_id, "analyzing", 15)
+        cuts = detect_cuts(src_path)
+        logger.info(f"[reframe:{record_id}] {len(cuts)} cuts detected")
+
+        # Faces + persons in one decode pass; faces drive subject framing, persons
+        # cover subjects with no visible face (distant, profile, walking away).
+        det_frames = scan_video_detections(src_path, sample_fps=1.0)
+        tracked_frames = track_faces(
+            [{"time_sec": f["time_sec"], "faces": f["faces"]} for f in det_frames]
+        )
+        person_frames = [
+            {"time_sec": f["time_sec"], "persons": f["persons"]} for f in det_frames
+        ]
         track_summary = format_track_summary(tracked_frames)
         deps.firestore_svc.update_reframe_record(
             record_id, {"track_summary": track_summary}
         )
 
         scenes = self._analyze_scenes(
-            record, record_id, content_type, chirp_context, track_summary
+            record, record_id, content_type, chirp_context, track_summary, cuts=cuts
         )
-        focal_raw = self._merge_scenes_and_tracks(
-            record_id, scenes, tracked_frames, probe["duration"]
-        )
-        keypoints = self._smooth(record_id, focal_raw, probe, strategy)
 
-        self.update_status(record_id, "processing", 45)
-        logger.info(
-            f"[reframe:{record_id}] Running FFmpeg crop (blurred_bg={record.blurred_bg})"
+        self.update_status(record_id, "processing", 40)
+        segments = reconcile(
+            scenes, tracked_frames, cuts, w, h, dur, person_frames=person_frames
         )
-        execute_reframe(
+        attach_keypoints(segments, fps, strategy["max_velocity"], strategy["deadzone"])
+        self._store_segment_plan(record_id, segments)
+        logger.info(f"[reframe:{record_id}] plan: {len(segments)} segments")
+
+        self.update_status(record_id, "processing", 50)
+        render_plan(
             src_path=src_path,
             out_path=out_path,
-            keypoints=keypoints,
-            src_w=probe["width"],
-            src_h=probe["height"],
+            segments=segments,
+            src_w=w,
+            src_h=h,
             has_audio=has_audio,
-            blurred_bg=record.blurred_bg,
         )
+
+    def _store_segment_plan(self, record_id, segments):
+        """Persist a compact, JSON-safe summary of the plan for UI/debug."""
+        compact = [
+            {
+                "start": round(s["start"], 2),
+                "end": round(s["end"], 2),
+                "layout": s["layout"],
+                "inner_ar": list(s["inner_ar"]),
+                "reason": s.get("reason", ""),
+            }
+            for s in segments
+        ]
+        deps.firestore_svc.update_reframe_record(record_id, {"segment_plan": compact})
 
     def _run_diarization(
         self, record, record_id, src_path, probe, tmp, strategy, has_audio
@@ -222,9 +256,15 @@ class ReframeProcessor(JobProcessor):
         return chirp_context
 
     def _analyze_scenes(
-        self, record, record_id, content_type, chirp_context, track_summary=""
+        self,
+        record,
+        record_id,
+        content_type,
+        chirp_context,
+        track_summary="",
+        cuts=None,
     ):
-        """Step 3b: Gemini scene analysis, informed by MediaPipe tracks."""
+        """Step 3b: Gemini scene analysis, informed by cuts + MediaPipe tracks."""
         self.update_status(record_id, "analyzing", 20)
         logger.info(
             f"[reframe:{record_id}] Gemini scene analysis (type={content_type})"
@@ -238,6 +278,7 @@ class ReframeProcessor(JobProcessor):
                 mime_type="video/mp4",
                 content_type=content_type,
                 chirp_context=context,
+                cuts=cuts,
                 model_id=getattr(record, "model_id", None),
                 region=getattr(record, "region", None),
             )
@@ -275,37 +316,6 @@ class ReframeProcessor(JobProcessor):
         logger.info(f"[reframe:{record_id}] MediaPipe: {len(tracked)} tracked frames")
         return tracked
 
-    def _merge_scenes_and_tracks(self, record_id, scenes, tracked_frames, duration):
-        """Step 4: Merge Gemini scenes with MediaPipe tracks → focal points."""
-        from mediapipe_detection import merge_scenes_with_tracks
-
-        focal_raw = merge_scenes_with_tracks(scenes, tracked_frames, duration)
-        # Store focal points on record for display
-        deps.firestore_svc.update_reframe_record(
-            record_id,
-            {
-                "focal_points": [FocalPoint(**fp).dict() for fp in focal_raw],
-            },
-        )
-        logger.info(f"[reframe:{record_id}] Merged: {len(focal_raw)} focal points")
-        return focal_raw
-
-    def _smooth(self, record_id, focal_raw, probe, strategy):
-        """Step 5: Path smoothing with velocity limits."""
-        from reframe_service import smooth_focal_path
-
-        self.update_status(record_id, "processing", 35)
-        keypoints = smooth_focal_path(
-            focal_points=focal_raw,
-            scene_changes=[],
-            duration=probe["duration"],
-            fps=probe["fps"],
-            max_velocity=strategy["max_velocity"],
-            deadzone=strategy["deadzone"],
-        )
-        logger.info(f"[reframe:{record_id}] {len(keypoints)} keypoints after smoothing")
-        return keypoints
-
     def _upload_and_encode(self, record, record_id, out_path, probe):
         """Step 5-6: Upload to GCS and transcode."""
         has_audio = probe.get("has_audio", True)
@@ -319,11 +329,11 @@ class ReframeProcessor(JobProcessor):
             return intermediate_uri
 
         logger.info(f"[reframe:{record_id}] Starting Transcoder encode...")
+        # v2 always hands a finished 1080x1920 canvas — straight re-encode.
         job_name, output_uri = deps.transcoder_svc.reframe_encode(
             record_id,
             intermediate_uri,
             has_audio=has_audio,
-            blurred_bg=record.blurred_bg,
         )
         self._poll_transcoder(record_id, job_name)
         accumulate_transcoder_cost("reframe", record_id, probe["duration"] / 60.0)

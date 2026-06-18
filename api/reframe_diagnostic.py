@@ -147,8 +147,15 @@ def _annotate_frame(frame, t, ctx):
                 bw, bh = p.get("w", 0.0) * w, p.get("h", 0.0) * h
                 cx, cy = p["x"] * w, p["y"] * h
                 _draw_box(
-                    frame, cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2,
-                    _ORANGE, thick, f"Person {p.get('confidence', 0):.2f}", scale,
+                    frame,
+                    cx - bw / 2,
+                    cy - bh / 2,
+                    cx + bw / 2,
+                    cy + bh / 2,
+                    _ORANGE,
+                    thick,
+                    f"Person {p.get('confidence', 0):.2f}",
+                    scale,
                 )
 
     # Red: MediaPipe face tracks (held from the nearest sampled frame).

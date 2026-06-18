@@ -91,6 +91,9 @@ Your job is to identify SCENES and WHO to focus on in each scene.
 
 FACE TRACK DATA may be provided above — it tells you exactly which faces were detected and their typical horizontal positions (left/center/right). Use the track labels (Track A, Track B, etc.) in your active_subject field when available.
 
+DETECTED CUTS may be provided above — scene boundaries are already known. When they
+are, label each segment between consecutive cuts; do not invent different boundaries.
+
 For each scene, provide:
 - start_sec and end_sec (timestamps)
 - description: what's happening
@@ -99,12 +102,25 @@ For each scene, provide:
   * A spatial hint: "left", "right", "center"
   * "largest" for the most prominent person
 - scene_type: one of "dialogue", "action", "close-up", "establishing", "wide", "general"
+- layout: the spatial layout of essential content:
+  * "single" — one subject (default for most shots)
+  * "side_by_side" — two subjects far apart that BOTH matter (e.g. interview two-shot)
+  * "text_card" — full-width title/logo/credits
+  * "slide" — presentation slide or wide graphic
+  * "general" — none of the above
+- requires_full_width: true ONLY when essential content spans most of the frame width
+  (full-width text/logo, slide, wide graphic) so a narrow 9:16 crop would cut it off
+- min_horizontal_coverage: fraction of frame WIDTH (0.0-1.0) that must stay visible:
+  * ~0.3 for a single centered subject
+  * ~0.5-0.6 for two people side by side
+  * ~0.9-1.0 for full-width text / slides / wide graphics
 
 RULES:
 - Cover the entire video with no gaps between scenes
 - Scene boundaries should be at camera cuts or significant subject changes
 - For dialogue: alternate between the speaking person's track per scene
-- For close-ups: use "center" (the face fills the frame)
+- For close-ups: use "center", layout "single", low coverage
 - For wide/establishing shots: use "center"
 - For action: use "largest" to track the most prominent moving subject
+- For on-screen text/logos/slides: set requires_full_width=true and high coverage
 - Include t=0 to the final frame"""

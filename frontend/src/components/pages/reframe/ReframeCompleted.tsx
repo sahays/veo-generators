@@ -27,15 +27,14 @@ export const ReframeCompleted = ({ record }: Props) => (
       {record.output_signed_url && (
         <div className="space-y-2">
           <AnchorHeading id="reframed-video" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Reframed ({record.blurred_bg ? '4:5' : '9:16'})
+            Reframed (9:16)
           </AnchorHeading>
           <div
             className={cn(
               'bg-black rounded-xl overflow-hidden border border-border',
-              // Output file is always 9:16 (1080x1920). In blurred-bg mode the
-              // 4:5 content sits inside that frame with blur on top/bottom — so
-              // the container must be 9:16, else the portrait video pillarboxes
-              // (black bars left/right).
+              // Output is always a 9:16 (1080x1920) canvas; per-scene content may
+              // be letterboxed inside it, so the container must be 9:16 or the
+              // portrait video pillarboxes (black bars left/right).
               'aspect-[9/16] max-w-xs',
             )}
           >
@@ -54,7 +53,7 @@ export const ReframeCompleted = ({ record }: Props) => (
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-dark transition-colors"
         >
-          <Download size={16} /> Download {record.blurred_bg ? '4:5' : '9:16'} Video
+          <Download size={16} /> Download 9:16 Video
         </a>
       </div>
     )}

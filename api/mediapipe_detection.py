@@ -293,9 +293,7 @@ def scan_video_detections(video_path: str, sample_fps: float = 4.0) -> List[dict
 
     nf = sum(len(f["faces"]) for f in frames_data)
     np_ = sum(len(f["persons"]) for f in frames_data)
-    logger.info(
-        f"MediaPipe scan: {len(frames_data)} frames, {nf} faces, {np_} persons"
-    )
+    logger.info(f"MediaPipe scan: {len(frames_data)} frames, {nf} faces, {np_} persons")
     return frames_data
 
 

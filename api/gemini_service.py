@@ -303,10 +303,11 @@ class GeminiService:
         mime_type: str = "video/mp4",
         content_type: str = "other",
         chirp_context: str = "",
+        cuts: Optional[list] = None,
         model_id: Optional[str] = None,
         region: Optional[str] = None,
     ) -> AIResponseWrapper:
-        """Scene-based reframing analysis (used with MediaPipe)."""
+        """Scene-based reframing analysis (used with MediaPipe + PySceneDetect)."""
         model_id = resolve_model(
             self.firestore_svc,
             "text",
@@ -317,6 +318,13 @@ class GeminiService:
         client = self._get_client(region)
         prompt_text = SCENE_ANALYSIS_PROMPT
         prompt_variables = {"mode": "scene-based", "content_type": content_type}
+        if cuts:
+            cut_str = ", ".join(f"{c:.2f}s" for c in cuts)
+            prompt_text = (
+                f"=== DETECTED CUTS ===\nHard cuts at: {cut_str}\n"
+                "Label each segment between consecutive cuts (and 0/end).\n\n"
+                + prompt_text
+            )
         if chirp_context:
             prompt_text = chirp_context + "\n\n" + prompt_text
 

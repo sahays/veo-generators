@@ -125,6 +125,7 @@ class ReframeRecord(BaseModel):
     prompt_text_used: str = ""
     track_summary: str = ""
     gemini_scenes: list = Field(default_factory=list)
+    segment_plan: list = Field(default_factory=list)  # v2 per-segment crop plan
     status: str = "pending"  # pending|analyzing|processing|encoding|completed|failed
     error_message: Optional[str] = None
     progress_pct: int = 0

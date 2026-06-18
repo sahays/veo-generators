@@ -10,11 +10,21 @@ from reframe_plan import (
     rung_coverage,
     pick_rung,
     reconcile,
+    attach_keypoints,
     _global_label_map,
     _match_track,
     _keep_both_pair,
     _merge_short,
 )
+
+
+def _pframe(t, persons):
+    return {"time_sec": t, "persons": persons}
+
+
+def _person(x, w=0.15):
+    return {"x": x, "y": 0.5, "w": w, "h": 0.6, "confidence": 0.8}
+
 
 SRC_W, SRC_H = 1920, 1080
 
@@ -195,3 +205,40 @@ class TestReconcile:
         assert len(plan) == 1
         assert plan[0]["inner_ar"] == (9, 16)
         assert plan[0]["layout"] == "single"
+
+    def test_person_fallback_when_no_face(self):
+        # No faces, but a person walking away (e.g. trolley-at-night shot).
+        persons = [_pframe(0, [_person(0.6)]), _pframe(2, [_person(0.62)])]
+        scenes = [{"start_sec": 0, "end_sec": 4, "scene_type": "wide"}]
+        plan = reconcile(
+            scenes,
+            [],
+            cuts=[],
+            src_w=SRC_W,
+            src_h=SRC_H,
+            duration=4.0,
+            person_frames=persons,
+        )
+        assert len(plan) == 1
+        assert plan[0]["crops"][0]["source"] == "person"
+        # focal target follows the person, not default-center
+        assert plan[0]["crops"][0]["x_target"] > 0.55
+
+
+class TestAttachKeypoints:
+    def test_smooths_focal_points_into_keypoints(self):
+        tracked = [
+            _frame(0, [_tr(1, 0.3)]),
+            _frame(1, [_tr(1, 0.4)]),
+            _frame(2, [_tr(1, 0.5)]),
+        ]
+        scenes = [{"start_sec": 0, "end_sec": 3, "active_subject": "center"}]
+        plan = reconcile(
+            scenes, tracked, cuts=[], src_w=SRC_W, src_h=SRC_H, duration=3.0
+        )
+        attach_keypoints(plan, fps=30, max_velocity=0.3, deadzone=0.02)
+        kps = plan[0]["crops"][0]["keypoints"]
+        assert len(kps) >= 2
+        # keypoints are absolute-time tuples within the segment
+        assert all(0.0 <= t <= 3.0 for (t, _x, _y) in kps)
+        assert all(0.0 <= x <= 1.0 for (_t, x, _y) in kps)

@@ -19,6 +19,7 @@ from ffmpeg_runner import (
 from focal_path import smooth_focal_path
 from reframe_filters import (
     build_blurred_bg_filter,
+    build_canvas_filter,
     build_crop_filter,
 )
 
@@ -27,6 +28,7 @@ __all__ = [
     "ffprobe_video",
     "smooth_focal_path",
     "execute_reframe",
+    "render_plan",
 ]
 
 logger = logging.getLogger(__name__)
@@ -194,6 +196,87 @@ def _concat_chunks(chunk_paths: list, out_path: str, has_audio: bool) -> str:
         return out_path
     finally:
         _safe_unlink(list_path)
+
+
+# ---------------------------------------------------------------------------
+# Adaptive letterboxing (v2) — render a per-segment plan
+# ---------------------------------------------------------------------------
+
+
+def render_plan(
+    src_path: str,
+    out_path: str,
+    segments: List[dict],
+    src_w: int,
+    src_h: int,
+    has_audio: bool = True,
+) -> str:
+    """Render an adaptive-letterbox plan: each segment to its own inner AR, concat.
+
+    Boundaries are scene cuts. Audio is re-encoded per segment so it stays in sync
+    across the concat joins (input seeking + stream-copy would drift).
+    """
+    if not segments:
+        raise ValueError("render_plan: empty plan")
+
+    seg_paths = [
+        tempfile.mkstemp(suffix=f"_seg{i}.mp4")[1] for i in range(len(segments))
+    ]
+    workers = min(len(segments), NUM_PARALLEL_WORKERS)
+    try:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {
+                pool.submit(
+                    _render_segment,
+                    src_path,
+                    seg_paths[i],
+                    seg,
+                    src_w,
+                    src_h,
+                    has_audio,
+                ): i
+                for i, seg in enumerate(segments)
+            }
+            for f in as_completed(futures):
+                f.result()
+                logger.info(f"Segment {futures[f] + 1}/{len(segments)} rendered")
+        _concat_chunks(seg_paths, out_path, has_audio)
+        return out_path
+    finally:
+        for p in seg_paths:
+            _safe_unlink(p)
+
+
+def _render_segment(src_path, out_path, seg, src_w, src_h, has_audio) -> str:
+    """Render one plan segment with the unified canvas filter."""
+    ss = seg["start"]
+    dur = seg["end"] - ss
+    # Rebase keypoints to segment-local time (filter `t` resets after -ss seek).
+    kps = [(t - ss, x, y) for (t, x, y) in seg["crops"][0]["keypoints"]]
+    filter_str = build_canvas_filter(kps, src_w, src_h, tuple(seg["inner_ar"]))
+    cmd = _build_canvas_cmd(src_path, out_path, ss, dur, has_audio)
+    run_ffmpeg_with_filter(
+        cmd, filter_str, filter_flag="-/filter_complex", label="reframe-seg"
+    )
+    return out_path
+
+
+def _build_canvas_cmd(src_path, out_path, ss, dur, has_audio) -> list:
+    """FFmpeg command for one canvas segment (filter spliced in by the runner)."""
+    from ffmpeg_runner import _FILTER_PLACEHOLDER
+
+    parts = [
+        ["ffmpeg", "-y"],
+        ["-ss", f"{ss:.3f}"] if ss > 0 else [],
+        ["-i", src_path],
+        ["-t", f"{dur:.3f}"],
+        [_FILTER_PLACEHOLDER],
+        ["-map", "[v]"],
+        ["-map", "0:a?", "-c:a", "aac"] if has_audio else ["-an"],
+        ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "23"],
+        ["-movflags", "+faststart", out_path],
+    ]
+    return [arg for part in parts for arg in part]
 
 
 # ---------------------------------------------------------------------------
