@@ -69,7 +69,10 @@ def pick_rung(
         ),
         RUNGS[-1],
     )
-    if prev is not None and rung_coverage(prev, src_w, src_h) + RUNG_TOLERANCE >= required:
+    if (
+        prev is not None
+        and rung_coverage(prev, src_w, src_h) + RUNG_TOLERANCE >= required
+    ):
         if 0 <= RUNGS.index(prev) - RUNGS.index(ideal) <= 1:
             return prev
     return ideal

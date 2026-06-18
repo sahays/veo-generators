@@ -85,9 +85,7 @@ class ReframeProcessor(JobProcessor):
             record_id, {"track_summary": track_summary}
         )
 
-        scenes = self._analyze_scenes(
-            record, record_id, chirp_context, track_summary
-        )
+        scenes = self._analyze_scenes(record, record_id, chirp_context, track_summary)
 
         self.update_status(record_id, "processing", 60)
         logger.info(f"[reframe:{record_id}] Rendering diagnostic overlay...")

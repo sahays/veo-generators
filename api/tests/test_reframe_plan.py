@@ -239,7 +239,12 @@ class TestAttachKeypoints:
             _frame(2, [_tr(1, 0.5)]),
         ]
         scenes = [
-            {"start_sec": 0, "end_sec": 3, "active_subject": "center", "scene_type": "action"}
+            {
+                "start_sec": 0,
+                "end_sec": 3,
+                "active_subject": "center",
+                "scene_type": "action",
+            }
         ]
         plan = reconcile(
             scenes, tracked, cuts=[], src_w=SRC_W, src_h=SRC_H, duration=3.0
