@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from reframe_filters import (
     build_crop_filter,
     build_blurred_bg_filter,
+    build_canvas_filter,
     _to_pixel_keypoints,
 )
 
@@ -106,6 +107,50 @@ class TestBlurredBgFilter:
         kps = [(0.0, 0.2, 0.5), (5.0, 0.8, 0.5)]
         f = build_blurred_bg_filter(kps, 1920, 1080)
         assert "clip(" in f
+
+
+# ---------------------------------------------------------------------------
+# Unified canvas filter (v2 adaptive letterboxing)
+# ---------------------------------------------------------------------------
+
+
+class TestCanvasFilter:
+    SRC = (1920, 1080)
+
+    def test_9x16_is_full_bleed_no_bars(self):
+        f = build_canvas_filter(CENTER, *self.SRC, (9, 16))
+        assert "[bg]" not in f  # foreground covers the canvas
+        assert "overlay" not in f
+        assert f.endswith("[v]")
+        assert "scale=1080:1920" in f
+
+    def test_4x5_letterboxed_over_blur(self):
+        f = build_canvas_filter(CENTER, *self.SRC, (4, 5))
+        assert "gblur" in f and "[bg]" in f
+        assert "scale=1080:1350" in f
+        assert "overlay=0:285" in f  # (1920-1350)//2
+        assert f.endswith("[v]")
+
+    def test_1x1_geometry(self):
+        f = build_canvas_filter(CENTER, *self.SRC, (1, 1))
+        assert "scale=1080:1080" in f
+        assert "overlay=0:420" in f  # (1920-1080)//2
+        assert "crop=1080:1080" in f
+
+    def test_16x9_letterbox_full_width(self):
+        f = build_canvas_filter(CENTER, *self.SRC, (16, 9))
+        assert "scale=1080:608" in f
+        assert "overlay=0:656" in f  # (1920-608)//2
+        assert "crop=1920:1080" in f  # keeps the entire source width
+
+    def test_even_dimensions(self):
+        # All scale/crop targets must be even for libx264 + yuv420p.
+        for ar in [(9, 16), (4, 5), (1, 1), (16, 9)]:
+            f = build_canvas_filter(CENTER, *self.SRC, ar)
+            import re
+
+            for w, h in re.findall(r"scale=(\d+):(\d+)", f):
+                assert int(w) % 2 == 0 and int(h) % 2 == 0, (ar, w, h)
 
 
 # ---------------------------------------------------------------------------

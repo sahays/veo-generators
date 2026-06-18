@@ -11,6 +11,7 @@ python-dotenv
 slowapi
 opencv-python-headless
 mediapipe
+scenedetect
 google-adk
 google-cloud-aiplatform
 httpx

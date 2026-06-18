@@ -1,9 +1,17 @@
 FROM python:3.12-slim
 WORKDIR /app
 
-# Install system dependencies (ffmpeg for reframe processing)
+# System deps:
+#   ffmpeg                  — reframe processing
+#   libgl1 / libglib2.0-0   — OpenCV (scenedetect/mediapipe pull non-headless cv2)
+#   libegl1 / libgles2      — MediaPipe needs libEGL.so.1 / libGLESv2.so.2, else it
+#                             silently falls back to the weak Haar cascade detector.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    libgl1 \
+    libglib2.0-0 \
+    libegl1 \
+    libgles2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies (same as API)

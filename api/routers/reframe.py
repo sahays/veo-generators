@@ -27,6 +27,7 @@ class ReframeRequest(BaseModel):
     content_type: str = "other"
     blurred_bg: bool = False
     sports_mode: bool = False  # deprecated — use content_type="sports"
+    diagnostic_mode: bool = False  # render detector overlays instead of reframing
     model_id: Optional[str] = None
     region: Optional[str] = None
 
@@ -82,6 +83,7 @@ async def create_reframe(body: ReframeRequest, request: Request):
         content_type=content_type,
         blurred_bg=body.blurred_bg,
         sports_mode=body.sports_mode,
+        diagnostic_mode=body.diagnostic_mode,
         model_id=body.model_id,
         region=body.region,
         status="pending",

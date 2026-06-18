@@ -60,6 +60,7 @@ export const ReframeWorkPage = () => {
   const [modelConfig, setModelConfig] = useState<{ modelId?: string; region?: string }>({})
   const [contentType, setContentType] = useState('other')
   const [blurredBg, setBlurredBg] = useState(false)
+  const [diagnosticMode, setDiagnosticMode] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -85,6 +86,7 @@ export const ReframeWorkPage = () => {
         source_filename: videoFilename,
         content_type: contentType,
         blurred_bg: blurredBg,
+        diagnostic_mode: diagnosticMode,
         model_id: modelConfig.modelId,
         region: modelConfig.region,
       })
@@ -261,6 +263,23 @@ export const ReframeWorkPage = () => {
               </span>
               <p className="text-xs text-muted-foreground">
                 4:5 video centered with a blurred fill on top &amp; bottom — keeps more of the frame than the standard 9:16 crop
+              </p>
+            </div>
+          </label>
+
+          <label className="flex items-center gap-3 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={diagnosticMode}
+              onChange={(e) => setDiagnosticMode(e.target.checked)}
+              className="w-4 h-4 rounded border-border text-accent focus:ring-accent/30 cursor-pointer"
+            />
+            <div>
+              <span className="text-sm font-medium text-foreground group-hover:text-accent-dark transition-colors">
+                Diagnostic preview
+              </span>
+              <p className="text-xs text-muted-foreground">
+                Skip cropping — render the full frame letterboxed in 9:16 with detected faces and scene labels drawn on top, to see what the models see
               </p>
             </div>
           </label>

@@ -21,6 +21,12 @@ _FACE_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_detector
 _FACE_MODEL_PATH = None
 _face_detector = None
 
+# Person detector (EfficientDet-Lite) — catches bodies when no frontal face is
+# visible (distant, profile, low-light, or walking away from camera).
+_OBJECT_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/int8/latest/efficientdet_lite0.tflite"
+_OBJECT_MODEL_PATH = None
+_object_detector = None  # None = not tried; False = init failed (cached)
+
 
 def _ensure_model():
     """Download face detection model if not cached."""
@@ -116,6 +122,75 @@ def _detect_faces_haar(frame, video_w, video_h) -> List[dict]:
     ]
 
 
+def _ensure_object_model():
+    """Download the person/object detection model if not cached."""
+    global _OBJECT_MODEL_PATH
+    if _OBJECT_MODEL_PATH and os.path.exists(_OBJECT_MODEL_PATH):
+        return _OBJECT_MODEL_PATH
+    cache_dir = os.path.join(tempfile.gettempdir(), "mediapipe_models")
+    os.makedirs(cache_dir, exist_ok=True)
+    path = os.path.join(cache_dir, "efficientdet_lite0.tflite")
+    if not os.path.exists(path):
+        logger.info(f"Downloading MediaPipe object model to {path}...")
+        urllib.request.urlretrieve(_OBJECT_MODEL_URL, path)
+    _OBJECT_MODEL_PATH = path
+    return path
+
+
+def _get_object_detector():
+    """Lazy-init MediaPipe ObjectDetector limited to the 'person' class."""
+    global _object_detector
+    if _object_detector is not None:
+        return _object_detector or None  # False (cached failure) → None
+    try:
+        import mediapipe as mp
+
+        model_path = _ensure_object_model()
+        options = mp.tasks.vision.ObjectDetectorOptions(
+            base_options=mp.tasks.BaseOptions(model_asset_path=model_path),
+            score_threshold=0.3,
+            category_allowlist=["person"],
+        )
+        _object_detector = mp.tasks.vision.ObjectDetector.create_from_options(options)
+        logger.info("MediaPipe ObjectDetector initialized")
+        return _object_detector
+    except Exception as e:
+        logger.warning(f"MediaPipe ObjectDetector init failed: {e}")
+        _object_detector = False  # cache failure to avoid per-frame retries
+        return None
+
+
+def detect_persons(frame, video_w: int, video_h: int) -> List[dict]:
+    """Detect people (bodies) in a BGR frame. Returns list of {x, y, w, h, confidence}.
+
+    Complements face detection: finds subjects with no visible frontal face.
+    """
+    detector = _get_object_detector()
+    if not detector:
+        return []
+    import mediapipe as mp
+
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+    result = detector.detect(mp_image)
+
+    persons = []
+    for det in result.detections:
+        bb = det.bounding_box
+        cx = (bb.origin_x + bb.width / 2) / video_w
+        cy = (bb.origin_y + bb.height / 2) / video_h
+        persons.append(
+            {
+                "x": max(0.0, min(1.0, cx)),
+                "y": max(0.0, min(1.0, cy)),
+                "w": bb.width / video_w,
+                "h": bb.height / video_h,
+                "confidence": det.categories[0].score if det.categories else 0.5,
+            }
+        )
+    return persons
+
+
 def detect_motion(prev_frame, curr_frame, video_w: int, video_h: int) -> Optional[dict]:
     """Detect motion between two frames via frame differencing."""
     if prev_frame is None:
@@ -181,6 +256,49 @@ def scan_video_faces(video_path: str, sample_fps: float = 1.0) -> List[dict]:
     return frames_data
 
 
+def scan_video_detections(video_path: str, sample_fps: float = 4.0) -> List[dict]:
+    """Scan once, running BOTH face and person detection per sampled frame.
+
+    Returns list of {"time_sec", "faces": [...], "persons": [...]}. Single decode
+    pass so adding persons doesn't double the video read.
+    """
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        logger.warning(f"MediaPipe: failed to open {video_path}")
+        return []
+
+    video_fps = cap.get(cv2.CAP_PROP_FPS) or 30
+    video_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    video_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    step = max(1, int(video_fps / sample_fps))
+
+    frames_data = []
+    idx = 0
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            if idx % step == 0:
+                frames_data.append(
+                    {
+                        "time_sec": idx / video_fps,
+                        "faces": detect_faces(frame, video_w, video_h),
+                        "persons": detect_persons(frame, video_w, video_h),
+                    }
+                )
+            idx += 1
+    finally:
+        cap.release()
+
+    nf = sum(len(f["faces"]) for f in frames_data)
+    np_ = sum(len(f["persons"]) for f in frames_data)
+    logger.info(
+        f"MediaPipe scan: {len(frames_data)} frames, {nf} faces, {np_} persons"
+    )
+    return frames_data
+
+
 # ---------------------------------------------------------------------------
 # Simple position-based tracker
 # ---------------------------------------------------------------------------
@@ -207,6 +325,8 @@ def track_faces(frames_data: List[dict], max_distance: float = 0.15) -> List[dic
                     "track_id": tid,
                     "x": face["x"],
                     "y": face["y"],
+                    "w": face.get("w", 0.0),
+                    "h": face.get("h", 0.0),
                     "confidence": face.get("confidence", 0.5),
                 }
             )

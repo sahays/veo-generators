@@ -82,6 +82,59 @@ def build_blurred_bg_filter(
     )
 
 
+def _even(n: int) -> int:
+    """Round down to the nearest even int (libx264 + yuv420p require even dims)."""
+    return int(n) - (int(n) % 2)
+
+
+def _crop_x_offset(
+    keypoints: List[Tuple[float, float, float]],
+    src_w: int,
+    crop_w: int,
+    max_x: int,
+) -> str:
+    """Build the crop left-edge offset (a constant or a clamped time expression)."""
+    pixel_kps = _to_pixel_keypoints(keypoints, src_w, crop_w, max_x)
+    if not pixel_kps:
+        return str(max(0, (src_w - crop_w) // 2))
+    if len(pixel_kps) == 1:
+        return str(pixel_kps[0][1])
+    x_expr = _build_piecewise_linear_expr(pixel_kps)
+    return f"clip({x_expr}\\,0\\,{max_x})"
+
+
+def build_canvas_filter(
+    keypoints: List[Tuple[float, float, float]],
+    src_w: int,
+    src_h: int,
+    inner_ar: Tuple[int, int],
+) -> str:
+    """Unified per-segment filter_complex for any inner aspect ratio.
+
+    Crops a slice of the source matching `inner_ar`, scales it to fill the 1080px
+    canvas width, and centers it vertically over a blurred full-canvas background.
+    Subsumes the 9:16 (full-bleed) and 4:5 cases. Output label is [v].
+
+    inner_ar examples: (9,16) full-bleed, (4,5), (1,1), (16,9) letterbox.
+    """
+    aw, ah = inner_ar
+    out_w, out_h = 1080, 1920
+    fg_h = _even(round(out_w * ah / aw))
+    crop_w = _even(min(int(src_h * aw / ah), src_w))
+    if crop_w <= 0:
+        return f"[0:v]scale={out_w}:{out_h}[v]"
+    max_x = src_w - crop_w
+    x_off = _crop_x_offset(keypoints, src_w, crop_w, max_x)
+    fg_chain = f"crop={crop_w}:{src_h}:{x_off}:0,scale={out_w}:{fg_h}"
+
+    if fg_h >= out_h:  # full-bleed (e.g. 9:16) — foreground covers the canvas
+        return f"[0:v]{fg_chain}[v]"
+
+    y_off = (out_h - fg_h) // 2
+    bg = _blurred_bg_base(out_w, out_h)
+    return f"{bg};[0:v]{fg_chain}[fg];[bg][fg]overlay=0:{y_off}[v]"
+
+
 def _blurred_bg_base(out_w: int, out_h: int) -> str:
     """Background layer: scaled + heavily blurred source."""
     return (

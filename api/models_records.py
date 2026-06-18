@@ -113,6 +113,7 @@ class ReframeRecord(BaseModel):
     content_type: str = "other"
     blurred_bg: bool = False
     sports_mode: bool = False
+    diagnostic_mode: bool = False  # render detector overlays instead of reframing
     model_id: Optional[str] = None
     region: Optional[str] = None
     output_gcs_uri: Optional[str] = None

@@ -7,6 +7,7 @@ import time
 import deps
 from cost_tracking import (
     accumulate_diarization_cost,
+    accumulate_text_cost_on,
     accumulate_transcoder_cost,
 )
 from models import FocalPoint, SpeakerSegment
@@ -38,6 +39,15 @@ class ReframeProcessor(JobProcessor):
             src_path, probe = self._download_and_probe(record, record_id, tmp)
             out_path = tmp.create(suffix=".mp4")
 
+            if getattr(record, "diagnostic_mode", False):
+                self._run_diagnostic(record, record_id, src_path, out_path, probe, tmp)
+                output_uri = self._upload_diagnostic(record_id, out_path)
+                self.update_status(
+                    record_id, "completed", 100, output_gcs_uri=output_uri
+                )
+                logger.info(f"[reframe:{record_id}] Diagnostic done: {output_uri}")
+                return
+
             self._run_ai_reframe(record, record_id, src_path, out_path, probe, tmp)
 
             self.update_status(record_id, "processing", 65)
@@ -46,6 +56,61 @@ class ReframeProcessor(JobProcessor):
             logger.info(f"[reframe:{record_id}] Completed: {output_uri}")
         finally:
             tmp.cleanup()
+
+    def _run_diagnostic(self, record, record_id, src_path, out_path, probe, tmp):
+        """Diagnostic mode: run detection, render detector overlays (no crop)."""
+        from reframe_diagnostic import render_diagnostic
+        from reframe_strategies import get_strategy
+
+        content_type = record.content_type or "other"
+        strategy = get_strategy(content_type)
+        has_audio = probe.get("has_audio", True)
+
+        chirp_context = self._run_diarization(
+            record, record_id, src_path, probe, tmp, strategy, has_audio
+        )
+
+        self.update_status(record_id, "processing", 30)
+        # Sample densely (faces + persons) so overlay boxes track subjects closely
+        # instead of lingering on stale positions across cuts (this is a viz).
+        from mediapipe_detection import scan_video_detections, track_faces
+
+        logger.info(f"[reframe:{record_id}] MediaPipe scanning (faces+persons)...")
+        det_frames = scan_video_detections(src_path, sample_fps=4.0)
+        tracked_frames = track_faces(
+            [{"time_sec": f["time_sec"], "faces": f["faces"]} for f in det_frames]
+        )
+        person_frames = [
+            {"time_sec": f["time_sec"], "persons": f["persons"]} for f in det_frames
+        ]
+        track_summary = format_track_summary(tracked_frames)
+        deps.firestore_svc.update_reframe_record(
+            record_id, {"track_summary": track_summary}
+        )
+
+        scenes = self._analyze_scenes(
+            record, record_id, content_type, chirp_context, track_summary
+        )
+
+        self.update_status(record_id, "processing", 60)
+        logger.info(f"[reframe:{record_id}] Rendering diagnostic overlay...")
+        render_diagnostic(
+            src_path=src_path,
+            out_path=out_path,
+            tracked_frames=tracked_frames,
+            scenes=scenes,
+            src_w=probe["width"],
+            src_h=probe["height"],
+            has_audio=has_audio,
+            person_frames=person_frames,
+        )
+
+    def _upload_diagnostic(self, record_id, out_path):
+        """Upload the diagnostic video (already 1080x1920 — no transcode)."""
+        bucket = os.getenv("GCS_BUCKET")
+        uri = f"gs://{bucket}/reframes/{record_id}/diagnostic.mp4"
+        deps.storage_svc.upload_from_file(out_path, uri)
+        return uri
 
     # ------------------------------------------------------------------
     # Pipeline steps
@@ -183,19 +248,29 @@ class ReframeProcessor(JobProcessor):
             {
                 "prompt_variables": result.data.get("prompt_variables", {}),
                 "prompt_text_used": result.data.get("prompt_text_used", ""),
-                "usage": result.usage.dict(),
                 "gemini_scenes": scenes,
             },
+        )
+        # Accumulate (don't overwrite) Gemini usage so diarization/transcoder
+        # costs recorded before/after this step survive.
+        usage = result.usage
+        accumulate_text_cost_on(
+            "reframe",
+            record_id,
+            cost_usd=usage.cost_usd,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            model_name=usage.model_name,
         )
         logger.info(f"[reframe:{record_id}] {len(scenes)} scenes from Gemini")
         return scenes
 
-    def _run_mediapipe(self, record_id, src_path):
+    def _run_mediapipe(self, record_id, src_path, sample_fps: float = 0.5):
         """Step 3b: MediaPipe face/pose detection + tracking."""
         from mediapipe_detection import scan_video_faces, track_faces
 
-        logger.info(f"[reframe:{record_id}] MediaPipe scanning at 0.5fps...")
-        frames_data = scan_video_faces(src_path, sample_fps=0.5)
+        logger.info(f"[reframe:{record_id}] MediaPipe scanning at {sample_fps}fps...")
+        frames_data = scan_video_faces(src_path, sample_fps=sample_fps)
         tracked = track_faces(frames_data)
         logger.info(f"[reframe:{record_id}] MediaPipe: {len(tracked)} tracked frames")
         return tracked
