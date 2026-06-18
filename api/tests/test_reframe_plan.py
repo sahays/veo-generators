@@ -63,6 +63,12 @@ class TestPickRung:
     def test_full_width_picks_letterbox(self):
         assert pick_rung(0.99, SRC_W, SRC_H) == (16, 9)
 
+    def test_tolerance_prefers_tighter_near_boundary(self):
+        # 0.60 is just above 1:1's 0.5625 — tolerance keeps it at 1:1, not 16:9.
+        assert pick_rung(0.60, SRC_W, SRC_H) == (1, 1)
+        # but a genuinely wide requirement still letterboxes
+        assert pick_rung(0.75, SRC_W, SRC_H) == (16, 9)
+
     def test_hysteresis_keeps_prev_when_it_still_fits(self):
         # required fits in 4:5; prev is the looser 1:1 → stay to avoid flip-flop.
         assert pick_rung(0.40, SRC_W, SRC_H, prev=(1, 1)) == (1, 1)

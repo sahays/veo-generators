@@ -15,7 +15,8 @@ from typing import List, Optional, Tuple
 RUNGS: List[Tuple[int, int]] = [(9, 16), (4, 5), (1, 1), (16, 9)]
 
 MIN_DWELL = 2.0  # merge segments shorter than this (seconds)
-COVERAGE_MARGIN = 0.04  # safety margin added to required coverage
+COVERAGE_MARGIN = 0.04  # safety margin added to measured detection width
+RUNG_TOLERANCE = 0.05  # accept a rung that covers within this of the requirement
 KEEP_BOTH_SEPARATION = 0.30  # min face-center separation for keep-both
 STABLE_FRAC = 0.30  # a track must appear in ≥ this fraction of segment frames
 
@@ -42,12 +43,20 @@ def pick_rung(
     Hysteresis: if the previous rung still covers the content and is at most one
     rung looser than ideal, keep it (avoids single-step flip-flopping). A larger
     gap still tightens so we never stay needlessly letterboxed.
+
+    A small RUNG_TOLERANCE lets a tighter rung win when it *almost* covers the
+    requirement — trading a sliver of edge crop for much less letterboxing (e.g.
+    a two-shot needing 0.60 takes 1:1 at 0.5625 rather than full 16:9).
     """
     ideal = next(
-        (r for r in RUNGS if rung_coverage(r, src_w, src_h) + 1e-9 >= required),
+        (
+            r
+            for r in RUNGS
+            if rung_coverage(r, src_w, src_h) + RUNG_TOLERANCE >= required
+        ),
         RUNGS[-1],
     )
-    if prev is not None and rung_coverage(prev, src_w, src_h) + 1e-9 >= required:
+    if prev is not None and rung_coverage(prev, src_w, src_h) + RUNG_TOLERANCE >= required:
         if 0 <= RUNGS.index(prev) - RUNGS.index(ideal) <= 1:
             return prev
     return ideal
