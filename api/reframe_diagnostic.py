@@ -91,6 +91,12 @@ def _interp_x(keypoints: List[Tuple[float, float, float]], t: float) -> float:
 # ---------------------------------------------------------------------------
 
 
+def _ascii(text: str) -> str:
+    """OpenCV's Hershey font is ASCII-only — strip Unicode so captions/labels
+    (em-dashes, Gemini subject names, etc.) don't render as '???' in the video."""
+    return text.encode("ascii", "ignore").decode() if text else ""
+
+
 def _draw_box(frame, x0, y0, x1, y1, color, thickness, label=None, scale=0.6):
     """Draw a rectangle with an optional label chip above its top-left corner."""
     h, w = frame.shape[:2]
@@ -100,6 +106,7 @@ def _draw_box(frame, x0, y0, x1, y1, color, thickness, label=None, scale=0.6):
     y1 = max(0, min(h - 1, int(y1)))
     cv2.rectangle(frame, (x0, y0), (x1, y1), color, thickness)
     if label:
+        label = _ascii(label)
         (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, scale, 1)
         ly = max(th + 4, y0)
         cv2.rectangle(frame, (x0, ly - th - 4), (x0 + tw + 4, ly), color, -1)
@@ -123,7 +130,7 @@ def _draw_caption(frame, lines, scale):
     cv2.rectangle(frame, (0, 0), (w, row * len(lines) + 4), _BLACK, -1)
     for i, text in enumerate(lines):
         cv2.putText(
-            frame, text, (10, row * i + th + 6),
+            frame, _ascii(text), (10, row * i + th + 6),
             cv2.FONT_HERSHEY_SIMPLEX, scale, _WHITE, 2, cv2.LINE_AA,
         )
 
