@@ -249,6 +249,33 @@ Ship value early; don't build the split renderer before letterboxing is solid.
 **Phase 0 — v1 cleanup (prereq).** Fix v1 #1, #2, #5. These are required foundations
 (#2 especially) and are small. Do this first regardless of v2 timeline.
 
+**Phase 0.5 — validation spike (gate before building anything).**
+
+This architecture is a design, not a validated system. Two assumptions are
+load-bearing and *unproven* on real footage; if either fails, the approach needs
+rethinking. Spend days here, not weeks, before committing to Phase 1.
+
+Build a throwaway script (no integration, no UI) on **~10 real clips** spanning the
+edge cases: full-width text/logo, side-by-side podcast, presentation slides, plain
+single talking head, and fast-cut promo. Render each and eyeball it. Measure only:
+
+1. **Does `C` (required coverage) trigger correctly?** — letterbox fires on the wide
+   cases (logo/two-shot/slide) *without* false-triggering on the simple ones
+   (talking head should stay full-bleed 9:16). This tests whether `C_faces` /
+   `C_text` are reliable signals at all.
+2. **Do cut-snapped transitions look acceptable to a human?** — the "snap at cut,
+   no morph" aesthetic is an unverified claim. Watch the AR changes; they must read
+   as intentional, not janky.
+
+Secondary check: how coarse is Gemini's wide-text bbox? If it can't locate a logo
+well enough to drive `C_text`, that confirms DBNet (Phase 2, step 7) is required, not
+optional — pull it earlier.
+
+**Pass:** both criteria hold → architecture validated where it matters; proceed to
+Phase 1. **Fail:** `C` is noisy or transitions look bad → stop and rethink the signal
+or the snap model before writing production code. Cost of failing here is days; cost
+of discovering it in Phase 1 is weeks.
+
 **Phase 1 — adaptive letterbox MVP (no new CPU models).**
 1. Add `scene_detect.py` (PySceneDetect) → frame-accurate cuts.
 2. Generalize `reframe_filters` to the unified parametric filter.
