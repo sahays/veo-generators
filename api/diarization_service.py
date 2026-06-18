@@ -323,7 +323,9 @@ def _extract_word_segments(words) -> list:
     seg_start = None
 
     for word in words:
-        raw = word.speaker_label or str(word.speaker_tag)
+        # Current Speech API uses the string `speaker_label`; the old integer
+        # `speaker_tag` field was removed (accessing it now raises).
+        raw = (word.speaker_label or "").strip() or "1"
         speaker = f"Speaker {raw}" if not raw.startswith("Speaker") else raw
         if speaker != current_speaker:
             if current_speaker is not None and seg_start is not None:

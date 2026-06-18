@@ -246,7 +246,9 @@ class ReframeProcessor(JobProcessor):
             chirp_context = format_chirp_context(segments)
             accumulate_diarization_cost("reframe", record_id, probe["duration"] / 60.0)
         except Exception as e:
-            raise RuntimeError(f"Chirp 3 diarization failed: {e}") from e
+            # Diarization only enriches speaker framing — never fail the reframe
+            # because it broke. Degrade to no speaker context.
+            logger.warning(f"[reframe:{record_id}] Diarization skipped ({e})")
         return chirp_context
 
     def _analyze_scenes(
