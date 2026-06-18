@@ -5,6 +5,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/useAuthStore'
 import { cn } from '@/lib/utils'
+import { ShowMore } from '@/components/shared/ShowMore'
+import { useShowMore } from '@/hooks/useShowMore'
 import { UploadCard } from '@/components/pages/uploads/UploadCard'
 import { UploadDetailView } from '@/components/pages/uploads/UploadDetailView'
 import {
@@ -143,6 +145,7 @@ const UploadsLandingView = () => {
 
   const filteredRecords =
     filter === 'all' ? records : records.filter((r) => r.file_type === filter)
+  const { visible, hasMore, remaining, showMore } = useShowMore(filteredRecords, 10)
 
   if (isLoading) {
     return (
@@ -217,22 +220,25 @@ const UploadsLandingView = () => {
           No {filter} files found
         </p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredRecords.map((record) => (
-            <UploadCard
-              key={record.id}
-              record={record}
-              onClick={() => navigate(`/uploads/${record.id}`)}
-              onArchive={(e) => {
-                e.stopPropagation()
-                handleArchive(record.id)
-              }}
-              onCompress={(res) => handleCompress(record.id, res)}
-              compressingResolution={compressingMap[record.id]}
-              canEdit={canWrite}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {visible.map((record) => (
+              <UploadCard
+                key={record.id}
+                record={record}
+                onClick={() => navigate(`/uploads/${record.id}`)}
+                onArchive={(e) => {
+                  e.stopPropagation()
+                  handleArchive(record.id)
+                }}
+                onCompress={(res) => handleCompress(record.id, res)}
+                compressingResolution={compressingMap[record.id]}
+                canEdit={canWrite}
+              />
+            ))}
+          </div>
+          <ShowMore hasMore={hasMore} remaining={remaining} onClick={showMore} />
+        </>
       )}
     </div>
   )

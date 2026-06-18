@@ -4,6 +4,8 @@ import { Plus, FolderOpen, Clock, Loader2, CheckCircle2, AlertCircle, Image as I
 import { CostBreakdownPill } from '@/components/ads/CostBreakdownPill'
 import { cn, getTimeAgo } from '@/lib/utils'
 import { Button } from '@/components/Common'
+import { ShowMore } from '@/components/shared/ShowMore'
+import { useShowMore } from '@/hooks/useShowMore'
 import { useProjectStore } from '@/store/useProjectStore'
 import type { Project } from '@/types/project'
 import { useNavigate } from 'react-router-dom'
@@ -131,6 +133,7 @@ export const ProjectList = () => {
   const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
+  const { visible, hasMore, remaining, showMore } = useShowMore(projects, 10)
 
   useEffect(() => {
     api.projects.list()
@@ -199,17 +202,20 @@ export const ProjectList = () => {
           {canWrite && <Button icon={Plus} onClick={handleNewProject}>Create First Production</Button>}
         </motion.div>
       ) : (
-        <div className="grid grid-cols-1 gap-4">
-          {projects.map((project) => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              onClick={() => handleOpenProject(project.id)}
-              onArchive={(e) => { e.stopPropagation(); handleArchive(project.id) }}
-              showArchive={canWrite}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 gap-4">
+            {visible.map((project) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                onClick={() => handleOpenProject(project.id)}
+                onArchive={(e) => { e.stopPropagation(); handleArchive(project.id) }}
+                showArchive={canWrite}
+              />
+            ))}
+          </div>
+          <ShowMore hasMore={hasMore} remaining={remaining} onClick={showMore} />
+        </>
       )}
     </div>
   )

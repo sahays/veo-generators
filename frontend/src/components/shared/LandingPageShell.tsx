@@ -3,6 +3,8 @@ import { motion } from 'framer-motion'
 import { Loader2, type LucideIcon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/Common'
+import { ShowMore } from '@/components/shared/ShowMore'
+import { useShowMore } from '@/hooks/useShowMore'
 import { useAuthStore } from '@/store/useAuthStore'
 
 interface LandingPageShellProps<T> {
@@ -38,6 +40,7 @@ export const LandingPageShell = <T extends { id: string }>({
   const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
   const [records, setRecords] = useState<T[]>([])
   const [loading, setLoading] = useState(true)
+  const { visible, hasMore, remaining, showMore } = useShowMore(records, 10)
 
   useEffect(() => {
     fetchRecords()
@@ -95,16 +98,19 @@ export const LandingPageShell = <T extends { id: string }>({
           )}
         </motion.div>
       ) : (
-        <div className={gridClassName}>
-          {records.map((record) =>
-            renderCard(
-              record,
-              () => navigate(`${detailPath}/${record.id}`),
-              (e) => { e.stopPropagation(); handleArchive(record.id) },
-              canWrite,
-            )
-          )}
-        </div>
+        <>
+          <div className={gridClassName}>
+            {visible.map((record) =>
+              renderCard(
+                record,
+                () => navigate(`${detailPath}/${record.id}`),
+                (e) => { e.stopPropagation(); handleArchive(record.id) },
+                canWrite,
+              )
+            )}
+          </div>
+          <ShowMore hasMore={hasMore} remaining={remaining} onClick={showMore} />
+        </>
       )}
     </div>
   )
