@@ -10,6 +10,7 @@ Output is a list of SegmentPlan dicts consumed by the renderer:
 
 import bisect
 import math
+import statistics
 from typing import List, Optional, Tuple
 
 # Inner-AR rungs, tightest crop → loosest (most letterbox). Chosen by coverage.
@@ -29,16 +30,22 @@ PERSON_W_CAP = 0.60  # bodies are wider than faces, but still bounded
 
 # Pan smoothing per Gemini scene_type → (max_velocity frac/s, deadzone frac).
 # Replaces the old global content_type setting: framing adapts per scene, so an
-# action beat and a dialogue beat in the same video pan differently.
+# action beat and a dialogue beat in the same video pan differently. Deadzones
+# are small: a large deadzone freezes the crop at the first (often off-center)
+# keypoint and never re-centers — keep just enough to suppress detection jitter.
 SCENE_TYPE_PARAMS: dict[str, Tuple[float, float]] = {
-    "dialogue": (0.10, 0.08),  # hold steady on speakers
-    "close-up": (0.08, 0.08),  # very stable
+    "dialogue": (0.10, 0.02),  # hold steady on speakers
+    "close-up": (0.08, 0.02),  # very stable
     "action": (0.50, 0.02),  # track fast motion
-    "establishing": (0.10, 0.06),
-    "wide": (0.10, 0.06),
-    "general": (0.15, 0.05),
+    "establishing": (0.10, 0.02),
+    "wide": (0.10, 0.02),
+    "general": (0.15, 0.02),
 }
-DEFAULT_SCENE_PARAMS: Tuple[float, float] = (0.15, 0.05)
+DEFAULT_SCENE_PARAMS: Tuple[float, float] = (0.15, 0.02)
+# If the subject's x barely moves across a segment, center on its median
+# position (robust to boundary jitter) instead of a velocity-limited path that
+# can lock off-center.
+STATIC_SPREAD = 0.10
 
 
 # ---------------------------------------------------------------------------
@@ -417,8 +424,8 @@ def attach_keypoints(segments: List[dict], fps: float) -> List[dict]:
     from focal_path import smooth_focal_path
 
     for seg in segments:
-        start = seg["start"]
-        dur = max(0.001, seg["end"] - start)
+        start, end = seg["start"], seg["end"]
+        dur = max(0.001, end - start)
         max_velocity, deadzone = SCENE_TYPE_PARAMS.get(
             seg.get("scene_type", ""), DEFAULT_SCENE_PARAMS
         )
@@ -426,6 +433,14 @@ def attach_keypoints(segments: List[dict], fps: float) -> List[dict]:
             pts = crop.get("focal_points") or [
                 {"time_sec": start, "x": crop.get("x_target", 0.5), "y": 0.5}
             ]
+            xs = [p["x"] for p in pts]
+            # ~Static subject → center on the median (robust to boundary jitter),
+            # rather than a velocity-limited path that can lock off-center.
+            if max(xs) - min(xs) <= STATIC_SPREAD:
+                cx = statistics.median(xs)
+                cy = statistics.median([p.get("y", 0.5) for p in pts])
+                crop["keypoints"] = [(start, cx, cy), (end, cx, cy)]
+                continue
             local = [
                 {
                     "time_sec": max(0.0, min(dur, p["time_sec"] - start)),
