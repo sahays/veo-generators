@@ -308,9 +308,17 @@ class TestRobustness:
     def test_static_subject_centered_despite_boundary_jitter(self):
         # Face stable at 0.50 with one undershoot sample (0.44) at the start.
         # Must center on the median, not freeze off-center (the Pichai bug).
-        tracked = [_frame(float(t), [_tr(1, 0.44 if t == 0 else 0.50)]) for t in range(5)]
-        scenes = [{"start_sec": 0, "end_sec": 5, "scene_type": "dialogue",
-                   "active_subject": "center"}]
+        tracked = [
+            _frame(float(t), [_tr(1, 0.44 if t == 0 else 0.50)]) for t in range(5)
+        ]
+        scenes = [
+            {
+                "start_sec": 0,
+                "end_sec": 5,
+                "scene_type": "dialogue",
+                "active_subject": "center",
+            }
+        ]
         plan = reconcile(scenes, tracked, cuts=[], src_w=854, src_h=480, duration=5.0)
         attach_keypoints(plan, fps=25)
         xs = [x for _t, x, _y in plan[0]["crops"][0]["keypoints"]]
