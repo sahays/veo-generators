@@ -175,6 +175,7 @@ export const ReframeWorkPage = () => {
           hasGeminiScenes={!!(geminiScenes && geminiScenes.length > 0)}
           hasFocalPoints={!!(focalPoints && focalPoints.length > 0)}
           hasSpeakerSegments={!!(speakerSegments && speakerSegments.length > 0)}
+          hasSegmentPlan={!!((record.segment_plan as unknown[] | undefined)?.length)}
         />
 
         {record.status === 'completed' && <ReframeCompleted record={record} />}

@@ -275,11 +275,29 @@ def _segment_persons(person_frames, start, end):
 # ---------------------------------------------------------------------------
 
 
+def _competitors(stable, mouth) -> list:
+    """Compact per-face record (for the decision trace / observability)."""
+    out = []
+    for s in stable:
+        m = mouth.get(s["track_id"], []) if mouth else []
+        out.append(
+            {
+                "track_id": s["track_id"],
+                "x": round(s["x"], 3),
+                "w": round(s["w"], 3),
+                "frac": round(s["frac"], 2),
+                "mouth_var": round(statistics.pstdev(m), 3) if len(m) >= 3 else None,
+            }
+        )
+    return out
+
+
 def _decide_segment(scene, tracked_frames, person_frames, start, end, label_map):
     """Decide layout, focal target and required coverage for one segment.
 
     Falls back to person/body detection when no stable face is present (e.g. a
-    subject walking away), then to the Gemini spatial hint.
+    subject walking away), then to the Gemini spatial hint. Returns the decision
+    plus the raw inputs that drove it (for the decision trace).
     """
     stable = _stable_tracks(tracked_frames, start, end)
     c_text = (
@@ -288,54 +306,60 @@ def _decide_segment(scene, tracked_frames, person_frames, start, end, label_map)
         else float(scene.get("min_horizontal_coverage") or 0.0)
     )
 
+    def out(layout, crop, c, c_meas, faces=None, n_persons=0):
+        return {
+            "layout": layout,
+            "crops": [crop],
+            "C": min(1.0, c),
+            "c_text": c_text,
+            "c_meas": round(c_meas, 3),
+            "source": crop["source"],
+            "n_faces": len(stable),
+            "n_persons": n_persons,
+            "faces": faces or [],
+        }
+
     # Margin pads the DETECTION-measured width (for tracker slop), not Gemini's
     # stated coverage (which is already a minimum) — avoids double-padding.
     if stable:
+        mouth = _segment_track_mouth(
+            tracked_frames, [s["track_id"] for s in stable], start, end
+        )
+        faces = _competitors(stable, mouth)
         pair = _keep_both_pair(stable, scene)
         if pair:
-            # ASD: if one of the two is clearly the talking face, frame on them
-            # (large) instead of letterboxing both.
-            mouth = _segment_track_mouth(
-                tracked_frames, [s["track_id"] for s in stable], start, end
-            )
             speaker = pick_active_speaker(mouth)
             tgt = next((s for s in stable if s["track_id"] == speaker), None)
-            if tgt:
-                c = max(min(tgt["w"], FACE_W_CAP) + COVERAGE_MARGIN, c_text)
-                crop = {
-                    "track_id": speaker,
-                    "x_target": tgt["x"],
-                    "source": "speaker",
-                }
-                return {"layout": "single", "crops": [crop], "C": min(1.0, c)}
+            if tgt:  # ASD: one of the two is clearly talking → frame them large
+                cm = min(tgt["w"], FACE_W_CAP)
+                crop = {"track_id": speaker, "x_target": tgt["x"], "source": "speaker"}
+                return out("single", crop, max(cm + COVERAGE_MARGIN, c_text), cm, faces)
 
             a, b = pair
             left = min(a["x"] - a["w"] / 2, b["x"] - b["w"] / 2)
             right = max(a["x"] + a["w"] / 2, b["x"] + b["w"] / 2)
-            center = (a["x"] + b["x"]) / 2
-            c = max((right - left) + COVERAGE_MARGIN, c_text)
-            crop = {"track_id": None, "x_target": center, "source": "center"}
-            return {"layout": "keep_both", "crops": [crop], "C": min(1.0, c)}
+            span = max(0.0, right - left)
+            crop = {"track_id": None, "x_target": (a["x"] + b["x"]) / 2, "source": "center"}
+            return out("keep_both", crop, max(span + COVERAGE_MARGIN, c_text), span, faces)
 
         tgt = _match_track(stable, scene, label_map)
-        c = max(min(tgt["w"], FACE_W_CAP) + COVERAGE_MARGIN, c_text)
+        cm = min(tgt["w"], FACE_W_CAP)
         crop = {"track_id": tgt["track_id"], "x_target": tgt["x"], "source": "face"}
-        return {"layout": "single", "crops": [crop], "C": min(1.0, c)}
+        return out("single", crop, max(cm + COVERAGE_MARGIN, c_text), cm, faces)
 
     # No stable face → try person/body detection.
     persons = _segment_persons(person_frames, start, end)
     seg_frames = [f for f in (person_frames or []) if start <= f["time_sec"] <= end]
-    frac = len(persons) / max(1, len(seg_frames))
-    if persons and frac >= STABLE_FRAC:
+    if persons and len(persons) / max(1, len(seg_frames)) >= STABLE_FRAC:
         mean_x = sum(p["x"] for p in persons) / len(persons)
-        mean_w = sum(p["w"] for p in persons) / len(persons)
-        c = max(min(mean_w, PERSON_W_CAP) + COVERAGE_MARGIN, c_text)
+        mean_w = min(sum(p["w"] for p in persons) / len(persons), PERSON_W_CAP)
         crop = {"track_id": None, "x_target": mean_x, "source": "person"}
-        return {"layout": "single", "crops": [crop], "C": min(1.0, c)}
+        return out("single", crop, max(mean_w + COVERAGE_MARGIN, c_text), mean_w,
+                   n_persons=len(persons))
 
     # Nothing detected → Gemini spatial hint, rely on c_text.
     crop = {"track_id": None, "x_target": _hint_x(scene), "source": "center"}
-    return {"layout": "single", "crops": [crop], "C": min(1.0, c_text)}
+    return out("single", crop, c_text, 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -400,6 +424,7 @@ def _merge_short(segments: List[dict], min_dwell: float) -> List[dict]:
                 prev["layout"] = seg["layout"]
                 prev["crops"] = seg["crops"]
                 prev["reason"] = seg["reason"]
+                prev["trace"] = seg.get("trace")
         else:
             out.append(dict(seg))
     return out
@@ -431,6 +456,53 @@ def _fill_keypoints(seg: dict) -> None:
         crop["keypoints"] = [(seg["start"], x, 0.5), (seg["end"], x, 0.5)]
 
 
+def _decision_trace(d, scene, chosen, ideal, src_w, src_h) -> dict:
+    """Structured 'why this framing' record + one-line trigger (observability)."""
+    cov = rung_coverage(chosen, src_w, src_h)
+    ct, cm = d["c_text"], d["c_meas"]
+    src, layout = d["source"], d["layout"]
+    if layout == "keep_both":
+        why = f"two faces span {cm:.2f}"
+    elif src == "speaker":
+        why = "active speaker (mouth movement)"
+    elif src == "person":
+        why = f"no face; person body w={cm:.2f}"
+    elif d["n_faces"] == 0:
+        why = f"no detection; Gemini coverage {ct:.2f}" if ct > 0 else "no detection"
+    elif ct >= cm:
+        why = f"Gemini coverage {ct:.2f}" + (" (full-width)" if ct >= 0.99 else "")
+    else:
+        why = f"face w={cm:.2f}"
+    trig = f"{chosen[0]}:{chosen[1]} ({cov:.2f}) — {why}"
+    if chosen != ideal:
+        trig += f"; widened from {ideal[0]}:{ideal[1]} (hysteresis)"
+    return {
+        "trigger": trig,
+        "C": round(d["C"], 3),
+        "c_text": round(ct, 3),
+        "c_measured": round(cm, 3),
+        "chosen_ar": list(chosen),
+        "ideal_ar": list(ideal),
+        "coverage": round(cov, 3),
+        "hysteresis": chosen != ideal,
+        "source": src,
+        "layout": layout,
+        "n_faces": d["n_faces"],
+        "n_persons": d["n_persons"],
+        "scene": {
+            k: scene.get(k)
+            for k in (
+                "scene_type",
+                "layout",
+                "requires_full_width",
+                "min_horizontal_coverage",
+                "active_subject",
+            )
+        },
+        "faces": d["faces"],
+    }
+
+
 def reconcile(
     scenes: List[dict],
     tracked_frames: List[dict],
@@ -450,22 +522,20 @@ def reconcile(
     for start, end in bounds:
         scene = _scene_for(scenes, scene_starts, start, end)
         d = _decide_segment(scene, tracked_frames, person_frames, start, end, label_map)
-        rung = pick_rung(d["C"], src_w, src_h, prev_rung)
-        prev_rung = rung
-        cov = rung_coverage(rung, src_w, src_h)
+        ideal = pick_rung(d["C"], src_w, src_h, None)
+        chosen = pick_rung(d["C"], src_w, src_h, prev_rung)
+        prev_rung = chosen
+        trace = _decision_trace(d, scene, chosen, ideal, src_w, src_h)
         raw.append(
             {
                 "start": start,
                 "end": end,
                 "layout": d["layout"],
-                "inner_ar": rung,
+                "inner_ar": chosen,
                 "scene_type": scene.get("scene_type", "general"),
                 "crops": d["crops"],
-                "reason": (
-                    f"C={d['C']:.2f} → {rung[0]}:{rung[1]} (covers {cov:.2f}), "
-                    f"{d['layout']}, src={d['crops'][0].get('source')}, "
-                    f"hint={scene.get('active_subject', 'n/a')}"
-                ),
+                "reason": trace["trigger"],
+                "trace": trace,
             }
         )
 

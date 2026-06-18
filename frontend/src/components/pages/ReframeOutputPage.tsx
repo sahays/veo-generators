@@ -5,7 +5,7 @@ import { api } from '@/lib/api'
 import { ModelPill } from '@/components/ModelPill'
 import { ServicesUsedPanel } from '@/components/pricing/ServicesUsedPanel'
 
-type Section = 'mediapipe' | 'prompt' | 'gemini' | 'focal-points' | 'chirp'
+type Section = 'mediapipe' | 'prompt' | 'gemini' | 'decisions' | 'focal-points' | 'chirp'
 
 export const ReframeOutputPage = () => {
   const { id, section } = useParams<{ id: string; section: Section }>()
@@ -130,9 +130,48 @@ export const ReframeOutputPage = () => {
     mediapipe: 'MediaPipe Detection',
     prompt: 'Gemini Prompt',
     gemini: 'Gemini Scene Analysis',
+    decisions: 'Reframe Decisions',
     'focal-points': 'Merged Focal Points',
     // Legacy routes
     chirp: 'Chirp Diarization Output',
+  }
+
+  const fmtT = (sec: number) => {
+    const m = Math.floor(sec / 60)
+    const s = Math.floor(sec % 60)
+    return `${m}:${s.toString().padStart(2, '0')}`
+  }
+
+  const renderDecisions = () => {
+    const plan = record.segment_plan as Array<any> | undefined
+    const summary = record.reframe_summary as any
+    if (!plan || plan.length === 0) {
+      return <p className="text-muted-foreground">No decision plan available for this reframe.</p>
+    }
+    return (
+      <div className="space-y-4 text-sm">
+        {summary && (
+          <div className="font-sans text-xs text-muted-foreground space-y-1 bg-muted/50 rounded-lg p-3">
+            <div>{summary.segments} segments &middot; aspect ratios: {JSON.stringify(summary.aspect_ratios)}</div>
+            <div>sources: {JSON.stringify(summary.sources)}</div>
+            {summary.letterbox_16x9_reasons && Object.keys(summary.letterbox_16x9_reasons).length > 0 && (
+              <div>16:9 letterbox because: {JSON.stringify(summary.letterbox_16x9_reasons)}</div>
+            )}
+            <div>active-speaker segments: {summary.speaker_segments ?? 0} &middot; hysteresis: {summary.hysteresis_segments ?? 0}</div>
+          </div>
+        )}
+        <div className="space-y-1 font-mono text-xs">
+          {plan.map((s, i) => (
+            <div key={i} className="flex gap-3">
+              <span className="text-muted-foreground w-24 shrink-0">{fmtT(s.start)}&ndash;{fmtT(s.end)}</span>
+              <span className="w-12 shrink-0 text-foreground">{Array.isArray(s.inner_ar) ? s.inner_ar.join(':') : ''}</span>
+              <span className="w-20 shrink-0 text-muted-foreground/70">{s.layout}</span>
+              <span className="text-foreground">{(s.trace && s.trace.trigger) || s.reason}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
   }
 
   const renderChirp = () => {
@@ -195,6 +234,7 @@ export const ReframeOutputPage = () => {
         {section === 'mediapipe' && renderMediapipe()}
         {section === 'prompt' && renderPrompt()}
         {section === 'gemini' && renderGemini()}
+        {section === 'decisions' && renderDecisions()}
         {section === 'focal-points' && renderFocalPoints()}
         {section === 'chirp' && renderChirp()}
       </div>

@@ -85,7 +85,22 @@ class ReframeProcessor(JobProcessor):
             record_id, {"track_summary": track_summary}
         )
 
-        scenes = self._analyze_scenes(record, record_id, chirp_context, track_summary)
+        from reframe_plan import attach_keypoints, reconcile
+        from scene_detect import detect_cuts
+
+        cuts = detect_cuts(src_path)
+        scenes = self._analyze_scenes(
+            record, record_id, chirp_context, track_summary, cuts=cuts
+        )
+
+        # Run the real planner so the diagnostic shows the chosen crop window +
+        # the decision trigger per shot (observability), not just detections.
+        segments = reconcile(
+            scenes, tracked_frames, cuts, probe["width"], probe["height"],
+            probe["duration"], person_frames=person_frames,
+        )
+        attach_keypoints(segments, probe["fps"])
+        self._store_segment_plan(record_id, segments)
 
         self.update_status(record_id, "processing", 60)
         logger.info(f"[reframe:{record_id}] Rendering diagnostic overlay...")
@@ -98,6 +113,7 @@ class ReframeProcessor(JobProcessor):
             src_h=probe["height"],
             has_audio=has_audio,
             person_frames=person_frames,
+            segments=segments,
         )
 
     def _upload_diagnostic(self, record_id, out_path):
@@ -191,7 +207,9 @@ class ReframeProcessor(JobProcessor):
         )
 
     def _store_segment_plan(self, record_id, segments):
-        """Persist a compact, JSON-safe summary of the plan for UI/debug."""
+        """Persist the per-segment decision trace + a run summary (observability)."""
+        from collections import Counter
+
         compact = [
             {
                 "start": round(s["start"], 2),
@@ -199,10 +217,37 @@ class ReframeProcessor(JobProcessor):
                 "layout": s["layout"],
                 "inner_ar": list(s["inner_ar"]),
                 "reason": s.get("reason", ""),
+                "trace": s.get("trace"),
             }
             for s in segments
         ]
-        deps.firestore_svc.update_reframe_record(record_id, {"segment_plan": compact})
+        ar = Counter(f"{a}:{b}" for a, b in (s["inner_ar"] for s in segments))
+        src = Counter(s.get("trace", {}).get("source") for s in segments)
+        # Why did letterboxing (16:9) happen?
+        why16 = Counter()
+        for s in segments:
+            if tuple(s["inner_ar"]) != (16, 9):
+                continue
+            tr = s.get("trace", {})
+            if tr.get("layout") == "keep_both":
+                why16["two-face span"] += 1
+            elif tr.get("c_text", 0) >= tr.get("c_measured", 0):
+                why16["Gemini full-width/coverage"] += 1
+            else:
+                why16["wide subject"] += 1
+        summary = {
+            "segments": len(segments),
+            "aspect_ratios": dict(ar),
+            "sources": dict(src),
+            "letterbox_16x9_reasons": dict(why16),
+            "hysteresis_segments": sum(
+                1 for s in segments if s.get("trace", {}).get("hysteresis")
+            ),
+            "speaker_segments": src.get("speaker", 0),
+        }
+        deps.firestore_svc.update_reframe_record(
+            record_id, {"segment_plan": compact, "reframe_summary": summary}
+        )
 
     def _run_diarization(self, record, record_id, src_path, probe, tmp, has_audio):
         """Step 2: Chirp 3 speaker diarization — runs whenever the source has audio.

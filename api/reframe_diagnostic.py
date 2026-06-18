@@ -115,21 +115,17 @@ def _draw_box(frame, x0, y0, x1, y1, color, thickness, label=None, scale=0.6):
         )
 
 
-def _draw_scene_caption(frame, text, scale):
-    """Draw a caption banner across the top of the frame."""
-    h, w = frame.shape[:2]
-    (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, 2)
-    cv2.rectangle(frame, (0, 0), (w, th + 16), _BLACK, -1)
-    cv2.putText(
-        frame,
-        text,
-        (10, th + 8),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        scale,
-        _WHITE,
-        2,
-        cv2.LINE_AA,
-    )
+def _draw_caption(frame, lines, scale):
+    """Draw stacked caption banners (scene label, then the decision trigger)."""
+    w = frame.shape[1]
+    (_tw, th), _ = cv2.getTextSize("Ag", cv2.FONT_HERSHEY_SIMPLEX, scale, 2)
+    row = th + 12
+    cv2.rectangle(frame, (0, 0), (w, row * len(lines) + 4), _BLACK, -1)
+    for i, text in enumerate(lines):
+        cv2.putText(
+            frame, text, (10, row * i + th + 6),
+            cv2.FONT_HERSHEY_SIMPLEX, scale, _WHITE, 2, cv2.LINE_AA,
+        )
 
 
 def _annotate_frame(frame, t, ctx):
@@ -180,7 +176,8 @@ def _annotate_frame(frame, t, ctx):
             scale,
         )
 
-    # Top banner: Gemini scene label.
+    # Top banners: Gemini scene label, then the planner's decision + why.
+    lines = []
     scene = _scene_at(ctx["scenes"], ctx["scene_starts"], t)
     if scene:
         parts = [scene.get("scene_type", "scene")]
@@ -188,7 +185,7 @@ def _annotate_frame(frame, t, ctx):
             parts.append(f"focus: {scene['active_subject']}")
         if scene.get("requires_full_width"):
             parts.append("FULL-WIDTH")
-        _draw_scene_caption(frame, "  |  ".join(parts), scale)
+        lines.append("  |  ".join(parts))
 
     # Green: chosen crop window from the reframe plan (if provided).
     seg = (
@@ -198,6 +195,11 @@ def _annotate_frame(frame, t, ctx):
     )
     if seg:
         _draw_crop_window(frame, t, seg, ctx["src_h"])
+        trig = (seg.get("trace") or {}).get("trigger") or seg.get("reason")
+        if trig:
+            lines.append(trig)
+    if lines:
+        _draw_caption(frame, lines, scale)
 
 
 def _draw_crop_window(frame, t, seg, src_h):
