@@ -225,10 +225,16 @@ def _split_seg(start, end, t1, x1, t2, x2):
         "layout": "split",
         "inner_ar": None,
         "crops": [
-            {"track_id": t1, "source": "split_top",
-             "keypoints": [(start, x1, 0.5), (end, x1, 0.5)]},
-            {"track_id": t2, "source": "split_bottom",
-             "keypoints": [(start, x2, 0.5), (end, x2, 0.5)]},
+            {
+                "track_id": t1,
+                "source": "split_top",
+                "keypoints": [(start, x1, 0.5), (end, x1, 0.5)],
+            },
+            {
+                "track_id": t2,
+                "source": "split_bottom",
+                "keypoints": [(start, x2, 0.5), (end, x2, 0.5)],
+            },
         ],
         "reason": "split",
         "trace": {"trigger": "split", "source": "split"},
@@ -243,8 +249,10 @@ class TestSplitEval:
         for t in range(10):
             m1 = osc[t % 4]
             frames.append(
-                {"time_sec": float(t),
-                 "tracks": [_tr(1, 0.25, mouth=m1), _tr(2, 0.75, mouth=0.2)]}
+                {
+                    "time_sec": float(t),
+                    "tracks": [_tr(1, 0.25, mouth=m1), _tr(2, 0.75, mouth=0.2)],
+                }
             )
         return evaluate(plan, frames, [], speech or [], SRC_W, SRC_H, 10.0)
 

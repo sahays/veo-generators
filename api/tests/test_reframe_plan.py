@@ -517,7 +517,12 @@ class TestReconcileWithText:
 
 
 def _split_scene(scene_type="dialogue", layout=None):
-    s = {"start_sec": 0, "end_sec": 5, "scene_type": scene_type, "active_subject": "both"}
+    s = {
+        "start_sec": 0,
+        "end_sec": 5,
+        "scene_type": scene_type,
+        "active_subject": "both",
+    }
     if layout:
         s["layout"] = layout
     return s

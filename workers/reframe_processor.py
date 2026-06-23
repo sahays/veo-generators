@@ -224,7 +224,7 @@ class ReframeProcessor(JobProcessor):
         self._store_segment_plan(record_id, segments)
         logger.info(f"[reframe:{record_id}] plan: {len(segments)} segments")
 
-        self._store_eval_report(
+        report = self._store_eval_report(
             record_id,
             segments,
             tracked_frames,
@@ -247,6 +247,12 @@ class ReframeProcessor(JobProcessor):
             has_audio=has_audio,
             out_w=out_w,
             out_h=out_h,
+        )
+
+        # Now that the canvas exists, validate OUTPUT pixels (catches render/encode
+        # defects the geometry-only eval can't see). Folds into the eval report.
+        self._store_render_check(
+            record_id, report, out_path, segments, w, h, out_w, out_h
         )
 
     def _store_segment_plan(self, record_id, segments):
@@ -336,7 +342,7 @@ class ReframeProcessor(JobProcessor):
                 rungs=rungs,
             )
             if not report:
-                return
+                return None
             deps.firestore_svc.update_reframe_record(record_id, {"eval_report": report})
             lb, talker = report["letterbox"], report.get("talker") or {}
             logger.info(
@@ -345,8 +351,45 @@ class ReframeProcessor(JobProcessor):
                 f"av_sync={talker.get('av_sync_score')} "
                 f"miss={talker.get('speaker_miss_rate')}"
             )
+            return report
         except Exception as e:
             logger.warning(f"[reframe:{record_id}] eval skipped ({e})")
+            return None
+
+    def _store_render_check(
+        self, record_id, report, out_path, segments, src_w, src_h, out_w, out_h
+    ):
+        """Sampled OUTPUT-pixel validation (runs after render). Best-effort.
+
+        Decodes a few output frames and checks the framed subject actually landed
+        where the plan predicted — catches black frames, wrong crop offsets, broken
+        split panels. Folds into the eval report (so the scorecard shows it) and
+        rolls its flag into `overall`. Never fails the reframe.
+        """
+        try:
+            from reframe_eval import _rollup
+            from reframe_render_check import check_render
+
+            block = check_render(out_path, segments, src_w, src_h, out_w, out_h)
+            if not block:
+                return
+            if report is not None:
+                report["render"] = block
+                report["overall"] = _rollup(
+                    report.get("overall", "na"), block.get("flag", "na")
+                )
+                update = {"eval_report": report}
+            else:
+                update = {"eval_report": {"render": block, "overall": block["flag"]}}
+            deps.firestore_svc.update_reframe_record(record_id, update)
+            logger.info(
+                f"[reframe:{record_id}] render-check: {block['flag']} "
+                f"nonblank={block['nonblank_rate']} "
+                f"face={block.get('face_present_rate')} "
+                f"panels={block.get('split_panel_fill_rate')}"
+            )
+        except Exception as e:
+            logger.warning(f"[reframe:{record_id}] render-check skipped ({e})")
 
     def _run_diarization(self, record, record_id, src_path, probe, tmp, has_audio):
         """Step 2: Chirp 3 speaker diarization — runs whenever the source has audio.

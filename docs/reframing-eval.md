@@ -1,6 +1,6 @@
 # Reframe Eval — Reference-Free Per-Run Quality Report
 
-Status: design / parked (not yet built)
+Status: built and live (see Status section below)
 Related: [reframing-v2.md](reframing-v2.md) (the pipeline being evaluated)
 
 ## Context
@@ -99,11 +99,31 @@ eval_report = {
   - Letterbox/containment/stability: pure geometry over plan + detections.
   - AV-sync: needs per-track MAR over time (have it) + speech intervals (from
     diarization, or a cheap VAD on the extracted wav).
-- Worker calls it after `render_plan`, stores `eval_report` on the record
-  (`models_records.ReframeRecord`).
+- Worker calls it before `render_plan`, stores `eval_report` on the record
+  (`models_records.ReframeRecord`) so it's visible mid-job.
 - Surface in the reframe output page (a small scorecard) and log the aggregate.
 - Reuses already-collected data (detections w/ MAR, plan, audio, diarization) — no
-  re-decode of the output needed; cheap final stage.
+  re-decode of the output needed; cheap stage.
+
+### Output-pixel check (`api/reframe_render_check.py`)
+
+The geometry eval above never decodes the rendered video, so it can't see
+FFmpeg/encode defects. A companion stage closes that: after `render_plan`,
+`check_render(out_path, segments, …)` decodes a *sampled* set of output frames
+(≤12, one per segment midpoint), runs face detection on them, and scores them
+against what the plan predicted — then folds a `render` block into `eval_report`
+and rolls its flag into `overall`. cv2/ffmpeg/MediaPipe-bound (worker-only),
+best-effort (never fails the job). The prediction comes from the plan, the
+measurement from the decoded output, so they stay independent. Metrics:
+- **`nonblank_rate`** — output frames with real content (catches black/garbled).
+- **`face_present_rate`** — for face-framed samples, the subject is actually in
+  the output (catches a vanished subject / wrong scene rendered).
+- **`position_error_p90`** — detected face's output-x vs the predicted output-x
+  (catches a wrong crop offset that the geometry eval / contract test missed).
+- **`split_panel_fill_rate`** — both stacked split panels show a person (catches a
+  broken `vstack`).
+The plan→render *x(t)* contract (eval's `crop_left_px_at` ↔ the emitted FFmpeg
+expression) is separately pinned by `test_render_eval_contract`.
 - Runs on **every** production video → continuous, label-free quality signal, and
   the objective scoreboard to **tune** ASD/coverage thresholds against real
   footage instead of guessing.
@@ -118,16 +138,19 @@ degrades to Haar there and ffmpeg is absent — unreliable for CV measurement.
 
 - These are **proxies**, not truth: bounded by detector quality (a missed face
   can't be scored as "cut"); `av_sync_score` degrades with background music /
-  off-screen narration / overlapping speakers.
+  off-screen narration / overlapping speakers. The output-pixel check is bounded
+  the same way — a missed face in the output reads as a (false) absence, so its
+  thresholds are lenient and aggregate, not per-frame fatal.
 - They are **directional and falsifiable** — reliably catch the four failures
-  reported so far. Treat the report as an automated tripwire + tuning scoreboard,
-  not a quality grade.
+  reported so far, plus gross render defects (black output, wrong crop offset,
+  broken split panel). Treat the report as an automated tripwire + tuning
+  scoreboard, not a quality grade.
 
-## Next steps (when un-parked)
+## Status
 
-1. Build `reframe_eval.evaluate` with the geometry metrics first (cut-rate,
-   over-letterbox, centering) — fully testable on synthetic plans.
-2. Add the audio-based talker metrics (VAD or reuse diarization intervals).
-3. Persist + surface `eval_report`; log aggregates.
-4. Use the scoreboard to calibrate ASD thresholds
-   (`SPEAKER_MIN_ACTIVITY` / `SPEAKER_DOMINANCE`) and coverage caps on real clips.
+Built and live (geometry + talker + stability + output-pixel check), persisted to
+`eval_report`, surfaced in the output-page scorecard, logged per job. Remaining:
+
+- Calibrate thresholds (`SPEAKER_MIN_ACTIVITY` / `SPEAKER_DOMINANCE`, coverage
+  caps, and the render-check tolerances) against real labeled clips — currently
+  hand-picked, directional defaults.

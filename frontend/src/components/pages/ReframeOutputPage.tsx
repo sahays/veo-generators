@@ -262,6 +262,7 @@ export const ReframeOutputPage = () => {
     const lb = rep.letterbox
     const tk = rep.talker
     const st = rep.stability || {}
+    const rd = rep.render
 
     const handleDownload = () => {
       downloadJson(`reframe-eval-${record.id}.json`, {
@@ -330,6 +331,22 @@ export const ReframeOutputPage = () => {
             <div>center offset: p50 {pct(st.center_offset_p50)} &middot; p90 {pct(st.center_offset_p90)}</div>
           </div>
         </div>
+
+        {rd && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground/70">
+              Rendered output ({rd.frames_sampled} frames) <Pill flag={rd.flag} label={rd.flag?.toUpperCase()} />
+            </div>
+            <div className="space-y-1.5 bg-muted/50 rounded-lg p-3">
+              <Row flag={flagOf(rd.nonblank_rate, 0.95, 0.8, true)} name="Non-blank frames" value={pct(rd.nonblank_rate)} hint="output isn't black/garbled" />
+              <Row flag={flagOf(rd.face_present_rate, 0.7, 0.4, true)} name="Framed face present" value={pct(rd.face_present_rate)} hint="subject landed where predicted" />
+              <Row flag={flagOf(rd.position_error_p90, 0.15, 0.3)} name="Position error p90" value={pct(rd.position_error_p90)} hint="output face vs predicted x" />
+              {rd.split_panel_fill_rate != null && (
+                <Row flag={flagOf(rd.split_panel_fill_rate, 0.8, 0.5, true)} name="Split panels filled" value={pct(rd.split_panel_fill_rate)} hint="both stacked panels show a person" />
+              )}
+            </div>
+          </div>
+        )}
 
         {rep.worst && rep.worst.length > 0 && (
           <div className="space-y-2">
