@@ -9,6 +9,7 @@ interface Props {
   hasFocalPoints: boolean
   hasSpeakerSegments: boolean
   hasSegmentPlan: boolean
+  hasEvalReport: boolean
 }
 
 const linkClass =
@@ -22,12 +23,18 @@ export const ReframePipelineLinks = ({
   hasFocalPoints,
   hasSpeakerSegments,
   hasSegmentPlan,
+  hasEvalReport,
 }: Props) => {
   if (
-    !(hasTrackSummary || hasPrompt || hasGeminiScenes || hasFocalPoints || hasSpeakerSegments || hasSegmentPlan)
+    !(hasTrackSummary || hasPrompt || hasGeminiScenes || hasFocalPoints || hasSpeakerSegments || hasSegmentPlan || hasEvalReport)
   ) return null
   return (
     <div className="flex flex-wrap gap-2">
+      {hasEvalReport && (
+        <Link to={`/orientations/${recordId}/eval-report`} target="_blank" className={linkClass}>
+          Quality <ExternalLink size={12} />
+        </Link>
+      )}
       {hasSegmentPlan && (
         <Link to={`/orientations/${recordId}/decisions`} target="_blank" className={linkClass}>
           Decisions <ExternalLink size={12} />

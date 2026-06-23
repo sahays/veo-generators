@@ -1,11 +1,19 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Loader2 } from 'lucide-react'
+import { ArrowLeft, Download, Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { downloadJson } from '@/lib/utils'
 import { ModelPill } from '@/components/ModelPill'
 import { ServicesUsedPanel } from '@/components/pricing/ServicesUsedPanel'
 
-type Section = 'mediapipe' | 'prompt' | 'gemini' | 'decisions' | 'focal-points' | 'chirp'
+type Section =
+  | 'mediapipe'
+  | 'prompt'
+  | 'gemini'
+  | 'decisions'
+  | 'focal-points'
+  | 'chirp'
+  | 'eval-report'
 
 export const ReframeOutputPage = () => {
   const { id, section } = useParams<{ id: string; section: Section }>()
@@ -132,6 +140,7 @@ export const ReframeOutputPage = () => {
     gemini: 'Gemini Scene Analysis',
     decisions: 'Reframe Decisions',
     'focal-points': 'Merged Focal Points',
+    'eval-report': 'Quality Report',
     // Legacy routes
     chirp: 'Chirp Diarization Output',
   }
@@ -214,6 +223,137 @@ export const ReframeOutputPage = () => {
     )
   }
 
+  const renderEvalReport = () => {
+    const rep = record.eval_report as any
+    if (!rep || !rep.letterbox) {
+      return <p className="text-muted-foreground">No quality report available. This reframe may have run before the eval was added, or it is still being analyzed.</p>
+    }
+
+    const FLAG: Record<string, string> = {
+      ok: 'text-emerald-600 bg-emerald-500/10',
+      warn: 'text-amber-600 bg-amber-500/10',
+      fail: 'text-red-600 bg-red-500/10',
+      na: 'text-muted-foreground bg-muted',
+    }
+    const ICON: Record<string, string> = { ok: '✅', warn: '⚠️', fail: '❌', na: '—' }
+    const flagOf = (n: number | null | undefined, warn: number, fail: number, higherBetter = false): string => {
+      if (n === null || n === undefined) return 'na'
+      if (higherBetter) return n <= fail ? 'fail' : n <= warn ? 'warn' : 'ok'
+      return n >= fail ? 'fail' : n >= warn ? 'warn' : 'ok'
+    }
+    const pct = (n: number | null | undefined) => (n === null || n === undefined ? '—' : `${(n * 100).toFixed(0)}%`)
+    const num = (n: number | null | undefined) => (n === null || n === undefined ? '—' : n.toFixed(2))
+
+    const Pill = ({ flag, label }: { flag: string; label: string }) => (
+      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${FLAG[flag] || FLAG.na}`}>
+        {ICON[flag] || ICON.na} {label}
+      </span>
+    )
+    const Row = ({ flag, name, value, hint }: { flag: string; name: string; value: string; hint: string }) => (
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Pill flag={flag} label={value} />
+          <span className="text-foreground">{name}</span>
+        </div>
+        <span className="text-muted-foreground/70 text-xs">{hint}</span>
+      </div>
+    )
+
+    const lb = rep.letterbox
+    const tk = rep.talker
+    const st = rep.stability || {}
+
+    const handleDownload = () => {
+      downloadJson(`reframe-eval-${record.id}.json`, {
+        id: record.id,
+        display_name: record.display_name,
+        source_filename: record.source_filename,
+        status: record.status,
+        src: { width: record.usage?.width, height: record.usage?.height },
+        eval_report: rep,
+        segment_plan: record.segment_plan,
+        reframe_summary: record.reframe_summary,
+        track_summary: record.track_summary,
+        gemini_scenes: record.gemini_scenes,
+        speaker_segments: record.speaker_segments,
+      })
+    }
+
+    return (
+      <div className="space-y-5 text-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground text-xs">Overall</span>
+            <Pill flag={rep.overall} label={rep.overall?.toUpperCase() || 'NA'} />
+          </div>
+          <button
+            onClick={handleDownload}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+          >
+            <Download size={12} /> Download JSON
+          </button>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground/70">
+            Letterboxing &amp; framing <Pill flag={lb.flag} label={lb.flag?.toUpperCase()} />
+          </div>
+          <div className="space-y-1.5 bg-muted/50 rounded-lg p-3">
+            <Row flag={flagOf(lb.face_cut_rate, 0.05, 0.15)} name="Face cut rate" value={pct(lb.face_cut_rate)} hint="detected faces clipped by the crop" />
+            <Row flag={flagOf(lb.subject_containment, 0.9, 0.75, true)} name="Subject containment" value={pct(lb.subject_containment)} hint="framed subject fully in frame" />
+            <Row flag={flagOf(lb.over_letterbox_rate, 0.15, 0.35)} name="Over-letterbox rate" value={pct(lb.over_letterbox_rate)} hint="bars a tighter crop didn't need" />
+            <Row flag="na" name="Mean letterbox" value={pct(lb.mean_letterbox_pct)} hint="avg blur-bar share of canvas" />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground/70">
+            Showing the talker {tk && <Pill flag={tk.flag} label={tk.flag?.toUpperCase()} />}
+          </div>
+          {tk ? (
+            <div className="space-y-1.5 bg-muted/50 rounded-lg p-3">
+              <Row flag={flagOf(tk.av_sync_score, 0.3, 0.1, true)} name="A/V sync" value={num(tk.av_sync_score)} hint="framed mouth ↔ speech correlation" />
+              <Row flag={flagOf(tk.framed_speaker_active_rate, 0.6, 0.4, true)} name="Framed speaker active" value={pct(tk.framed_speaker_active_rate)} hint="framing the one who's talking" />
+              <Row flag={flagOf(tk.speaker_miss_rate, 0.1, 0.25)} name="Speaker miss rate" value={pct(tk.speaker_miss_rate)} hint="off-frame face was the talker" />
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-xs bg-muted/50 rounded-lg p-3">No dialogue / multi-face audio signal to score (single-subject or no speech).</p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground/70">
+            Stability {st.flag && <Pill flag={st.flag} label={st.flag?.toUpperCase()} />}
+          </div>
+          <div className="font-sans text-xs text-muted-foreground space-y-1 bg-muted/50 rounded-lg p-3">
+            <div>aspect-ratio changes: {st.ar_changes_per_min}/min &middot; crop jumps: {st.crop_jumps_per_min}/min</div>
+            <div>center offset: p50 {pct(st.center_offset_p50)} &middot; p90 {pct(st.center_offset_p90)}</div>
+          </div>
+        </div>
+
+        {rep.worst && rep.worst.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-xs uppercase tracking-wider text-muted-foreground/70">Worst moments</div>
+            <div className="space-y-1 font-mono text-xs bg-muted/50 rounded-lg p-3">
+              {rep.worst.map((w: any, i: number) => (
+                <div key={i} className="flex gap-3">
+                  <span className="text-muted-foreground w-14 shrink-0">{fmtT(w.t)}</span>
+                  <span className="w-40 shrink-0 text-amber-600">{w.metric}</span>
+                  <span className="text-foreground">{w.detail}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <p className="text-[11px] text-muted-foreground/60 leading-relaxed">
+          Reference-free proxies bounded by detector quality; A/V sync degrades with music or
+          off-screen narration. A tripwire and tuning scoreboard, not a grade.
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-3xl mx-auto py-8 px-6 space-y-6">
       <button onClick={() => navigate(`/orientations/${id}`)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -236,6 +376,7 @@ export const ReframeOutputPage = () => {
         {section === 'gemini' && renderGemini()}
         {section === 'decisions' && renderDecisions()}
         {section === 'focal-points' && renderFocalPoints()}
+        {section === 'eval-report' && renderEvalReport()}
         {section === 'chirp' && renderChirp()}
       </div>
 

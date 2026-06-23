@@ -31,6 +31,7 @@ interface ReframeRecord {
   content_type?: string
   blurred_bg?: boolean
   diagnostic_mode?: boolean
+  output_aspect_ratio?: string
   source_signed_url?: string
   output_signed_url?: string
   usage?: { cost_usd?: number }
@@ -86,7 +87,11 @@ const ReframeCard = ({ record, onClick, onArchive, showArchive }: {
               ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
               : "bg-slate-500/10 text-slate-600 border-slate-500/20",
           )}>
-            {record.diagnostic_mode ? 'Diagnostic' : 'Adaptive 9:16'}
+            {record.diagnostic_mode
+              ? 'Diagnostic'
+              : record.output_aspect_ratio === '3:4'
+                ? '3:4'
+                : 'Adaptive 9:16'}
           </span>
         </div>
 

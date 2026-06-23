@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Smartphone, Loader2, ArrowLeft, RotateCcw } from 'lucide-react'
+import { Smartphone, Loader2, ArrowLeft, RotateCcw, RectangleVertical } from 'lucide-react'
 import { Button } from '@/components/Common'
 import { ModelRegionPicker } from '@/components/ModelRegionPicker'
 import { api } from '@/lib/api'
@@ -57,6 +57,7 @@ export const ReframeWorkPage = () => {
 
   const [modelConfig, setModelConfig] = useState<{ modelId?: string; region?: string }>({})
   const [diagnosticMode, setDiagnosticMode] = useState(false)
+  const [outputAspectRatio, setOutputAspectRatio] = useState<'9:16' | '3:4'>('9:16')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -81,6 +82,7 @@ export const ReframeWorkPage = () => {
         gcs_uri: gcsUri,
         source_filename: videoFilename,
         diagnostic_mode: diagnosticMode,
+        output_aspect_ratio: outputAspectRatio,
         model_id: modelConfig.modelId,
         region: modelConfig.region,
       })
@@ -176,6 +178,7 @@ export const ReframeWorkPage = () => {
           hasFocalPoints={!!(focalPoints && focalPoints.length > 0)}
           hasSpeakerSegments={!!(speakerSegments && speakerSegments.length > 0)}
           hasSegmentPlan={!!((record.segment_plan as unknown[] | undefined)?.length)}
+          hasEvalReport={!!record.eval_report}
         />
 
         {record.status === 'completed' && <ReframeCompleted record={record} />}
@@ -226,9 +229,31 @@ export const ReframeWorkPage = () => {
 
       {videoUrl && (
         <div className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            Reframing is adaptive — each scene picks its own aspect ratio (9:16, 4:5, 1:1, or letterboxed) on a 9:16 canvas to keep the important content in frame.
-          </p>
+          <div className="space-y-2">
+            <span className="text-sm font-medium text-foreground">Output format</span>
+            <div className="flex gap-3">
+              {[
+                { id: '9:16' as const, label: 'Adaptive 9:16', icon: Smartphone, desc: 'Each scene picks its own aspect ratio on a 9:16 canvas' },
+                { id: '3:4' as const, label: 'Reframe to 3:4', icon: RectangleVertical, desc: 'Subject-following reframe onto a 3:4 canvas' },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setOutputAspectRatio(opt.id)}
+                  className={cn(
+                    'flex-1 flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all text-center',
+                    outputAspectRatio === opt.id
+                      ? 'bg-accent/10 border-accent text-accent-dark'
+                      : 'border-border text-muted-foreground hover:border-accent/30',
+                  )}
+                >
+                  <opt.icon size={20} />
+                  <span className="text-[11px] font-bold uppercase tracking-widest">{opt.label}</span>
+                  <span className="text-[10px] text-muted-foreground leading-tight">{opt.desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
           <label className="flex items-center gap-3 cursor-pointer group">
             <input
               type="checkbox"

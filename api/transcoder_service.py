@@ -204,15 +204,15 @@ class TranscoderService:
         input_uri: str,
         has_audio: bool = True,
         blurred_bg: bool = False,
+        out_h: int = 1920,
     ) -> tuple:
         """Encode a reframed video. Returns (job_name, output_gcs_uri).
 
-        Output dimensions: always 1080x1920 (9:16).
-        blurred_bg mode outputs 9:16 with centered 4:5 content over blurred background.
+        Output width is always 1080; `out_h` sets the height (1920 for 9:16,
+        1440 for 3:4).
         """
         import os
 
-        out_h = 1920
         bucket = os.getenv("GCS_BUCKET")
         output_uri = f"gs://{bucket}/reframes/{record_id}/encoded/"
 

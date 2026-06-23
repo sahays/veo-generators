@@ -16,6 +16,7 @@ export const reframe = {
     blurred_bg?: boolean
     sports_mode?: boolean
     diagnostic_mode?: boolean
+    output_aspect_ratio?: '9:16' | '3:4'
     model_id?: string
     region?: string
   }) => postJson<any>(`${API_BASE_URL}/reframe`, data, 'Reframe failed'),

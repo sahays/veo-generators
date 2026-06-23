@@ -114,6 +114,7 @@ class ReframeRecord(BaseModel):
     blurred_bg: bool = False
     sports_mode: bool = False
     diagnostic_mode: bool = False  # render detector overlays instead of reframing
+    output_aspect_ratio: str = "9:16"  # "9:16" (adaptive) or "3:4"
     model_id: Optional[str] = None
     region: Optional[str] = None
     output_gcs_uri: Optional[str] = None
@@ -126,6 +127,7 @@ class ReframeRecord(BaseModel):
     track_summary: str = ""
     gemini_scenes: list = Field(default_factory=list)
     segment_plan: list = Field(default_factory=list)  # v2 per-segment crop plan
+    eval_report: Optional[dict] = None  # reference-free per-run quality report card
     status: str = "pending"  # pending|analyzing|processing|encoding|completed|failed
     error_message: Optional[str] = None
     progress_pct: int = 0

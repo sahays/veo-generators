@@ -6,6 +6,14 @@ filter expressions for the 9:16 crop and 4:5 blurred-background reframing modes.
 
 from typing import List, Tuple
 
+# Output canvas (width, height) per selectable output aspect ratio. The canvas
+# width is always 1080; only the height changes. The tightest (full-bleed) rung
+# of a canvas equals its aspect ratio — see RUNGS_BY_CANVAS in reframe_plan.
+OUTPUT_CANVAS = {
+    "9:16": (1080, 1920),
+    "3:4": (1080, 1440),
+}
+
 
 def _to_pixel_keypoints(
     keypoints: List[Tuple[float, float, float]],
@@ -87,6 +95,29 @@ def _even(n: int) -> int:
     return int(n) - (int(n) % 2)
 
 
+def crop_geometry(
+    inner_ar: Tuple[int, int], src_w: int, src_h: int
+) -> Tuple[int, int, int]:
+    """Canonical per-segment crop geometry for an inner aspect ratio.
+
+    Returns `(crop_w, fg_h, max_x)` in source/canvas pixels:
+      - `crop_w` — width of the full-height source slice that is kept (the crop
+        always takes the full `src_h`, so subjects are only ever cut horizontally).
+      - `fg_h` — foreground height on the 1080×1920 canvas; `1920 - fg_h` is the
+        letterbox blur-bar height (0 for a full-bleed rung like 9:16).
+      - `max_x` — `src_w - crop_w`, the max left-edge offset for the crop window.
+
+    Single source of truth shared by `build_canvas_filter` (renderer) and the
+    reference-free eval (`reframe_eval`), so both reason about identical windows.
+    """
+    aw, ah = inner_ar
+    out_w = 1080
+    fg_h = _even(round(out_w * ah / aw))
+    crop_w = _even(min(int(src_h * aw / ah), src_w))
+    max_x = src_w - crop_w
+    return crop_w, fg_h, max_x
+
+
 def _crop_x_offset(
     keypoints: List[Tuple[float, float, float]],
     src_w: int,
@@ -108,22 +139,22 @@ def build_canvas_filter(
     src_w: int,
     src_h: int,
     inner_ar: Tuple[int, int],
+    out_w: int = 1080,
+    out_h: int = 1920,
 ) -> str:
     """Unified per-segment filter_complex for any inner aspect ratio.
 
-    Crops a slice of the source matching `inner_ar`, scales it to fill the 1080px
-    canvas width, and centers it vertically over a blurred full-canvas background.
-    Subsumes the 9:16 (full-bleed) and 4:5 cases. Output label is [v].
+    Crops a slice of the source matching `inner_ar`, scales it to fill the canvas
+    width, and centers it vertically over a blurred full-canvas background.
+    Subsumes the full-bleed and letterboxed cases. Output label is [v].
 
-    inner_ar examples: (9,16) full-bleed, (4,5), (1,1), (16,9) letterbox.
+    The canvas is `out_w`×`out_h` (default 9:16 1080×1920; pass 1080×1440 for 3:4).
+    A rung whose `fg_h >= out_h` is full-bleed (no bars); a shorter `fg_h` letterboxes.
+    inner_ar examples on a 9:16 canvas: (9,16) full-bleed, (4,5), (1,1), (16,9) letterbox.
     """
-    aw, ah = inner_ar
-    out_w, out_h = 1080, 1920
-    fg_h = _even(round(out_w * ah / aw))
-    crop_w = _even(min(int(src_h * aw / ah), src_w))
+    crop_w, fg_h, max_x = crop_geometry(inner_ar, src_w, src_h)
     if crop_w <= 0:
         return f"[0:v]scale={out_w}:{out_h}[v]"
-    max_x = src_w - crop_w
     x_off = _crop_x_offset(keypoints, src_w, crop_w, max_x)
     fg_chain = f"crop={crop_w}:{src_h}:{x_off}:0,scale={out_w}:{fg_h}"
 

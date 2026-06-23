@@ -1,7 +1,7 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 import deps
@@ -12,6 +12,7 @@ from helpers import (
     sign_record_urls,
 )
 from models import ReframeRecord
+from reframe_filters import OUTPUT_CANVAS
 from routers._crud import register_crud_routes
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ class ReframeRequest(BaseModel):
     blurred_bg: bool = False
     sports_mode: bool = False  # deprecated — use content_type="sports"
     diagnostic_mode: bool = False  # render detector overlays instead of reframing
+    output_aspect_ratio: str = "9:16"  # "9:16" (adaptive) or "3:4"
     model_id: Optional[str] = None
     region: Optional[str] = None
 
@@ -76,6 +78,11 @@ async def create_reframe(body: ReframeRequest, request: Request):
     content_type = body.content_type
     if body.sports_mode and content_type == "other":
         content_type = "sports"
+    if body.output_aspect_ratio not in OUTPUT_CANVAS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"output_aspect_ratio must be one of {sorted(OUTPUT_CANVAS)}",
+        )
     record = ReframeRecord(
         source_gcs_uri=body.gcs_uri,
         source_filename=body.source_filename,
@@ -84,6 +91,7 @@ async def create_reframe(body: ReframeRequest, request: Request):
         blurred_bg=body.blurred_bg,
         sports_mode=body.sports_mode,
         diagnostic_mode=body.diagnostic_mode,
+        output_aspect_ratio=body.output_aspect_ratio,
         model_id=body.model_id,
         region=body.region,
         status="pending",

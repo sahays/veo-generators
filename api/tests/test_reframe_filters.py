@@ -153,6 +153,38 @@ class TestCanvasFilter:
                 assert int(w) % 2 == 0 and int(h) % 2 == 0, (ar, w, h)
 
 
+class TestCanvas34:
+    """3:4 output canvas (1080x1440). Full-bleed rung is (3,4); looser rungs bar."""
+
+    SRC = (1920, 1080)
+    OUT = (1080, 1440)
+
+    def test_3x4_is_full_bleed_no_bars(self):
+        f = build_canvas_filter(CENTER, *self.SRC, (3, 4), *self.OUT)
+        assert "[bg]" not in f and "overlay" not in f  # fills the 3:4 canvas
+        assert "scale=1080:1440" in f
+        assert "crop=810:1080" in f  # 1080*3/4 wide, follows the subject
+        assert f.endswith("[v]")
+
+    def test_16x9_letterboxed_inside_3x4(self):
+        f = build_canvas_filter(CENTER, *self.SRC, (16, 9), *self.OUT)
+        assert "gblur" in f and "[bg]" in f
+        assert "scale=1080:608" in f
+        assert "overlay=0:416" in f  # (1440-608)//2
+        assert "crop=1920:1080" in f  # entire source width kept
+
+    def test_1x1_letterboxed_inside_3x4(self):
+        f = build_canvas_filter(CENTER, *self.SRC, (1, 1), *self.OUT)
+        assert "scale=1080:1080" in f
+        assert "overlay=0:180" in f  # (1440-1080)//2
+
+    def test_default_canvas_is_9x16(self):
+        # Omitting out_w/out_h must reproduce the historical 9:16 output exactly.
+        assert build_canvas_filter(CENTER, *self.SRC, (9, 16)) == build_canvas_filter(
+            CENTER, *self.SRC, (9, 16), 1080, 1920
+        )
+
+
 # ---------------------------------------------------------------------------
 # Pixel keypoint conversion
 # ---------------------------------------------------------------------------

@@ -63,7 +63,7 @@ class ReframeProcessor(JobProcessor):
 
         has_audio = probe.get("has_audio", True)
 
-        chirp_context = self._run_diarization(
+        chirp_context, _speaker_segments = self._run_diarization(
             record, record_id, src_path, probe, tmp, has_audio
         )
 
@@ -87,8 +87,10 @@ class ReframeProcessor(JobProcessor):
 
         from reframe_plan import attach_keypoints, reconcile
         from scene_detect import detect_cuts
+        from text_detect import scan_video_text
 
         cuts = detect_cuts(src_path)
+        text_frames = scan_video_text(src_path)
         scenes = self._analyze_scenes(
             record, record_id, chirp_context, track_summary, cuts=cuts
         )
@@ -96,8 +98,14 @@ class ReframeProcessor(JobProcessor):
         # Run the real planner so the diagnostic shows the chosen crop window +
         # the decision trigger per shot (observability), not just detections.
         segments = reconcile(
-            scenes, tracked_frames, cuts, probe["width"], probe["height"],
-            probe["duration"], person_frames=person_frames,
+            scenes,
+            tracked_frames,
+            cuts,
+            probe["width"],
+            probe["height"],
+            probe["duration"],
+            person_frames=person_frames,
+            text_frames=text_frames,
         )
         attach_keypoints(segments, probe["fps"])
         self._store_segment_plan(record_id, segments)
@@ -150,9 +158,11 @@ class ReframeProcessor(JobProcessor):
     def _run_ai_reframe(self, record, record_id, src_path, out_path, probe, tmp):
         """v2 adaptive letterbox: cuts → detect → Gemini → plan → smooth → render."""
         from mediapipe_detection import scan_video_detections, track_faces
-        from reframe_plan import attach_keypoints, reconcile
+        from reframe_filters import OUTPUT_CANVAS
+        from reframe_plan import RUNGS_BY_CANVAS, attach_keypoints, reconcile
         from reframe_service import render_plan
         from scene_detect import detect_cuts
+        from text_detect import scan_video_text
 
         has_audio = probe.get("has_audio", True)
         w, h, dur, fps = (
@@ -161,8 +171,13 @@ class ReframeProcessor(JobProcessor):
             probe["duration"],
             probe["fps"],
         )
+        # Output canvas + rung ladder per selected aspect ratio (default 9:16).
+        ar = getattr(record, "output_aspect_ratio", "9:16") or "9:16"
+        out_w, out_h = OUTPUT_CANVAS.get(ar, OUTPUT_CANVAS["9:16"])
+        rungs = RUNGS_BY_CANVAS.get(ar, RUNGS_BY_CANVAS["9:16"])
+        logger.info(f"[reframe:{record_id}] output {ar} ({out_w}x{out_h})")
 
-        chirp_context = self._run_diarization(
+        chirp_context, speaker_segments = self._run_diarization(
             record, record_id, src_path, probe, tmp, has_audio
         )
 
@@ -184,17 +199,43 @@ class ReframeProcessor(JobProcessor):
             record_id, {"track_summary": track_summary}
         )
 
+        # Measure on-screen text width (independent pass): refines Gemini's coarse
+        # full-width flag so we letterbox to the real text extent, not a blanket
+        # 16:9. Best-effort — empty list falls back to Gemini's coverage.
+        text_frames = scan_video_text(src_path)
+
         scenes = self._analyze_scenes(
             record, record_id, chirp_context, track_summary, cuts=cuts
         )
 
         self.update_status(record_id, "processing", 40)
         segments = reconcile(
-            scenes, tracked_frames, cuts, w, h, dur, person_frames=person_frames
+            scenes,
+            tracked_frames,
+            cuts,
+            w,
+            h,
+            dur,
+            person_frames=person_frames,
+            rungs=rungs,
+            text_frames=text_frames,
         )
         attach_keypoints(segments, fps)
         self._store_segment_plan(record_id, segments)
         logger.info(f"[reframe:{record_id}] plan: {len(segments)} segments")
+
+        self._store_eval_report(
+            record_id,
+            segments,
+            tracked_frames,
+            person_frames,
+            speaker_segments,
+            w,
+            h,
+            dur,
+            canvas_h=out_h,
+            rungs=rungs,
+        )
 
         self.update_status(record_id, "processing", 50)
         render_plan(
@@ -204,6 +245,8 @@ class ReframeProcessor(JobProcessor):
             src_w=w,
             src_h=h,
             has_audio=has_audio,
+            out_w=out_w,
+            out_h=out_h,
         )
 
     def _store_segment_plan(self, record_id, segments):
@@ -249,6 +292,55 @@ class ReframeProcessor(JobProcessor):
             record_id, {"segment_plan": compact, "reframe_summary": summary}
         )
 
+    def _store_eval_report(
+        self,
+        record_id,
+        segments,
+        tracked_frames,
+        person_frames,
+        speaker_segments,
+        src_w,
+        src_h,
+        duration,
+        canvas_h=1920,
+        rungs=None,
+    ):
+        """Reference-free quality report card (runs before render → visible mid-job).
+
+        Scores the plan against signals that didn't decide it (all detections +
+        Chirp speech turns). Never fails the reframe — degrade to no report.
+        """
+        try:
+            from reframe_eval import evaluate
+
+            speech = [
+                {"start_sec": s.get("start_sec"), "end_sec": s.get("end_sec")}
+                for s in (speaker_segments or [])
+            ]
+            report = evaluate(
+                segments,
+                tracked_frames,
+                person_frames,
+                speech,
+                src_w,
+                src_h,
+                duration,
+                canvas_h=canvas_h,
+                rungs=rungs,
+            )
+            if not report:
+                return
+            deps.firestore_svc.update_reframe_record(record_id, {"eval_report": report})
+            lb, talker = report["letterbox"], report.get("talker") or {}
+            logger.info(
+                f"[reframe:{record_id}] eval: overall={report['overall']} "
+                f"face_cut={lb['face_cut_rate']} over_lb={lb['over_letterbox_rate']} "
+                f"av_sync={talker.get('av_sync_score')} "
+                f"miss={talker.get('speaker_miss_rate')}"
+            )
+        except Exception as e:
+            logger.warning(f"[reframe:{record_id}] eval skipped ({e})")
+
     def _run_diarization(self, record, record_id, src_path, probe, tmp, has_audio):
         """Step 2: Chirp 3 speaker diarization — runs whenever the source has audio.
 
@@ -257,12 +349,13 @@ class ReframeProcessor(JobProcessor):
         is present rather than gating on a manual content type.
         """
         chirp_context = ""
+        speaker_segments: list = []
         logger.info(
             f"[reframe:{record_id}] Diarization: audio={has_audio}, "
             f"svc={'yes' if deps.diarization_svc else 'NO'}"
         )
         if not (has_audio and deps.diarization_svc):
-            return chirp_context
+            return chirp_context, speaker_segments
 
         self.update_status(record_id, "analyzing", 10)
         logger.info(f"[reframe:{record_id}] Running Chirp 3 diarization...")
@@ -282,19 +375,25 @@ class ReframeProcessor(JobProcessor):
                 record_id=record_id,
                 audio_duration=probe["duration"],
             )
-            segments = result.get("speaker_segments", [])
+            speaker_segments = result.get("speaker_segments", [])
             deps.firestore_svc.update_reframe_record(
                 record_id,
-                {"speaker_segments": [SpeakerSegment(**s).dict() for s in segments]},
+                {
+                    "speaker_segments": [
+                        SpeakerSegment(**s).dict() for s in speaker_segments
+                    ]
+                },
             )
-            logger.info(f"[reframe:{record_id}] Chirp 3: {len(segments)} segments")
-            chirp_context = format_chirp_context(segments)
+            logger.info(
+                f"[reframe:{record_id}] Chirp 3: {len(speaker_segments)} segments"
+            )
+            chirp_context = format_chirp_context(speaker_segments)
             accumulate_diarization_cost("reframe", record_id, probe["duration"] / 60.0)
         except Exception as e:
             # Diarization only enriches speaker framing — never fail the reframe
             # because it broke. Degrade to no speaker context.
             logger.warning(f"[reframe:{record_id}] Diarization skipped ({e})")
-        return chirp_context
+        return chirp_context, speaker_segments
 
     def _analyze_scenes(
         self,
@@ -355,7 +454,11 @@ class ReframeProcessor(JobProcessor):
 
     def _upload_and_encode(self, record, record_id, out_path, probe):
         """Step 5-6: Upload to GCS and transcode."""
+        from reframe_filters import OUTPUT_CANVAS
+
         has_audio = probe.get("has_audio", True)
+        ar = getattr(record, "output_aspect_ratio", "9:16") or "9:16"
+        _out_w, out_h = OUTPUT_CANVAS.get(ar, OUTPUT_CANVAS["9:16"])
         logger.info(f"[reframe:{record_id}] Uploading cropped video...")
         bucket = os.getenv("GCS_BUCKET")
         intermediate_uri = f"gs://{bucket}/reframes/{record_id}/cropped.mp4"
@@ -365,12 +468,13 @@ class ReframeProcessor(JobProcessor):
         if not deps.transcoder_svc:
             return intermediate_uri
 
-        logger.info(f"[reframe:{record_id}] Starting Transcoder encode...")
-        # v2 always hands a finished 1080x1920 canvas — straight re-encode.
+        logger.info(f"[reframe:{record_id}] Starting Transcoder encode ({ar})...")
+        # v2 hands a finished 1080-wide canvas (out_h per aspect ratio) — re-encode.
         job_name, output_uri = deps.transcoder_svc.reframe_encode(
             record_id,
             intermediate_uri,
             has_audio=has_audio,
+            out_h=out_h,
         )
         self._poll_transcoder(record_id, job_name)
         accumulate_transcoder_cost("reframe", record_id, probe["duration"] / 60.0)

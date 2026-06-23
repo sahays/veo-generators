@@ -7,17 +7,21 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from reframe_plan import (
     RUNGS,
+    RUNGS_BY_CANVAS,
     MAX_SEG_LEN,
     rung_coverage,
     pick_rung,
     reconcile,
     attach_keypoints,
     pick_active_speaker,
+    reconcile_text_coverage,
+    TEXT_SELF_TRIGGER,
     _boundaries,
     _global_label_map,
     _match_track,
     _keep_both_pair,
     _merge_short,
+    _segment_text_coverage,
 )
 
 
@@ -79,6 +83,23 @@ class TestPickRung:
     def test_hysteresis_still_tightens_when_needed(self):
         # prev was loose but a much tighter rung now suffices → tighten.
         assert pick_rung(0.10, SRC_W, SRC_H, prev=(1, 1)) == (9, 16)
+
+
+class TestPickRung34:
+    """3:4 is a fixed full-bleed crop: a single-rung ladder, always (3,4)."""
+
+    R34 = RUNGS_BY_CANVAS["3:4"]
+
+    def test_ladder_is_just_full_bleed(self):
+        assert self.R34 == [(3, 4)]
+
+    def test_always_picks_3x4_regardless_of_coverage(self):
+        # No looser rungs → never letterboxes, even for very wide content.
+        for req in (0.0, 0.2, 0.42, 0.55, 0.9, 1.0):
+            assert pick_rung(req, SRC_W, SRC_H, rungs=self.R34) == (3, 4)
+
+    def test_hysteresis_is_noop_with_one_rung(self):
+        assert pick_rung(0.9, SRC_W, SRC_H, prev=(3, 4), rungs=self.R34) == (3, 4)
 
 
 # ---------------------------------------------------------------------------
@@ -399,3 +420,91 @@ class TestActiveSpeaker:
         ]
         plan = reconcile(scenes, frames, cuts=[], src_w=1920, src_h=1080, duration=5.0)
         assert plan[0]["layout"] == "keep_both"
+
+
+# ---------------------------------------------------------------------------
+# Wide-text coverage (Phase 2): Gemini flags, CPU measures the extent
+# ---------------------------------------------------------------------------
+
+
+def _txt(t, coverage):
+    return {"time_sec": t, "coverage": coverage, "span": (0.05, 0.05 + coverage)}
+
+
+class TestReconcileTextCoverage:
+    def test_gemini_text_refined_down_by_measurement(self):
+        # Gemini says full-width (1.0) but the title is only 0.7 wide → use 0.7,
+        # so we take 1:1 instead of a needless full 16:9 letterbox.
+        assert reconcile_text_coverage(1.0, 0.7, gemini_text_intent=True) == 0.7
+
+    def test_gemini_text_kept_when_detector_blind(self):
+        # Gemini flags text but the detector found none → never chop; keep Gemini.
+        assert reconcile_text_coverage(1.0, 0.0, gemini_text_intent=True) == 1.0
+
+    def test_measurement_self_triggers_when_gemini_silent(self):
+        # Gemini didn't flag text, but a confidently wide band is present → trust it.
+        assert (
+            reconcile_text_coverage(0.3, TEXT_SELF_TRIGGER, gemini_text_intent=False)
+            == TEXT_SELF_TRIGGER
+        )
+
+    def test_weak_measurement_ignored_when_gemini_silent(self):
+        # A weak band with no Gemini flag is treated as a false positive.
+        assert reconcile_text_coverage(0.3, 0.4, gemini_text_intent=False) == 0.3
+
+
+class TestSegmentTextCoverage:
+    def test_persistent_text_returns_median(self):
+        frames = [_txt(t, 0.8) for t in range(5)]
+        assert abs(_segment_text_coverage(frames, 0, 4) - 0.8) < 1e-9
+
+    def test_transient_flash_rejected(self):
+        # One wide frame out of five → below the persistence floor → 0.
+        frames = [_txt(0, 0.9)] + [_txt(t, 0.0) for t in range(1, 5)]
+        assert _segment_text_coverage(frames, 0, 4) == 0.0
+
+    def test_empty_or_none_is_zero(self):
+        assert _segment_text_coverage(None, 0, 5) == 0.0
+        assert _segment_text_coverage([], 0, 5) == 0.0
+
+
+class TestReconcileWithText:
+    def test_measured_wide_text_forces_letterbox(self):
+        # No faces, Gemini gave no coverage, but the detector sees full-width text
+        # across the whole clip → plan must letterbox (16:9), source "center".
+        scenes = [{"start_sec": 0, "end_sec": 5, "scene_type": "general"}]
+        text_frames = [_txt(t, 0.95) for t in range(6)]
+        plan = reconcile(
+            scenes,
+            [],
+            cuts=[],
+            src_w=1920,
+            src_h=1080,
+            duration=5.0,
+            text_frames=text_frames,
+        )
+        assert tuple(plan[0]["inner_ar"]) == (16, 9)
+        assert plan[0]["trace"]["text_measured"] >= 0.9
+
+    def test_full_width_flag_refined_down(self):
+        # Gemini flags full-width but the measured title is ~0.6 wide → a tighter
+        # rung than 16:9 (no needless full letterbox).
+        scenes = [
+            {
+                "start_sec": 0,
+                "end_sec": 5,
+                "scene_type": "general",
+                "requires_full_width": True,
+            }
+        ]
+        text_frames = [_txt(t, 0.6) for t in range(6)]
+        plan = reconcile(
+            scenes,
+            [],
+            cuts=[],
+            src_w=1920,
+            src_h=1080,
+            duration=5.0,
+            text_frames=text_frames,
+        )
+        assert tuple(plan[0]["inner_ar"]) != (16, 9)

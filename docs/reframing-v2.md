@@ -285,11 +285,21 @@ of discovering it in Phase 1 is weeks.
 6. Decision function: `C` → rung, with hysteresis + min-dwell.
    - *Deliverable:* full-width text/logos and split podcasts stop getting chopped.
 
-**Phase 2 — precision detectors.**
-7. `text_detect.py` (DBNet/PaddleOCR-det) → precise wide-text bbox (replaces trusting
-   Gemini's box; this is the riskiest accuracy gap).
-8. `active_speaker.py` (Light-ASD or FaceMesh mouth-AR × Chirp) → precise speaker
-   switches for cut-vs-keep decisions.
+**Phase 2 — precision detectors. ✅ Done.**
+7. ✅ `text_detect.py` → precise wide-text coverage. Implemented as classical
+   OpenCV morphology (gradient → Otsu → glyph contours → line grouping with a
+   density guard) rather than DBNet/PaddleOCR: zero model download, no new
+   dependency, no cold start — the v2 "CPU model footprint" open decision
+   resolved in favour of the lightweight option. Gemini's coarse `requires_full_width`
+   flag is reconciled with the measured extent in `reframe_plan.reconcile_text_coverage`
+   ("Gemini understands, CPU locates"): the measurement refines Gemini's blanket
+   1.0 down to the real text width (less needless letterbox) and can self-trigger
+   on confidently-wide text Gemini missed, while Gemini remains the floor when the
+   detector is blind. If precision proves insufficient on real footage, swap the
+   detector internals for DBNet/EAST behind the same interface.
+8. ✅ `active_speaker.py` (FaceMesh mouth-AR via MediaPipe FaceLandmarker) →
+   per-face mouth-aspect-ratio; the speaker decision (variance dominance) lives in
+   `reframe_plan.pick_active_speaker`.
 
 **Phase 3 — split-screen layout.**
 9. `vstack` split builder + per-panel pan.

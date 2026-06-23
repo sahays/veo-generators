@@ -14,7 +14,14 @@ import statistics
 from typing import List, Optional, Tuple
 
 # Inner-AR rungs, tightest crop → loosest (most letterbox). Chosen by coverage.
+# 9:16 is the historical *adaptive* ladder: each scene picks a rung, letterboxing
+# wide content. 3:4 is a *fixed* full-bleed crop — a single-rung ladder so every
+# scene crops to fill the 3:4 frame (subject-following pan), never letterboxes.
 RUNGS: List[Tuple[int, int]] = [(9, 16), (4, 5), (1, 1), (16, 9)]
+RUNGS_BY_CANVAS: dict = {
+    "9:16": RUNGS,
+    "3:4": [(3, 4)],
+}
 
 MIN_DWELL = 2.0  # merge segments shorter than this (seconds)
 MAX_SEG_LEN = 5.0  # re-decide framing at least this often, even with no cut
@@ -34,6 +41,13 @@ PERSON_W_CAP = 0.60  # bodies are wider than faces, but still bounded
 SPEAKER_MIN_SAMPLES = 3  # need this many mouth samples to judge a track
 SPEAKER_MIN_ACTIVITY = 0.03  # MAR stdev below this = not talking
 SPEAKER_DOMINANCE = 1.6  # the speaker's activity must beat the 2nd by this factor
+
+# Wide-text detection (Phase 2): a CPU-measured text-line width refines Gemini's
+# coarse full-width flag so we letterbox to the real text extent, not a blanket
+# 1.0. "Gemini understands, CPU locates" — see reconcile_text_coverage.
+TEXT_WIDE_MIN = 0.50  # a sampled frame counts as wide-text at/above this coverage
+TEXT_PERSIST_FRAC = 0.50  # text must show in ≥ this fraction of a segment's frames
+TEXT_SELF_TRIGGER = 0.70  # CPU may letterbox unprompted only above this width
 
 # Pan smoothing per Gemini scene_type → (max_velocity frac/s, deadzone frac).
 # Replaces the old global content_type setting: framing adapts per scene, so an
@@ -71,6 +85,7 @@ def pick_rung(
     src_w: int,
     src_h: int,
     prev: Optional[Tuple[int, int]] = None,
+    rungs: Optional[List[Tuple[int, int]]] = None,
 ) -> Tuple[int, int]:
     """Lowest rung whose coverage ≥ required.
 
@@ -81,20 +96,24 @@ def pick_rung(
     A small RUNG_TOLERANCE lets a tighter rung win when it *almost* covers the
     requirement — trading a sliver of edge crop for much less letterboxing (e.g.
     a two-shot needing 0.60 takes 1:1 at 0.5625 rather than full 16:9).
+
+    `rungs` is the canvas's ladder (defaults to the 9:16 RUNGS).
     """
+    rungs = rungs or RUNGS
     ideal = next(
         (
             r
-            for r in RUNGS
+            for r in rungs
             if rung_coverage(r, src_w, src_h) + RUNG_TOLERANCE >= required
         ),
-        RUNGS[-1],
+        rungs[-1],
     )
     if (
         prev is not None
+        and prev in rungs
         and rung_coverage(prev, src_w, src_h) + RUNG_TOLERANCE >= required
     ):
-        if 0 <= RUNGS.index(prev) - RUNGS.index(ideal) <= 1:
+        if 0 <= rungs.index(prev) - rungs.index(ideal) <= 1:
             return prev
     return ideal
 
@@ -230,6 +249,51 @@ def _keep_both_pair(stable: List[dict], scene: dict):
 
 
 # ---------------------------------------------------------------------------
+# Wide-text coverage (Gemini flags, CPU measures the exact extent)
+# ---------------------------------------------------------------------------
+
+
+def _segment_text_coverage(text_frames, start, end) -> float:
+    """Median wide-text coverage over [start, end], or 0 if text isn't persistent.
+
+    `text_frames` is `text_detect.scan_video_text` output. Requires wide text in
+    ≥ TEXT_PERSIST_FRAC of the segment's sampled frames (rejects a one-frame
+    flash / a swish-pan title), then returns the median width of the frames that
+    *did* carry it.
+    """
+    if not text_frames:
+        return 0.0
+    seg = [f for f in text_frames if start <= f["time_sec"] <= end]
+    if not seg:
+        return 0.0
+    wide = [f["coverage"] for f in seg if f["coverage"] >= TEXT_WIDE_MIN]
+    if len(wide) / len(seg) < TEXT_PERSIST_FRAC:
+        return 0.0
+    return statistics.median(wide)
+
+
+def reconcile_text_coverage(
+    gemini_c: float, measured: float, gemini_text_intent: bool
+) -> float:
+    """Combine Gemini's text flag with the CPU-measured text width → C_text.
+
+    "Gemini understands, CPU locates":
+    - Gemini says the shot has wide text AND the detector found a band → trust the
+      *measured* extent (precise — a 0.7-wide title takes 1:1, not a needless full
+      16:9 letterbox).
+    - Gemini says text but the detector found none → keep Gemini's number (the
+      detector may have missed it; never chop content Gemini flagged).
+    - Gemini didn't flag text → trust the detector only when it's confidently wide
+      (guards against textured-background false positives forcing letterbox).
+    """
+    if gemini_text_intent:
+        return measured if measured > 0.0 else gemini_c
+    if measured >= TEXT_SELF_TRIGGER:
+        return measured
+    return gemini_c
+
+
+# ---------------------------------------------------------------------------
 # Per-frame focal series (for intra-segment panning)
 # ---------------------------------------------------------------------------
 
@@ -292,7 +356,9 @@ def _competitors(stable, mouth) -> list:
     return out
 
 
-def _decide_segment(scene, tracked_frames, person_frames, start, end, label_map):
+def _decide_segment(
+    scene, tracked_frames, person_frames, start, end, label_map, text_frames=None
+):
     """Decide layout, focal target and required coverage for one segment.
 
     Falls back to person/body detection when no stable face is present (e.g. a
@@ -300,11 +366,20 @@ def _decide_segment(scene, tracked_frames, person_frames, start, end, label_map)
     plus the raw inputs that drove it (for the decision trace).
     """
     stable = _stable_tracks(tracked_frames, start, end)
-    c_text = (
+    gemini_c = (
         1.0
         if scene.get("requires_full_width")
         else float(scene.get("min_horizontal_coverage") or 0.0)
     )
+    # Gemini "means text" when it flags full-width, names a text/slide layout, or
+    # asks for near-full coverage — that's when a measured text band should win.
+    text_intent = (
+        bool(scene.get("requires_full_width"))
+        or (scene.get("layout") or "").lower() in ("text_card", "slide")
+        or gemini_c >= 0.8
+    )
+    text_meas = _segment_text_coverage(text_frames, start, end)
+    c_text = reconcile_text_coverage(gemini_c, text_meas, text_intent)
 
     def out(layout, crop, c, c_meas, faces=None, n_persons=0):
         return {
@@ -312,6 +387,8 @@ def _decide_segment(scene, tracked_frames, person_frames, start, end, label_map)
             "crops": [crop],
             "C": min(1.0, c),
             "c_text": c_text,
+            "gemini_c": gemini_c,
+            "text_meas": round(text_meas, 3),
             "c_meas": round(c_meas, 3),
             "source": crop["source"],
             "n_faces": len(stable),
@@ -339,8 +416,14 @@ def _decide_segment(scene, tracked_frames, person_frames, start, end, label_map)
             left = min(a["x"] - a["w"] / 2, b["x"] - b["w"] / 2)
             right = max(a["x"] + a["w"] / 2, b["x"] + b["w"] / 2)
             span = max(0.0, right - left)
-            crop = {"track_id": None, "x_target": (a["x"] + b["x"]) / 2, "source": "center"}
-            return out("keep_both", crop, max(span + COVERAGE_MARGIN, c_text), span, faces)
+            crop = {
+                "track_id": None,
+                "x_target": (a["x"] + b["x"]) / 2,
+                "source": "center",
+            }
+            return out(
+                "keep_both", crop, max(span + COVERAGE_MARGIN, c_text), span, faces
+            )
 
         tgt = _match_track(stable, scene, label_map)
         cm = min(tgt["w"], FACE_W_CAP)
@@ -354,8 +437,13 @@ def _decide_segment(scene, tracked_frames, person_frames, start, end, label_map)
         mean_x = sum(p["x"] for p in persons) / len(persons)
         mean_w = min(sum(p["w"] for p in persons) / len(persons), PERSON_W_CAP)
         crop = {"track_id": None, "x_target": mean_x, "source": "person"}
-        return out("single", crop, max(mean_w + COVERAGE_MARGIN, c_text), mean_w,
-                   n_persons=len(persons))
+        return out(
+            "single",
+            crop,
+            max(mean_w + COVERAGE_MARGIN, c_text),
+            mean_w,
+            n_persons=len(persons),
+        )
 
     # Nothing detected → Gemini spatial hint, rely on c_text.
     crop = {"track_id": None, "x_target": _hint_x(scene), "source": "center"}
@@ -396,10 +484,15 @@ def _scene_for(
     return scenes[max(0, i)] if i >= 0 else scenes[0]
 
 
-def _merge_short(segments: List[dict], min_dwell: float) -> List[dict]:
+def _merge_short(
+    segments: List[dict],
+    min_dwell: float,
+    rungs: Optional[List[Tuple[int, int]]] = None,
+) -> List[dict]:
     """Collapse identical neighbors and fold sub-dwell segments into the previous one."""
     if not segments:
         return []
+    rungs = rungs or RUNGS
 
     def _cx(s):
         return s["crops"][0].get("x_target", 0.5)
@@ -419,7 +512,7 @@ def _merge_short(segments: List[dict], min_dwell: float) -> List[dict]:
         if same or too_short:
             # Extend prev; keep the looser rung so we never crop out the short bit.
             prev["end"] = seg["end"]
-            if RUNGS.index(seg["inner_ar"]) > RUNGS.index(prev["inner_ar"]):
+            if rungs.index(seg["inner_ar"]) > rungs.index(prev["inner_ar"]):
                 prev["inner_ar"] = seg["inner_ar"]
                 prev["layout"] = seg["layout"]
                 prev["crops"] = seg["crops"]
@@ -460,13 +553,18 @@ def _decision_trace(d, scene, chosen, ideal, src_w, src_h) -> dict:
     """Structured 'why this framing' record + one-line trigger (observability)."""
     cov = rung_coverage(chosen, src_w, src_h)
     ct, cm = d["c_text"], d["c_meas"]
+    tmeas = d.get("text_meas", 0.0)
     src, layout = d["source"], d["layout"]
+    # Did measured wide-text set C_text (vs. Gemini's coarse number)?
+    text_drove = tmeas > 0.0 and abs(ct - tmeas) < 1e-6
     if layout == "keep_both":
         why = f"two faces span {cm:.2f}"
     elif src == "speaker":
         why = "active speaker (mouth movement)"
     elif src == "person":
         why = f"no face; person body w={cm:.2f}"
+    elif ct >= cm and text_drove:
+        why = f"wide text w={tmeas:.2f} (measured)"
     elif d["n_faces"] == 0:
         why = f"no detection; Gemini coverage {ct:.2f}" if ct > 0 else "no detection"
     elif ct >= cm:
@@ -480,6 +578,7 @@ def _decision_trace(d, scene, chosen, ideal, src_w, src_h) -> dict:
         "trigger": trig,
         "C": round(d["C"], 3),
         "c_text": round(ct, 3),
+        "text_measured": round(tmeas, 3),
         "c_measured": round(cm, 3),
         "chosen_ar": list(chosen),
         "ideal_ar": list(ideal),
@@ -511,8 +610,16 @@ def reconcile(
     src_h: int,
     duration: float,
     person_frames: Optional[List[dict]] = None,
+    rungs: Optional[List[Tuple[int, int]]] = None,
+    text_frames: Optional[List[dict]] = None,
 ) -> List[dict]:
-    """Build the per-segment crop plan from cuts + Gemini scenes + detections."""
+    """Build the per-segment crop plan from cuts + Gemini scenes + detections.
+
+    `rungs` is the output canvas's inner-AR ladder (defaults to the 9:16 RUNGS);
+    pass RUNGS_BY_CANVAS["3:4"] to plan onto a 3:4 canvas. `text_frames`
+    (text_detect.scan_video_text output) supplies the measured wide-text extent.
+    """
+    rungs = rungs or RUNGS
     label_map = _global_label_map(tracked_frames)
     scene_starts = [s.get("start_sec", 0.0) for s in scenes]
     bounds = _boundaries(cuts, duration)
@@ -521,9 +628,11 @@ def reconcile(
     prev_rung: Optional[Tuple[int, int]] = None
     for start, end in bounds:
         scene = _scene_for(scenes, scene_starts, start, end)
-        d = _decide_segment(scene, tracked_frames, person_frames, start, end, label_map)
-        ideal = pick_rung(d["C"], src_w, src_h, None)
-        chosen = pick_rung(d["C"], src_w, src_h, prev_rung)
+        d = _decide_segment(
+            scene, tracked_frames, person_frames, start, end, label_map, text_frames
+        )
+        ideal = pick_rung(d["C"], src_w, src_h, None, rungs)
+        chosen = pick_rung(d["C"], src_w, src_h, prev_rung, rungs)
         prev_rung = chosen
         trace = _decision_trace(d, scene, chosen, ideal, src_w, src_h)
         raw.append(
@@ -539,7 +648,7 @@ def reconcile(
             }
         )
 
-    merged = _merge_short(raw, MIN_DWELL)
+    merged = _merge_short(raw, MIN_DWELL, rungs)
     for seg in merged:
         _attach_focal_points(seg, tracked_frames, person_frames)
         _fill_keypoints(seg)

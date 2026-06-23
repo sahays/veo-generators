@@ -5,6 +5,19 @@ export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs))
 }
 
+/** Trigger a client-side download of `data` as a pretty-printed JSON file. */
+export function downloadJson(filename: string, data: unknown): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
 export function getTimeAgo(timestamp: string | number): string {
   const ms = typeof timestamp === 'string' ? new Date(timestamp).getTime() : timestamp
   if (isNaN(ms)) return ''

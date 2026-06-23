@@ -130,8 +130,14 @@ def _draw_caption(frame, lines, scale):
     cv2.rectangle(frame, (0, 0), (w, row * len(lines) + 4), _BLACK, -1)
     for i, text in enumerate(lines):
         cv2.putText(
-            frame, _ascii(text), (10, row * i + th + 6),
-            cv2.FONT_HERSHEY_SIMPLEX, scale, _WHITE, 2, cv2.LINE_AA,
+            frame,
+            _ascii(text),
+            (10, row * i + th + 6),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            scale,
+            _WHITE,
+            2,
+            cv2.LINE_AA,
         )
 
 
