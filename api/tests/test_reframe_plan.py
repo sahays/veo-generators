@@ -454,18 +454,19 @@ class TestReconcileTextCoverage:
 
 
 class TestSegmentTextCoverage:
+    # Takes the already-windowed text frames (reconcile bisect-slices per segment).
     def test_persistent_text_returns_median(self):
-        frames = [_txt(t, 0.8) for t in range(5)]
-        assert abs(_segment_text_coverage(frames, 0, 4) - 0.8) < 1e-9
+        win = [_txt(t, 0.8) for t in range(5)]
+        assert abs(_segment_text_coverage(win) - 0.8) < 1e-9
 
     def test_transient_flash_rejected(self):
         # One wide frame out of five → below the persistence floor → 0.
-        frames = [_txt(0, 0.9)] + [_txt(t, 0.0) for t in range(1, 5)]
-        assert _segment_text_coverage(frames, 0, 4) == 0.0
+        win = [_txt(0, 0.9)] + [_txt(t, 0.0) for t in range(1, 5)]
+        assert _segment_text_coverage(win) == 0.0
 
     def test_empty_or_none_is_zero(self):
-        assert _segment_text_coverage(None, 0, 5) == 0.0
-        assert _segment_text_coverage([], 0, 5) == 0.0
+        assert _segment_text_coverage(None) == 0.0
+        assert _segment_text_coverage([]) == 0.0
 
 
 class TestReconcileWithText:

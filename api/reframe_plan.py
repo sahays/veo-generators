@@ -145,21 +145,30 @@ def _global_label_map(tracked_frames: List[dict]) -> dict:
     }
 
 
-def _stable_tracks(tracked_frames, start, end):
-    """Mean x/w and visibility fraction per track within [start, end]."""
-    times = [f["time_sec"] for f in tracked_frames]
+def _window(frames, times, start, end):
+    """Frames whose time_sec is in [start, end], via bisect on the prebuilt
+    `times` index.
+
+    `times` is a once-computed sorted list of each frame's time_sec, aligned with
+    `frames`. Slicing through it makes every per-segment aggregation O(log F + w)
+    over its window instead of an O(F) rescan of the whole series per segment.
+    """
     lo = bisect.bisect_left(times, start)
     hi = bisect.bisect_right(times, end)
-    frames = tracked_frames[lo:hi]
-    if not frames:
+    return frames[lo:hi]
+
+
+def _stable_tracks(win):
+    """Mean x/w and visibility fraction per track over the windowed frames."""
+    if not win:
         return []
     agg: dict = {}
-    for f in frames:
+    for f in win:
         for t in f.get("tracks", []):
             a = agg.setdefault(t["track_id"], {"xs": [], "ws": []})
             a["xs"].append(t["x"])
             a["ws"].append(t.get("w", 0.0))
-    n = len(frames)
+    n = len(win)
     stats = [
         {
             "track_id": tid,
@@ -230,14 +239,11 @@ def pick_active_speaker(track_mouth: dict) -> Optional[int]:
     return top_tid
 
 
-def _segment_track_mouth(tracked_frames, track_ids, start, end) -> dict:
-    """Per-track mouth-aspect-ratio samples within [start, end]."""
+def _segment_track_mouth(win, track_ids) -> dict:
+    """Per-track mouth-aspect-ratio samples over the windowed frames."""
     ids = set(track_ids)
     out: dict = {tid: [] for tid in ids}
-    for f in tracked_frames:
-        t = f["time_sec"]
-        if t < start or t > end:
-            continue
+    for f in win:
         for tr in f.get("tracks", []):
             m = tr.get("mouth")
             if tr["track_id"] in ids and m is not None:
@@ -258,13 +264,13 @@ def _keep_both_pair(stable: List[dict], scene: dict):
     return None
 
 
-def _track_x_spread(tracked_frames, track_id, start, end) -> float:
-    """Range of a track's x center across [start, end] (0 if absent)."""
-    xs = [p["x"] for p in _track_series(tracked_frames, track_id, start, end)]
+def _track_x_spread(win, track_id) -> float:
+    """Range of a track's x center across the windowed frames (0 if absent)."""
+    xs = [p["x"] for p in _track_series(win, track_id)]
     return (max(xs) - min(xs)) if xs else 0.0
 
 
-def _split_crops(pair, tracked_frames, start, end, scene):
+def _split_crops(pair, win, start, end, scene):
     """Two stacked panels for a static, far-apart two-person dialogue, or None.
 
     Gated hard (stacking breaks eyeline continuity): the two tracks must be widely
@@ -285,9 +291,8 @@ def _split_crops(pair, tracked_frames, start, end, scene):
         return None
     left, right = sorted(pair, key=lambda s: s["x"])  # left → top, right → bottom
     if (
-        _track_x_spread(tracked_frames, left["track_id"], start, end) > SPLIT_MAX_MOTION
-        or _track_x_spread(tracked_frames, right["track_id"], start, end)
-        > SPLIT_MAX_MOTION
+        _track_x_spread(win, left["track_id"]) > SPLIT_MAX_MOTION
+        or _track_x_spread(win, right["track_id"]) > SPLIT_MAX_MOTION
     ):
         return None
     return [
@@ -305,21 +310,17 @@ def _split_crops(pair, tracked_frames, start, end, scene):
 # ---------------------------------------------------------------------------
 
 
-def _segment_text_coverage(text_frames, start, end) -> float:
-    """Median wide-text coverage over [start, end], or 0 if text isn't persistent.
+def _segment_text_coverage(win) -> float:
+    """Median wide-text coverage over the windowed frames, or 0 if not persistent.
 
-    `text_frames` is `text_detect.scan_video_text` output. Requires wide text in
-    ≥ TEXT_PERSIST_FRAC of the segment's sampled frames (rejects a one-frame
-    flash / a swish-pan title), then returns the median width of the frames that
-    *did* carry it.
+    `win` is the `text_detect.scan_video_text` frames in this segment. Requires
+    wide text in ≥ TEXT_PERSIST_FRAC of them (rejects a one-frame flash / a
+    swish-pan title), then returns the median width of those that *did* carry it.
     """
-    if not text_frames:
+    if not win:
         return 0.0
-    seg = [f for f in text_frames if start <= f["time_sec"] <= end]
-    if not seg:
-        return 0.0
-    wide = [f["coverage"] for f in seg if f["coverage"] >= TEXT_WIDE_MIN]
-    if len(wide) / len(seg) < TEXT_PERSIST_FRAC:
+    wide = [f["coverage"] for f in win if f["coverage"] >= TEXT_WIDE_MIN]
+    if len(wide) / len(win) < TEXT_PERSIST_FRAC:
         return 0.0
     return statistics.median(wide)
 
@@ -350,34 +351,30 @@ def reconcile_text_coverage(
 # ---------------------------------------------------------------------------
 
 
-def _track_series(tracked_frames, track_id, start, end):
-    """The chosen face track's (time, x, y) samples within [start, end]."""
+def _track_series(win, track_id):
+    """The chosen face track's (time, x, y) samples over the windowed frames."""
     out = []
-    for f in tracked_frames:
-        t = f["time_sec"]
-        if t < start or t > end:
-            continue
+    for f in win:
         for tr in f.get("tracks", []):
             if tr["track_id"] == track_id:
-                out.append({"time_sec": t, "x": tr["x"], "y": tr.get("y", 0.5)})
+                out.append(
+                    {"time_sec": f["time_sec"], "x": tr["x"], "y": tr.get("y", 0.5)}
+                )
                 break
     return out
 
 
-def _segment_persons(person_frames, start, end):
-    """Per-frame largest person within [start, end] → {time_sec, x, y, w}."""
+def _segment_persons(win):
+    """Per-frame largest person over the windowed frames → {time_sec, x, y, w}."""
     out = []
-    for f in person_frames or []:
-        t = f["time_sec"]
-        if t < start or t > end:
-            continue
+    for f in win:
         ps = f.get("persons", [])
         if not ps:
             continue
         big = max(ps, key=lambda p: p.get("w", 0.0) * p.get("h", 0.0))
         out.append(
             {
-                "time_sec": t,
+                "time_sec": f["time_sec"],
                 "x": big["x"],
                 "y": big.get("y", 0.5),
                 "w": big.get("w", 0.0),
@@ -408,16 +405,15 @@ def _competitors(stable, mouth) -> list:
     return out
 
 
-def _decide_segment(
-    scene, tracked_frames, person_frames, start, end, label_map, text_frames=None
-):
+def _decide_segment(scene, tf_win, pf_win, tx_win, start, end, label_map):
     """Decide layout, focal target and required coverage for one segment.
 
-    Falls back to person/body detection when no stable face is present (e.g. a
-    subject walking away), then to the Gemini spatial hint. Returns the decision
-    plus the raw inputs that drove it (for the decision trace).
+    `tf_win`/`pf_win`/`tx_win` are the tracked-face / person / text frames already
+    sliced to this segment's window (via `_window`). Falls back to person/body
+    detection when no stable face is present (e.g. a subject walking away), then to
+    the Gemini spatial hint. Returns the decision plus the raw inputs that drove it.
     """
-    stable = _stable_tracks(tracked_frames, start, end)
+    stable = _stable_tracks(tf_win)
     gemini_c = (
         1.0
         if scene.get("requires_full_width")
@@ -430,7 +426,7 @@ def _decide_segment(
         or (scene.get("layout") or "").lower() in ("text_card", "slide")
         or gemini_c >= 0.8
     )
-    text_meas = _segment_text_coverage(text_frames, start, end)
+    text_meas = _segment_text_coverage(tx_win)
     c_text = reconcile_text_coverage(gemini_c, text_meas, text_intent)
 
     def out(layout, crop, c, c_meas, faces=None, n_persons=0):
@@ -451,9 +447,7 @@ def _decide_segment(
     # Margin pads the DETECTION-measured width (for tracker slop), not Gemini's
     # stated coverage (which is already a minimum) — avoids double-padding.
     if stable:
-        mouth = _segment_track_mouth(
-            tracked_frames, [s["track_id"] for s in stable], start, end
-        )
+        mouth = _segment_track_mouth(tf_win, [s["track_id"] for s in stable])
         faces = _competitors(stable, mouth)
         pair = _keep_both_pair(stable, scene)
         if pair:
@@ -467,7 +461,7 @@ def _decide_segment(
             # Neither clearly dominates: if they're too far apart for 1:1 to hold
             # both large AND the shot is a static dialogue, stack them as panels
             # instead of letterboxing both tiny.
-            split = _split_crops(pair, tracked_frames, start, end, scene)
+            split = _split_crops(pair, tf_win, start, end, scene)
             if split:
                 a, b = pair
                 sep = abs(a["x"] - b["x"])
@@ -504,9 +498,8 @@ def _decide_segment(
         return out("single", crop, max(cm + COVERAGE_MARGIN, c_text), cm, faces)
 
     # No stable face → try person/body detection.
-    persons = _segment_persons(person_frames, start, end)
-    seg_frames = [f for f in (person_frames or []) if start <= f["time_sec"] <= end]
-    if persons and len(persons) / max(1, len(seg_frames)) >= STABLE_FRAC:
+    persons = _segment_persons(pf_win)
+    if persons and len(persons) / max(1, len(pf_win)) >= STABLE_FRAC:
         mean_x = sum(p["x"] for p in persons) / len(persons)
         mean_w = min(sum(p["w"] for p in persons) / len(persons), PERSON_W_CAP)
         crop = {"track_id": None, "x_target": mean_x, "source": "person"}
@@ -604,17 +597,23 @@ def _merge_short(
     return out
 
 
-def _attach_focal_points(seg, tracked_frames, person_frames):
-    """Attach the raw (time, x, y) focal series each crop should follow."""
+def _attach_focal_points(seg, tracked_frames, track_times, person_frames, person_times):
+    """Attach the raw (time, x, y) focal series each crop should follow.
+
+    Windows the (post-merge) segment once via bisect, then reads each crop's track
+    or person series from that slice.
+    """
     start, end = seg["start"], seg["end"]
+    tf_win = _window(tracked_frames, track_times, start, end)
+    pf_win = _window(person_frames, person_times, start, end)
     for crop in seg["crops"]:
         src = crop.get("source")
         if src in ("face", "speaker", "split_top", "split_bottom"):
-            pts = _track_series(tracked_frames, crop["track_id"], start, end)
+            pts = _track_series(tf_win, crop["track_id"])
         elif src == "person":
             pts = [
                 {"time_sec": p["time_sec"], "x": p["x"], "y": p["y"]}
-                for p in _segment_persons(person_frames, start, end)
+                for p in _segment_persons(pf_win)
             ]
         else:
             pts = []
@@ -736,12 +735,27 @@ def reconcile(
     scene_starts = [s.get("start_sec", 0.0) for s in scenes]
     bounds = _boundaries(cuts, duration)
 
+    # Build the time indices ONCE; every per-segment window is then a bisect slice
+    # of these sorted series rather than a full rescan — keeps the decision loop
+    # linear (O(F + B·log F)) instead of quadratic (O(B·F)) in video length.
+    persons = person_frames or []
+    texts = text_frames or []
+    track_times = [f["time_sec"] for f in tracked_frames]
+    person_times = [f["time_sec"] for f in persons]
+    text_times = [f["time_sec"] for f in texts]
+
     raw: List[dict] = []
     prev_rung: Optional[Tuple[int, int]] = None
     for start, end in bounds:
         scene = _scene_for(scenes, scene_starts, start, end)
         d = _decide_segment(
-            scene, tracked_frames, person_frames, start, end, label_map, text_frames
+            scene,
+            _window(tracked_frames, track_times, start, end),
+            _window(persons, person_times, start, end),
+            _window(texts, text_times, start, end),
+            start,
+            end,
+            label_map,
         )
         if d["layout"] == "split":
             # Split fills the canvas with stacked panels — no rung, and it doesn't
@@ -768,7 +782,7 @@ def reconcile(
 
     merged = _merge_short(raw, MIN_DWELL, rungs)
     for seg in merged:
-        _attach_focal_points(seg, tracked_frames, person_frames)
+        _attach_focal_points(seg, tracked_frames, track_times, persons, person_times)
         _fill_keypoints(seg)
     return merged
 
