@@ -49,6 +49,16 @@ TEXT_WIDE_MIN = 0.50  # a sampled frame counts as wide-text at/above this covera
 TEXT_PERSIST_FRAC = 0.50  # text must show in ≥ this fraction of a segment's frames
 TEXT_SELF_TRIGGER = 0.70  # CPU may letterbox unprompted only above this width
 
+# Vertical-split layout (Phase 3): when two speakers sit too far apart for even a
+# 1:1 rung to hold both at a decent size, stack them as two full-canvas panels so
+# both read large. Stacking destroys eyeline/spatial continuity, so it is gated
+# hard — only a *static, persistent, two-person dialogue* qualifies; everything
+# else keeps the single/keep-both crop. left subject → top panel, right → bottom.
+SPLIT_MIN_SEPARATION = 0.45  # face-center gap above which 1:1 shrinks both too far
+SPLIT_MIN_FRAC = 0.80  # both tracks must be near-continuously present
+SPLIT_MIN_DWELL = 3.0  # only for shots that hold long enough to read as intentional
+SPLIT_MAX_MOTION = 0.06  # near-static: each track's x-span must stay below this
+
 # Pan smoothing per Gemini scene_type → (max_velocity frac/s, deadzone frac).
 # Replaces the old global content_type setting: framing adapts per scene, so an
 # action beat and a dialogue beat in the same video pan differently. Deadzones
@@ -248,6 +258,48 @@ def _keep_both_pair(stable: List[dict], scene: dict):
     return None
 
 
+def _track_x_spread(tracked_frames, track_id, start, end) -> float:
+    """Range of a track's x center across [start, end] (0 if absent)."""
+    xs = [p["x"] for p in _track_series(tracked_frames, track_id, start, end)]
+    return (max(xs) - min(xs)) if xs else 0.0
+
+
+def _split_crops(pair, tracked_frames, start, end, scene):
+    """Two stacked panels for a static, far-apart two-person dialogue, or None.
+
+    Gated hard (stacking breaks eyeline continuity): the two tracks must be widely
+    separated, both near-continuously present, the shot must hold long enough to
+    read, both panels must be near-static, and Gemini must call it a dialogue /
+    side-by-side. Assignment is geometric and stable — left subject → top panel,
+    right → bottom — so panels never swap mid-scene.
+    """
+    a, b = pair
+    if abs(a["x"] - b["x"]) < SPLIT_MIN_SEPARATION:
+        return None
+    if min(a["frac"], b["frac"]) < SPLIT_MIN_FRAC:
+        return None
+    if (end - start) < SPLIT_MIN_DWELL:
+        return None
+    layout = (scene.get("layout") or "").lower()
+    if scene.get("scene_type") != "dialogue" and layout != "side_by_side":
+        return None
+    left, right = sorted(pair, key=lambda s: s["x"])  # left → top, right → bottom
+    if (
+        _track_x_spread(tracked_frames, left["track_id"], start, end) > SPLIT_MAX_MOTION
+        or _track_x_spread(tracked_frames, right["track_id"], start, end)
+        > SPLIT_MAX_MOTION
+    ):
+        return None
+    return [
+        {"track_id": left["track_id"], "x_target": left["x"], "source": "split_top"},
+        {
+            "track_id": right["track_id"],
+            "x_target": right["x"],
+            "source": "split_bottom",
+        },
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Wide-text coverage (Gemini flags, CPU measures the exact extent)
 # ---------------------------------------------------------------------------
@@ -412,6 +464,27 @@ def _decide_segment(
                 crop = {"track_id": speaker, "x_target": tgt["x"], "source": "speaker"}
                 return out("single", crop, max(cm + COVERAGE_MARGIN, c_text), cm, faces)
 
+            # Neither clearly dominates: if they're too far apart for 1:1 to hold
+            # both large AND the shot is a static dialogue, stack them as panels
+            # instead of letterboxing both tiny.
+            split = _split_crops(pair, tracked_frames, start, end, scene)
+            if split:
+                a, b = pair
+                sep = abs(a["x"] - b["x"])
+                return {
+                    "layout": "split",
+                    "crops": split,
+                    "C": 1.0,  # panels fill the canvas; no rung / letterbox
+                    "c_text": c_text,
+                    "gemini_c": gemini_c,
+                    "text_meas": round(text_meas, 3),
+                    "c_meas": round(sep, 3),
+                    "source": "split",
+                    "n_faces": len(stable),
+                    "n_persons": 0,
+                    "faces": faces,
+                }
+
             a, b = pair
             left = min(a["x"] - a["w"] / 2, b["x"] - b["w"] / 2)
             right = max(a["x"] + a["w"] / 2, b["x"] + b["w"] / 2)
@@ -511,8 +584,16 @@ def _merge_short(
         )
         if same or too_short:
             # Extend prev; keep the looser rung so we never crop out the short bit.
+            # The looser-rung swap only applies between two rung-based segments —
+            # a split (inner_ar=None) has no rung index, so it never swaps in/out
+            # here (its strict dwell gate already keeps it from being this short).
             prev["end"] = seg["end"]
-            if rungs.index(seg["inner_ar"]) > rungs.index(prev["inner_ar"]):
+            both_runged = isinstance(seg["inner_ar"], tuple) and isinstance(
+                prev["inner_ar"], tuple
+            )
+            if both_runged and rungs.index(seg["inner_ar"]) > rungs.index(
+                prev["inner_ar"]
+            ):
                 prev["inner_ar"] = seg["inner_ar"]
                 prev["layout"] = seg["layout"]
                 prev["crops"] = seg["crops"]
@@ -528,7 +609,7 @@ def _attach_focal_points(seg, tracked_frames, person_frames):
     start, end = seg["start"], seg["end"]
     for crop in seg["crops"]:
         src = crop.get("source")
-        if src in ("face", "speaker"):
+        if src in ("face", "speaker", "split_top", "split_bottom"):
             pts = _track_series(tracked_frames, crop["track_id"], start, end)
         elif src == "person":
             pts = [
@@ -602,6 +683,37 @@ def _decision_trace(d, scene, chosen, ideal, src_w, src_h) -> dict:
     }
 
 
+def _split_decision_trace(d, scene) -> dict:
+    """'Why this framing' record for a stacked-split segment (no rung)."""
+    sep = d["c_meas"]
+    return {
+        "trigger": f"split (stacked two-shot) — faces {sep:.2f} apart, static dialogue",
+        "C": 1.0,
+        "c_text": round(d["c_text"], 3),
+        "text_measured": round(d.get("text_meas", 0.0), 3),
+        "c_measured": round(sep, 3),
+        "chosen_ar": None,
+        "ideal_ar": None,
+        "coverage": 1.0,
+        "hysteresis": False,
+        "source": "split",
+        "layout": "split",
+        "n_faces": d["n_faces"],
+        "n_persons": d["n_persons"],
+        "scene": {
+            k: scene.get(k)
+            for k in (
+                "scene_type",
+                "layout",
+                "requires_full_width",
+                "min_horizontal_coverage",
+                "active_subject",
+            )
+        },
+        "faces": d["faces"],
+    }
+
+
 def reconcile(
     scenes: List[dict],
     tracked_frames: List[dict],
@@ -631,16 +743,22 @@ def reconcile(
         d = _decide_segment(
             scene, tracked_frames, person_frames, start, end, label_map, text_frames
         )
-        ideal = pick_rung(d["C"], src_w, src_h, None, rungs)
-        chosen = pick_rung(d["C"], src_w, src_h, prev_rung, rungs)
-        prev_rung = chosen
-        trace = _decision_trace(d, scene, chosen, ideal, src_w, src_h)
+        if d["layout"] == "split":
+            # Split fills the canvas with stacked panels — no rung, and it doesn't
+            # disturb letterbox hysteresis (prev_rung carries across untouched).
+            trace = _split_decision_trace(d, scene)
+            inner_ar = None
+        else:
+            ideal = pick_rung(d["C"], src_w, src_h, None, rungs)
+            inner_ar = pick_rung(d["C"], src_w, src_h, prev_rung, rungs)
+            prev_rung = inner_ar
+            trace = _decision_trace(d, scene, inner_ar, ideal, src_w, src_h)
         raw.append(
             {
                 "start": start,
                 "end": end,
                 "layout": d["layout"],
-                "inner_ar": chosen,
+                "inner_ar": inner_ar,
                 "scene_type": scene.get("scene_type", "general"),
                 "crops": d["crops"],
                 "reason": trace["trigger"],

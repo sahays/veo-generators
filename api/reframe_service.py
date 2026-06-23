@@ -21,6 +21,7 @@ from reframe_filters import (
     build_blurred_bg_filter,
     build_canvas_filter,
     build_crop_filter,
+    build_split_filter,
 )
 
 # Re-export for backward compatibility (workers import from here)
@@ -255,14 +256,23 @@ def render_plan(
 def _render_segment(
     src_path, out_path, seg, src_w, src_h, has_audio, out_w=1080, out_h=1920
 ) -> str:
-    """Render one plan segment with the unified canvas filter."""
+    """Render one plan segment with the unified canvas filter (or vstack split)."""
     ss = seg["start"]
     dur = seg["end"] - ss
-    # Rebase keypoints to segment-local time (filter `t` resets after -ss seek).
-    kps = [(t - ss, x, y) for (t, x, y) in seg["crops"][0]["keypoints"]]
-    filter_str = build_canvas_filter(
-        kps, src_w, src_h, tuple(seg["inner_ar"]), out_w, out_h
-    )
+
+    def _local(crop):
+        # Rebase keypoints to segment-local time (filter `t` resets after -ss seek).
+        return [(t - ss, x, y) for (t, x, y) in crop["keypoints"]]
+
+    if seg["layout"] == "split" and len(seg["crops"]) == 2:
+        top, bot = seg["crops"]
+        filter_str = build_split_filter(
+            _local(top), _local(bot), src_w, src_h, out_w, out_h
+        )
+    else:
+        filter_str = build_canvas_filter(
+            _local(seg["crops"][0]), src_w, src_h, tuple(seg["inner_ar"]), out_w, out_h
+        )
     cmd = _build_canvas_cmd(src_path, out_path, ss, dur, has_audio)
     run_ffmpeg_with_filter(
         cmd, filter_str, filter_flag="-/filter_complex", label="reframe-seg"

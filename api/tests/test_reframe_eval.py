@@ -211,3 +211,60 @@ def test_must_keep_width_from_detections():
     frames = _frames([(t, [_tr(1, 0.5, w=0.2)]) for t in range(11)])
     # span 0.2 + COVERAGE_MARGIN 0.04 = 0.24
     assert abs(_must_keep_width(seg, frames) - 0.24) < 1e-9
+
+
+# ---------------------------------------------------------------------------
+# Split layout (Phase 3): two stacked panels — both subjects framed
+# ---------------------------------------------------------------------------
+
+
+def _split_seg(start, end, t1, x1, t2, x2):
+    return {
+        "start": start,
+        "end": end,
+        "layout": "split",
+        "inner_ar": None,
+        "crops": [
+            {"track_id": t1, "source": "split_top",
+             "keypoints": [(start, x1, 0.5), (end, x1, 0.5)]},
+            {"track_id": t2, "source": "split_bottom",
+             "keypoints": [(start, x2, 0.5), (end, x2, 0.5)]},
+        ],
+        "reason": "split",
+        "trace": {"trigger": "split", "source": "split"},
+    }
+
+
+class TestSplitEval:
+    def _run(self, speech=None):
+        plan = [_split_seg(0, 10, 1, 0.25, 2, 0.75)]
+        osc = [0.1, 0.45, 0.1, 0.5][:]  # oscillating mouth → talking
+        frames = []
+        for t in range(10):
+            m1 = osc[t % 4]
+            frames.append(
+                {"time_sec": float(t),
+                 "tracks": [_tr(1, 0.25, mouth=m1), _tr(2, 0.75, mouth=0.2)]}
+            )
+        return evaluate(plan, frames, [], speech or [], SRC_W, SRC_H, 10.0)
+
+    def test_split_does_not_crash_and_has_no_letterbox(self):
+        rep = self._run()
+        assert rep["segments"][0]["inner_ar"] is None
+        assert rep["segments"][0]["letterbox_pct"] == 0.0
+        assert rep["segments"][0]["over_letterbox"] is False
+        assert rep["letterbox"]["mean_letterbox_pct"] == 0.0
+
+    def test_split_frames_both_subjects(self):
+        rep = self._run()
+        # Both panels contain their subject → nothing cut, full containment.
+        assert rep["letterbox"]["face_cut_rate"] == 0.0
+        assert rep["letterbox"]["subject_containment"] == 1.0
+
+    def test_split_talker_active_and_no_miss(self):
+        # Both speakers are on screen, so whoever talks is shown — never a "miss".
+        rep = self._run(speech=[{"start_sec": 0, "end_sec": 10}])
+        talker = rep["talker"]
+        assert talker is not None
+        assert talker["framed_speaker_active_rate"] > 0.5
+        assert talker["speaker_miss_rate"] in (None, 0.0)

@@ -258,18 +258,24 @@ class ReframeProcessor(JobProcessor):
                 "start": round(s["start"], 2),
                 "end": round(s["end"], 2),
                 "layout": s["layout"],
-                "inner_ar": list(s["inner_ar"]),
+                # split has no inner AR (stacked panels fill the canvas) → null
+                "inner_ar": list(s["inner_ar"]) if s["inner_ar"] else None,
                 "reason": s.get("reason", ""),
                 "trace": s.get("trace"),
             }
             for s in segments
         ]
-        ar = Counter(f"{a}:{b}" for a, b in (s["inner_ar"] for s in segments))
+        ar = Counter(
+            "split"
+            if s["inner_ar"] is None
+            else f"{s['inner_ar'][0]}:{s['inner_ar'][1]}"
+            for s in segments
+        )
         src = Counter(s.get("trace", {}).get("source") for s in segments)
         # Why did letterboxing (16:9) happen?
         why16 = Counter()
         for s in segments:
-            if tuple(s["inner_ar"]) != (16, 9):
+            if s["inner_ar"] is None or tuple(s["inner_ar"]) != (16, 9):
                 continue
             tr = s.get("trace", {})
             if tr.get("layout") == "keep_both":
@@ -287,6 +293,7 @@ class ReframeProcessor(JobProcessor):
                 1 for s in segments if s.get("trace", {}).get("hysteresis")
             ),
             "speaker_segments": src.get("speaker", 0),
+            "split_segments": sum(1 for s in segments if s["layout"] == "split"),
         }
         deps.firestore_svc.update_reframe_record(
             record_id, {"segment_plan": compact, "reframe_summary": summary}

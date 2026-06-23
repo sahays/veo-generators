@@ -166,6 +166,47 @@ def build_canvas_filter(
     return f"{bg};[0:v]{fg_chain}[fg];[bg][fg]overlay=0:{y_off}[v]"
 
 
+def split_panel_geometry(
+    src_w: int, src_h: int, out_w: int = 1080, out_h: int = 1920
+) -> Tuple[int, int, int]:
+    """Per-panel crop geometry for the stacked vertical-split layout.
+
+    Each of the two panels is `out_w × (out_h/2)`; a panel crops the full source
+    height (subjects only ever cut horizontally) at the panel's aspect ratio,
+    then scales to fill the panel. Returns `(crop_w, panel_h, max_x)`.
+    """
+    panel_h = _even(out_h // 2)
+    crop_w = _even(min(int(src_h * out_w / panel_h), src_w))
+    max_x = src_w - crop_w
+    return crop_w, panel_h, max_x
+
+
+def build_split_filter(
+    top_keypoints: List[Tuple[float, float, float]],
+    bot_keypoints: List[Tuple[float, float, float]],
+    src_w: int,
+    src_h: int,
+    out_w: int = 1080,
+    out_h: int = 1920,
+) -> str:
+    """filter_complex for a stacked two-shot: left subject on top, right on bottom.
+
+    Two full-height source slices (each panned to follow its subject) scaled to
+    half-canvas panels and vstacked — no blurred background, since the panels fill
+    the canvas. Output label is [v].
+    """
+    crop_w, panel_h, max_x = split_panel_geometry(src_w, src_h, out_w, out_h)
+    if crop_w <= 0:
+        return f"[0:v]scale={out_w}:{out_h}[v]"
+    top_x = _crop_x_offset(top_keypoints, src_w, crop_w, max_x)
+    bot_x = _crop_x_offset(bot_keypoints, src_w, crop_w, max_x)
+    return (
+        f"[0:v]crop={crop_w}:{src_h}:{top_x}:0,scale={out_w}:{panel_h}[top];"
+        f"[0:v]crop={crop_w}:{src_h}:{bot_x}:0,scale={out_w}:{panel_h}[bot];"
+        f"[top][bot]vstack[v]"
+    )
+
+
 def _blurred_bg_base(out_w: int, out_h: int) -> str:
     """Background layer: scaled + heavily blurred source."""
     return (

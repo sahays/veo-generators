@@ -21,7 +21,7 @@ import math
 import statistics
 from typing import List, Optional, Tuple
 
-from reframe_filters import crop_geometry
+from reframe_filters import crop_geometry, split_panel_geometry
 from reframe_plan import COVERAGE_MARGIN, RUNGS, SPEAKER_MIN_ACTIVITY, rung_coverage
 
 # --- Flag thresholds (warn, fail). Tunable scoreboard knobs. -----------------
@@ -93,6 +93,30 @@ def _crop_window(seg: dict, src_w: int, src_h: int, t: float) -> Tuple[float, fl
     x_frac = _interp_x(kps or [], t)
     left_px = max(0, min(max_x, x_frac * src_w - crop_w / 2))
     return left_px / src_w, (left_px + crop_w) / src_w
+
+
+def _crop_windows(
+    seg: dict, src_w: int, src_h: int, t: float, canvas_h: int
+) -> List[Tuple[float, float]]:
+    """Normalized [left, right] of every rendered crop window at time t.
+
+    One window for single/keep_both (the inner-AR crop); one per panel for a
+    stacked split. Mirrors the renderer geometry so cut/containment reasoning
+    matches what the viewer actually sees.
+    """
+    crops = seg.get("crops") or []
+    if seg.get("layout") == "split" and len(crops) == 2:
+        crop_w, _ph, max_x = split_panel_geometry(src_w, src_h, 1080, canvas_h)
+        windows: List[Tuple[float, float]] = []
+        for crop in crops:
+            if crop_w <= 0 or max_x <= 0:
+                windows.append((0.0, 1.0))
+                continue
+            x_frac = _interp_x(crop.get("keypoints") or [], t)
+            left_px = max(0, min(max_x, x_frac * src_w - crop_w / 2))
+            windows.append((left_px / src_w, (left_px + crop_w) / src_w))
+        return windows
+    return [_crop_window(seg, src_w, src_h, t)]
 
 
 def _flag(value, warn, fail, higher_is_better: bool) -> str:
@@ -227,35 +251,40 @@ def evaluate(
         seg = _seg_at(plan, starts, t)
         if seg is None:
             continue
-        left, right = _crop_window(seg, src_w, src_h, t)
-        center = (left + right) / 2.0
+        windows = _crop_windows(seg, src_w, src_h, t, canvas_h)
         tracks = fr.get("tracks", [])
+        crops = seg.get("crops") or []
 
-        # The subject we framed (crop 0) — needed both for containment and to
-        # decide whether a cut face "mattered".
-        framed_tid = seg["crops"][0].get("track_id") if seg.get("crops") else None
-        framed = _track_in(fr, framed_tid) if framed_tid is not None else None
-        framed_w = framed["w"] if framed is not None else 0.0
+        # The subjects we framed — one per crop (two for a split). "In frame" means
+        # inside *any* panel, so a split shows both and cuts neither.
+        framed_tids = [
+            c.get("track_id") for c in crops if c.get("track_id") is not None
+        ]
+        framed_present = [tr for tr in tracks if tr.get("track_id") in framed_tids]
+        framed_w = max((tr["w"] for tr in framed_present), default=0.0)
 
         # Goal 1: are we cutting a face that *mattered*? Count a clipped face only
-        # when it is at least as prominent as the subject we kept (or we kept no
-        # face at all — body/center crop). A clearly smaller background face that
-        # falls outside the crop is the expected cost of single-subject framing,
-        # not a failure — so it doesn't count.
+        # when it is not one we framed, clears a min size, and is at least as
+        # prominent as the largest subject we kept (or we kept none). A clearly
+        # smaller background face outside the crop is the expected cost of
+        # single-subject framing, not a failure. For a split, a clip is the *least*
+        # clipping across panels (a face shown in either panel isn't cut).
         important = [
             tr
             for tr in tracks
             if tr["w"] >= FACE_CUT_MIN_W
-            and tr.get("track_id") != framed_tid
+            and tr.get("track_id") not in framed_tids
             and tr["w"] >= framed_w - FACE_CUT_MARGIN
         ]
-        if tracks and (framed is not None or important):
+        if tracks and (framed_present or important):
             face_frames += 1
             over = 0.0
             culprit = None
             for tr in important:
                 fl, frt = tr["x"] - tr["w"] / 2, tr["x"] + tr["w"] / 2
-                clip = max(left - fl, frt - right, 0.0)
+                clip = min(
+                    max(left - fl, frt - right, 0.0) for (left, right) in windows
+                )
                 if clip > over:
                     over, culprit = clip, tr
             if over > EDGE_EPS:
@@ -265,19 +294,28 @@ def evaluate(
                     (over, t, f"face {lbl} (w={culprit['w']:.2f}) clipped {over:.0%}")
                 )
 
-        # Containment + centering of the framed subject (crop 0).
-        if framed is not None:
+        # Containment + centering: each framed subject within its own panel/crop.
+        for ci, crop in enumerate(crops):
+            tid = crop.get("track_id")
+            if tid is None:
+                continue
+            tr = _track_in(fr, tid)
+            if tr is None:
+                continue
+            left, right = windows[ci]
             subj_frames += 1
-            fl, frt = framed["x"] - framed["w"] / 2, framed["x"] + framed["w"] / 2
+            fl, frt = tr["x"] - tr["w"] / 2, tr["x"] + tr["w"] / 2
             if fl >= left - EDGE_EPS and frt <= right + EDGE_EPS:
                 subj_contained += 1
-            center_offsets.append(abs(framed["x"] - center))
+            center_offsets.append(abs(tr["x"] - (left + right) / 2.0))
 
         # Goal 2: talker metrics over dialogue (multi-face MAR) frames.
         mouthed = [tr for tr in tracks if tr.get("mouth") is not None]
         if len(mouthed) >= 2:
             dialogue_frames += 1
-            fa = activity(framed, t)
+            # Whoever we framed is "active" if any framed panel shows a moving
+            # mouth — a split frames both, so it tracks the talker by construction.
+            fa = max((activity(tr, t) for tr in framed_present), default=0.0)
             if fa > ACTIVITY_HI:
                 active_frames += 1
             speaking = _speech_at(speech, t)
@@ -286,12 +324,16 @@ def evaluate(
                 av_speech.append(1.0 if speaking else 0.0)
             if speaking:
                 speech_dialogue += 1
-                # Wrong-face: an off-frame face out-talks whom we framed.
+                # Wrong-face: an off-frame face (outside every panel) out-talks
+                # whoever we framed.
                 for tr in mouthed:
-                    if tr.get("track_id") == framed_tid:
+                    if tr.get("track_id") in framed_tids:
                         continue
                     a = activity(tr, t)
-                    off = not (left - EDGE_EPS <= tr["x"] <= right + EDGE_EPS)
+                    off = not any(
+                        left - EDGE_EPS <= tr["x"] <= right + EDGE_EPS
+                        for (left, right) in windows
+                    )
                     if off and a > ACTIVITY_HI and a > fa:
                         miss_frames += 1
                         worst_miss.append(
@@ -308,6 +350,19 @@ def evaluate(
     over_lb_hits = 0
     seg_reports: List[dict] = []
     for seg in plan:
+        # A split fills the canvas with stacked panels — no letterbox bars, no rung.
+        if seg.get("layout") == "split" or seg.get("inner_ar") is None:
+            seg_reports.append(
+                {
+                    "start": round(seg["start"], 2),
+                    "end": round(seg["end"], 2),
+                    "inner_ar": None,
+                    "letterbox_pct": 0.0,
+                    "over_letterbox": False,
+                    "reason": seg.get("reason", ""),
+                }
+            )
+            continue
         _cw, fg_h, _mx = crop_geometry(tuple(seg["inner_ar"]), src_w, src_h)
         lb = max(0.0, 1.0 - fg_h / canvas_h)
         dur = max(0.0, seg["end"] - seg["start"])
@@ -368,11 +423,11 @@ def evaluate(
         )
 
     # --- Aggregate: stability ------------------------------------------------
-    ar_changes = sum(
-        1
-        for a, b in zip(plan, plan[1:])
-        if tuple(a["inner_ar"]) != tuple(b["inner_ar"])
-    )
+    def _ar_key(s):
+        ar = s.get("inner_ar")
+        return tuple(ar) if ar else None  # split (None) is its own key
+
+    ar_changes = sum(1 for a, b in zip(plan, plan[1:]) if _ar_key(a) != _ar_key(b))
     crop_jumps = 0
     for seg in plan:
         kps = seg["crops"][0].get("keypoints", []) if seg.get("crops") else []

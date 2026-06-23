@@ -121,8 +121,8 @@ layer *validates* it (and has veto power, since it owns ground truth):
 ```
 single          → crop to rung (9:16 … 4:5)
 keep_both_wide  → letterbox rung (1:1, 16:9)
-split           → two stacked panels        ← new
-slide + speaker → PiP                        ← future
+split           → two stacked panels        ← done (Phase 3)
+slide + speaker → PiP                        ← won't do (Phase 4)
 ```
 
 ### Vertical split (stacked two-shot)
@@ -301,13 +301,30 @@ of discovering it in Phase 1 is weeks.
    per-face mouth-aspect-ratio; the speaker decision (variance dominance) lives in
    `reframe_plan.pick_active_speaker`.
 
-**Phase 3 — split-screen layout.**
-9. `vstack` split builder + per-panel pan.
-10. Layout validation + graceful degradation (track-dropout fallback).
-11. Gate behind high-confidence "static 2-person dialogue" + dwell.
+**Phase 3 — split-screen layout. ✅ Done.**
+9. ✅ `reframe_filters.build_split_filter` / `split_panel_geometry` — two
+   full-height source slices, each panned to follow its subject, scaled to
+   half-canvas panels and `vstack`ed (no blurred bg; panels fill the canvas).
+   Renderer dispatches `layout=="split"` in `reframe_service._render_segment`.
+10. ✅ Graceful degradation by *strict gating* rather than mid-segment fallback:
+    `reframe_plan._split_crops` requires both tracks present in ≥ `SPLIT_MIN_FRAC`
+    (0.80) of frames, so a dropout can't occur inside a qualifying segment —
+    simpler and more predictable than switching layout mid-shot. Assignment is
+    geometric and stable (left→top, right→bottom; never swaps). `reframe_eval`,
+    `_merge_short`, the diagnostic overlay, and the plan summary all handle the
+    `inner_ar=None` split shape; eval scores both panels (containment per panel,
+    a face cut only if outside *every* panel, talker active if either panel shows
+    the speaker).
+11. ✅ Gated behind high-confidence static two-person dialogue: separation ≥
+    `SPLIT_MIN_SEPARATION` (0.45), near-static (`SPLIT_MAX_MOTION` 0.06), dwell ≥
+    `SPLIT_MIN_DWELL` (3s), scene_type dialogue / side_by_side, and only when ASD
+    found no dominant single speaker (otherwise single-follow wins).
 
-**Phase 4 — PiP / auto-layout (slide + speaker).** Only if warranted; this is a
-distinct, larger feature.
+**Phase 4 — PiP / auto-layout (slide + speaker). ❌ Won't do.** Picture-in-picture
+for slide-plus-speaker is a distinct, larger feature with its own layout, scaling,
+and placement logic, and the adaptive-letterbox + split layers already cover the
+high-value reframe cases (wide text/slides letterbox cleanly; two-shots split or
+keep-both). Not planned; revisit only if real usage shows a concrete need.
 
 ### Open decisions
 

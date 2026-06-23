@@ -217,16 +217,28 @@ def _annotate_frame(frame, t, ctx):
 
 def _draw_crop_window(frame, t, seg, src_h):
     h, w = frame.shape[:2]
+    crops = seg.get("crops") or [{}]
+    thick = max(2, w // 400)
+
+    # Split: two stacked panels — draw each subject's source slice (the renderer
+    # crops a panel-AR slice per track; here on the 9:16 diagnostic that's 9:8).
+    if seg.get("layout") == "split" and len(crops) == 2:
+        crop_w = min(int(src_h * CANVAS_W / (CANVAS_H // 2)), w)
+        for crop in crops:
+            x_frac = _interp_x(crop.get("keypoints", []), t)
+            left = max(0, min(w - crop_w, int(x_frac * w - crop_w / 2)))
+            cv2.rectangle(frame, (left, 0), (left + crop_w, h - 1), _GREEN, thick)
+        return
+
     inner = seg.get("inner_ar")
     if inner:
         aw, ah = inner
         crop_w = min(int(src_h * aw / ah), w)
     else:  # full-width letterbox
         crop_w = w
-    crops = seg.get("crops") or [{}]
     x_frac = _interp_x(crops[0].get("keypoints", []), t)
     left = max(0, min(w - crop_w, int(x_frac * w - crop_w / 2)))
-    cv2.rectangle(frame, (left, 0), (left + crop_w, h - 1), _GREEN, max(2, w // 400))
+    cv2.rectangle(frame, (left, 0), (left + crop_w, h - 1), _GREEN, thick)
 
 
 # ---------------------------------------------------------------------------

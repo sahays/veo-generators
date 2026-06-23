@@ -508,3 +508,75 @@ class TestReconcileWithText:
             text_frames=text_frames,
         )
         assert tuple(plan[0]["inner_ar"]) != (16, 9)
+
+
+# ---------------------------------------------------------------------------
+# Vertical-split layout (Phase 3): static, far-apart two-person dialogue
+# ---------------------------------------------------------------------------
+
+
+def _split_scene(scene_type="dialogue", layout=None):
+    s = {"start_sec": 0, "end_sec": 5, "scene_type": scene_type, "active_subject": "both"}
+    if layout:
+        s["layout"] = layout
+    return s
+
+
+class TestSplitLayout:
+    # Two far-apart, static, persistent faces; neither mouth clearly dominates.
+    def _frames(self, x1=0.25, x2=0.75, n=5):
+        return [_ftrm(t, [(1, x1, 0.2), (2, x2, 0.2)]) for t in range(n)]
+
+    def _plan(self, frames, scene, duration=4.0):
+        return reconcile(
+            [scene], frames, cuts=[], src_w=1920, src_h=1080, duration=duration
+        )
+
+    def test_static_far_apart_dialogue_splits(self):
+        plan = self._plan(self._frames(), _split_scene())
+        assert len(plan) == 1
+        seg = plan[0]
+        assert seg["layout"] == "split"
+        assert seg["inner_ar"] is None
+        assert len(seg["crops"]) == 2
+        # left subject → top panel, right → bottom (geometric, stable).
+        top, bot = seg["crops"]
+        assert top["track_id"] == 1 and top["source"] == "split_top"
+        assert bot["track_id"] == 2 and bot["source"] == "split_bottom"
+        assert seg["trace"]["source"] == "split"
+        # both panels are renderable (keypoints attached).
+        assert top["keypoints"] and bot["keypoints"]
+
+    def test_side_by_side_layout_also_splits(self):
+        plan = self._plan(self._frames(), _split_scene("general", "side_by_side"))
+        assert plan[0]["layout"] == "split"
+
+    def test_close_together_is_single_not_split(self):
+        plan = self._plan(self._frames(x1=0.45, x2=0.55), _split_scene())
+        assert plan[0]["layout"] == "single"
+
+    def test_moving_two_shot_keeps_both_not_split(self):
+        # One subject drifts > SPLIT_MAX_MOTION → too busy to stack → keep_both.
+        frames = [
+            _ftrm(t, [(1, 0.25 + 0.04 * t, 0.2), (2, 0.75, 0.2)]) for t in range(5)
+        ]
+        seg = self._plan(frames, _split_scene())[0]
+        assert seg["layout"] == "keep_both"
+
+    def test_short_shot_does_not_split(self):
+        # Below SPLIT_MIN_DWELL (3s) → stacking would read as a glitch → keep_both.
+        plan = self._plan(self._frames(n=3), _split_scene(), duration=2.0)
+        assert plan[0]["layout"] == "keep_both"
+
+    def test_non_dialogue_does_not_split(self):
+        # Wide separation but Gemini didn't call it dialogue/side_by_side.
+        seg = self._plan(self._frames(), _split_scene("general"))[0]
+        assert seg["layout"] == "keep_both"
+
+    def test_dominant_speaker_follows_single_not_split(self):
+        # If one mouth clearly dominates, follow that speaker instead of stacking.
+        talk = [0.10, 0.45, 0.10, 0.50, 0.12]
+        frames = [_ftrm(t, [(1, 0.25, talk[t]), (2, 0.75, 0.2)]) for t in range(5)]
+        seg = self._plan(frames, _split_scene())[0]
+        assert seg["layout"] == "single"
+        assert seg["crops"][0]["source"] == "speaker"

@@ -166,14 +166,14 @@ export const ReframeOutputPage = () => {
             {summary.letterbox_16x9_reasons && Object.keys(summary.letterbox_16x9_reasons).length > 0 && (
               <div>16:9 letterbox because: {JSON.stringify(summary.letterbox_16x9_reasons)}</div>
             )}
-            <div>active-speaker segments: {summary.speaker_segments ?? 0} &middot; hysteresis: {summary.hysteresis_segments ?? 0}</div>
+            <div>active-speaker segments: {summary.speaker_segments ?? 0} &middot; split: {summary.split_segments ?? 0} &middot; hysteresis: {summary.hysteresis_segments ?? 0}</div>
           </div>
         )}
         <div className="space-y-1 font-mono text-xs">
           {plan.map((s, i) => (
             <div key={i} className="flex gap-3">
               <span className="text-muted-foreground w-24 shrink-0">{fmtT(s.start)}&ndash;{fmtT(s.end)}</span>
-              <span className="w-12 shrink-0 text-foreground">{Array.isArray(s.inner_ar) ? s.inner_ar.join(':') : ''}</span>
+              <span className="w-12 shrink-0 text-foreground">{Array.isArray(s.inner_ar) ? s.inner_ar.join(':') : (s.layout === 'split' ? 'split' : '')}</span>
               <span className="w-20 shrink-0 text-muted-foreground/70">{s.layout}</span>
               <span className="text-foreground">{(s.trace && s.trace.trigger) || s.reason}</span>
             </div>

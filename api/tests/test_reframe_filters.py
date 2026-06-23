@@ -9,6 +9,8 @@ from reframe_filters import (
     build_crop_filter,
     build_blurred_bg_filter,
     build_canvas_filter,
+    build_split_filter,
+    split_panel_geometry,
     _to_pixel_keypoints,
 )
 
@@ -183,6 +185,53 @@ class TestCanvas34:
         assert build_canvas_filter(CENTER, *self.SRC, (9, 16)) == build_canvas_filter(
             CENTER, *self.SRC, (9, 16), 1080, 1920
         )
+
+
+# ---------------------------------------------------------------------------
+# Vertical-split (stacked two-shot) filter
+# ---------------------------------------------------------------------------
+
+
+class TestSplitFilter:
+    SRC = (1920, 1080)
+    # Single static keypoint per panel → constant crop offset (near-static panels).
+    LEFT = [(0.0, 0.3, 0.5)]
+    RIGHT = [(0.0, 0.7, 0.5)]
+
+    def test_panel_geometry_9x16(self):
+        # Each panel is 1080x960 (half canvas); slice AR 9:8 → crop_w ~1214 (even).
+        crop_w, panel_h, max_x = split_panel_geometry(*self.SRC)
+        assert panel_h == 960
+        assert crop_w == 1214  # even(1080 * 1080/960 = 1215)
+        assert max_x == 1920 - 1214
+
+    def test_builds_two_panels_vstacked(self):
+        f = build_split_filter(self.LEFT, self.RIGHT, *self.SRC)
+        assert f.count("crop=1214:1080") == 2  # one slice per subject
+        assert f.count("scale=1080:960") == 2  # each fills a half-canvas panel
+        assert "[top][bot]vstack[v]" in f
+        assert "gblur" not in f  # panels fill the canvas — no blurred bars
+        assert f.endswith("[v]")
+
+    def test_panels_follow_their_own_subject(self):
+        # Left subject pans toward 0.3, right toward 0.7 → different crop offsets.
+        f = build_split_filter(self.LEFT, self.RIGHT, *self.SRC)
+        top = f.split("[top];")[0]
+        bot = f.split("[top];")[1].split("[bot];")[0]
+        assert "crop=1214:1080:0:0" in top  # 0.3 center clamps left to 0
+        assert "crop=1214:1080:706:0" in bot  # 0.7 center clamps to max_x
+
+    def test_even_dimensions(self):
+        import re
+
+        f = build_split_filter(self.LEFT, self.RIGHT, *self.SRC)
+        for w, h in re.findall(r"scale=(\d+):(\d+)", f):
+            assert int(w) % 2 == 0 and int(h) % 2 == 0
+
+    def test_3x4_canvas_panels(self):
+        f = build_split_filter(CENTER, CENTER, *self.SRC, 1080, 1440)
+        assert "scale=1080:720" in f  # half of 1440
+        assert "[top][bot]vstack[v]" in f
 
 
 # ---------------------------------------------------------------------------
