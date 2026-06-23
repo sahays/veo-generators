@@ -21,7 +21,7 @@ import math
 import statistics
 from typing import List, Optional, Tuple
 
-from reframe_filters import crop_geometry, split_panel_geometry
+from reframe_filters import crop_geometry, crop_left_px_at, split_panel_geometry
 from reframe_plan import COVERAGE_MARGIN, RUNGS, SPEAKER_MIN_ACTIVITY, rung_coverage
 
 # --- Flag thresholds (warn, fail). Tunable scoreboard knobs. -----------------
@@ -53,24 +53,6 @@ _WORST_KEEP = 3  # worst-offending timestamps kept per failing metric
 _RANK = {"na": 0, "ok": 0, "warn": 1, "fail": 2}
 
 
-# --- Small pure helpers (reimplemented locally to avoid importing cv2-bound
-#     reframe_diagnostic; keeps this module host-runnable). ------------------
-def _interp_x(keypoints: List[Tuple[float, float, float]], t: float) -> float:
-    """Linear interpolation of the fractional x center at time t."""
-    if not keypoints:
-        return 0.5
-    if t <= keypoints[0][0]:
-        return keypoints[0][1]
-    if t >= keypoints[-1][0]:
-        return keypoints[-1][1]
-    times = [kp[0] for kp in keypoints]
-    i = min(bisect.bisect_right(times, t) - 1, len(keypoints) - 2)
-    t0, x0, _ = keypoints[i]
-    t1, x1, _ = keypoints[i + 1]
-    frac = (t - t0) / (t1 - t0) if t1 != t0 else 0.0
-    return x0 + (x1 - x0) * frac
-
-
 def _seg_at(plan: List[dict], starts: List[float], t: float) -> Optional[dict]:
     """The segment whose [start, end) window contains t (held to last)."""
     if not plan:
@@ -80,19 +62,20 @@ def _seg_at(plan: List[dict], starts: List[float], t: float) -> Optional[dict]:
     return plan[i]
 
 
-def _crop_window(seg: dict, src_w: int, src_h: int, t: float) -> Tuple[float, float]:
-    """Normalized [left, right] of the rendered crop window at time t.
-
-    Mirrors the renderer exactly: full source height, width = crop_geometry,
-    left edge from crop 0's interpolated keypoint x clamped to [0, max_x].
-    """
-    crop_w, _fg_h, max_x = crop_geometry(tuple(seg["inner_ar"]), src_w, src_h)
+def _window_from(crop_w, max_x, src_w, kps, t) -> Tuple[float, float]:
+    """Normalized [left, right] of one rendered crop window at time t, via the
+    shared `crop_left_px_at` model (so it can't drift from the FFmpeg filter)."""
     if crop_w <= 0 or max_x <= 0:
         return 0.0, 1.0  # crop keeps the full width → nothing cut horizontally
-    kps = seg["crops"][0].get("keypoints") if seg.get("crops") else None
-    x_frac = _interp_x(kps or [], t)
-    left_px = max(0, min(max_x, x_frac * src_w - crop_w / 2))
+    left_px = crop_left_px_at(kps or [], src_w, crop_w, max_x, t)
     return left_px / src_w, (left_px + crop_w) / src_w
+
+
+def _crop_window(seg: dict, src_w: int, src_h: int, t: float) -> Tuple[float, float]:
+    """Normalized [left, right] of the rendered crop window at time t (crop 0)."""
+    crop_w, _fg_h, max_x = crop_geometry(tuple(seg["inner_ar"]), src_w, src_h)
+    kps = seg["crops"][0].get("keypoints") if seg.get("crops") else None
+    return _window_from(crop_w, max_x, src_w, kps, t)
 
 
 def _crop_windows(
@@ -101,21 +84,16 @@ def _crop_windows(
     """Normalized [left, right] of every rendered crop window at time t.
 
     One window for single/keep_both (the inner-AR crop); one per panel for a
-    stacked split. Mirrors the renderer geometry so cut/containment reasoning
-    matches what the viewer actually sees.
+    stacked split. Uses the shared `crop_left_px_at` model so cut/containment
+    reasoning matches exactly what the filter renders.
     """
     crops = seg.get("crops") or []
     if seg.get("layout") == "split" and len(crops) == 2:
         crop_w, _ph, max_x = split_panel_geometry(src_w, src_h, 1080, canvas_h)
-        windows: List[Tuple[float, float]] = []
-        for crop in crops:
-            if crop_w <= 0 or max_x <= 0:
-                windows.append((0.0, 1.0))
-                continue
-            x_frac = _interp_x(crop.get("keypoints") or [], t)
-            left_px = max(0, min(max_x, x_frac * src_w - crop_w / 2))
-            windows.append((left_px / src_w, (left_px + crop_w) / src_w))
-        return windows
+        return [
+            _window_from(crop_w, max_x, src_w, crop.get("keypoints"), t)
+            for crop in crops
+        ]
     return [_crop_window(seg, src_w, src_h, t)]
 
 

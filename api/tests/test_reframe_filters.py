@@ -11,6 +11,9 @@ from reframe_filters import (
     build_canvas_filter,
     build_split_filter,
     split_panel_geometry,
+    crop_geometry,
+    crop_left_px_at,
+    _crop_x_offset,
     _to_pixel_keypoints,
 )
 
@@ -232,6 +235,87 @@ class TestSplitFilter:
         f = build_split_filter(CENTER, CENTER, *self.SRC, 1080, 1440)
         assert "scale=1080:720" in f  # half of 1440
         assert "[top][bot]vstack[v]" in f
+
+
+# ---------------------------------------------------------------------------
+# Render ↔ eval contract: the emitted FFmpeg x(t) expression must equal the
+# Python crop-window model (crop_left_px_at) the reference-free eval relies on,
+# so the eval can never validate a window the renderer doesn't actually produce.
+# ---------------------------------------------------------------------------
+
+
+def _eval_ffmpeg(expr: str, t: float) -> float:
+    """Numerically evaluate an FFmpeg crop-offset expression at time t.
+
+    The renderer emits this exact string to FFmpeg; we evaluate the same string
+    to confirm it computes what crop_left_px_at says. Supports the small grammar
+    we generate: clip(x,lo,hi), if(cond,a,b), lt(a,b), + - * /, t, literals.
+    """
+    e = (
+        expr.replace("\\,", ",")
+        .replace("clip(", "_clip(")
+        .replace("if(", "_iff(")
+        .replace("lt(", "_lt(")
+    )
+    return eval(  # noqa: S307 — controlled, generated expression in a test
+        e,
+        {"__builtins__": {}},
+        {
+            "t": t,
+            "_clip": lambda x, lo, hi: min(max(x, lo), hi),
+            "_iff": lambda c, a, b: a if c else b,
+            "_lt": lambda a, b: a < b,
+        },
+    )
+
+
+class TestRenderEvalContract:
+    SRC = (1920, 1080)
+
+    # (label, keypoints) — fractional (t, x, y) as the planner emits.
+    CASES = [
+        ("static_center", [(2.0, 0.5, 0.5)]),
+        ("pan_in_bounds", [(0.0, 0.3, 0.5), (10.0, 0.7, 0.5)]),
+        # The case the old eval got wrong: keypoints whose pixel left-edge clamps.
+        ("pan_out_of_bounds", [(0.0, 0.0, 0.5), (10.0, 1.0, 0.5)]),
+        (
+            "zigzag",
+            [(0.0, 0.2, 0.5), (3.0, 0.8, 0.5), (6.0, 0.3, 0.5), (9.0, 0.9, 0.5)],
+        ),
+        ("negative_slope", [(0.0, 0.8, 0.5), (5.0, 0.2, 0.5)]),
+    ]
+
+    def _grid(self, kps):
+        last = kps[-1][0]
+        # sample the valid render range [t0, t_last] + a little past the end
+        return [i * 0.5 for i in range(0, int((last + 2) / 0.5) + 1)]
+
+    def test_inner_ar_rungs_match_model(self):
+        for ar in [(9, 16), (4, 5), (1, 1)]:  # (16,9) keeps full width → no pan
+            crop_w, _fg, max_x = crop_geometry(ar, *self.SRC)
+            for label, kps in self.CASES:
+                expr = _crop_x_offset(kps, self.SRC[0], crop_w, max_x)
+                for t in self._grid(kps):
+                    got = _eval_ffmpeg(expr, t)
+                    want = crop_left_px_at(kps, self.SRC[0], crop_w, max_x, t)
+                    assert abs(got - want) < 1e-6, (ar, label, t, got, want)
+
+    def test_split_panels_match_model(self):
+        crop_w, _ph, max_x = split_panel_geometry(*self.SRC)
+        for label, kps in self.CASES:
+            expr = _crop_x_offset(kps, self.SRC[0], crop_w, max_x)
+            for t in self._grid(kps):
+                got = _eval_ffmpeg(expr, t)
+                want = crop_left_px_at(kps, self.SRC[0], crop_w, max_x, t)
+                assert abs(got - want) < 1e-6, (label, t, got, want)
+
+    def test_out_of_bounds_keypoints_stay_clamped(self):
+        # Both representations must hold the crop inside [0, max_x] at the extremes.
+        crop_w, _fg, max_x = crop_geometry((9, 16), *self.SRC)
+        kps = [(0.0, 0.0, 0.5), (10.0, 1.0, 0.5)]
+        for t in self._grid(kps):
+            v = crop_left_px_at(kps, self.SRC[0], crop_w, max_x, t)
+            assert 0.0 <= v <= max_x
 
 
 # ---------------------------------------------------------------------------

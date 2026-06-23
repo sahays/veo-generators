@@ -134,6 +134,41 @@ def _crop_x_offset(
     return f"clip({x_expr}\\,0\\,{max_x})"
 
 
+def crop_left_px_at(
+    keypoints: List[Tuple[float, float, float]],
+    src_w: int,
+    crop_w: int,
+    max_x: int,
+    t: float,
+) -> float:
+    """Crop left-edge (px) at time t — the single source of truth for the pan
+    x(t) that the FFmpeg filter encodes.
+
+    Mirrors `_crop_x_offset` / `build_canvas_filter` exactly: keypoints become
+    per-keypoint *clamped* pixel left-edges (`_to_pixel_keypoints`), are
+    interpolated piecewise-linearly in pixel space, then clamped to [0, max_x].
+    The reference-free eval reconstructs the crop window from this, so its idea of
+    what got rendered can never drift from the filter — a contract test
+    (`test_render_eval_contract`) pins this against the emitted FFmpeg expression.
+    """
+    if crop_w <= 0 or max_x <= 0:
+        return 0.0
+    pix = _to_pixel_keypoints(keypoints, src_w, crop_w, max_x)
+    if not pix:
+        return float(max(0, (src_w - crop_w) // 2))
+    if len(pix) == 1 or t <= pix[0][0]:
+        val: float = pix[0][1]
+    elif t >= pix[-1][0]:
+        val = pix[-1][1]
+    else:
+        val = pix[-1][1]  # ≥ last boundary → hold last (matches the expr fallback)
+        for (t0, x0), (t1, x1) in zip(pix, pix[1:]):
+            if t < t1:
+                val = x0 if t1 == t0 else x0 + (x1 - x0) * (t - t0) / (t1 - t0)
+                break
+    return float(min(max(val, 0.0), max_x))
+
+
 def build_canvas_filter(
     keypoints: List[Tuple[float, float, float]],
     src_w: int,
