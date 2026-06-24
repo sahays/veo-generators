@@ -109,15 +109,21 @@ def test_gemini_text_letterbox_not_counted_as_over():
     # geometry can't see). Must NOT count as over-letterbox.
     frames = _frames([(t, [_tr(1, 0.5, w=0.1)]) for t in range(11)])
     by_source = _seg(0, 10, (16, 9), 1, 0.5, trace={"source": "gemini_text"})
-    assert evaluate([by_source], frames, [], [], SRC_W, SRC_H, 10.0)[
-        "letterbox"
-    ]["over_letterbox_rate"] == 0.0
+    assert (
+        evaluate([by_source], frames, [], [], SRC_W, SRC_H, 10.0)["letterbox"][
+            "over_letterbox_rate"
+        ]
+        == 0.0
+    )
     # Same geometry, but via a verdict field instead of the trace source.
     by_verdict = _seg(0, 10, (16, 9), 1, 0.5)
     by_verdict["escalate"] = {"verdict": {"action": "letterbox"}}
-    assert evaluate([by_verdict], frames, [], [], SRC_W, SRC_H, 10.0)[
-        "letterbox"
-    ]["over_letterbox_rate"] == 0.0
+    assert (
+        evaluate([by_verdict], frames, [], [], SRC_W, SRC_H, 10.0)["letterbox"][
+            "over_letterbox_rate"
+        ]
+        == 0.0
+    )
 
 
 def test_mean_letterbox_pct():

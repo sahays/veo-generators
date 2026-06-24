@@ -534,6 +534,36 @@ def _maybe_subject_escalation(stable, fallback_tgt, start, end):
     )
 
 
+def _no_subject_escalation(scene, src_w, src_h, rungs, start, end):
+    """Decision point #7: a shot with no detected subject (no face/person/text).
+
+    Could be a full-frame graphic (chart, map, UI, slide → keep full width) or
+    plain scenery/b-roll (center crop is fine) — the CPU can't tell, so escalate
+    to gemini-3.5-flash. `crop_keeps` lets the thumbnail show what a center crop
+    would cut. Fallback: center crop.
+    """
+    from reframe_escalation import make_point
+
+    x = _hint_x(scene)
+    tight = rung_coverage(rungs[0], src_w, src_h)
+    wl, wr = x - tight / 2, x + tight / 2
+    return make_point(
+        kind="no_subject",
+        key=f"nosubj:{round(start, 1)}",
+        question=(
+            "No face or person is detected in this shot. Is it a full-frame "
+            "GRAPHIC — a chart, map, table, UI, diagram, title card, or text slide "
+            "— that should keep its full width (letterbox)? Or is it scenery / "
+            "b-roll / background with no specific subject, where a center crop is "
+            "fine (crop)? Letterbox only if content would be cut off."
+        ),
+        facts={"subject": "none", "crop_keeps": [round(wl, 3), round(wr, 3)]},
+        fallback={"action": "crop", "reason": "center crop pending Gemini verdict"},
+        start=start,
+        end=end,
+    )
+
+
 def _decide_segment(
     scene, tf_win, pf_win, tx_win, start, end, label_map, src_w, src_h, rungs
 ):
@@ -673,7 +703,11 @@ def _decide_segment(
             n_persons=len(persons),
         )
 
-    # Nothing detected → Gemini spatial hint, rely on c_text.
+    # Nothing detected (#7): no face, no person, no text band to follow. The CPU
+    # can't tell a full-frame graphic (chart/map/UI/slide — keep full width) from
+    # plain scenery (center crop is fine) — escalate. Fallback: center crop.
+    if escalate is None:
+        escalate = _no_subject_escalation(scene, src_w, src_h, rungs, start, end)
     crop = {"track_id": None, "x_target": _hint_x(scene), "source": "center"}
     return out("single", crop, c_text, 0.0)
 
@@ -725,9 +759,15 @@ def _merge_short(
     def _cx(s):
         return s["crops"][0].get("x_target", 0.5)
 
-    def _ek(s):
+    def _esc_sig(s):
+        # Merge signature for an escalation: no_subject merges by KIND alone (adjacent
+        # no-detection cells are the same graphic/shot), so a long graphic doesn't
+        # fragment; text/subject merge only when the exact content key matches.
         e = s.get("escalate")
-        return e.get("key") if e else None
+        if not e:
+            return None
+        k = e.get("kind")
+        return k if k == "no_subject" else (k, e.get("key"))
 
     def _hasface(s):
         return (s.get("trace") or {}).get("n_faces", 0) > 0
@@ -746,7 +786,7 @@ def _merge_short(
             seg["inner_ar"] == prev["inner_ar"]
             and seg["layout"] == prev["layout"]
             and abs(_cx(seg) - _cx(prev)) <= MERGE_X_TOL
-            and _ek(seg) == _ek(prev)
+            and _esc_sig(seg) == _esc_sig(prev)
             and _hasface(seg) == _hasface(prev)
         )
         if same or too_short:

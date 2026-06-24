@@ -223,7 +223,11 @@ class TestSubjectEscalationPredicate:
         assert e is not None and len(e["facts"]["candidates"]) == 2
 
     def test_side_of_buckets(self):
-        assert (_side_of(0.2), _side_of(0.5), _side_of(0.8)) == ("left", "center", "right")
+        assert (_side_of(0.2), _side_of(0.5), _side_of(0.8)) == (
+            "left",
+            "center",
+            "right",
+        )
 
 
 class TestMotionSceneType:
@@ -371,6 +375,28 @@ class TestReconcile:
         assert not any(
             p["kind"] == "subject_choice" for p in collect_escalation_points(plan)
         )
+
+    def test_no_detection_escalates_no_subject(self):
+        # No face, no person, no text band → escalate "is this a full-frame graphic?"
+        plan = reconcile([], [], cuts=[], src_w=SRC_W, src_h=SRC_H, duration=6.0)
+        pts = collect_escalation_points(plan)
+        assert len(pts) == 1 and pts[0]["kind"] == "no_subject"
+        assert plan[0]["inner_ar"] == (9, 16)  # fallback: center crop
+
+    def test_no_subject_yields_to_text_band(self):
+        # If a wide text band is present, the text escalation wins (not no_subject).
+        text_frames = [_txt(t, 0.9) for t in range(6)]
+        plan = reconcile(
+            [],
+            [],
+            cuts=[],
+            src_w=SRC_W,
+            src_h=SRC_H,
+            duration=6.0,
+            text_frames=text_frames,
+        )
+        kinds = {p["kind"] for p in collect_escalation_points(plan)}
+        assert kinds == {"text_presence"}
 
     def test_gemini_overcoverage_retired_crops_tight(self):
         # The rf-0ma5249p defect, now fixed by retiring the floor: a single narrow

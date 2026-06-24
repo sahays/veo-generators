@@ -46,6 +46,9 @@ DECISION_INTRO = (
     "actually see.\n"
     "SUBJECT decisions (key 'subject:…'): action=follow and `subject` = left | "
     "center | right — the one person to track (whoever is speaking / the focus).\n"
+    "NO-SUBJECT decisions (key 'nosubj:…') — no person is in frame: action=letterbox "
+    "if it's a full-frame graphic/slide (chart, map, UI, title) that the darkened "
+    "crop would cut off, else crop for plain scenery/b-roll.\n"
     "Return exactly one verdict per key."
 )
 
@@ -123,7 +126,7 @@ def render_decision_thumbs(video_path: str, clusters: List[dict]) -> dict:
                 ok, frame = cap.read()
                 if not ok:
                     continue
-                if c["kind"] == "text_presence" and facts.get("crop_keeps"):
+                if facts.get("crop_keeps"):  # text_presence / no_subject
                     frame = _overlay_text(frame, facts["crop_keeps"])
                 elif c["kind"] == "subject_choice" and facts.get("candidates"):
                     frame = _overlay_subjects(frame, facts["candidates"])
@@ -168,18 +171,21 @@ def apply_verdicts(
             continue  # no verdict (dropped over budget / call failed) → fallback
         seg["escalate"] = {**esc, "verdict": v}
         kind = esc["kind"]
-        if kind == "text_presence" and v.get("action") == "letterbox":
+        if kind in ("text_presence", "no_subject") and v.get("action") == "letterbox":
             cov = float(v.get("coverage") or esc["facts"].get("text_coverage") or 1.0)
             new_ar = pick_rung(min(1.0, cov), src_w, src_h, None, rungs)
             if new_ar != seg.get("inner_ar"):
                 seg["inner_ar"] = new_ar
-                seg["reason"] = f"gemini: letterbox for side text (cov {cov:.2f})"
+                label = "full-frame graphic" if kind == "no_subject" else "side text"
+                seg["reason"] = f"gemini: letterbox for {label} (cov {cov:.2f})"
                 trace = seg.get("trace")
                 if trace:
                     trace["chosen_ar"] = list(new_ar)
                     trace["coverage"] = round(rung_coverage(new_ar, src_w, src_h), 3)
                     trace["trigger"] = seg["reason"]
-                    trace["source"] = "gemini_text"
+                    trace["source"] = (
+                        "gemini_graphic" if kind == "no_subject" else "gemini_text"
+                    )
                 changed += 1
         elif kind == "subject_choice" and v.get("subject"):
             if _apply_subject(

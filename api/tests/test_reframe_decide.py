@@ -160,6 +160,46 @@ class TestSubjectVerdicts:
         assert segs[0]["crops"][0]["track_id"] == 1
 
 
+class TestNoSubjectVerdicts:
+    def _seg(self):
+        return {
+            "start": 0.0,
+            "end": 6.0,
+            "inner_ar": (9, 16),
+            "layout": "single",
+            "reason": "no detection",
+            "crops": [{"track_id": None, "x_target": 0.5}],
+            "trace": {"source": "center", "coverage": 0.316},
+            "escalate": {
+                "kind": "no_subject",
+                "key": "nosubj:0.0",
+                "question": "graphic or scenery?",
+                "facts": {"subject": "none", "crop_keeps": [0.34, 0.66]},
+                "fallback": {"action": "crop"},
+            },
+        }
+
+    def test_letterbox_widens_full_frame_graphic(self):
+        segs = [self._seg()]
+        changed = apply_verdicts(
+            segs,
+            [{"key": "nosubj:0.0", "action": "letterbox", "coverage": 1.0}],
+            SRC_W,
+            SRC_H,
+            None,
+        )
+        assert changed == 1
+        assert segs[0]["inner_ar"] == (16, 9)
+        assert "full-frame graphic" in segs[0]["reason"]
+
+    def test_crop_keeps_center_for_scenery(self):
+        segs = [self._seg()]
+        changed = apply_verdicts(
+            segs, [{"key": "nosubj:0.0", "action": "crop"}], SRC_W, SRC_H, None
+        )
+        assert changed == 0 and segs[0]["inner_ar"] == (9, 16)
+
+
 class TestPrompt:
     def test_cluster_block_echoes_key(self):
         c = {
