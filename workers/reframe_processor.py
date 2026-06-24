@@ -13,7 +13,11 @@ from cost_tracking import (
 from models import SpeakerSegment
 
 from base_processor import JobProcessor, TempFileManager
-from _reframe_helpers import format_chirp_context, format_track_summary
+from _reframe_helpers import (
+    ensure_cv2_readable,
+    format_chirp_context,
+    format_track_summary,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +76,12 @@ class ReframeProcessor(JobProcessor):
         # instead of lingering on stale positions across cuts (this is a viz).
         from mediapipe_detection import scan_video_detections, track_faces
 
+        # Same AV1/OpenCV guard as the main path — detection (and the diagnostic
+        # overlay render, which also reads frames via cv2) need a decodable copy.
+        det_src = ensure_cv2_readable(src_path, tmp, record_id)
+
         logger.info(f"[reframe:{record_id}] MediaPipe scanning (faces+persons)...")
-        det_frames = scan_video_detections(src_path, sample_fps=4.0)
+        det_frames = scan_video_detections(det_src, sample_fps=4.0)
         tracked_frames = track_faces(
             [{"time_sec": f["time_sec"], "faces": f["faces"]} for f in det_frames]
         )
@@ -89,8 +97,8 @@ class ReframeProcessor(JobProcessor):
         from scene_detect import detect_cuts
         from text_detect import scan_video_text
 
-        cuts = detect_cuts(src_path)
-        text_frames = scan_video_text(src_path)
+        cuts = detect_cuts(det_src)
+        text_frames = scan_video_text(det_src)
         scenes = self._analyze_scenes(
             record, record_id, chirp_context, track_summary, cuts=cuts
         )
@@ -113,7 +121,7 @@ class ReframeProcessor(JobProcessor):
         self.update_status(record_id, "processing", 60)
         logger.info(f"[reframe:{record_id}] Rendering diagnostic overlay...")
         render_diagnostic(
-            src_path=src_path,
+            src_path=det_src,
             out_path=out_path,
             tracked_frames=tracked_frames,
             scenes=scenes,
@@ -185,12 +193,17 @@ class ReframeProcessor(JobProcessor):
         )
 
         self.update_status(record_id, "analyzing", 15)
-        cuts = detect_cuts(src_path)
+        # OpenCV (which feeds frames to MediaPipe + cut/text detection) can't HW-
+        # decode AV1 in this image and reads 0 frames → no detections → a static
+        # center crop. Detect on a cv2-readable copy (transcoded only if needed);
+        # the render below still uses the AV1 original (ffmpeg decodes it fine).
+        det_src = ensure_cv2_readable(src_path, tmp, record_id)
+        cuts = detect_cuts(det_src)
         logger.info(f"[reframe:{record_id}] {len(cuts)} cuts detected")
 
         # Faces + persons in one decode pass; faces drive subject framing, persons
         # cover subjects with no visible face (distant, profile, walking away).
-        det_frames = scan_video_detections(src_path, sample_fps=1.0)
+        det_frames = scan_video_detections(det_src, sample_fps=1.0)
         tracked_frames = track_faces(
             [{"time_sec": f["time_sec"], "faces": f["faces"]} for f in det_frames]
         )
@@ -205,7 +218,7 @@ class ReframeProcessor(JobProcessor):
         # Measure on-screen text bands (independent pass). A persistent wide band
         # that the subject's crop would clip is escalated to gemini-3.5-flash in
         # Pass 2 (decision point #1) — the CPU never self-letterboxes from it.
-        text_frames = scan_video_text(src_path)
+        text_frames = scan_video_text(det_src)
 
         # RETIRED: the dense gemini-3.1-pro full-video scene pass. Subject choice is
         # now decided per-ambiguity by gemini-3.5-flash (Pass 2, #3/#4), letterboxing

@@ -1,9 +1,75 @@
 """Reframe job formatters — turn diarization + face-track data into Gemini context.
 
 Lifted out of `ReframeProcessor` so the processor file stays under the
-file-size budget. Both functions are pure (no I/O) — they just stringify
-already-fetched data into a prompt-ready context block.
+file-size budget. The formatters are pure; `ensure_cv2_readable` does I/O
+(probe + optional transcode) and is kept here to stay out of the processor.
 """
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def ensure_cv2_readable(src_path: str, tmp, record_id: str = "") -> str:
+    """Return a path whose frames OpenCV (cv2) can actually decode.
+
+    Detection is MediaPipe, but every detector is FED frames by OpenCV
+    (`cv2.VideoCapture`): face/person detection, scene-cut detection and text
+    detection all decode via cv2. OpenCV's FFmpeg backend in the Cloud Run image
+    tries HARDWARE AV1 decoding and — with no GPU — reads ZERO frames instead of
+    falling back to software. The result: an AV1 (or otherwise cv2-undecodable)
+    upload yields NO detections at all, and the planner silently degrades to one
+    static center crop over the whole video.
+
+    ffmpeg itself software-decodes AV1 fine (so render + diarization still work),
+    so we probe cv2 and, if it can't read a frame, transcode to H.264 for the
+    detection passes only — the render keeps using the original. Best-effort: any
+    transcode failure returns the original so the job still completes.
+    """
+    try:
+        import cv2
+    except Exception:
+        return src_path
+    cap = cv2.VideoCapture(src_path)
+    ok = cap.isOpened() and cap.read()[0]
+    cap.release()
+    if ok:
+        return src_path
+
+    logger.warning(
+        f"[reframe:{record_id}] OpenCV cannot decode source frames (likely AV1 / "
+        "no HW decode) — transcoding to H.264 for detection so MediaPipe gets frames"
+    )
+    try:
+        from ffmpeg_runner import run_ffmpeg
+
+        out = tmp.create(suffix="_det.mp4")
+        run_ffmpeg(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                src_path,
+                "-an",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-pix_fmt",
+                "yuv420p",
+                out,
+            ],
+            label="reframe-detect-transcode",
+        )
+        cap2 = cv2.VideoCapture(out)
+        ok2 = cap2.isOpened() and cap2.read()[0]
+        cap2.release()
+        if ok2:
+            return out
+        logger.warning(f"[reframe:{record_id}] transcoded copy still unreadable by cv2")
+    except Exception as e:
+        logger.warning(f"[reframe:{record_id}] detection transcode failed ({e})")
+    return src_path
 
 
 def format_chirp_context(speaker_segments: list) -> str:
