@@ -725,17 +725,29 @@ def _merge_short(
     def _cx(s):
         return s["crops"][0].get("x_target", 0.5)
 
+    def _ek(s):
+        e = s.get("escalate")
+        return e.get("key") if e else None
+
+    def _hasface(s):
+        return (s.get("trace") or {}).get("n_faces", 0) > 0
+
     out = [dict(segments[0])]
     for seg in segments[1:]:
         prev = out[-1]
         too_short = (seg["end"] - seg["start"]) < min_dwell
         # Same framing AND the crop is on the same spot — otherwise keep separate
         # so each subdivided cell re-frames its own subject (don't smear a pan
-        # across two different subjects).
+        # across two different subjects). ALSO never merge across a content change:
+        # a different escalation decision (a caption appears) or a face↔no-face
+        # transition (speaker → b-roll graphic) — else one Gemini verdict wrongly
+        # governs heterogeneous shots (e.g. cropping a full-screen graphic).
         same = (
             seg["inner_ar"] == prev["inner_ar"]
             and seg["layout"] == prev["layout"]
             and abs(_cx(seg) - _cx(prev)) <= MERGE_X_TOL
+            and _ek(seg) == _ek(prev)
+            and _hasface(seg) == _hasface(prev)
         )
         if same or too_short:
             # Extend prev; keep the looser rung so we never crop out the short bit.

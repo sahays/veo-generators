@@ -23,6 +23,10 @@ from reframe_plan import (
     _keep_both_pair,
     _merge_short,
     _segment_text_coverage,
+    _maybe_text_escalation,
+    _maybe_subject_escalation,
+    _motion_scene_type,
+    _side_of,
 )
 
 
@@ -160,6 +164,85 @@ class TestKeepBothPair:
 # ---------------------------------------------------------------------------
 
 
+class TestTextEscalationPredicate:
+    # subject at x=0.5 → tight 9:16 crop keeps ~[0.342, 0.658]; SIDE_TEXT_MARGIN=0.06.
+    def _esc(self, x0, x1, cov=0.85, subj=0.5):
+        return _maybe_text_escalation(
+            (cov, (x0, x1)), subj, 1, SRC_W, SRC_H, RUNGS, 0.0, 4.0
+        )
+
+    def test_band_inside_crop_window_no_escalation(self):
+        # A band fully behind the subject (within the kept region) → nothing cut.
+        assert self._esc(0.40, 0.62) is None
+
+    def test_band_below_wide_threshold_no_escalation(self):
+        # cov < TEXT_WIDE_MIN (0.50): not a persistent wide band.
+        assert self._esc(0.05, 0.95, cov=0.3) is None
+
+    def test_band_left_only(self):
+        e = self._esc(0.05, 0.55)  # pokes past the left edge, not the right
+        assert e is not None and e["facts"]["check_side"] == "left"
+
+    def test_band_right_only(self):
+        e = self._esc(0.45, 0.97)
+        assert e is not None and e["facts"]["check_side"] == "right"
+
+    def test_band_both_sides(self):
+        e = self._esc(0.05, 0.97)
+        assert e is not None and e["facts"]["check_side"] == "both"
+
+    def test_margin_boundary_not_escalated(self):
+        # Just within margin on each side (0.342-0.06=0.282 .. 0.658+0.06=0.718).
+        assert self._esc(0.29, 0.71) is None
+
+    def test_offcenter_subject_shifts_window(self):
+        # Subject far left → a right-side band is now "cut", a left one isn't.
+        e = self._esc(0.30, 0.95, subj=0.25)
+        assert e is not None and e["facts"]["check_side"] == "right"
+
+
+class TestSubjectEscalationPredicate:
+    def _stable(self, *xf):
+        return [
+            {"track_id": i + 1, "x": x, "w": 0.12, "frac": f}
+            for i, (x, f) in enumerate(xf)
+        ]
+
+    def test_single_face_no_escalation(self):
+        st = self._stable((0.5, 1.0))
+        assert _maybe_subject_escalation(st, st[0], 0.0, 4.0) is None
+
+    def test_one_clearly_dominant_no_escalation(self):
+        # 2nd face only 0.3 as present as the 1st (< SUBJECT_AMBIG_RATIO 0.6).
+        st = self._stable((0.3, 1.0), (0.7, 0.3))
+        assert _maybe_subject_escalation(st, st[0], 0.0, 4.0) is None
+
+    def test_two_comparable_faces_escalate(self):
+        st = self._stable((0.3, 1.0), (0.7, 0.9))
+        e = _maybe_subject_escalation(st, st[0], 0.0, 4.0)
+        assert e is not None and len(e["facts"]["candidates"]) == 2
+
+    def test_side_of_buckets(self):
+        assert (_side_of(0.2), _side_of(0.5), _side_of(0.8)) == ("left", "center", "right")
+
+
+class TestMotionSceneType:
+    def _d(self, tid):
+        return {"crops": [{"track_id": tid}]}
+
+    def test_static_subject_is_general(self):
+        win = [_frame(t, [_tr(1, 0.5)]) for t in range(4)]
+        assert _motion_scene_type(self._d(1), win, []) == "general"
+
+    def test_fast_moving_subject_is_action(self):
+        win = [_frame(0, [_tr(1, 0.15)]), _frame(1, [_tr(1, 0.85)])]  # spread 0.7
+        assert _motion_scene_type(self._d(1), win, []) == "action"
+
+    def test_no_face_uses_person_spread(self):
+        pf = [_pframe(0, [_person(0.1)]), _pframe(1, [_person(0.9)])]
+        assert _motion_scene_type({"crops": [{"track_id": None}]}, [], pf) == "action"
+
+
 class TestMergeShort:
     def _seg(self, start, end, ar, layout="single"):
         return {
@@ -248,6 +331,39 @@ class TestReconcile:
         plan = reconcile([], tracked, cuts=[], src_w=SRC_W, src_h=SRC_H, duration=6.0)
         pts = collect_escalation_points(plan)
         assert any(p["kind"] == "subject_choice" for p in pts)
+
+    def test_merge_keeps_content_changes_separate(self):
+        # A speaker shot and a full-screen graphic both plan to 9:16, but must NOT
+        # merge into one segment — else one Gemini verdict governs both and the
+        # graphic gets cropped. Distinguished by face-presence and escalation key.
+        def seg(s, e, nf, ek=None):
+            d = {
+                "start": s,
+                "end": e,
+                "inner_ar": (9, 16),
+                "layout": "single",
+                "crops": [{"x_target": 0.5}],
+                "trace": {"n_faces": nf},
+                "reason": "",
+                "escalate": None,
+            }
+            if ek:
+                d["escalate"] = {"key": ek, "kind": "text_presence"}
+            return d
+
+        # speaker (face) → graphic (no face): kept separate
+        assert len(_merge_short([seg(0, 5, 1), seg(5, 10, 0)], 2.0)) == 2
+        # two identical speaker cells: merged (stability)
+        assert len(_merge_short([seg(0, 5, 1), seg(5, 10, 1)], 2.0)) == 1
+        # a caption appears mid-shot (different escalation key): kept separate
+        assert (
+            len(
+                _merge_short(
+                    [seg(0, 5, 1), seg(5, 10, 1, "text:left:0.0-0.6@0.5")], 2.0
+                )
+            )
+            == 2
+        )
 
     def test_single_face_no_subject_escalation(self):
         tracked = [_frame(t, [_tr(1, 0.5, w=0.15)]) for t in (0, 2, 4)]
