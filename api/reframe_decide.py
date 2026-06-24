@@ -187,7 +187,11 @@ def apply_verdicts(
         esc = seg.get("escalate")
         if not esc:
             continue
-        v = vmap.get(esc["key"])
+        # Match on the per-cluster unique key (set by cluster_escalations) so a
+        # verdict applies only to its own contiguous run — never bleeds onto a
+        # distant shot that shares the same geometric `key`. Falls back to `key`
+        # for points that were never clustered (e.g. direct unit-test input).
+        v = vmap.get(esc.get("cluster_key") or esc["key"])
         if not v:
             continue  # no verdict (dropped over budget / call failed) → fallback
         seg["escalate"] = {**esc, "verdict": v}

@@ -84,40 +84,56 @@ def make_point(
     }
 
 
-def cluster_escalations(points: List[dict]) -> List[dict]:
-    """Merge points with the same `key` into one question (first-seen order).
+# A cluster may only span a CONTIGUOUS run of same-key segments. Points farther
+# apart in time than this are different shots that merely share rounded geometry
+# (a plain busy-background band and a real caption can collide on the same key) —
+# clustering them would let ONE Gemini verdict bleed across the whole video
+# (observed: a single "letterbox" stamped onto 7 shots 0:02–3:02 apart). Adjacent
+# same-shot cells are already coalesced by `reframe_plan._merge_short`, so in
+# practice same-key recurrences are non-adjacent and each gets its own decision.
+CLUSTER_GAP_TOL = 0.25  # seconds; a larger gap starts a new cluster
 
-    The same ambiguity recurs across adjacent segments (same faces, same caption
-    band); asking once and applying the verdict to all covered segments is what
-    keeps the call count low. A cluster's `impact` is the total duration it
-    covers — used to prioritize under the call budget.
+
+def cluster_escalations(points: List[dict]) -> List[dict]:
+    """Group points into CONTIGUOUS same-key runs; each run is one Gemini question.
+
+    A run extends only while the next point shares the key AND is time-adjacent
+    (within `CLUSTER_GAP_TOL`). Each cluster gets a UNIQUE key (`<key>#t<start>`)
+    so its verdict applies to exactly its own segments and never bleeds onto a
+    distant shot with the same geometry. That unique key is stamped back onto each
+    member point's `cluster_key` (points are the segments' `escalate` dicts), which
+    `reframe_decide.apply_verdicts` matches on. `impact` is total covered duration
+    (used to prioritize under the call budget).
     """
-    order: List[str] = []
-    groups: dict = {}
+    runs: List[List[dict]] = []
     for p in points:
-        k = p["key"]
-        if k not in groups:
-            groups[k] = []
-            order.append(k)
-        groups[k].append(p)
+        if runs:
+            prev = runs[-1][-1]
+            if p["key"] == prev["key"] and p["start"] <= prev["end"] + CLUSTER_GAP_TOL:
+                runs[-1].append(p)
+                continue
+        runs.append([p])
+
     clusters = []
-    for k in order:
-        ps = groups[k]
+    for ps in runs:
         first = ps[0]
+        start = min(p["start"] for p in ps)
+        cluster_key = f"{first['key']}#t{round(start, 1)}"
         thumbs: List[float] = []
         for p in ps:
+            p["cluster_key"] = cluster_key  # for apply_verdicts matching
             if p["thumb_sec"] not in thumbs:
                 thumbs.append(p["thumb_sec"])
         clusters.append(
             {
                 "kind": first["kind"],
-                "key": k,
+                "key": cluster_key,
                 "question": first["question"],
                 "facts": first["facts"],
                 "fallback": first["fallback"],
                 "thumb_secs": thumbs[:MAX_THUMBS_PER_CLUSTER],
                 "starts": [p["start"] for p in ps],
-                "start": min(p["start"] for p in ps),
+                "start": start,
                 "end": max(p["end"] for p in ps),
                 "count": len(ps),
                 "impact": round(sum(p["end"] - p["start"] for p in ps), 3),

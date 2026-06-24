@@ -148,10 +148,13 @@ class TestOrchestration:
         assert cost == []  # no usage to bill when the call failed
 
     def test_partial_verdicts_only_matched_keys_change(self, monkeypatch):
-        # Verdict returned for 'text:a' (letterbox) but not 'text:b' → only a changes.
+        # Verdict returned for shot 'a' (letterbox) but not 'b' → only a changes.
+        # The model echoes the per-cluster unique keys it was sent.
         async def decide(batches, src_path, region=None):
+            keys = [c["key"] for b in batches for c in b]
+            akey = next(k for k in keys if k.startswith("text:a"))
             return _result(
-                [{"key": "text:a", "action": "letterbox", "coverage": 0.9}], cost=0.01
+                [{"key": akey, "action": "letterbox", "coverage": 0.9}], cost=0.01
             )
 
         proc, cost = _make_processor(monkeypatch, decide)
@@ -166,7 +169,8 @@ class TestOrchestration:
 
     def test_crop_verdict_keeps_fallback_but_records_verdict(self, monkeypatch):
         async def decide(batches, src_path, region=None):
-            return _result([{"key": "text:a", "action": "crop"}], cost=0.01)
+            keys = [c["key"] for b in batches for c in b]
+            return _result([{"key": k, "action": "crop"} for k in keys], cost=0.01)
 
         proc, _ = _make_processor(monkeypatch, decide)
         a = _text_seg("text:a")
@@ -174,30 +178,30 @@ class TestOrchestration:
         assert a["inner_ar"] == (9, 16)  # crop → unchanged
         assert a["escalate"]["verdict"]["action"] == "crop"  # still traced
 
-    def test_clustered_recurring_key_applies_to_all_segments(self, monkeypatch):
-        # Same key on two non-adjacent segments clusters to ONE call; the single
-        # verdict must apply to every segment carrying that key.
-        seen_batches = {}
-
+    def test_distant_same_key_verdict_does_not_bleed(self, monkeypatch):
+        # Two shots share the geometric key but sit 20s apart → SEPARATE clusters.
+        # A letterbox verdict on the first run must NOT letterbox the distant one
+        # (the rf-vlsygfxe bleed: one verdict stamped onto 7 shots video-wide).
         async def decide(batches, src_path, region=None):
-            seen_batches["n_calls"] = len(batches)
-            seen_batches["n_clusters"] = sum(len(b) for b in batches)
+            keys = [c["key"] for b in batches for c in b]
+            earliest = min(keys, key=lambda k: float(k.split("#t")[1]))
             return _result(
-                [{"key": "text:dup", "action": "letterbox", "coverage": 0.9}],
-                cost=0.01,
+                [{"key": earliest, "action": "letterbox", "coverage": 0.9}], cost=0.01
             )
 
         proc, _ = _make_processor(monkeypatch, decide)
         s1 = _text_seg("text:dup", start=0.0, end=6.0)
         s2 = _text_seg("text:dup", start=20.0, end=26.0)
         _apply(proc, [s1, s2])
-        assert seen_batches["n_clusters"] == 1  # two points → one cluster
-        assert s1["inner_ar"] == (16, 9) and s2["inner_ar"] == (16, 9)
+        assert s1["inner_ar"] == (16, 9)  # first run got the verdict
+        assert s2["inner_ar"] == (9, 16)  # distant run kept its fallback — no bleed
 
     def test_zero_cost_usage_not_billed(self, monkeypatch):
         async def decide(batches, src_path, region=None):
+            keys = [c["key"] for b in batches for c in b]
             return _result(
-                [{"key": "text:a", "action": "letterbox", "coverage": 0.9}], cost=0.0
+                [{"key": k, "action": "letterbox", "coverage": 0.9} for k in keys],
+                cost=0.0,
             )
 
         proc, cost = _make_processor(monkeypatch, decide)

@@ -47,8 +47,8 @@ class TestMakePoint:
 
 
 class TestClustering:
-    def test_same_key_collapses_to_one_cluster(self):
-        # The same two faces across three adjacent segments → one question.
+    def test_contiguous_same_key_collapses_to_one_cluster(self):
+        # The same ambiguity across three ADJACENT segments → one question.
         pts = [_pt("faces:AB", 0, 2), _pt("faces:AB", 2, 4), _pt("faces:AB", 4, 6)]
         clusters = cluster_escalations(pts)
         assert len(clusters) == 1
@@ -56,11 +56,29 @@ class TestClustering:
         assert c["count"] == 3
         assert c["start"] == 0 and c["end"] == 6
         assert c["impact"] == 6.0  # total covered duration
+        assert c["key"].startswith("faces:AB#t")  # unique per-run key
 
-    def test_distinct_keys_stay_separate_in_first_seen_order(self):
-        pts = [_pt("b", 4, 6), _pt("a", 0, 2), _pt("b", 6, 8)]
-        keys = [c["key"] for c in cluster_escalations(pts)]
-        assert keys == ["b", "a"]  # first-seen order preserved
+    def test_noncontiguous_same_key_splits(self):
+        # Same geometry recurring at a DISTANT time = a different shot that merely
+        # shares the rounded key → SEPARATE clusters with distinct unique keys, so
+        # one verdict can't bleed across the video (the rf-vlsygfxe bug).
+        pts = [_pt("x", 0, 2), _pt("y", 2, 4), _pt("x", 30, 32)]
+        clusters = cluster_escalations(pts)
+        assert [c["key"].split("#")[0] for c in clusters] == ["x", "y", "x"]
+        xkeys = [c["key"] for c in clusters if c["key"].startswith("x#")]
+        assert len(xkeys) == 2 and xkeys[0] != xkeys[1]
+
+    def test_same_key_with_time_gap_splits(self):
+        # Same key but a non-adjacent gap (> CLUSTER_GAP_TOL) → two clusters.
+        pts = [_pt("x", 0, 2), _pt("x", 20, 22)]
+        assert len(cluster_escalations(pts)) == 2
+
+    def test_cluster_key_stamped_on_member_points(self):
+        # The unique key is written back so apply_verdicts can match per-run.
+        pts = [_pt("x", 0, 2), _pt("x", 2, 4)]
+        clusters = cluster_escalations(pts)
+        assert len(clusters) == 1
+        assert all(p["cluster_key"] == clusters[0]["key"] for p in pts)
 
     def test_thumbs_deduped_and_capped(self):
         pts = [_pt("k", t, t + 2, thumb=1.0) for t in range(0, 12, 2)]
@@ -99,9 +117,9 @@ class TestBatching:
         ]
         plan = plan_batches(pts, max_points=2, max_calls=1)
         assert plan["n_calls"] == 1
-        kept = [c["key"] for c in plan["batches"][0]]
+        kept = [c["key"].split("#")[0] for c in plan["batches"][0]]
         assert kept == ["long", "mid"]  # time order among kept
-        assert [c["key"] for c in plan["dropped"]] == ["short"]
+        assert [c["key"].split("#")[0] for c in plan["dropped"]] == ["short"]
 
     def test_summary_flags_drops(self):
         pts = [_pt("long", 0, 10), _pt("short", 10, 11)]
