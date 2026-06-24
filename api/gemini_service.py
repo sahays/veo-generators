@@ -18,7 +18,7 @@ from ai_helpers import (
 )
 from brief_helpers import parse_scenes
 from helpers import gemini_call_with_retry
-from models import AIResponseWrapper, Project, Scene
+from models import AIResponseWrapper, Project, Scene, UsageMetrics
 from prompt_resolver import PromptResolver, gcs_ref_url
 from prompt_templates import SCENE_ANALYSIS_PROMPT, build_collage_prompt
 
@@ -347,6 +347,78 @@ class GeminiService:
         data["prompt_variables"] = prompt_variables
         data["prompt_text_used"] = prompt_text
         return AIResponseWrapper(data=data, usage=compute_usage(response, model_id))
+
+    async def decide_escalations(
+        self,
+        batches: list,
+        video_path: str,
+        region: Optional[str] = None,
+    ) -> AIResponseWrapper:
+        """Pass 2: resolve the planner's escalated decision points with the
+        decision model (gemini-3.5-flash).
+
+        `batches` is `reframe_escalation.plan_batches(...)["batches"]` — request
+        payloads, each a list of clustered decision points. Batches run
+        SEQUENTIALLY (one request at a time; `gemini_call_with_retry` backs off on
+        429). Thumbnails are decoded from the LOCAL source and sent inline — no
+        video upload. Returns merged verdicts + summed usage.
+        """
+        from reframe_decide import (
+            DECISION_INTRO,
+            DECISION_SCHEMA,
+            build_cluster_block,
+            extract_thumbnails,
+        )
+        from reframe_escalation import DECISION_MODEL
+
+        if not batches:
+            return AIResponseWrapper(data={"verdicts": []}, usage=UsageMetrics())
+
+        client = self._get_client(region)
+        schema = load_schema(DECISION_SCHEMA)
+        all_secs = [t for batch in batches for c in batch for t in c["thumb_secs"]]
+        thumbs = extract_thumbnails(video_path, all_secs)
+
+        verdicts: list = []
+        in_tok = out_tok = 0
+        cost = 0.0
+        for i, batch in enumerate(batches):
+            contents: list = [DECISION_INTRO]
+            for c in batch:
+                contents.append(build_cluster_block(c))
+                for t in c["thumb_secs"]:
+                    b = thumbs.get(round(float(t), 2))
+                    if b:
+                        contents.append(
+                            types.Part.from_bytes(data=b, mime_type="image/jpeg")
+                        )
+            logger.info(
+                f"reframe decide: batch {i + 1}/{len(batches)} "
+                f"({len(batch)} points) via {DECISION_MODEL}"
+            )
+            response = await gemini_call_with_retry(
+                client,
+                DECISION_MODEL,
+                contents,
+                types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=schema,
+                    max_output_tokens=8192,
+                ),
+            )
+            data = response.parsed if isinstance(response.parsed, dict) else {}
+            verdicts.extend(data.get("verdicts", []))
+            u = compute_usage(response, DECISION_MODEL)
+            in_tok += u.input_tokens
+            out_tok += u.output_tokens
+            cost += u.cost_usd
+        usage = UsageMetrics(
+            input_tokens=in_tok,
+            output_tokens=out_tok,
+            model_name=DECISION_MODEL,
+            cost_usd=cost,
+        )
+        return AIResponseWrapper(data={"verdicts": verdicts}, usage=usage)
 
     async def analyze_video_for_promo(
         self,

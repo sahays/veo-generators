@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "properties": {
+    "verdicts": {
+      "type": "array",
+      "description": "One verdict per decision point, echoing its key.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "The exact key of the decision point being answered."
+          },
+          "action": {
+            "type": "string",
+            "enum": ["letterbox", "crop"],
+            "description": "letterbox = keep the full width so the side text/graphics stays in frame; crop = follow the speaker (the band is just background)."
+          },
+          "coverage": {
+            "type": "number",
+            "description": "If letterbox, the fraction of source width (0.0-1.0) that must stay visible to keep the text/graphics. 0 if crop."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Brief justification (what you saw in the thumbnail)."
+          }
+        },
+        "required": ["key", "action"]
+      }
+    }
+  },
+  "required": ["verdicts"]
+}

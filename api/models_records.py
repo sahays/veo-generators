@@ -114,6 +114,7 @@ class ReframeRecord(BaseModel):
     blurred_bg: bool = False
     sports_mode: bool = False
     diagnostic_mode: bool = False  # render detector overlays instead of reframing
+    deterministic_only: bool = False  # skip Gemini; plan from CPU detections only
     output_aspect_ratio: str = "9:16"  # "9:16" (adaptive) or "3:4"
     model_id: Optional[str] = None
     region: Optional[str] = None

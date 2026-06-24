@@ -220,6 +220,9 @@ class ReframeProcessor(JobProcessor):
             rungs=rungs,
             text_frames=text_frames,
         )
+        # Pass 2: let gemini-3.5-flash settle the planner's escalated decision
+        # points (e.g. real side text vs background) before keypoints/render.
+        self._apply_gemini_decisions(record, record_id, segments, src_path, w, h, rungs)
         attach_keypoints(segments, fps)
         self._store_segment_plan(record_id, segments)
         logger.info(f"[reframe:{record_id}] plan: {len(segments)} segments")
@@ -268,6 +271,8 @@ class ReframeProcessor(JobProcessor):
                 "inner_ar": list(s["inner_ar"]) if s["inner_ar"] else None,
                 "reason": s.get("reason", ""),
                 "trace": s.get("trace"),
+                # decision point #1+ : the judgment deferred to gemini-3.5-flash
+                "escalate": s.get("escalate"),
             }
             for s in segments
         ]
@@ -301,9 +306,69 @@ class ReframeProcessor(JobProcessor):
             "speaker_segments": src.get("speaker", 0),
             "split_segments": sum(1 for s in segments if s["layout"] == "split"),
         }
+        # Record the (post-verdict) escalation call plan for observability.
+        from reframe_escalation import plan_batches
+        from reframe_plan import collect_escalation_points
+
+        batch = plan_batches(collect_escalation_points(segments))
+        summary["escalations"] = {
+            "n_points": batch["n_points"],
+            "n_clusters": batch["n_clusters"],
+            "n_calls": batch["n_calls"],
+            "dropped": len(batch["dropped"]),
+        }
         deps.firestore_svc.update_reframe_record(
             record_id, {"segment_plan": compact, "reframe_summary": summary}
         )
+
+    def _apply_gemini_decisions(
+        self, record, record_id, segments, src_path, src_w, src_h, rungs
+    ):
+        """Pass 2: resolve the planner's escalated decision points (gemini-3.5-flash).
+
+        Collects the escalations, batches them (clustered, sequential), calls the
+        decision model, and applies the verdicts in place. Best-effort: any
+        failure leaves every segment on its deterministic fallback, so the plan is
+        always renderable.
+        """
+        from reframe_decide import apply_verdicts
+        from reframe_escalation import plan_batches, summarize
+        from reframe_plan import collect_escalation_points
+
+        points = collect_escalation_points(segments)
+        if not points:
+            return
+        batch = plan_batches(points)
+        logger.info(f"[reframe:{record_id}] {summarize(batch)}")
+        if not batch["batches"]:
+            return
+        try:
+            result = self._run_async(
+                deps.ai_svc.decide_escalations(
+                    batch["batches"],
+                    src_path,
+                    region=getattr(record, "region", None),
+                )
+            )
+        except Exception as e:
+            logger.warning(f"[reframe:{record_id}] gemini decisions skipped ({e})")
+            return
+        verdicts = result.data.get("verdicts", [])
+        changed = apply_verdicts(segments, verdicts, src_w, src_h, rungs)
+        logger.info(
+            f"[reframe:{record_id}] gemini verdicts: {len(verdicts)} returned, "
+            f"{changed} segment(s) re-framed"
+        )
+        usage = result.usage
+        if usage and usage.cost_usd:
+            accumulate_text_cost_on(
+                "reframe",
+                record_id,
+                cost_usd=usage.cost_usd,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                model_name=usage.model_name,
+            )
 
     def _store_eval_report(
         self,
@@ -343,6 +408,9 @@ class ReframeProcessor(JobProcessor):
             )
             if not report:
                 return None
+            # Stash source dims so the typed plan model (reframe_plan_model) can
+            # reconstruct + EXPLAIN a stored record without external metadata.
+            report.setdefault("meta", {}).update({"src_w": src_w, "src_h": src_h})
             deps.firestore_svc.update_reframe_record(record_id, {"eval_report": report})
             lb, talker = report["letterbox"], report.get("talker") or {}
             logger.info(
@@ -453,8 +521,18 @@ class ReframeProcessor(JobProcessor):
         track_summary="",
         cuts=None,
     ):
-        """Step 3b: Gemini scene analysis, informed by cuts + MediaPipe tracks."""
+        """Step 3b: Gemini scene analysis, informed by cuts + MediaPipe tracks.
+
+        When the record opts into deterministic-only planning, Gemini is skipped
+        entirely and an empty scene list is returned — `reconcile` then plans from
+        CPU detections alone (faces/persons/text), with no Gemini coverage floor.
+        """
         self.update_status(record_id, "analyzing", 20)
+        if getattr(record, "deterministic_only", False):
+            logger.info(
+                f"[reframe:{record_id}] deterministic-only: skipping Gemini scene analysis"
+            )
+            return []
         logger.info(f"[reframe:{record_id}] Gemini scene analysis")
 
         # Combine Chirp + track summary as context for Gemini

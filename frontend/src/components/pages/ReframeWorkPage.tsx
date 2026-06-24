@@ -133,11 +133,7 @@ export const ReframeWorkPage = () => {
     if (!record) return null
 
     const isProcessing = ACTIVE_STATUSES.includes(record.status)
-    const hasPrompt = !!(record.prompt_text_used || (record.prompt_variables && Object.keys(record.prompt_variables).length > 0))
-    const hasTrackSummary = !!record.track_summary
-    const speakerSegments = record.speaker_segments as Array<{ speaker_id: string; start_sec: number; end_sec: number }> | undefined
-    const focalPoints = record.focal_points as Array<{ time_sec: number; x: number; y: number; confidence?: number; description?: string }> | undefined
-    const geminiScenes = record.gemini_scenes as Array<any> | undefined
+    const hasPlan = !!((record.segment_plan as unknown[] | undefined)?.length) || !!record.eval_report
 
     return (
       <div className="space-y-6">
@@ -170,16 +166,7 @@ export const ReframeWorkPage = () => {
           </div>
         )}
 
-        <ReframePipelineLinks
-          recordId={record.id}
-          hasTrackSummary={hasTrackSummary}
-          hasPrompt={hasPrompt}
-          hasGeminiScenes={!!(geminiScenes && geminiScenes.length > 0)}
-          hasFocalPoints={!!(focalPoints && focalPoints.length > 0)}
-          hasSpeakerSegments={!!(speakerSegments && speakerSegments.length > 0)}
-          hasSegmentPlan={!!((record.segment_plan as unknown[] | undefined)?.length)}
-          hasEvalReport={!!record.eval_report}
-        />
+        <ReframePipelineLinks recordId={record.id} hasPlan={hasPlan} />
 
         {record.status === 'completed' && <ReframeCompleted record={record} />}
       </div>

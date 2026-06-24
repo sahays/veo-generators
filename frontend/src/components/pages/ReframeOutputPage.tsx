@@ -1,19 +1,46 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Download, Loader2 } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronRight, Download, Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { downloadJson } from '@/lib/utils'
 import { ModelPill } from '@/components/ModelPill'
 import { ServicesUsedPanel } from '@/components/pricing/ServicesUsedPanel'
 
 type Section =
-  | 'mediapipe'
+  | 'plan'
   | 'prompt'
   | 'gemini'
   | 'decisions'
   | 'focal-points'
-  | 'chirp'
   | 'eval-report'
+
+const CollapsibleCard = ({
+  title,
+  defaultOpen = true,
+  children,
+}: {
+  title: string
+  defaultOpen?: boolean
+  children: ReactNode
+}) => {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="border border-border rounded-xl bg-card overflow-hidden">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between gap-2 px-5 py-3 text-left hover:bg-muted/30 transition-colors"
+      >
+        <span className="text-sm font-heading font-bold text-foreground">{title}</span>
+        {open ? (
+          <ChevronDown size={16} className="text-muted-foreground" />
+        ) : (
+          <ChevronRight size={16} className="text-muted-foreground" />
+        )}
+      </button>
+      {open && <div className="px-5 pb-5 pt-1 border-t border-border">{children}</div>}
+    </div>
+  )
+}
 
 export const ReframeOutputPage = () => {
   const { id, section } = useParams<{ id: string; section: Section }>()
@@ -51,16 +78,6 @@ export const ReframeOutputPage = () => {
   }
 
   const title = record.display_name || record.source_filename || 'Reframe'
-
-  const renderMediapipe = () => {
-    const summary = record.track_summary as string | undefined
-    if (!summary) {
-      return <p className="text-muted-foreground">No MediaPipe track data available. This reframe may have been created before track summaries were stored.</p>
-    }
-    return (
-      <pre className="text-sm text-foreground whitespace-pre-wrap font-mono leading-relaxed">{summary}</pre>
-    )
-  }
 
   const renderPrompt = () => {
     const fullPrompt = record.prompt_text_used as string | undefined
@@ -135,14 +152,12 @@ export const ReframeOutputPage = () => {
   }
 
   const SECTION_TITLES: Record<string, string> = {
-    mediapipe: 'MediaPipe Detection',
+    plan: 'Plan & Quality',
     prompt: 'Gemini Prompt',
     gemini: 'Gemini Scene Analysis',
     decisions: 'Reframe Decisions',
     'focal-points': 'Merged Focal Points',
     'eval-report': 'Quality Report',
-    // Legacy routes
-    chirp: 'Chirp Diarization Output',
   }
 
   const fmtT = (sec: number) => {
@@ -176,46 +191,6 @@ export const ReframeOutputPage = () => {
               <span className="w-12 shrink-0 text-foreground">{Array.isArray(s.inner_ar) ? s.inner_ar.join(':') : (s.layout === 'split' ? 'split' : '')}</span>
               <span className="w-20 shrink-0 text-muted-foreground/70">{s.layout}</span>
               <span className="text-foreground">{(s.trace && s.trace.trigger) || s.reason}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
-  const renderChirp = () => {
-    const segments = record.speaker_segments as Array<{ speaker_id: string; start_sec: number; end_sec: number }> | undefined
-    if (!segments || segments.length === 0) {
-      return <p className="text-muted-foreground">No Chirp diarization data available for this reframe.</p>
-    }
-    const uniqueSpeakers = [...new Set(segments.map(s => s.speaker_id))].sort()
-    const colors = ['text-blue-400', 'text-emerald-400', 'text-amber-400', 'text-rose-400', 'text-purple-400', 'text-cyan-400', 'text-orange-400', 'text-pink-400']
-    const colorMap = Object.fromEntries(uniqueSpeakers.map((s, i) => [s, colors[i % colors.length]]))
-    const fmtTime = (sec: number) => {
-      const m = Math.floor(sec / 60)
-      const s = Math.floor(sec % 60)
-      return `${m}:${s.toString().padStart(2, '0')}`
-    }
-    return (
-      <div className="space-y-4 text-sm">
-        <div className="flex flex-wrap gap-3 font-sans">
-          <span className="text-muted-foreground">{segments.length} segments</span>
-          <span className="text-muted-foreground">&middot;</span>
-          <span className="text-muted-foreground">{uniqueSpeakers.length} speakers</span>
-        </div>
-        <div className="flex flex-wrap gap-2 font-sans">
-          {uniqueSpeakers.map(s => (
-            <span key={s} className={`text-xs px-2 py-0.5 rounded-full bg-muted ${colorMap[s]}`}>{s}</span>
-          ))}
-        </div>
-        <div className="space-y-0.5 font-mono">
-          {segments.map((seg, i) => (
-            <div key={i} className="flex gap-4">
-              <span className="text-muted-foreground w-28 shrink-0">
-                {fmtTime(seg.start_sec)} &ndash; {fmtTime(seg.end_sec)}
-              </span>
-              <span className={colorMap[seg.speaker_id]}>{seg.speaker_id}</span>
-              <span className="text-muted-foreground/50">{(seg.end_sec - seg.start_sec).toFixed(1)}s</span>
             </div>
           ))}
         </div>
@@ -371,6 +346,73 @@ export const ReframeOutputPage = () => {
     )
   }
 
+  const renderPlan = () => {
+    const plan = record.segment_plan as Array<any> | undefined
+    const summary = record.reframe_summary as any
+    const esc = summary?.escalations as
+      | { n_points: number; n_clusters: number; n_calls: number; dropped: number }
+      | undefined
+    return (
+      <div className="space-y-4">
+        <CollapsibleCard title="Quality">
+          {renderEvalReport()}
+        </CollapsibleCard>
+
+        <CollapsibleCard title="Plan">
+          <div className="space-y-4 text-sm">
+            {summary && (
+              <div className="font-sans text-xs text-muted-foreground space-y-1 bg-muted/50 rounded-lg p-3">
+                <div>{summary.segments} segments &middot; aspect ratios: {JSON.stringify(summary.aspect_ratios)}</div>
+                <div>sources: {JSON.stringify(summary.sources)}</div>
+                {esc ? (
+                  <div className="text-foreground">
+                    Gemini decisions: {esc.n_points} point{esc.n_points === 1 ? '' : 's'} &rarr; {esc.n_clusters} cluster{esc.n_clusters === 1 ? '' : 's'} &rarr; {esc.n_calls} call{esc.n_calls === 1 ? '' : 's'}
+                    {esc.dropped ? ` · ${esc.dropped} dropped (deterministic fallback)` : ''}
+                  </div>
+                ) : (
+                  <div>Gemini decisions: none needed (all resolved deterministically)</div>
+                )}
+              </div>
+            )}
+            {(!plan || plan.length === 0) ? (
+              <p className="text-muted-foreground">No plan available for this reframe.</p>
+            ) : (
+              <div className="space-y-1.5 font-mono text-xs">
+                {plan.map((s, i) => {
+                  const e = s.escalate
+                  const verdict = e?.verdict
+                  const ar = s.inner_ar
+                  const isLetterbox =
+                    Array.isArray(ar) &&
+                    !(ar[0] === 9 && ar[1] === 16) &&
+                    !(ar[0] === 3 && ar[1] === 4)
+                  return (
+                    <div key={i} className="space-y-0.5">
+                      <div className="flex gap-3">
+                        <span className="text-muted-foreground w-24 shrink-0">{fmtT(s.start)}&ndash;{fmtT(s.end)}</span>
+                        <span className={`w-12 shrink-0 ${isLetterbox ? 'text-amber-600' : 'text-foreground'}`}>
+                          {Array.isArray(ar) ? ar.join(':') : (s.layout === 'split' ? 'split' : '')}
+                        </span>
+                        <span className="w-20 shrink-0 text-muted-foreground/70">{s.layout}</span>
+                        <span className="text-foreground">{(s.trace && s.trace.trigger) || s.reason}</span>
+                      </div>
+                      {e && (
+                        <div className="flex gap-2 pl-24 text-[11px]">
+                          <span className="text-amber-600 shrink-0">⚡ Gemini{verdict ? `: ${verdict.action}` : ' (pending)'}</span>
+                          <span className="text-muted-foreground/80">{e.question}</span>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </CollapsibleCard>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-3xl mx-auto py-8 px-6 space-y-6">
       <button onClick={() => navigate(`/orientations/${id}`)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -387,15 +429,17 @@ export const ReframeOutputPage = () => {
         <p className="text-sm text-muted-foreground">{title}</p>
       </div>
 
-      <div className="border border-border rounded-xl p-6 bg-card">
-        {section === 'mediapipe' && renderMediapipe()}
-        {section === 'prompt' && renderPrompt()}
-        {section === 'gemini' && renderGemini()}
-        {section === 'decisions' && renderDecisions()}
-        {section === 'focal-points' && renderFocalPoints()}
-        {section === 'eval-report' && renderEvalReport()}
-        {section === 'chirp' && renderChirp()}
-      </div>
+      {section === 'plan' ? (
+        renderPlan()
+      ) : (
+        <div className="border border-border rounded-xl p-6 bg-card">
+          {section === 'prompt' && renderPrompt()}
+          {section === 'gemini' && renderGemini()}
+          {section === 'decisions' && renderDecisions()}
+          {section === 'focal-points' && renderFocalPoints()}
+          {section === 'eval-report' && renderEvalReport()}
+        </div>
+      )}
 
       {id && <ServicesUsedPanel feature="reframe" recordId={id} />}
     </div>

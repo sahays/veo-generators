@@ -48,6 +48,18 @@ SPEAKER_DOMINANCE = 1.6  # the speaker's activity must beat the 2nd by this fact
 TEXT_WIDE_MIN = 0.50  # a sampled frame counts as wide-text at/above this coverage
 TEXT_PERSIST_FRAC = 0.50  # text must show in ≥ this fraction of a segment's frames
 TEXT_SELF_TRIGGER = 0.70  # CPU may letterbox unprompted only above this width
+# Dominant-face guard: a face present in ≥ this fraction of a segment's frames
+# marks it a talking-head, not a text card. An UNCONFIRMED (Gemini-silent) CPU
+# wide-text measurement — textured background, body edges, a lower-third — must
+# not letterbox over that speaker; only Gemini-confirmed text may.
+FACE_TEXT_OVERRIDE_FRAC = 0.70
+# Text escalation (decision point #1): the morphology detector CANNOT tell a real
+# side caption from a busy/white background (proven — span/contrast/bimodality all
+# overlap). So when a wide band would be CLIPPED by the subject's tight crop, the
+# planner doesn't guess: it emits an escalation for gemini-3.5-flash and meanwhile
+# follows the subject (the fallback). SIDE_TEXT_MARGIN is how far past the crop
+# window the band must reach to count as "on the side" (vs behind the subject).
+SIDE_TEXT_MARGIN = 0.06
 
 # Vertical-split layout (Phase 3): when two speakers sit too far apart for even a
 # 1:1 rung to hold both at a decent size, stack them as two full-canvas panels so
@@ -310,19 +322,33 @@ def _split_crops(pair, win, start, end, scene):
 # ---------------------------------------------------------------------------
 
 
-def _segment_text_coverage(win) -> float:
-    """Median wide-text coverage over the windowed frames, or 0 if not persistent.
+def _segment_text_band(win) -> Tuple[float, Tuple[float, float]]:
+    """Median wide-text coverage AND its horizontal span over the window.
 
-    `win` is the `text_detect.scan_video_text` frames in this segment. Requires
-    wide text in ≥ TEXT_PERSIST_FRAC of them (rejects a one-frame flash / a
-    swish-pan title), then returns the median width of those that *did* carry it.
+    `win` is the `text_detect.scan_video_text` frames in this segment (each with
+    `coverage` and `span`). Requires wide text in ≥ TEXT_PERSIST_FRAC of them
+    (rejects a one-frame flash / a swish-pan title), then returns the median
+    width of those that *did* carry it, plus the median (x0, x1) of that band.
+
+    The span is what lets the planner ask the right question: a band that sits
+    *behind* the subject is harmless, but one that extends past the crop window
+    on a side would be clipped — the ambiguous "is that meaningful side
+    text/graphics?" case that escalates to Gemini (see _maybe_text_escalation).
     """
     if not win:
-        return 0.0
-    wide = [f["coverage"] for f in win if f["coverage"] >= TEXT_WIDE_MIN]
+        return 0.0, (0.0, 0.0)
+    wide = [f for f in win if f["coverage"] >= TEXT_WIDE_MIN]
     if len(wide) / len(win) < TEXT_PERSIST_FRAC:
-        return 0.0
-    return statistics.median(wide)
+        return 0.0, (0.0, 0.0)
+    cov = statistics.median([f["coverage"] for f in wide])
+    x0 = statistics.median([f.get("span", (0.0, 0.0))[0] for f in wide])
+    x1 = statistics.median([f.get("span", (0.0, 0.0))[1] for f in wide])
+    return cov, (x0, x1)
+
+
+def _segment_text_coverage(win) -> float:
+    """Median wide-text coverage over the window (back-compat scalar accessor)."""
+    return _segment_text_band(win)[0]
 
 
 def reconcile_text_coverage(
@@ -405,13 +431,65 @@ def _competitors(stable, mouth) -> list:
     return out
 
 
-def _decide_segment(scene, tf_win, pf_win, tx_win, start, end, label_map):
+def _maybe_text_escalation(
+    text_band, subj_x, stable, text_intent, src_w, src_h, rungs, start, end
+):
+    """Decision point #1: a wide text band that the subject's tight crop would clip.
+
+    Returns a `text_presence` escalation point (for gemini-3.5-flash) or None.
+    None means no conflict — no persistent wide band, or it sits *within* the crop
+    window (behind the subject), so the deterministic decision stands. A band that
+    pokes past the window by > SIDE_TEXT_MARGIN on a side is the ambiguous case the
+    morphology detector can't resolve (real caption vs busy background) → escalate.
+    The fallback is to follow the subject (crop) until the verdict comes back.
+    """
+    cov, (x0, x1) = text_band
+    if cov < TEXT_WIDE_MIN or text_intent or not stable:
+        return None
+    tight = rung_coverage(rungs[0], src_w, src_h)  # rungs[0] = tightest (full-bleed)
+    wl, wr = subj_x - tight / 2, subj_x + tight / 2
+    left_out = (wl - x0) > SIDE_TEXT_MARGIN
+    right_out = (x1 - wr) > SIDE_TEXT_MARGIN
+    if not (left_out or right_out):
+        return None  # band sits behind the subject → a tight crop keeps it
+    from reframe_escalation import make_point
+
+    side = "both" if (left_out and right_out) else ("left" if left_out else "right")
+    return make_point(
+        kind="text_presence",
+        key=f"text:{side}:{round(x0, 1)}-{round(x1, 1)}@{round(subj_x, 1)}",
+        question=(
+            f"A wide on-screen band sits to the {side} of the speaker "
+            f"(band x {x0:.2f}–{x1:.2f}; speaker at {subj_x:.2f}). Is it meaningful "
+            "text/graphics that must stay in frame (→ letterbox), or just "
+            "background (→ crop to the speaker)?"
+        ),
+        facts={
+            "text_span": [round(x0, 3), round(x1, 3)],
+            "text_coverage": round(cov, 3),
+            "subject_x": round(subj_x, 3),
+            "crop_window": [round(wl, 3), round(wr, 3)],
+            "side": side,
+            "n_faces": len(stable),
+        },
+        fallback={"action": "crop", "reason": "follow speaker pending Gemini verdict"},
+        start=start,
+        end=end,
+    )
+
+
+def _decide_segment(
+    scene, tf_win, pf_win, tx_win, start, end, label_map, src_w, src_h, rungs
+):
     """Decide layout, focal target and required coverage for one segment.
 
     `tf_win`/`pf_win`/`tx_win` are the tracked-face / person / text frames already
     sliced to this segment's window (via `_window`). Falls back to person/body
     detection when no stable face is present (e.g. a subject walking away), then to
     the Gemini spatial hint. Returns the decision plus the raw inputs that drove it.
+
+    `src_w`/`src_h`/`rungs` size the subject's tight-crop window for the text
+    escalation predicate (#1).
     """
     stable = _stable_tracks(tf_win)
     gemini_c = (
@@ -426,8 +504,29 @@ def _decide_segment(scene, tf_win, pf_win, tx_win, start, end, label_map):
         or (scene.get("layout") or "").lower() in ("text_card", "slide")
         or gemini_c >= 0.8
     )
-    text_meas = _segment_text_coverage(tx_win)
+    text_meas, text_span = _segment_text_band(tx_win)
     c_text = reconcile_text_coverage(gemini_c, text_meas, text_intent)
+    # Decision point #1 (text): if a wide band would be clipped by the subject's
+    # tight crop, the CPU can't tell real side text from busy background — escalate
+    # to gemini-3.5-flash. Either way the fallback follows the subject, so we drop
+    # the self-triggered CPU text floor (a false positive must not letterbox a
+    # speaker); a confirmed-text verdict re-letterboxes in Pass 2.
+    escalate = None
+    if stable and not text_intent:
+        subj = max(stable, key=lambda s: (s["frac"], -abs(s["x"] - 0.5)))
+        escalate = _maybe_text_escalation(
+            (text_meas, text_span),
+            subj["x"],
+            stable,
+            text_intent,
+            src_w,
+            src_h,
+            rungs,
+            start,
+            end,
+        )
+        if c_text > 0.0 and max(s["frac"] for s in stable) >= FACE_TEXT_OVERRIDE_FRAC:
+            c_text = 0.0
 
     def out(layout, crop, c, c_meas, faces=None, n_persons=0):
         return {
@@ -442,6 +541,7 @@ def _decide_segment(scene, tf_win, pf_win, tx_win, start, end, label_map):
             "n_faces": len(stable),
             "n_persons": n_persons,
             "faces": faces or [],
+            "escalate": escalate,
         }
 
     # Margin pads the DETECTION-measured width (for tracker slop), not Gemini's
@@ -581,6 +681,10 @@ def _merge_short(
             # a split (inner_ar=None) has no rung index, so it never swaps in/out
             # here (its strict dwell gate already keeps it from being this short).
             prev["end"] = seg["end"]
+            # Carry a merged-in segment's escalation if the survivor had none, so
+            # an ambiguity in the folded slice still reaches Gemini.
+            if seg.get("escalate") and not prev.get("escalate"):
+                prev["escalate"] = seg["escalate"]
             both_runged = isinstance(seg["inner_ar"], tuple) and isinstance(
                 prev["inner_ar"], tuple
             )
@@ -756,6 +860,9 @@ def reconcile(
             start,
             end,
             label_map,
+            src_w,
+            src_h,
+            rungs,
         )
         if d["layout"] == "split":
             # Split fills the canvas with stacked panels — no rung, and it doesn't
@@ -777,6 +884,7 @@ def reconcile(
                 "crops": d["crops"],
                 "reason": trace["trigger"],
                 "trace": trace,
+                "escalate": d.get("escalate"),
             }
         )
 
@@ -785,6 +893,16 @@ def reconcile(
         _attach_focal_points(seg, tracked_frames, track_times, persons, person_times)
         _fill_keypoints(seg)
     return merged
+
+
+def collect_escalation_points(segments: List[dict]) -> List[dict]:
+    """Escalation points emitted by the planner, in time order (drops None).
+
+    Feed to `reframe_escalation.plan_batches` to get the batched gemini-3.5-flash
+    requests. Each point carries the segment's deterministic fallback, so a plan
+    is renderable whether or not the calls run.
+    """
+    return [s["escalate"] for s in segments if s.get("escalate")]
 
 
 def attach_keypoints(segments: List[dict], fps: float) -> List[dict]:

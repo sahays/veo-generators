@@ -236,6 +236,30 @@ class TestReconcile:
         assert plan[0]["inner_ar"] == (9, 16)
         assert plan[0]["layout"] == "single"
 
+    def test_deterministic_only_ignores_gemini_overcoverage(self):
+        # The rf-0ma5249p defect: a single narrow face that Gemini reports as
+        # near-full-width coverage. With Gemini (scenes present) the coverage floor
+        # forces 16:9 letterbox; deterministic-only (scenes=[]) plans from the
+        # detected face width alone and crops tight.
+        tracked = [_frame(t, [_tr(1, 0.5, w=0.2)]) for t in (0, 2, 4)]
+        over = [
+            {
+                "start_sec": 0,
+                "end_sec": 6,
+                "scene_type": "general",
+                "active_subject": "center",
+                "min_horizontal_coverage": 0.99,
+            }
+        ]
+        gemini = reconcile(
+            over, tracked, cuts=[], src_w=SRC_W, src_h=SRC_H, duration=6.0
+        )
+        deterministic = reconcile(
+            [], tracked, cuts=[], src_w=SRC_W, src_h=SRC_H, duration=6.0
+        )
+        assert gemini[0]["inner_ar"] == (16, 9)  # Gemini coverage floor → letterbox
+        assert deterministic[0]["inner_ar"] == (9, 16)  # CPU width only → tight crop
+
     def test_person_fallback_when_no_face(self):
         # No faces, but a person walking away (e.g. trolley-at-night shot).
         persons = [_pframe(0, [_person(0.6)]), _pframe(2, [_person(0.62)])]
@@ -486,6 +510,38 @@ class TestReconcileWithText:
         )
         assert tuple(plan[0]["inner_ar"]) == (16, 9)
         assert plan[0]["trace"]["text_measured"] >= 0.9
+
+    def test_dominant_face_suppresses_unconfirmed_text_letterbox(self):
+        # Centered talking head present every frame; the CPU detector falsely reads
+        # a wide band but Gemini did NOT flag text. The speaker must win → tight 9:16
+        # crop, not a full-width letterbox over the only area of interest.
+        tracked = [_frame(t, [_tr(1, 0.5, w=0.15)]) for t in (0, 2, 4)]
+        text_frames = [_txt(t, 0.85) for t in range(6)]
+        plan = reconcile(
+            [],
+            tracked,
+            cuts=[],
+            src_w=1920,
+            src_h=1080,
+            duration=6.0,
+            text_frames=text_frames,
+        )
+        assert tuple(plan[0]["inner_ar"]) == (9, 16)
+
+    def test_unconfirmed_wide_text_still_letterboxes_without_face(self):
+        # Same wide band, but no face to contradict it → the self-trigger still
+        # letterboxes (the guard only fires when a speaker dominates the frame).
+        text_frames = [_txt(t, 0.85) for t in range(6)]
+        plan = reconcile(
+            [],
+            [],
+            cuts=[],
+            src_w=1920,
+            src_h=1080,
+            duration=6.0,
+            text_frames=text_frames,
+        )
+        assert tuple(plan[0]["inner_ar"]) == (16, 9)
 
     def test_full_width_flag_refined_down(self):
         # Gemini flags full-width but the measured title is ~0.6 wide → a tighter
