@@ -367,7 +367,7 @@ class GeminiService:
             DECISION_INTRO,
             DECISION_SCHEMA,
             build_cluster_block,
-            extract_thumbnails,
+            render_decision_thumbs,
         )
         from reframe_escalation import DECISION_MODEL
 
@@ -376,8 +376,7 @@ class GeminiService:
 
         client = self._get_client(region)
         schema = load_schema(DECISION_SCHEMA)
-        all_secs = [t for batch in batches for c in batch for t in c["thumb_secs"]]
-        thumbs = extract_thumbnails(video_path, all_secs)
+        thumbs = render_decision_thumbs(video_path, [c for b in batches for c in b])
 
         verdicts: list = []
         in_tok = out_tok = 0
@@ -386,12 +385,10 @@ class GeminiService:
             contents: list = [DECISION_INTRO]
             for c in batch:
                 contents.append(build_cluster_block(c))
-                for t in c["thumb_secs"]:
-                    b = thumbs.get(round(float(t), 2))
-                    if b:
-                        contents.append(
-                            types.Part.from_bytes(data=b, mime_type="image/jpeg")
-                        )
+                for b in thumbs.get(c["key"], []):
+                    contents.append(
+                        types.Part.from_bytes(data=b, mime_type="image/jpeg")
+                    )
             logger.info(
                 f"reframe decide: batch {i + 1}/{len(batches)} "
                 f"({len(batch)} points) via {DECISION_MODEL}"

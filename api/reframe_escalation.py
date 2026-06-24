@@ -34,7 +34,9 @@ DECISION_MODEL = "gemini-3.5-flash"
 # backstop, not a normal limit: a typical video clusters to 1–3 calls; only a
 # pathological one approaches the cap, beyond which lowest-impact ambiguities
 # fall back deterministically (logged, never silent).
-MAX_POINTS_PER_CALL = 8
+# Each cluster now sends ~3 annotated frames, so keep points-per-call modest to
+# bound images per request and keep image↔key association reliable.
+MAX_POINTS_PER_CALL = 5
 MAX_CALLS_PER_VIDEO = 30
 MAX_THUMBS_PER_CLUSTER = 3  # representative frames a clustered question sends
 

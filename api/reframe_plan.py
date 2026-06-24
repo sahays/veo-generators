@@ -459,22 +459,24 @@ def _maybe_text_escalation(text_band, subj_x, n_faces, src_w, src_h, rungs, star
     from reframe_escalation import make_point
 
     side = "both" if (left_out and right_out) else ("left" if left_out else "right")
-    where = "both sides" if side == "both" else f"the {side}"
+    where = "either side" if side == "both" else f"the {side}"
+    # NEUTRAL, image-first question. Do NOT assert text exists (the CPU band is a
+    # known false-positive over busy backgrounds) — make Gemini judge from pixels.
     return make_point(
         kind="text_presence",
         key=f"text:{side}:{round(x0, 1)}-{round(x1, 1)}@{round(subj_x, 1)}",
         question=(
-            f"A wide on-screen band sits on {where} of the subject "
-            f"(band x {x0:.2f}–{x1:.2f}; subject at {subj_x:.2f}). Is it meaningful "
-            "text/graphics that must stay in frame (→ letterbox), or just "
-            "background (→ crop to the subject)?"
+            f"A tight vertical crop will center on the subject (~x={subj_x:.2f}) and "
+            f"cut off {where}. Look at the frame: on that side, is there READABLE "
+            "on-screen text or a graphic (caption, title, lower-third, chart/table, "
+            "UI, logo) that would be lost? A person in front of scenery, a building, "
+            "plants, or a textured wall is NOT a graphic — answer crop unless real "
+            "readable text/graphics would be cut off."
         ),
         facts={
-            "text_span": [round(x0, 3), round(x1, 3)],
-            "text_coverage": round(cov, 3),
             "subject_x": round(subj_x, 3),
-            "crop_window": [round(wl, 3), round(wr, 3)],
-            "side": side,
+            "crop_keeps": [round(wl, 3), round(wr, 3)],
+            "check_side": side,
             "n_faces": n_faces,
         },
         fallback={"action": "crop", "reason": "follow subject pending Gemini verdict"},

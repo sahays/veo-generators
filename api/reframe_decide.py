@@ -22,40 +22,84 @@ logger = logging.getLogger(__name__)
 
 DECISION_SCHEMA = "reframe-decisions-schema"
 
+THUMBS_PER_CLUSTER = 3  # frames sampled across a segment so a verdict isn't from 1
+
 DECISION_INTRO = (
-    "You are the decision engine for a 16:9 → 9:16 video reframer. Deterministic "
-    "CV already measured the facts; you resolve only the calls it cannot make from "
-    "pixels alone. For each decision point below you get its question, measured "
-    "facts, and one or more thumbnail frames. Answer each by echoing its exact "
-    "`key` and an `action`.\n"
-    "TEXT decisions (key starts 'text:'):\n"
-    "  • letterbox — there IS meaningful on-screen text/graphics to the side of the "
-    "subject that must stay in frame; also give `coverage` = the fraction of width "
-    "(0-1) that must remain visible to keep it.\n"
-    "  • crop — the wide band is just background (scenery, architecture, texture); "
-    "follow the subject. Judge by what you SEE, not band width — a busy background "
-    "is not text.\n"
-    "SUBJECT decisions (key starts 'subject:'): answer action=follow and `subject` = "
-    "left | center | right — the one person the viewer should track (the speaker / "
-    "main focus). Use the thumbnail and the listed positions.\n"
+    "You are the decision engine for a 16:9 → 9:16 (portrait) video reframer. "
+    "Deterministic CV handles geometry; you resolve only what needs human-like "
+    "judgment from the pixels. Each decision point below gives its `key`, a "
+    "question, and SEVERAL thumbnail frames sampled across that shot. The frames "
+    "are ANNOTATED to show what a tight portrait crop would do:\n"
+    "  • the GREEN box = the region the crop keeps; the DARKENED area = what gets "
+    "cut off.\n"
+    "  • for subject choices, vertical lines mark each candidate person, labeled "
+    "left / center / right.\n"
+    "Answer each point by echoing its exact `key` and an `action`.\n"
+    "TEXT decisions (key 'text:…') — look at the DARKENED (cut) area across the "
+    "frames:\n"
+    "  • letterbox — readable on-screen text or a graphic (caption, title, lower-"
+    "third, chart/table, map, UI, logo) sits in the cut area and would be lost; "
+    "also give `coverage` = fraction of width (0-1) to keep so it stays visible.\n"
+    "  • crop — the cut area is only background: scenery, a building, landscape, "
+    "plants, a wall, blur, or out-of-focus decor. A PERSON in front of a busy "
+    "background is crop, NOT letterbox. Judge only by readable text/graphics you "
+    "actually see.\n"
+    "SUBJECT decisions (key 'subject:…'): action=follow and `subject` = left | "
+    "center | right — the one person to track (whoever is speaking / the focus).\n"
     "Return exactly one verdict per key."
 )
 
 
 def build_cluster_block(cluster: dict) -> str:
-    """The text describing one decision point (its thumbnails follow as image parts)."""
+    """The text describing one decision point (its annotated frames follow)."""
     return (
         f"\n[key={cluster['key']}] {cluster['question']}\n"
         f"facts: {json.dumps(cluster['facts'])}\n"
-        f"(thumbnail{'s' if len(cluster['thumb_secs']) != 1 else ''} below)"
+        "(annotated frames for this key follow)"
     )
 
 
-def extract_thumbnails(video_path: str, secs: List[float]) -> dict:
-    """Decode JPEG bytes for each requested second → {round(sec, 2): bytes}.
+def _overlay_text(frame, crop_keeps):
+    """Darken what a tight crop cuts; green-box what it keeps — so Gemini SEES it."""
+    import cv2
 
-    Best-effort (cv2): a frame that can't be read is omitted; the Gemini call
-    then sends that cluster text-only. Degrades to {} if cv2 is unavailable.
+    h, w = frame.shape[:2]
+    wl, wr = int(crop_keeps[0] * w), int(crop_keeps[1] * w)
+    dim = frame.copy()
+    cv2.rectangle(dim, (0, 0), (wl, h), (0, 0, 0), -1)
+    cv2.rectangle(dim, (wr, 0), (w, h), (0, 0, 0), -1)
+    frame = cv2.addWeighted(dim, 0.55, frame, 0.45, 0)
+    cv2.rectangle(frame, (wl, 1), (wr, h - 2), (0, 200, 0), 2)
+    return frame
+
+
+def _overlay_subjects(frame, candidates):
+    """Mark each candidate person with a labeled vertical line."""
+    import cv2
+
+    h, w = frame.shape[:2]
+    for c in candidates:
+        x = int(c["x"] * w)
+        cv2.line(frame, (x, 0), (x, h), (0, 180, 255), 2)
+        cv2.putText(
+            frame,
+            c.get("pos", ""),
+            (max(2, x - 28), 26),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 180, 255),
+            2,
+        )
+    return frame
+
+
+def render_decision_thumbs(video_path: str, clusters: List[dict]) -> dict:
+    """{cluster key → [annotated JPEG bytes]} — several frames across each shot.
+
+    Samples THUMBS_PER_CLUSTER frames spread over each cluster's [start, end] and
+    draws the crop keep/cut overlay (text) or candidate markers (subject), so the
+    model judges from what the crop actually does, not from numbers. Best-effort:
+    degrades to {} if cv2 is unavailable; skips frames that can't be read.
     """
     try:
         import cv2
@@ -68,14 +112,25 @@ def extract_thumbnails(video_path: str, secs: List[float]) -> dict:
         return {}
     out: dict = {}
     try:
-        for t in sorted({round(float(s), 2) for s in secs}):
-            cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
-            ok, frame = cap.read()
-            if not ok:
-                continue
-            ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
-            if ok:
-                out[t] = buf.tobytes()
+        for c in clusters:
+            s, e = c["start"], c["end"]
+            fracs = (0.2, 0.5, 0.8)[:THUMBS_PER_CLUSTER]
+            secs = [s + (e - s) * f for f in fracs] if e > s else [s]
+            facts = c.get("facts") or {}
+            imgs: List[bytes] = []
+            for t in secs:
+                cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
+                ok, frame = cap.read()
+                if not ok:
+                    continue
+                if c["kind"] == "text_presence" and facts.get("crop_keeps"):
+                    frame = _overlay_text(frame, facts["crop_keeps"])
+                elif c["kind"] == "subject_choice" and facts.get("candidates"):
+                    frame = _overlay_subjects(frame, facts["candidates"])
+                ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                if ok:
+                    imgs.append(buf.tobytes())
+            out[c["key"]] = imgs
     finally:
         cap.release()
     return out

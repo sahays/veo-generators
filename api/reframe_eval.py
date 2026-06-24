@@ -348,15 +348,24 @@ def evaluate(
         over = False
         if lb > 0:  # this segment is letterboxed
             lb_segments += 1
-            need = _must_keep_width(seg, tracked_frames)
-            idx = (
-                rungs.index(tuple(seg["inner_ar"]))
-                if tuple(seg["inner_ar"]) in rungs
-                else -1
-            )
-            if idx > 0 and rung_coverage(rungs[idx - 1], src_w, src_h) >= need:
-                over = True
-                over_lb_hits += 1
+            # A Gemini-confirmed text letterbox is INTENTIONAL — the bars preserve
+            # on-screen text/graphics the subject-width geometry can't see, so it is
+            # never "over". over_letterbox_rate stays a measure of *needless*
+            # (unexplained) letterboxing, which is the regression it was built for.
+            verdict = (seg.get("escalate") or {}).get("verdict") or {}
+            gemini_text = (seg.get("trace") or {}).get(
+                "source"
+            ) == "gemini_text" or verdict.get("action") == "letterbox"
+            if not gemini_text:
+                need = _must_keep_width(seg, tracked_frames)
+                idx = (
+                    rungs.index(tuple(seg["inner_ar"]))
+                    if tuple(seg["inner_ar"]) in rungs
+                    else -1
+                )
+                if idx > 0 and rung_coverage(rungs[idx - 1], src_w, src_h) >= need:
+                    over = True
+                    over_lb_hits += 1
         seg_reports.append(
             {
                 "start": round(seg["start"], 2),
