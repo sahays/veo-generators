@@ -41,18 +41,19 @@ PERSON_W_CAP = 0.60  # bodies are wider than faces, but still bounded
 SPEAKER_MIN_SAMPLES = 3  # need this many mouth samples to judge a track
 SPEAKER_MIN_ACTIVITY = 0.03  # MAR stdev below this = not talking
 SPEAKER_DOMINANCE = 1.6  # the speaker's activity must beat the 2nd by this factor
+# Subject-choice escalation (decision points #3/#4): when framing ONE of several
+# comparable faces and no face is clearly speaking, the CPU can't tell who the
+# subject is — escalate to gemini-3.5-flash. Only fires when the 2nd-most-visible
+# face is at least this fraction as present as the most-visible (else one clearly
+# dominates and we just follow it).
+SUBJECT_AMBIG_RATIO = 0.6
 
 # Wide-text detection (Phase 2): a CPU-measured text-line width refines Gemini's
 # coarse full-width flag so we letterbox to the real text extent, not a blanket
 # 1.0. "Gemini understands, CPU locates" — see reconcile_text_coverage.
 TEXT_WIDE_MIN = 0.50  # a sampled frame counts as wide-text at/above this coverage
 TEXT_PERSIST_FRAC = 0.50  # text must show in ≥ this fraction of a segment's frames
-TEXT_SELF_TRIGGER = 0.70  # CPU may letterbox unprompted only above this width
-# Dominant-face guard: a face present in ≥ this fraction of a segment's frames
-# marks it a talking-head, not a text card. An UNCONFIRMED (Gemini-silent) CPU
-# wide-text measurement — textured background, body edges, a lower-third — must
-# not letterbox over that speaker; only Gemini-confirmed text may.
-FACE_TEXT_OVERRIDE_FRAC = 0.70
+TEXT_SELF_TRIGGER = 0.70  # legacy: reconcile_text_coverage threshold (unwired now)
 # Text escalation (decision point #1): the morphology detector CANNOT tell a real
 # side caption from a busy/white background (proven — span/contrast/bimodality all
 # overlap). So when a wide band would be CLIPPED by the subject's tight crop, the
@@ -85,6 +86,10 @@ SCENE_TYPE_PARAMS: dict[str, Tuple[float, float]] = {
     "general": (0.15, 0.02),
 }
 DEFAULT_SCENE_PARAMS: Tuple[float, float] = (0.15, 0.02)
+# With the dense Gemini scene pass retired, scene_type is derived from MEASURED
+# motion: a subject whose x-center ranges more than this across a segment is
+# "action" (pan fast); otherwise "general". More accurate than a coarse label.
+ACTION_SPREAD = 0.25
 # If the subject's x barely moves across a segment, center on its median
 # position (robust to boundary jitter) instead of a velocity-limited path that
 # can lock off-center.
@@ -431,20 +436,19 @@ def _competitors(stable, mouth) -> list:
     return out
 
 
-def _maybe_text_escalation(
-    text_band, subj_x, stable, text_intent, src_w, src_h, rungs, start, end
-):
+def _maybe_text_escalation(text_band, subj_x, n_faces, src_w, src_h, rungs, start, end):
     """Decision point #1: a wide text band that the subject's tight crop would clip.
 
     Returns a `text_presence` escalation point (for gemini-3.5-flash) or None.
     None means no conflict — no persistent wide band, or it sits *within* the crop
-    window (behind the subject), so the deterministic decision stands. A band that
-    pokes past the window by > SIDE_TEXT_MARGIN on a side is the ambiguous case the
-    morphology detector can't resolve (real caption vs busy background) → escalate.
-    The fallback is to follow the subject (crop) until the verdict comes back.
+    window (behind the subject). A band that pokes past the window by >
+    SIDE_TEXT_MARGIN on a side is the ambiguous case the morphology detector can't
+    resolve (real caption vs busy background) → escalate; the fallback follows the
+    subject (crop) until the verdict comes back. This is now the ONLY path to a
+    text letterbox — there is no CPU self-trigger and no Gemini coverage floor.
     """
     cov, (x0, x1) = text_band
-    if cov < TEXT_WIDE_MIN or text_intent or not stable:
+    if cov < TEXT_WIDE_MIN:
         return None
     tight = rung_coverage(rungs[0], src_w, src_h)  # rungs[0] = tightest (full-bleed)
     wl, wr = subj_x - tight / 2, subj_x + tight / 2
@@ -455,14 +459,15 @@ def _maybe_text_escalation(
     from reframe_escalation import make_point
 
     side = "both" if (left_out and right_out) else ("left" if left_out else "right")
+    where = "both sides" if side == "both" else f"the {side}"
     return make_point(
         kind="text_presence",
         key=f"text:{side}:{round(x0, 1)}-{round(x1, 1)}@{round(subj_x, 1)}",
         question=(
-            f"A wide on-screen band sits to the {side} of the speaker "
-            f"(band x {x0:.2f}–{x1:.2f}; speaker at {subj_x:.2f}). Is it meaningful "
+            f"A wide on-screen band sits on {where} of the subject "
+            f"(band x {x0:.2f}–{x1:.2f}; subject at {subj_x:.2f}). Is it meaningful "
             "text/graphics that must stay in frame (→ letterbox), or just "
-            "background (→ crop to the speaker)?"
+            "background (→ crop to the subject)?"
         ),
         facts={
             "text_span": [round(x0, 3), round(x1, 3)],
@@ -470,9 +475,58 @@ def _maybe_text_escalation(
             "subject_x": round(subj_x, 3),
             "crop_window": [round(wl, 3), round(wr, 3)],
             "side": side,
-            "n_faces": len(stable),
+            "n_faces": n_faces,
         },
-        fallback={"action": "crop", "reason": "follow speaker pending Gemini verdict"},
+        fallback={"action": "crop", "reason": "follow subject pending Gemini verdict"},
+        start=start,
+        end=end,
+    )
+
+
+def _side_of(x: float) -> str:
+    """Coarse horizontal position label for a subject center."""
+    return "left" if x < 0.4 else ("right" if x > 0.6 else "center")
+
+
+def _maybe_subject_escalation(stable, fallback_tgt, start, end):
+    """Decision points #3/#4: which of several comparable faces is the subject.
+
+    Returns a `subject_choice` escalation (for gemini-3.5-flash) or None. Fires
+    only when 2+ faces are comparably present (the 2nd ≥ SUBJECT_AMBIG_RATIO of the
+    1st) — otherwise one clearly dominates and we just follow it. Caller has already
+    confirmed no face is clearly *speaking* (that resolves it deterministically).
+    The fallback is the deterministic pick (`fallback_tgt`).
+    """
+    if len(stable) < 2:
+        return None
+    by_vis = sorted(stable, key=lambda s: -s["frac"])
+    if (
+        by_vis[0]["frac"] <= 0
+        or by_vis[1]["frac"] / by_vis[0]["frac"] < SUBJECT_AMBIG_RATIO
+    ):
+        return None
+    from reframe_escalation import make_point
+
+    cands = sorted(stable, key=lambda s: s["x"])
+    labels = [
+        {
+            "track_id": s["track_id"],
+            "x": round(s["x"], 3),
+            "frac": round(s["frac"], 2),
+            "pos": _side_of(s["x"]),
+        }
+        for s in cands
+    ]
+    return make_point(
+        kind="subject_choice",
+        key="subject:" + ",".join(f"{round(s['x'], 1)}" for s in cands),
+        question=(
+            "Multiple people are visible ("
+            + "; ".join(f"{c['pos']} at x={c['x']}" for c in labels)
+            + "). Which one is the main subject to follow?"
+        ),
+        facts={"candidates": labels, "n_faces": len(stable)},
+        fallback={"action": "follow", "subject": _side_of(fallback_tgt["x"])},
         start=start,
         end=end,
     )
@@ -492,41 +546,30 @@ def _decide_segment(
     escalation predicate (#1).
     """
     stable = _stable_tracks(tf_win)
-    gemini_c = (
-        1.0
-        if scene.get("requires_full_width")
-        else float(scene.get("min_horizontal_coverage") or 0.0)
-    )
-    # Gemini "means text" when it flags full-width, names a text/slide layout, or
-    # asks for near-full coverage — that's when a measured text band should win.
-    text_intent = (
-        bool(scene.get("requires_full_width"))
-        or (scene.get("layout") or "").lower() in ("text_card", "slide")
-        or gemini_c >= 0.8
-    )
+    # RETIRED: Gemini scene coverage / requires_full_width no longer force a rung.
+    # The dense scene labels over-letterboxed plain shots (the original bug), so
+    # Pass 1 now letterboxes ONLY from CPU subject geometry (two-shot span, wide
+    # body). A persistent wide TEXT band the crop would clip is escalated to
+    # gemini-3.5-flash (decision point #1) instead of self-triggering — there is no
+    # coverage floor and no CPU self-trigger. Gemini still supplies scene_type (pan)
+    # and active_subject (subject hint) elsewhere; just not the coverage hammer.
+    gemini_c = 0.0
     text_meas, text_span = _segment_text_band(tx_win)
-    c_text = reconcile_text_coverage(gemini_c, text_meas, text_intent)
-    # Decision point #1 (text): if a wide band would be clipped by the subject's
-    # tight crop, the CPU can't tell real side text from busy background — escalate
-    # to gemini-3.5-flash. Either way the fallback follows the subject, so we drop
-    # the self-triggered CPU text floor (a false positive must not letterbox a
-    # speaker); a confirmed-text verdict re-letterboxes in Pass 2.
-    escalate = None
-    if stable and not text_intent:
-        subj = max(stable, key=lambda s: (s["frac"], -abs(s["x"] - 0.5)))
-        escalate = _maybe_text_escalation(
-            (text_meas, text_span),
-            subj["x"],
-            stable,
-            text_intent,
-            src_w,
-            src_h,
-            rungs,
-            start,
-            end,
-        )
-        if c_text > 0.0 and max(s["frac"] for s in stable) >= FACE_TEXT_OVERRIDE_FRAC:
-            c_text = 0.0
+    c_text = 0.0  # no letterbox floor; Pass 2 decides text via the escalation
+
+    # Subject we'd crop to (face → body → spatial hint); escalate only when a wide
+    # band pokes past that subject's tight crop window.
+    if stable:
+        subj_x = max(stable, key=lambda s: (s["frac"], -abs(s["x"] - 0.5)))["x"]
+    else:
+        _persons = _segment_persons(pf_win)
+        if _persons and len(_persons) / max(1, len(pf_win)) >= STABLE_FRAC:
+            subj_x = sum(p["x"] for p in _persons) / len(_persons)
+        else:
+            subj_x = _hint_x(scene)
+    escalate = _maybe_text_escalation(
+        (text_meas, text_span), subj_x, len(stable), src_w, src_h, rungs, start, end
+    )
 
     def out(layout, crop, c, c_meas, faces=None, n_persons=0):
         return {
@@ -592,9 +635,26 @@ def _decide_segment(
                 "keep_both", crop, max(span + COVERAGE_MARGIN, c_text), span, faces
             )
 
-        tgt = _match_track(stable, scene, label_map)
+        # Single-subject pick. A clearly-speaking face resolves it deterministically
+        # (#4); otherwise, among comparable faces, escalate "which subject?" (#3) and
+        # follow the deterministic pick as the fallback.
+        fallback_tgt = _match_track(stable, scene, label_map)
+        source = "face"
+        if len(stable) >= 2:
+            speaker = pick_active_speaker(mouth)
+            if speaker is not None:
+                tgt = next(s for s in stable if s["track_id"] == speaker)
+                source = "speaker"
+            else:
+                tgt = fallback_tgt
+                escalate = (
+                    _maybe_subject_escalation(stable, fallback_tgt, start, end)
+                    or escalate
+                )
+        else:
+            tgt = fallback_tgt
         cm = min(tgt["w"], FACE_W_CAP)
-        crop = {"track_id": tgt["track_id"], "x_target": tgt["x"], "source": "face"}
+        crop = {"track_id": tgt["track_id"], "x_target": tgt["x"], "source": source}
         return out("single", crop, max(cm + COVERAGE_MARGIN, c_text), cm, faces)
 
     # No stable face → try person/body detection.
@@ -817,6 +877,23 @@ def _split_decision_trace(d, scene) -> dict:
     }
 
 
+def _motion_scene_type(d: dict, tf_win, pf_win) -> str:
+    """Pan profile from MEASURED subject motion (replaces the Gemini scene_type).
+
+    The chosen subject's x-center range across the segment: a wide range means the
+    subject moves a lot → "action" (pan fast); otherwise "general". Falls back to
+    the largest person's spread when the crop follows a body, not a face track.
+    """
+    crop = d["crops"][0]
+    tid = crop.get("track_id")
+    if tid is not None:
+        spread = _track_x_spread(tf_win, tid)
+    else:
+        xs = [p["x"] for p in _segment_persons(pf_win)]
+        spread = (max(xs) - min(xs)) if xs else 0.0
+    return "action" if spread > ACTION_SPREAD else "general"
+
+
 def reconcile(
     scenes: List[dict],
     tracked_frames: List[dict],
@@ -852,10 +929,12 @@ def reconcile(
     prev_rung: Optional[Tuple[int, int]] = None
     for start, end in bounds:
         scene = _scene_for(scenes, scene_starts, start, end)
+        tf_w = _window(tracked_frames, track_times, start, end)
+        pf_w = _window(persons, person_times, start, end)
         d = _decide_segment(
             scene,
-            _window(tracked_frames, track_times, start, end),
-            _window(persons, person_times, start, end),
+            tf_w,
+            pf_w,
             _window(texts, text_times, start, end),
             start,
             end,
@@ -874,13 +953,16 @@ def reconcile(
             inner_ar = pick_rung(d["C"], src_w, src_h, prev_rung, rungs)
             prev_rung = inner_ar
             trace = _decision_trace(d, scene, inner_ar, ideal, src_w, src_h)
+        # Pan speed: trust a Gemini scene_type if present (legacy/diagnostic), else
+        # derive it from the subject's measured motion across the segment.
+        scene_type = scene.get("scene_type") or _motion_scene_type(d, tf_w, pf_w)
         raw.append(
             {
                 "start": start,
                 "end": end,
                 "layout": d["layout"],
                 "inner_ar": inner_ar,
-                "scene_type": scene.get("scene_type", "general"),
+                "scene_type": scene_type,
                 "crops": d["crops"],
                 "reason": trace["trigger"],
                 "trace": trace,

@@ -13,12 +13,17 @@
           },
           "action": {
             "type": "string",
-            "enum": ["letterbox", "crop"],
-            "description": "letterbox = keep the full width so the side text/graphics stays in frame; crop = follow the speaker (the band is just background)."
+            "enum": ["letterbox", "crop", "follow"],
+            "description": "For a text decision: letterbox = keep full width so the side text/graphics stays in frame; crop = follow the speaker (band is just background). For a subject decision: follow = frame the chosen person (see `subject`)."
           },
           "coverage": {
             "type": "number",
-            "description": "If letterbox, the fraction of source width (0.0-1.0) that must stay visible to keep the text/graphics. 0 if crop."
+            "description": "For a letterbox: fraction of source width (0.0-1.0) that must stay visible to keep the text/graphics. 0 otherwise."
+          },
+          "subject": {
+            "type": "string",
+            "enum": ["left", "center", "right"],
+            "description": "For a subject decision (action=follow): which visible person is the main subject to frame."
           },
           "reason": {
             "type": "string",

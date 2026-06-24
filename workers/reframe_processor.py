@@ -177,7 +177,10 @@ class ReframeProcessor(JobProcessor):
         rungs = RUNGS_BY_CANVAS.get(ar, RUNGS_BY_CANVAS["9:16"])
         logger.info(f"[reframe:{record_id}] output {ar} ({out_w}x{out_h})")
 
-        chirp_context, speaker_segments = self._run_diarization(
+        # Diarization still runs — speaker turns feed the quality eval (talker
+        # metrics). Its text summary no longer feeds a Gemini prompt (dense pass
+        # retired), so the context string is discarded.
+        _, speaker_segments = self._run_diarization(
             record, record_id, src_path, probe, tmp, has_audio
         )
 
@@ -199,18 +202,18 @@ class ReframeProcessor(JobProcessor):
             record_id, {"track_summary": track_summary}
         )
 
-        # Measure on-screen text width (independent pass): refines Gemini's coarse
-        # full-width flag so we letterbox to the real text extent, not a blanket
-        # 16:9. Best-effort — empty list falls back to Gemini's coverage.
+        # Measure on-screen text bands (independent pass). A persistent wide band
+        # that the subject's crop would clip is escalated to gemini-3.5-flash in
+        # Pass 2 (decision point #1) — the CPU never self-letterboxes from it.
         text_frames = scan_video_text(src_path)
 
-        scenes = self._analyze_scenes(
-            record, record_id, chirp_context, track_summary, cuts=cuts
-        )
-
+        # RETIRED: the dense gemini-3.1-pro full-video scene pass. Subject choice is
+        # now decided per-ambiguity by gemini-3.5-flash (Pass 2, #3/#4), letterboxing
+        # by CPU subject geometry + Pass 2, and pan speed by measured motion. No
+        # whole-video Pro pass → no 100s–7.5min latency, no per-video Pro tokens.
         self.update_status(record_id, "processing", 40)
         segments = reconcile(
-            scenes,
+            [],
             tracked_frames,
             cuts,
             w,
@@ -221,8 +224,18 @@ class ReframeProcessor(JobProcessor):
             text_frames=text_frames,
         )
         # Pass 2: let gemini-3.5-flash settle the planner's escalated decision
-        # points (e.g. real side text vs background) before keypoints/render.
-        self._apply_gemini_decisions(record, record_id, segments, src_path, w, h, rungs)
+        # points (real side text vs background; which subject) before keypoints.
+        self._apply_gemini_decisions(
+            record,
+            record_id,
+            segments,
+            src_path,
+            w,
+            h,
+            rungs,
+            tracked_frames,
+            person_frames,
+        )
         attach_keypoints(segments, fps)
         self._store_segment_plan(record_id, segments)
         logger.info(f"[reframe:{record_id}] plan: {len(segments)} segments")
@@ -322,7 +335,16 @@ class ReframeProcessor(JobProcessor):
         )
 
     def _apply_gemini_decisions(
-        self, record, record_id, segments, src_path, src_w, src_h, rungs
+        self,
+        record,
+        record_id,
+        segments,
+        src_path,
+        src_w,
+        src_h,
+        rungs,
+        tracked_frames=None,
+        person_frames=None,
     ):
         """Pass 2: resolve the planner's escalated decision points (gemini-3.5-flash).
 
@@ -354,7 +376,9 @@ class ReframeProcessor(JobProcessor):
             logger.warning(f"[reframe:{record_id}] gemini decisions skipped ({e})")
             return
         verdicts = result.data.get("verdicts", [])
-        changed = apply_verdicts(segments, verdicts, src_w, src_h, rungs)
+        changed = apply_verdicts(
+            segments, verdicts, src_w, src_h, rungs, tracked_frames, person_frames
+        )
         logger.info(
             f"[reframe:{record_id}] gemini verdicts: {len(verdicts)} returned, "
             f"{changed} segment(s) re-framed"

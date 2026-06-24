@@ -88,6 +88,78 @@ class TestApplyVerdicts:
         assert segs[0]["inner_ar"] == (9, 16)
 
 
+def _subject_seg(key="subject:0.3,0.7", chosen_tid=1):
+    return {
+        "start": 0.0,
+        "end": 6.0,
+        "inner_ar": (9, 16),
+        "layout": "single",
+        "reason": "face seg",
+        "crops": [{"track_id": chosen_tid, "x_target": 0.3, "source": "face"}],
+        "trace": {"source": "face", "coverage": 0.316},
+        "escalate": {
+            "kind": "subject_choice",
+            "key": key,
+            "question": "which subject?",
+            "facts": {
+                "candidates": [
+                    {"track_id": 1, "x": 0.3, "frac": 1.0, "pos": "left"},
+                    {"track_id": 2, "x": 0.7, "frac": 0.9, "pos": "right"},
+                ],
+                "n_faces": 2,
+            },
+            "fallback": {"action": "follow", "subject": "left"},
+        },
+    }
+
+
+class TestSubjectVerdicts:
+    def test_follow_right_retargets_crop(self):
+        segs = [_subject_seg()]
+        changed = apply_verdicts(
+            segs,
+            [
+                {
+                    "key": segs[0]["escalate"]["key"],
+                    "action": "follow",
+                    "subject": "right",
+                }
+            ],
+            SRC_W,
+            SRC_H,
+            None,
+        )
+        assert changed == 1
+        crop = segs[0]["crops"][0]
+        assert crop["track_id"] == 2 and crop["x_target"] == 0.7  # switched to right
+        assert "right subject" in segs[0]["reason"]
+
+    def test_follow_matching_fallback_no_change(self):
+        # Verdict picks the same person already chosen (left) → no retarget.
+        segs = [_subject_seg(chosen_tid=1)]
+        changed = apply_verdicts(
+            segs,
+            [
+                {
+                    "key": segs[0]["escalate"]["key"],
+                    "action": "follow",
+                    "subject": "left",
+                }
+            ],
+            SRC_W,
+            SRC_H,
+            None,
+        )
+        assert changed == 0
+        assert segs[0]["crops"][0]["track_id"] == 1
+
+    def test_missing_subject_verdict_keeps_fallback(self):
+        segs = [_subject_seg()]
+        changed = apply_verdicts(segs, [], SRC_W, SRC_H, None)
+        assert changed == 0
+        assert segs[0]["crops"][0]["track_id"] == 1
+
+
 class TestPrompt:
     def test_cluster_block_echoes_key(self):
         c = {
