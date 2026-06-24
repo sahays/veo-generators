@@ -222,6 +222,9 @@ class ReframeProcessor(JobProcessor):
             person_frames=person_frames,
             rungs=rungs,
             text_frames=text_frames,
+            # Diarization supplies the two-person-dialogue signal (keep-both/split)
+            # now that the dense Gemini scene pass — which used to label it — is gone.
+            speaker_segments=speaker_segments,
         )
         # Pass 2: let gemini-3.5-flash settle the planner's escalated decision
         # points (real side text vs background; which subject) before keypoints.
@@ -304,8 +307,9 @@ class ReframeProcessor(JobProcessor):
             tr = s.get("trace", {})
             if tr.get("layout") == "keep_both":
                 why16["two-face span"] += 1
-            elif tr.get("c_text", 0) >= tr.get("c_measured", 0):
-                why16["Gemini full-width/coverage"] += 1
+            elif tr.get("source") in ("gemini_text", "gemini_graphic"):
+                # Pass-2 verdict letterboxed to keep side text / a full-frame graphic.
+                why16["gemini text/graphic"] += 1
             else:
                 why16["wide subject"] += 1
         summary = {

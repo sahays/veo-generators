@@ -155,6 +155,39 @@ def test_av_sync_positive_when_framed_mouth_moves_with_speech():
     assert rep["talker"]["framed_speaker_active_rate"] > 0.0
 
 
+def test_activity_window_is_time_based_not_frame_count():
+    # The same physical motion sampled at 1fps vs 8fps must yield the same
+    # "talking" verdict. Mouth changes on a 2-second TIME grid. The old ±2-SAMPLE
+    # window spans 4s at 1fps (catches the change) but only 0.5s at 8fps (sits
+    # inside one flat level mid-period → reads "not talking"), so the two rates
+    # disagree. The ±2s TIME window sees the change at both rates.
+    def run(fps):
+        period = 1.0 / fps
+        rows = []
+        n = int(round(10 * fps)) + 1
+        for k in range(n):
+            t = round(k * period, 4)
+            m1 = 0.1 if int(t / 2) % 2 == 0 else 0.5  # flips every 2s
+            rows.append((t, [_tr(1, 0.5, mouth=m1), _tr(2, 0.55, mouth=0.2)]))
+        plan = [_seg(0, 10, (1, 1), 1, 0.5)]
+        rep = evaluate(
+            plan,
+            _frames(rows),
+            [],
+            [{"start_sec": 0, "end_sec": 10}],
+            SRC_W,
+            SRC_H,
+            10.0,
+            sample_fps=fps,
+        )
+        return rep["talker"]["framed_speaker_active_rate"]
+
+    slow, fast = run(1.0), run(8.0)
+    # The time-based window makes both rates agree that the face is mostly active.
+    assert slow > 0.8 and fast > 0.8
+    assert abs(slow - fast) < 0.15
+
+
 def test_speaker_miss_when_off_frame_face_talks():
     # We frame a silent listener (track 1, left); the talker (track 2) is off to
     # the right, outside the 9:16 window, with a moving mouth, during speech.

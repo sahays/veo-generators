@@ -96,13 +96,36 @@ def _overlay_subjects(frame, candidates):
     return frame
 
 
-def render_decision_thumbs(video_path: str, clusters: List[dict]) -> dict:
-    """{cluster key → [annotated JPEG bytes]} — several frames across each shot.
+def _cluster_sample_secs(cluster: dict) -> List[float]:
+    """Times to sample a cluster's representative frames at.
 
-    Samples THUMBS_PER_CLUSTER frames spread over each cluster's [start, end] and
-    draws the crop keep/cut overlay (text) or candidate markers (subject), so the
-    model judges from what the crop actually does, not from numbers. Best-effort:
-    degrades to {} if cv2 is unavailable; skips frames that can't be read.
+    A cluster can merge SEVERAL non-adjacent segments that share the same
+    question/geometry (e.g. a caption that recurs at 0:05 and 3:20). Its `start`
+    and `end` then span the gap between them, so sampling fractions of [start,end]
+    can land in moments where the condition doesn't hold — the model would judge
+    the wrong frames. `thumb_secs` carries the per-constituent midpoints, so when
+    the cluster covers more than one segment we sample THOSE. A single contiguous
+    cluster has one midpoint, where the old intra-shot spread (0.2/0.5/0.8 across
+    the shot) gives better coverage than a lone frame — so keep it for that case.
+    """
+    s, e = cluster["start"], cluster["end"]
+    thumbs = cluster.get("thumb_secs") or []
+    if len(thumbs) > 1:
+        return thumbs[:THUMBS_PER_CLUSTER]
+    if e > s:
+        fracs = (0.2, 0.5, 0.8)[:THUMBS_PER_CLUSTER]
+        return [s + (e - s) * f for f in fracs]
+    return thumbs[:THUMBS_PER_CLUSTER] or [s]
+
+
+def render_decision_thumbs(video_path: str, clusters: List[dict]) -> dict:
+    """{cluster key → [annotated JPEG bytes]} — several representative frames.
+
+    Samples each cluster at `_cluster_sample_secs` (its per-segment midpoints when
+    it merges several shots, else an intra-shot spread) and draws the crop keep/cut
+    overlay (text) or candidate markers (subject), so the model judges from what the
+    crop actually does, not from numbers. Best-effort: degrades to {} if cv2 is
+    unavailable; skips frames that can't be read.
     """
     try:
         import cv2
@@ -116,9 +139,7 @@ def render_decision_thumbs(video_path: str, clusters: List[dict]) -> dict:
     out: dict = {}
     try:
         for c in clusters:
-            s, e = c["start"], c["end"]
-            fracs = (0.2, 0.5, 0.8)[:THUMBS_PER_CLUSTER]
-            secs = [s + (e - s) * f for f in fracs] if e > s else [s]
+            secs = _cluster_sample_secs(c)
             facts = c.get("facts") or {}
             imgs: List[bytes] = []
             for t in secs:

@@ -1,8 +1,14 @@
 """Reframe v2 decision layer — turn detections into a per-segment crop plan.
 
-Pure logic: no I/O, no cv2/ffmpeg. Reconciles Gemini scene labels (the *what*)
-with MediaPipe face tracks (the *where*) to choose, per scene, an inner aspect
-ratio (how much to crop vs. letterbox) and which subject(s) to follow.
+Pure logic: no I/O, no cv2/ffmpeg. Segments come from scene cuts (subdivided so a
+long take is re-decided periodically); per segment it chooses an inner aspect ratio
+(how much to crop vs. letterbox) and which subject(s) to follow, from MediaPipe face
+/ person tracks, a CPU-measured wide-text band, and an optional diarization dialogue
+signal. Borderline judgments are emitted as escalation points for Pass 2
+(gemini-3.5-flash) rather than guessed — see `reframe_escalation` / `reframe_decide`.
+Gemini scene labels are accepted if supplied (diagnostic mode) but are no longer the
+primary driver: the retired dense Pro pass used to force a coverage floor that
+over-letterboxed plain shots.
 
 Output is a list of SegmentPlan dicts consumed by the renderer:
     {start, end, layout, inner_ar, crops:[{track_id, x_target, keypoints}], reason}
@@ -48,12 +54,11 @@ SPEAKER_DOMINANCE = 1.6  # the speaker's activity must beat the 2nd by this fact
 # dominates and we just follow it).
 SUBJECT_AMBIG_RATIO = 0.6
 
-# Wide-text detection (Phase 2): a CPU-measured text-line width refines Gemini's
-# coarse full-width flag so we letterbox to the real text extent, not a blanket
-# 1.0. "Gemini understands, CPU locates" — see reconcile_text_coverage.
+# Wide-text detection (Phase 2): the CPU measures a persistent wide text band so
+# the planner can ask Gemini the right question when it would be clipped (decision
+# point #1). The CPU never self-letterboxes from it — see _maybe_text_escalation.
 TEXT_WIDE_MIN = 0.50  # a sampled frame counts as wide-text at/above this coverage
 TEXT_PERSIST_FRAC = 0.50  # text must show in ≥ this fraction of a segment's frames
-TEXT_SELF_TRIGGER = 0.70  # legacy: reconcile_text_coverage threshold (unwired now)
 # Text escalation (decision point #1): the morphology detector CANNOT tell a real
 # side caption from a busy/white background (proven — span/contrast/bimodality all
 # overlap). So when a wide band would be CLIPPED by the subject's tight crop, the
@@ -71,6 +76,14 @@ SPLIT_MIN_SEPARATION = 0.45  # face-center gap above which 1:1 shrinks both too 
 SPLIT_MIN_FRAC = 0.80  # both tracks must be near-continuously present
 SPLIT_MIN_DWELL = 3.0  # only for shots that hold long enough to read as intentional
 SPLIT_MAX_MOTION = 0.06  # near-static: each track's x-span must stay below this
+
+# Diarization-derived dialogue signal. The dense Gemini scene pass (which used to
+# label "dialogue" / "side_by_side") was retired, so keep-both and split would
+# never fire in production (scene is always {}). Chirp diarization already runs;
+# a window where two distinct speakers each hold the floor for ≥ this many seconds
+# IS the two-person-dialogue signal those layouts need. Supplied to reconcile as
+# `speaker_segments` and injected as scene_type="dialogue" when no scene label set.
+DIALOGUE_MIN_SPEAK = 0.5  # seconds a speaker must talk in a window to count
 
 # Pan smoothing per Gemini scene_type → (max_velocity frac/s, deadzone frac).
 # Replaces the old global content_type setting: framing adapts per scene, so an
@@ -351,32 +364,6 @@ def _segment_text_band(win) -> Tuple[float, Tuple[float, float]]:
     return cov, (x0, x1)
 
 
-def _segment_text_coverage(win) -> float:
-    """Median wide-text coverage over the window (back-compat scalar accessor)."""
-    return _segment_text_band(win)[0]
-
-
-def reconcile_text_coverage(
-    gemini_c: float, measured: float, gemini_text_intent: bool
-) -> float:
-    """Combine Gemini's text flag with the CPU-measured text width → C_text.
-
-    "Gemini understands, CPU locates":
-    - Gemini says the shot has wide text AND the detector found a band → trust the
-      *measured* extent (precise — a 0.7-wide title takes 1:1, not a needless full
-      16:9 letterbox).
-    - Gemini says text but the detector found none → keep Gemini's number (the
-      detector may have missed it; never chop content Gemini flagged).
-    - Gemini didn't flag text → trust the detector only when it's confidently wide
-      (guards against textured-background false positives forcing letterbox).
-    """
-    if gemini_text_intent:
-        return measured if measured > 0.0 else gemini_c
-    if measured >= TEXT_SELF_TRIGGER:
-        return measured
-    return gemini_c
-
-
 # ---------------------------------------------------------------------------
 # Per-frame focal series (for intra-segment panning)
 # ---------------------------------------------------------------------------
@@ -578,16 +565,12 @@ def _decide_segment(
     escalation predicate (#1).
     """
     stable = _stable_tracks(tf_win)
-    # RETIRED: Gemini scene coverage / requires_full_width no longer force a rung.
-    # The dense scene labels over-letterboxed plain shots (the original bug), so
-    # Pass 1 now letterboxes ONLY from CPU subject geometry (two-shot span, wide
-    # body). A persistent wide TEXT band the crop would clip is escalated to
-    # gemini-3.5-flash (decision point #1) instead of self-triggering — there is no
-    # coverage floor and no CPU self-trigger. Gemini still supplies scene_type (pan)
-    # and active_subject (subject hint) elsewhere; just not the coverage hammer.
-    gemini_c = 0.0
+    # Pass 1 letterboxes ONLY from CPU subject geometry (two-shot span, wide body).
+    # The retired dense Gemini scene pass used to force a rung from its coverage /
+    # requires_full_width fields and over-letterboxed plain shots (the original bug);
+    # that floor is gone. A persistent wide TEXT band the crop would clip is escalated
+    # to gemini-3.5-flash (decision point #1) — Pass 2 decides text, never Pass 1.
     text_meas, text_span = _segment_text_band(tx_win)
-    c_text = 0.0  # no letterbox floor; Pass 2 decides text via the escalation
 
     # Subject we'd crop to (face → body → spatial hint); escalate only when a wide
     # band pokes past that subject's tight crop window.
@@ -608,8 +591,6 @@ def _decide_segment(
             "layout": layout,
             "crops": [crop],
             "C": min(1.0, c),
-            "c_text": c_text,
-            "gemini_c": gemini_c,
             "text_meas": round(text_meas, 3),
             "c_meas": round(c_meas, 3),
             "source": crop["source"],
@@ -631,7 +612,7 @@ def _decide_segment(
             if tgt:  # ASD: one of the two is clearly talking → frame them large
                 cm = min(tgt["w"], FACE_W_CAP)
                 crop = {"track_id": speaker, "x_target": tgt["x"], "source": "speaker"}
-                return out("single", crop, max(cm + COVERAGE_MARGIN, c_text), cm, faces)
+                return out("single", crop, cm + COVERAGE_MARGIN, cm, faces)
 
             # Neither clearly dominates: if they're too far apart for 1:1 to hold
             # both large AND the shot is a static dialogue, stack them as panels
@@ -644,8 +625,6 @@ def _decide_segment(
                     "layout": "split",
                     "crops": split,
                     "C": 1.0,  # panels fill the canvas; no rung / letterbox
-                    "c_text": c_text,
-                    "gemini_c": gemini_c,
                     "text_meas": round(text_meas, 3),
                     "c_meas": round(sep, 3),
                     "source": "split",
@@ -663,9 +642,7 @@ def _decide_segment(
                 "x_target": (a["x"] + b["x"]) / 2,
                 "source": "center",
             }
-            return out(
-                "keep_both", crop, max(span + COVERAGE_MARGIN, c_text), span, faces
-            )
+            return out("keep_both", crop, span + COVERAGE_MARGIN, span, faces)
 
         # Single-subject pick. A clearly-speaking face resolves it deterministically
         # (#4); otherwise, among comparable faces, escalate "which subject?" (#3) and
@@ -687,7 +664,7 @@ def _decide_segment(
             tgt = fallback_tgt
         cm = min(tgt["w"], FACE_W_CAP)
         crop = {"track_id": tgt["track_id"], "x_target": tgt["x"], "source": source}
-        return out("single", crop, max(cm + COVERAGE_MARGIN, c_text), cm, faces)
+        return out("single", crop, cm + COVERAGE_MARGIN, cm, faces)
 
     # No stable face → try person/body detection.
     persons = _segment_persons(pf_win)
@@ -696,11 +673,7 @@ def _decide_segment(
         mean_w = min(sum(p["w"] for p in persons) / len(persons), PERSON_W_CAP)
         crop = {"track_id": None, "x_target": mean_x, "source": "person"}
         return out(
-            "single",
-            crop,
-            max(mean_w + COVERAGE_MARGIN, c_text),
-            mean_w,
-            n_persons=len(persons),
+            "single", crop, mean_w + COVERAGE_MARGIN, mean_w, n_persons=len(persons)
         )
 
     # Nothing detected (#7): no face, no person, no text band to follow. The CPU
@@ -709,7 +682,7 @@ def _decide_segment(
     if escalate is None:
         escalate = _no_subject_escalation(scene, src_w, src_h, rungs, start, end)
     crop = {"track_id": None, "x_target": _hint_x(scene), "source": "center"}
-    return out("single", crop, c_text, 0.0)
+    return out("single", crop, 0.0, 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -733,6 +706,28 @@ def _boundaries(cuts: List[float], duration: float) -> List[Tuple[float, float]]
         for k in range(n):
             out.append((a + k * step, b if k == n - 1 else a + (k + 1) * step))
     return out
+
+
+def _dialogue_in_window(speaker_segments: List[dict], start: float, end: float) -> bool:
+    """True if ≥2 distinct speakers each hold the floor within [start, end].
+
+    Replaces the retired Gemini "dialogue" scene label with the diarization signal
+    that already runs: a window where two speaker_ids each speak ≥ DIALOGUE_MIN_SPEAK
+    seconds is a genuine two-person dialogue — the semantic keep-both / split need.
+    Geometry gates (separation, static, dwell) still decide the layout downstream;
+    this only unlocks the *intent*. `speaker_segments` are dicts with speaker_id /
+    start_sec / end_sec (Chirp diarization output).
+    """
+    if not speaker_segments:
+        return False
+    talk: dict = {}
+    for sp in speaker_segments:
+        lo = max(start, sp.get("start_sec", 0.0))
+        hi = min(end, sp.get("end_sec", 0.0))
+        if hi > lo:
+            sid = sp.get("speaker_id")
+            talk[sid] = talk.get(sid, 0.0) + (hi - lo)
+    return sum(1 for d in talk.values() if d >= DIALOGUE_MIN_SPEAK) >= 2
 
 
 def _scene_for(
@@ -848,25 +843,25 @@ def _fill_keypoints(seg: dict) -> None:
 
 
 def _decision_trace(d, scene, chosen, ideal, src_w, src_h) -> dict:
-    """Structured 'why this framing' record + one-line trigger (observability)."""
+    """Structured 'why this framing' record + one-line trigger (observability).
+
+    Pass 1 letterboxes only from CPU subject geometry, so the trigger explains
+    framing in those terms (two-face span, active speaker, person body, face
+    width). A TEXT/graphic letterbox is a Pass-2 (gemini) verdict applied later in
+    `reframe_decide.apply_verdicts`, which overwrites `trigger`/`source` itself.
+    """
     cov = rung_coverage(chosen, src_w, src_h)
-    ct, cm = d["c_text"], d["c_meas"]
+    cm = d["c_meas"]
     tmeas = d.get("text_meas", 0.0)
     src, layout = d["source"], d["layout"]
-    # Did measured wide-text set C_text (vs. Gemini's coarse number)?
-    text_drove = tmeas > 0.0 and abs(ct - tmeas) < 1e-6
     if layout == "keep_both":
         why = f"two faces span {cm:.2f}"
     elif src == "speaker":
         why = "active speaker (mouth movement)"
     elif src == "person":
         why = f"no face; person body w={cm:.2f}"
-    elif ct >= cm and text_drove:
-        why = f"wide text w={tmeas:.2f} (measured)"
     elif d["n_faces"] == 0:
-        why = f"no detection; Gemini coverage {ct:.2f}" if ct > 0 else "no detection"
-    elif ct >= cm:
-        why = f"Gemini coverage {ct:.2f}" + (" (full-width)" if ct >= 0.99 else "")
+        why = "no detection"
     else:
         why = f"face w={cm:.2f}"
     trig = f"{chosen[0]}:{chosen[1]} ({cov:.2f}) — {why}"
@@ -875,7 +870,6 @@ def _decision_trace(d, scene, chosen, ideal, src_w, src_h) -> dict:
     return {
         "trigger": trig,
         "C": round(d["C"], 3),
-        "c_text": round(ct, 3),
         "text_measured": round(tmeas, 3),
         "c_measured": round(cm, 3),
         "chosen_ar": list(chosen),
@@ -906,7 +900,6 @@ def _split_decision_trace(d, scene) -> dict:
     return {
         "trigger": f"split (stacked two-shot) — faces {sep:.2f} apart, static dialogue",
         "C": 1.0,
-        "c_text": round(d["c_text"], 3),
         "text_measured": round(d.get("text_meas", 0.0), 3),
         "c_measured": round(sep, 3),
         "chosen_ar": None,
@@ -958,12 +951,15 @@ def reconcile(
     person_frames: Optional[List[dict]] = None,
     rungs: Optional[List[Tuple[int, int]]] = None,
     text_frames: Optional[List[dict]] = None,
+    speaker_segments: Optional[List[dict]] = None,
 ) -> List[dict]:
     """Build the per-segment crop plan from cuts + Gemini scenes + detections.
 
     `rungs` is the output canvas's inner-AR ladder (defaults to the 9:16 RUNGS);
     pass RUNGS_BY_CANVAS["3:4"] to plan onto a 3:4 canvas. `text_frames`
     (text_detect.scan_video_text output) supplies the measured wide-text extent.
+    `speaker_segments` (Chirp diarization output) supplies the two-person-dialogue
+    signal for keep-both / split when no Gemini scene label is present.
     """
     rungs = rungs or RUNGS
     label_map = _global_label_map(tracked_frames)
@@ -983,6 +979,13 @@ def reconcile(
     prev_rung: Optional[Tuple[int, int]] = None
     for start, end in bounds:
         scene = _scene_for(scenes, scene_starts, start, end)
+        # When no Gemini scene labels this window as dialogue, fall back to the
+        # diarization signal — two speakers taking turns IS a two-person dialogue,
+        # which is what unlocks keep-both / split (geometry still gates the layout).
+        if not scene.get("scene_type") and _dialogue_in_window(
+            speaker_segments or [], start, end
+        ):
+            scene = {**scene, "scene_type": "dialogue"}
         tf_w = _window(tracked_frames, track_times, start, end)
         pf_w = _window(persons, person_times, start, end)
         d = _decide_segment(

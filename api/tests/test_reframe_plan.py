@@ -15,14 +15,12 @@ from reframe_plan import (
     collect_escalation_points,
     attach_keypoints,
     pick_active_speaker,
-    reconcile_text_coverage,
-    TEXT_SELF_TRIGGER,
     _boundaries,
     _global_label_map,
     _match_track,
     _keep_both_pair,
     _merge_short,
-    _segment_text_coverage,
+    _segment_text_band,
     _maybe_text_escalation,
     _maybe_subject_escalation,
     _motion_scene_type,
@@ -617,42 +615,22 @@ def _txt(t, coverage):
     return {"time_sec": t, "coverage": coverage, "span": (0.05, 0.05 + coverage)}
 
 
-class TestReconcileTextCoverage:
-    def test_gemini_text_refined_down_by_measurement(self):
-        # Gemini says full-width (1.0) but the title is only 0.7 wide → use 0.7,
-        # so we take 1:1 instead of a needless full 16:9 letterbox.
-        assert reconcile_text_coverage(1.0, 0.7, gemini_text_intent=True) == 0.7
-
-    def test_gemini_text_kept_when_detector_blind(self):
-        # Gemini flags text but the detector found none → never chop; keep Gemini.
-        assert reconcile_text_coverage(1.0, 0.0, gemini_text_intent=True) == 1.0
-
-    def test_measurement_self_triggers_when_gemini_silent(self):
-        # Gemini didn't flag text, but a confidently wide band is present → trust it.
-        assert (
-            reconcile_text_coverage(0.3, TEXT_SELF_TRIGGER, gemini_text_intent=False)
-            == TEXT_SELF_TRIGGER
-        )
-
-    def test_weak_measurement_ignored_when_gemini_silent(self):
-        # A weak band with no Gemini flag is treated as a false positive.
-        assert reconcile_text_coverage(0.3, 0.4, gemini_text_intent=False) == 0.3
-
-
-class TestSegmentTextCoverage:
-    # Takes the already-windowed text frames (reconcile bisect-slices per segment).
+class TestSegmentTextBand:
+    # _segment_text_band is the live measured-band accessor: median coverage + span
+    # over the already-windowed text frames (reconcile bisect-slices per segment).
     def test_persistent_text_returns_median(self):
         win = [_txt(t, 0.8) for t in range(5)]
-        assert abs(_segment_text_coverage(win) - 0.8) < 1e-9
+        cov, (x0, x1) = _segment_text_band(win)
+        assert abs(cov - 0.8) < 1e-9
+        assert x0 == 0.05 and abs(x1 - 0.85) < 1e-9
 
     def test_transient_flash_rejected(self):
         # One wide frame out of five → below the persistence floor → 0.
         win = [_txt(0, 0.9)] + [_txt(t, 0.0) for t in range(1, 5)]
-        assert _segment_text_coverage(win) == 0.0
+        assert _segment_text_band(win) == (0.0, (0.0, 0.0))
 
-    def test_empty_or_none_is_zero(self):
-        assert _segment_text_coverage(None) == 0.0
-        assert _segment_text_coverage([]) == 0.0
+    def test_empty_is_zero(self):
+        assert _segment_text_band([]) == (0.0, (0.0, 0.0))
 
 
 class TestReconcileWithText:
@@ -808,3 +786,95 @@ class TestSplitLayout:
         seg = self._plan(frames, _split_scene())[0]
         assert seg["layout"] == "single"
         assert seg["crops"][0]["source"] == "speaker"
+
+
+class TestDialogueFromDiarization:
+    """Without any Gemini scene, the diarization signal must still unlock split."""
+
+    def _frames(self, x1=0.25, x2=0.75, n=5):
+        # Far-apart, static, persistent; neither mouth clearly dominates.
+        return [_ftrm(t, [(1, x1, 0.2), (2, x2, 0.2)]) for t in range(n)]
+
+    def _two_speakers(self):
+        return [
+            {"speaker_id": "A", "start_sec": 0.0, "end_sec": 2.0},
+            {"speaker_id": "B", "start_sec": 2.0, "end_sec": 4.0},
+        ]
+
+    def test_diarization_dialogue_splits_with_no_scenes(self):
+        # The production path: reconcile([], ...) with empty scenes. Before the fix
+        # split could never fire here; the diarization turns now supply "dialogue".
+        plan = reconcile(
+            [],
+            self._frames(),
+            cuts=[],
+            src_w=1920,
+            src_h=1080,
+            duration=4.0,
+            speaker_segments=self._two_speakers(),
+        )
+        assert plan[0]["layout"] == "split"
+
+    def test_single_speaker_does_not_split(self):
+        plan = reconcile(
+            [],
+            self._frames(),
+            cuts=[],
+            src_w=1920,
+            src_h=1080,
+            duration=4.0,
+            speaker_segments=[
+                {"speaker_id": "A", "start_sec": 0.0, "end_sec": 4.0},
+            ],
+        )
+        assert plan[0]["layout"] != "split"
+
+    def test_no_diarization_does_not_split(self):
+        # No speaker_segments at all (e.g. silent video) → no dialogue intent.
+        plan = reconcile(
+            [], self._frames(), cuts=[], src_w=1920, src_h=1080, duration=4.0
+        )
+        assert plan[0]["layout"] != "split"
+
+    def test_brief_second_speaker_is_not_dialogue(self):
+        # A < DIALOGUE_MIN_SPEAK interjection by speaker B shouldn't flip to split.
+        plan = reconcile(
+            [],
+            self._frames(),
+            cuts=[],
+            src_w=1920,
+            src_h=1080,
+            duration=4.0,
+            speaker_segments=[
+                {"speaker_id": "A", "start_sec": 0.0, "end_sec": 3.8},
+                {"speaker_id": "B", "start_sec": 3.8, "end_sec": 4.0},
+            ],
+        )
+        assert plan[0]["layout"] != "split"
+
+
+class TestDialogueWindow:
+    def test_two_speakers_taking_turns(self):
+        from reframe_plan import _dialogue_in_window
+
+        segs = [
+            {"speaker_id": "A", "start_sec": 0.0, "end_sec": 2.0},
+            {"speaker_id": "B", "start_sec": 2.0, "end_sec": 4.0},
+        ]
+        assert _dialogue_in_window(segs, 0.0, 4.0) is True
+
+    def test_overlap_clipped_to_window(self):
+        from reframe_plan import _dialogue_in_window
+
+        # B only overlaps the window by 0.2s (< DIALOGUE_MIN_SPEAK) → not dialogue.
+        segs = [
+            {"speaker_id": "A", "start_sec": 0.0, "end_sec": 5.0},
+            {"speaker_id": "B", "start_sec": 4.8, "end_sec": 9.0},
+        ]
+        assert _dialogue_in_window(segs, 0.0, 5.0) is False
+
+    def test_empty_is_false(self):
+        from reframe_plan import _dialogue_in_window
+
+        assert _dialogue_in_window([], 0.0, 5.0) is False
+        assert _dialogue_in_window(None or [], 0.0, 5.0) is False

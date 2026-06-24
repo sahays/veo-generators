@@ -9,12 +9,14 @@ half of the precision stack (the riskiest accuracy gap in the v2 plan).
 Deliberately classical OpenCV morphology — no model download, no new dependency
 (opencv is already pinned for MediaPipe), low latency, no cold start. It is
 best-effort: degrades to "no text" if cv2 is unavailable or a frame can't be
-read, so the pipeline simply falls back to Gemini's flag.
+read.
 
 The exported signal is a horizontal *coverage* fraction in [0, 1]: the width of
-the widest persistent text line as a fraction of source width. The planner
-reconciles it with Gemini's semantic flag via
-``reframe_plan.reconcile_text_coverage``.
+the widest persistent text line as a fraction of source width. When a persistent
+wide band would be clipped by the subject's tight crop, the planner escalates it
+to the decision model (``reframe_plan._maybe_text_escalation``) rather than
+self-letterboxing — the morphology detector can't tell a real caption from a busy
+background.
 """
 
 import logging

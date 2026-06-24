@@ -136,7 +136,6 @@ class Segment:
     n_faces: int
     n_persons: int
     c_measured: float
-    c_text: float
     letterboxed: bool
     crops: Tuple[Crop, ...]
     escalation: Optional[Escalation]
@@ -179,7 +178,6 @@ class Segment:
             n_faces=int(trace.get("n_faces", 0)),
             n_persons=int(trace.get("n_persons", 0)),
             c_measured=float(trace.get("c_measured", 0.0)),
-            c_text=float(trace.get("c_text", 0.0)),
             letterboxed=letterboxed,
             crops=crops,
             escalation=Escalation.from_dict(esc) if esc else None,

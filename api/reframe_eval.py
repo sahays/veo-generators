@@ -38,7 +38,12 @@ FRAMED_ACTIVE = (0.60, 0.40)
 EDGE_EPS = 0.005  # ignore sub-half-percent clipping (rounding noise)
 JUMP_FRAC = 0.15  # adjacent-keypoint x jump above this = a crop jump
 ACTIVITY_HI = SPEAKER_MIN_ACTIVITY  # windowed MAR stdev above this = "talking"
-SPEAKER_WINDOW = 2  # ± samples for local mouth-movement (matches plan's variance idea)
+# Local mouth-movement is measured over a TIME radius, not a sample COUNT: detection
+# sampling rate varies (sample_fps) and a face can appear intermittently, so a fixed
+# ±N-samples window would span an unpredictable number of seconds (and silently scale
+# with fps). ±2s mirrors the old ±2-samples-at-1fps intent but stays correct at any
+# rate / with gaps in the track.
+SPEAKER_WINDOW_SEC = 2.0  # ± seconds of MAR samples for local mouth-movement
 # A clipped face only counts as a real cut when it (a) clears a minimum size
 # (not a stray background detection) and (b) is at least as prominent as the
 # subject we actually framed — i.e. we cut someone who mattered as much as who
@@ -208,9 +213,10 @@ def evaluate(
         if not ser or len(ser[1]) < 2:
             return 0.0
         times, mouths = ser
-        i = bisect.bisect_left(times, t)
-        i = max(0, min(i, len(mouths) - 1))
-        win = mouths[max(0, i - SPEAKER_WINDOW) : i + SPEAKER_WINDOW + 1]
+        # Samples within ±SPEAKER_WINDOW_SEC of t (time-based, fps-independent).
+        lo = bisect.bisect_left(times, t - SPEAKER_WINDOW_SEC)
+        hi = bisect.bisect_right(times, t + SPEAKER_WINDOW_SEC)
+        win = mouths[lo:hi]
         return statistics.pstdev(win) if len(win) >= 2 else 0.0
 
     # --- Per-frame accumulators ---------------------------------------------

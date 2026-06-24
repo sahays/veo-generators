@@ -5,7 +5,11 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from reframe_decide import apply_verdicts, build_cluster_block  # noqa: E402
+from reframe_decide import (  # noqa: E402
+    _cluster_sample_secs,
+    apply_verdicts,
+    build_cluster_block,
+)
 
 SRC_W, SRC_H = 1920, 1080
 
@@ -198,6 +202,34 @@ class TestNoSubjectVerdicts:
             segs, [{"key": "nosubj:0.0", "action": "crop"}], SRC_W, SRC_H, None
         )
         assert changed == 0 and segs[0]["inner_ar"] == (9, 16)
+
+
+class TestClusterSampleSecs:
+    def test_multi_segment_cluster_uses_thumb_secs_not_span(self):
+        # A caption recurs at 0:05 and 3:20; the cluster span covers the gap.
+        # Sampling fractions of [5, 200] would land at ~44s/102s/161s — moments
+        # the caption isn't on screen. We must sample the real segment midpoints.
+        cluster = {"start": 5.0, "end": 200.0, "thumb_secs": [8.0, 203.0]}
+        secs = _cluster_sample_secs(cluster)
+        assert secs == [8.0, 203.0]
+
+    def test_single_segment_cluster_keeps_intra_shot_spread(self):
+        # One contiguous shot → 3 frames across it (more coverage than 1 midpoint).
+        cluster = {"start": 0.0, "end": 10.0, "thumb_secs": [5.0]}
+        secs = _cluster_sample_secs(cluster)
+        assert secs == [2.0, 5.0, 8.0]
+
+    def test_thumb_secs_capped(self):
+        cluster = {"start": 0.0, "end": 9.0, "thumb_secs": [1.0, 4.0, 7.0, 8.5]}
+        assert len(_cluster_sample_secs(cluster)) == 3
+
+    def test_missing_thumb_secs_falls_back_to_span(self):
+        cluster = {"start": 0.0, "end": 10.0}
+        assert _cluster_sample_secs(cluster) == [2.0, 5.0, 8.0]
+
+    def test_zero_length_cluster_without_thumbs_returns_start(self):
+        cluster = {"start": 4.0, "end": 4.0}
+        assert _cluster_sample_secs(cluster) == [4.0]
 
 
 class TestPrompt:

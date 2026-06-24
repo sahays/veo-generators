@@ -28,7 +28,16 @@ except Exception:  # pragma: no cover — cv2 is always present in the worker im
     cv2 = None
 
 BLANK_STD = 6.0  # grayscale stdev below this → an effectively blank / black frame
-POS_TOL = 0.18  # |detected − predicted| out_x within this counts as correctly placed
+# Two-tier position check (deliberately separate concerns):
+#   • POS_TOL gates the BINARY "is the framed face even present near where we put
+#     it?" count (face_present_rate). It is intentionally generous — a face a bit
+#     off but clearly in-frame still counts as "present", so detector jitter / a
+#     loose pan doesn't read as a missing subject.
+#   • PLACEMENT QUALITY is graded separately by position_error_p90 against the
+#     tighter POSITION=(0.15,0.30) thresholds. So a face that lands at 0.16 counts
+#     as present (≤0.18) yet still trips the position warn — present ≠ well-placed.
+# Tighten POS_TOL only if you want presence itself to demand tight placement.
+POS_TOL = 0.18  # |detected − predicted| out_x within this counts as present
 MAX_SAMPLES = 12  # cap decoded frames — this is a sampled tripwire, not a full scan
 
 # Flag thresholds (warn, fail).
