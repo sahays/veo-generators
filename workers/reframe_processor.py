@@ -241,11 +241,15 @@ class ReframeProcessor(JobProcessor):
         )
         # Pass 2: let gemini-3.5-flash settle the planner's escalated decision
         # points (real side text vs background; which subject) before keypoints.
+        # Use det_src (the cv2-readable copy), NOT src_path: render_decision_thumbs
+        # decodes the decision thumbnails with cv2, which can't HW-decode AV1 in
+        # Cloud Run — passing the AV1 original yields blank thumbnails and the model
+        # guesses (a SonyLIV title card was mis-judged "real person" → crop).
         self._apply_gemini_decisions(
             record,
             record_id,
             segments,
-            src_path,
+            det_src,
             w,
             h,
             rungs,
