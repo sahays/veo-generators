@@ -48,7 +48,10 @@ DECISION_INTRO = (
     "center | right — the one person to track (whoever is speaking / the focus).\n"
     "SPEAKER decisions (key 'speaker:…') — only ONE person is talking: action=follow "
     "and `subject` = left | center | right for the person who is SPEAKING (open / "
-    "moving mouth, mid-gesture, others listening). This person will be centered.\n"
+    "moving mouth, mid-gesture, others listening); this person will be centered. If "
+    "NO one on screen is actually talking (a static poster, key art, title card, or "
+    "graphic with off-screen narration), answer action=letterbox to keep it full "
+    "width instead.\n"
     "NO-SUBJECT decisions (key 'nosubj:…') — no person is in frame: action=letterbox "
     "if it's a full-frame graphic/slide (chart, map, UI, title) that the darkened "
     "crop would cut off, else crop for plain scenery/b-roll.\n"
@@ -204,8 +207,10 @@ def apply_verdicts(
             continue  # no verdict (dropped over budget / call failed) → fallback
         seg["escalate"] = {**esc, "verdict": v}
         kind = esc["kind"]
+        # active_speaker can answer "letterbox" too: it's a static poster / key art
+        # with off-screen narration, not a real on-screen talker → keep it wide.
         if (
-            kind in ("text_presence", "no_subject", "weak_subject")
+            kind in ("text_presence", "no_subject", "weak_subject", "active_speaker")
             and v.get("action") == "letterbox"
         ):
             cov = float(v.get("coverage") or esc["facts"].get("text_coverage") or 1.0)

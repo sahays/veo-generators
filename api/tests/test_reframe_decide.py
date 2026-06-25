@@ -307,6 +307,20 @@ class TestActiveSpeakerVerdicts:
         )
         assert changed == 0 and segs[0]["crops"][0]["track_id"] == 1
 
+    def test_letterbox_keeps_static_poster_wide(self):
+        # No on-screen talker (poster / key art with VO) → Gemini answers letterbox →
+        # keep it full width instead of cropping to a non-speaking face.
+        segs = [self._seg(chosen_tid=1)]
+        changed = apply_verdicts(
+            segs,
+            [{"key": "speaker:A:0.3,0.7", "action": "letterbox", "coverage": 1.0}],
+            SRC_W,
+            SRC_H,
+            None,
+        )
+        assert changed == 1 and segs[0]["inner_ar"] == (16, 9)
+        assert "full-frame graphic" in segs[0]["reason"]
+
 
 class TestClusterSampleSecs:
     def test_multi_segment_cluster_uses_thumb_secs_not_span(self):

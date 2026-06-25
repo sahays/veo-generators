@@ -388,7 +388,10 @@ def _maybe_speaker_escalation(stable, start, end, speaker_label=None):
             "Several people are visible ("
             + "; ".join(f"{c['pos']} at x={c['x']}" for c in labels)
             + "). Who is SPEAKING right now? Watch for lip movement, gesture and "
-            "engagement, and pick the one person to center (left / center / right)."
+            "engagement, and pick the one person to center (action=follow, subject="
+            "left / center / right). BUT if no one on screen is actually talking — "
+            "it's a static poster, key art, title, or graphic with off-screen "
+            "narration — answer action=letterbox to keep it full width instead."
         ),
         facts={"candidates": labels, "n_faces": len(stable)},
         fallback={"action": "follow", "subject": _side_of(fallback_tgt["x"])},
@@ -811,28 +814,21 @@ def _decide_segment(
         # back to vision-only mouth motion. A confident speaker → tight centered crop.
         if has_speech:
             speaker_tid = _associate_speaker_face(stable, tf_win, speech_intervals)
-            speech_mouth = _segment_track_mouth(tf_win, ids, speech_intervals)
         else:
             speaker_tid = pick_active_speaker(mouth)
-            speech_mouth = mouth
         if speaker_tid is not None:
             tgt = next(s for s in stable if s["track_id"] == speaker_tid)
             cm = min(tgt["w"], FACE_W_CAP)
             crop = {"track_id": speaker_tid, "x_target": tgt["x"], "source": "speaker"}
             return out("single", crop, cm + COVERAGE_MARGIN, cm, faces)
 
-        # Speech but the CPU couldn't pin the speaker among 2+ faces → ask Gemini who
-        # is talking and center them (#4); fallback follows the most-visible face.
-        # Gate on a face ACTUALLY mouthing during the speech: a static poster / key
-        # art with off-screen narration has speech but no on-screen talker — it must
-        # NOT hijack speaker-centering from the text/keep-both paths (e.g. the closing
-        # "GULLAK … STREAMING NOW" key art). This also takes precedence over keep_both.
-        visible_talk = any(
-            len(v) >= SPEAKER_MIN_SAMPLES
-            and statistics.pstdev(v) >= SPEAKER_MIN_ACTIVITY
-            for v in speech_mouth.values()
-        )
-        if has_speech and len(stable) >= 2 and visible_talk:
+        # Speech but the CPU couldn't pin the speaker among 2+ faces → ask Gemini.
+        # The 1 fps mouth signal can't reliably tell a talking head from a static
+        # poster / key art with off-screen narration, so Gemini judges from pixels:
+        # center the on-screen speaker (follow), OR keep it wide if it's a graphic
+        # with no real talker (letterbox). Fallback follows the most-visible face.
+        # Takes precedence over keep_both/split and the text-band escalation.
+        if has_speech and len(stable) >= 2:
             escalate = (
                 _maybe_speaker_escalation(stable, start, end, speaker_label) or escalate
             )
