@@ -49,6 +49,10 @@ DECISION_INTRO = (
     "NO-SUBJECT decisions (key 'nosubj:…') — no person is in frame: action=letterbox "
     "if it's a full-frame graphic/slide (chart, map, UI, title) that the darkened "
     "crop would cut off, else crop for plain scenery/b-roll.\n"
+    "GRAPHIC-OR-SUBJECT decisions (key 'graphic:…') — a single LOW-confidence "
+    "face-like detection: action=letterbox if it's actually a full-frame graphic "
+    "(logo, title card, channel bug, text slide) the darkened crop would cut off; "
+    "action=crop if it's a real person to follow (even small / in profile).\n"
     "Return exactly one verdict per key."
 )
 
@@ -147,7 +151,7 @@ def render_decision_thumbs(video_path: str, clusters: List[dict]) -> dict:
                 ok, frame = cap.read()
                 if not ok:
                     continue
-                if facts.get("crop_keeps"):  # text_presence / no_subject
+                if facts.get("crop_keeps"):  # text_presence / no_subject / weak_subject
                     frame = _overlay_text(frame, facts["crop_keeps"])
                 elif c["kind"] == "subject_choice" and facts.get("candidates"):
                     frame = _overlay_subjects(frame, facts["candidates"])
@@ -196,12 +200,15 @@ def apply_verdicts(
             continue  # no verdict (dropped over budget / call failed) → fallback
         seg["escalate"] = {**esc, "verdict": v}
         kind = esc["kind"]
-        if kind in ("text_presence", "no_subject") and v.get("action") == "letterbox":
+        if (
+            kind in ("text_presence", "no_subject", "weak_subject")
+            and v.get("action") == "letterbox"
+        ):
             cov = float(v.get("coverage") or esc["facts"].get("text_coverage") or 1.0)
             new_ar = pick_rung(min(1.0, cov), src_w, src_h, None, rungs)
             if new_ar != seg.get("inner_ar"):
                 seg["inner_ar"] = new_ar
-                label = "full-frame graphic" if kind == "no_subject" else "side text"
+                label = "side text" if kind == "text_presence" else "full-frame graphic"
                 seg["reason"] = f"gemini: letterbox for {label} (cov {cov:.2f})"
                 trace = seg.get("trace")
                 if trace:
@@ -209,7 +216,7 @@ def apply_verdicts(
                     trace["coverage"] = round(rung_coverage(new_ar, src_w, src_h), 3)
                     trace["trigger"] = seg["reason"]
                     trace["source"] = (
-                        "gemini_graphic" if kind == "no_subject" else "gemini_text"
+                        "gemini_text" if kind == "text_presence" else "gemini_graphic"
                     )
                 changed += 1
         elif kind == "subject_choice" and v.get("subject"):

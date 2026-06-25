@@ -40,6 +40,15 @@ STABLE_FRAC = 0.30  # a track must appear in ≥ this fraction of segment frames
 # (foreground / mis-measured) detection doesn't force 16:9 letterbox.
 FACE_W_CAP = 0.45  # → at most 1:1 from a single face
 PERSON_W_CAP = 0.60  # bodies are wider than faces, but still bounded
+# Graphic-vs-subject escalation (decision point #7b): the FaceDetector runs at a
+# low min_detection_confidence (0.3) so it doesn't miss real faces — but that also
+# lets it fire on logos / title cards / channel bugs (e.g. the SonyLIV title card
+# in rf-udcpl2hd: a frac=0.5 "face" on a full-frame graphic). A *false* face like
+# that pre-empts the no_subject graphic check and forces a tight crop that slices
+# the graphic. So when the SOLE subject is a single LOW-confidence face, the CPU
+# can't tell a real person from a graphic — escalate to gemini-3.5-flash (fallback:
+# keep the face crop). Real frontal faces score well above this; logos score below.
+FACE_CONF_MIN = 0.60
 
 # Active-speaker detection (Phase 2): in a multi-person shot, frame the talking
 # face (mouth moving) as a single crop instead of letterboxing both. Speaking is
@@ -195,15 +204,17 @@ def _stable_tracks(win):
     agg: dict = {}
     for f in win:
         for t in f.get("tracks", []):
-            a = agg.setdefault(t["track_id"], {"xs": [], "ws": []})
+            a = agg.setdefault(t["track_id"], {"xs": [], "ws": [], "cs": []})
             a["xs"].append(t["x"])
             a["ws"].append(t.get("w", 0.0))
+            a["cs"].append(t.get("confidence", 0.5))
     n = len(win)
     stats = [
         {
             "track_id": tid,
             "x": sum(a["xs"]) / len(a["xs"]),
             "w": sum(a["ws"]) / len(a["ws"]),
+            "conf": sum(a["cs"]) / len(a["cs"]),
             "frac": len(a["xs"]) / n,
         }
         for tid, a in agg.items()
@@ -416,6 +427,7 @@ def _competitors(stable, mouth) -> list:
                 "track_id": s["track_id"],
                 "x": round(s["x"], 3),
                 "w": round(s["w"], 3),
+                "conf": round(s.get("conf", 0.5), 3),
                 "frac": round(s["frac"], 2),
                 "mouth_var": round(statistics.pstdev(m), 3) if len(m) >= 3 else None,
             }
@@ -551,6 +563,44 @@ def _no_subject_escalation(scene, src_w, src_h, rungs, start, end):
     )
 
 
+def _maybe_graphic_escalation(tgt, src_w, src_h, rungs, start, end):
+    """Decision point #7b: a SOLE, low-confidence face that might be a graphic.
+
+    The FaceDetector runs at a low confidence floor so it doesn't miss real faces;
+    the cost is that it also fires on logos / title cards / channel bugs. When the
+    only subject is a single face below FACE_CONF_MIN, the CPU can't tell a real
+    person (crop) from a full-frame graphic (keep full width / letterbox), so it
+    escalates to gemini-3.5-flash. Fallback: follow the face crop (current
+    behaviour — no regression if Gemini is unavailable). `crop_keeps` lets the
+    thumbnail show what the tight crop would cut.
+    """
+    from reframe_escalation import make_point
+
+    x = tgt["x"]
+    tight = rung_coverage(rungs[0], src_w, src_h)
+    wl, wr = x - tight / 2, x + tight / 2
+    return make_point(
+        kind="weak_subject",
+        key=f"graphic:{round(start, 1)}",
+        question=(
+            "A single low-confidence, face-like detection is here. Look at the "
+            "frame: is it a full-frame GRAPHIC — a logo, title card, channel bug, "
+            "text slide, chart, map, or UI — that should keep its full width "
+            "(letterbox)? Or is it a real person to follow (crop)? A real face, "
+            "even small or in profile, is crop. Letterbox only if readable "
+            "text/graphics would be cut off by a tight vertical crop."
+        ),
+        facts={
+            "subject_x": round(x, 3),
+            "crop_keeps": [round(wl, 3), round(wr, 3)],
+            "face_conf": round(tgt.get("conf", 0.5), 3),
+        },
+        fallback={"action": "crop", "reason": "follow face pending Gemini verdict"},
+        start=start,
+        end=end,
+    )
+
+
 def _decide_segment(
     scene, tf_win, pf_win, tx_win, start, end, label_map, src_w, src_h, rungs
 ):
@@ -662,6 +712,19 @@ def _decide_segment(
                 )
         else:
             tgt = fallback_tgt
+            # A SOLE, low-confidence face may be a logo / title card / graphic the
+            # detector hallucinated (#7b). The CPU can't tell — escalate the
+            # graphic-vs-subject check to Gemini, unless a Gemini scene hint already
+            # named this subject. Fallback follows the face crop (below), so a
+            # missing verdict keeps current behaviour.
+            if (
+                escalate is None
+                and tgt.get("conf", 0.5) < FACE_CONF_MIN
+                and not scene.get("active_subject")
+            ):
+                escalate = _maybe_graphic_escalation(
+                    tgt, src_w, src_h, rungs, start, end
+                )
         cm = min(tgt["w"], FACE_W_CAP)
         crop = {"track_id": tgt["track_id"], "x_target": tgt["x"], "source": source}
         return out("single", crop, cm + COVERAGE_MARGIN, cm, faces)

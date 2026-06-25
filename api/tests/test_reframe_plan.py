@@ -9,6 +9,7 @@ from reframe_plan import (
     RUNGS,
     RUNGS_BY_CANVAS,
     MAX_SEG_LEN,
+    FACE_CONF_MIN,
     rung_coverage,
     pick_rung,
     reconcile,
@@ -25,6 +26,8 @@ from reframe_plan import (
     _maybe_subject_escalation,
     _motion_scene_type,
     _side_of,
+    _stable_tracks,
+    _competitors,
 )
 
 
@@ -437,6 +440,81 @@ class TestReconcile:
         assert plan[0]["crops"][0]["source"] == "person"
         # focal target follows the person, not default-center
         assert plan[0]["crops"][0]["x_target"] > 0.55
+
+
+def _trc(tid, x, conf, w=0.3):
+    """A tracked face carrying an explicit confidence (vs `_tr`'s fixed 0.9)."""
+    return {"track_id": tid, "x": x, "y": 0.45, "w": w, "h": 0.2, "confidence": conf}
+
+
+class TestStableTracksConfidence:
+    def test_stable_tracks_aggregates_mean_confidence(self):
+        win = [
+            _frame(0, [_trc(1, 0.5, 0.4)]),
+            _frame(1, [_trc(1, 0.5, 0.6)]),
+            _frame(2, [_trc(1, 0.5, 0.8)]),
+        ]
+        stable = _stable_tracks(win)
+        assert len(stable) == 1
+        assert abs(stable[0]["conf"] - 0.6) < 1e-6  # (0.4+0.6+0.8)/3
+
+    def test_competitors_surface_confidence(self):
+        win = [_frame(t, [_trc(1, 0.5, 0.42)]) for t in (0, 1, 2)]
+        comp = _competitors(_stable_tracks(win), {})
+        assert comp and comp[0]["conf"] == 0.42
+
+
+class TestWeakSubjectEscalation:
+    """#7b: a sole LOW-confidence face may be a logo/title card (rf-udcpl2hd)."""
+
+    def test_low_conf_sole_face_escalates_graphic(self):
+        # A single face below FACE_CONF_MIN, no Gemini hint → escalate weak_subject.
+        tracked = [_frame(t, [_trc(1, 0.48, 0.35, w=0.31)]) for t in (0, 1, 2, 3)]
+        plan = reconcile([], tracked, cuts=[], src_w=SRC_W, src_h=SRC_H, duration=4.0)
+        pts = collect_escalation_points(plan)
+        assert [p["kind"] for p in pts] == ["weak_subject"]
+        p = pts[0]
+        assert p["fallback"]["action"] == "crop"  # follow face pending verdict
+        assert "crop_keeps" in p["facts"]
+        assert p["key"].startswith("graphic:")
+        # fallback render still crops tight to the (possibly false) face
+        assert plan[0]["inner_ar"] == (9, 16)
+
+    def test_high_conf_sole_face_does_not_escalate(self):
+        tracked = [_frame(t, [_trc(1, 0.48, 0.95, w=0.31)]) for t in (0, 1, 2, 3)]
+        plan = reconcile([], tracked, cuts=[], src_w=SRC_W, src_h=SRC_H, duration=4.0)
+        assert collect_escalation_points(plan) == []
+
+    def test_gemini_subject_hint_suppresses_graphic_escalation(self):
+        # If a Gemini scene already named the subject, trust it — no graphic check.
+        tracked = [_frame(t, [_trc(1, 0.48, 0.35, w=0.31)]) for t in (0, 1, 2, 3)]
+        scenes = [
+            {
+                "start_sec": 0,
+                "end_sec": 4,
+                "scene_type": "general",
+                "active_subject": "center",
+            }
+        ]
+        plan = reconcile(
+            scenes, tracked, cuts=[], src_w=SRC_W, src_h=SRC_H, duration=4.0
+        )
+        assert not any(
+            p["kind"] == "weak_subject" for p in collect_escalation_points(plan)
+        )
+
+    def test_two_faces_one_weak_uses_subject_path_not_graphic(self):
+        # The graphic check is for a SOLE face; ≥2 faces stay on the subject path.
+        tracked = [
+            _frame(t, [_trc(1, 0.3, 0.35, w=0.2), _trc(2, 0.7, 0.4, w=0.2)])
+            for t in (0, 1, 2, 3)
+        ]
+        plan = reconcile([], tracked, cuts=[], src_w=SRC_W, src_h=SRC_H, duration=4.0)
+        kinds = {p["kind"] for p in collect_escalation_points(plan)}
+        assert "weak_subject" not in kinds
+
+    def test_threshold_constant_is_sane(self):
+        assert 0.3 < FACE_CONF_MIN < 0.9
 
 
 class TestAttachKeypoints:

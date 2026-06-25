@@ -48,6 +48,7 @@ KINDS = (
     "keep_both",  # #5 two important people, or one subject + a bystander?
     "split",  # #6 genuine static two-person dialogue worth stacking?
     "no_subject",  # #7 nothing detected — what's the subject (b-roll/graphics)?
+    "weak_subject",  # #7b sole low-confidence face — real person, or a graphic/logo?
     "person_widen",  # #8 borderline wide body — real reason to widen?
 )
 

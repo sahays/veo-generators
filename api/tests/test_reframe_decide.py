@@ -204,6 +204,55 @@ class TestNoSubjectVerdicts:
         assert changed == 0 and segs[0]["inner_ar"] == (9, 16)
 
 
+class TestWeakSubjectVerdicts:
+    """#7b: a sole low-confidence face Gemini judges as graphic vs real person."""
+
+    def _seg(self):
+        return {
+            "start": 0.0,
+            "end": 1.5,
+            "inner_ar": (9, 16),
+            "layout": "single",
+            "reason": "9:16 (0.32) — face w=0.31",
+            "crops": [{"track_id": 1, "x_target": 0.48, "source": "face"}],
+            "trace": {"source": "face", "coverage": 0.316},
+            "escalate": {
+                "kind": "weak_subject",
+                "key": "graphic:0.0",
+                "question": "logo/title card or real person?",
+                "facts": {
+                    "subject_x": 0.48,
+                    "crop_keeps": [0.32, 0.64],
+                    "face_conf": 0.35,
+                },
+                "fallback": {"action": "crop"},
+            },
+        }
+
+    def test_letterbox_widens_for_graphic(self):
+        segs = [self._seg()]
+        changed = apply_verdicts(
+            segs,
+            [{"key": "graphic:0.0", "action": "letterbox", "coverage": 1.0}],
+            SRC_W,
+            SRC_H,
+            None,
+        )
+        assert changed == 1
+        assert segs[0]["inner_ar"] == (16, 9)
+        assert "full-frame graphic" in segs[0]["reason"]
+        assert segs[0]["trace"]["source"] == "gemini_graphic"
+
+    def test_crop_keeps_face_for_real_person(self):
+        segs = [self._seg()]
+        changed = apply_verdicts(
+            segs, [{"key": "graphic:0.0", "action": "crop"}], SRC_W, SRC_H, None
+        )
+        assert changed == 0
+        assert segs[0]["inner_ar"] == (9, 16)
+        assert segs[0]["crops"][0]["source"] == "face"
+
+
 class TestClusterSampleSecs:
     def test_multi_segment_cluster_uses_thumb_secs_not_span(self):
         # A caption recurs at 0:05 and 3:20; the cluster span covers the gap.
