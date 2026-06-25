@@ -47,8 +47,12 @@ PERSON_W_CAP = 0.60  # bodies are wider than faces, but still bounded
 # that pre-empts the no_subject graphic check and forces a tight crop that slices
 # the graphic. So when the SOLE subject is a single LOW-confidence face, the CPU
 # can't tell a real person from a graphic — escalate to gemini-3.5-flash (fallback:
-# keep the face crop). Real frontal faces score well above this; logos score below.
-FACE_CONF_MIN = 0.60
+# keep the face crop). Calibrated on rf-udcpl2hd: the SonyLIV title-card "face"
+# scores ~0.635 and real lead faces ~0.84, so 0.75 sits cleanly between them. Only
+# SOLE-face segments use this gate; multi-face shots are unaffected. Erring high
+# just asks Gemini more often (fallback is still crop) — Gemini reliably answers
+# "crop" for a genuine person and "letterbox" for a graphic.
+FACE_CONF_MIN = 0.75
 
 # Active-speaker detection (Phase 2): in a multi-person shot, frame the talking
 # face (mouth moving) as a single crop instead of letterboxing both. Speaking is
