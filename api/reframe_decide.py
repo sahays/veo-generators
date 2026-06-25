@@ -49,10 +49,11 @@ DECISION_INTRO = (
     "NO-SUBJECT decisions (key 'nosubj:…') — no person is in frame: action=letterbox "
     "if it's a full-frame graphic/slide (chart, map, UI, title) that the darkened "
     "crop would cut off, else crop for plain scenery/b-roll.\n"
-    "GRAPHIC-OR-SUBJECT decisions (key 'graphic:…') — a single LOW-confidence "
-    "face-like detection: action=letterbox if it's actually a full-frame graphic "
-    "(logo, title card, channel bug, text slide) the darkened crop would cut off; "
-    "action=crop if it's a real person to follow (even small / in profile).\n"
+    "GRAPHIC-OR-SUBJECT decisions (key 'graphic:…') — judge from the pixels, do "
+    "NOT assume a person is present: action=letterbox if the frame is a full-screen "
+    "logo/ident, title/brand card, text slide, chart, map, or UI whose readable "
+    "content the darkened crop would cut off; action=crop only if a real person or "
+    "live-action scene is the main subject.\n"
     "Return exactly one verdict per key."
 )
 

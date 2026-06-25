@@ -586,13 +586,18 @@ def _maybe_graphic_escalation(tgt, src_w, src_h, rungs, start, end):
     return make_point(
         kind="weak_subject",
         key=f"graphic:{round(start, 1)}",
+        # NEUTRAL, image-first. Do NOT assert a face/person exists — the detector
+        # fires on logos too, and asserting "a face is here" primes the model to
+        # hallucinate a person on a title card (observed on rf-udcpl2hd). Let it
+        # judge from pixels (mirrors the text_presence prompt's stance).
         question=(
-            "A single low-confidence, face-like detection is here. Look at the "
-            "frame: is it a full-frame GRAPHIC — a logo, title card, channel bug, "
-            "text slide, chart, map, or UI — that should keep its full width "
-            "(letterbox)? Or is it a real person to follow (crop)? A real face, "
-            "even small or in profile, is crop. Letterbox only if readable "
-            "text/graphics would be cut off by a tight vertical crop."
+            "Look at the frame. Is it a full-screen GRAPHIC — a channel logo or "
+            "ident, a title/brand card, a text slide, chart, map, or UI screen — "
+            "whose readable logo/text spans the width so a tight vertical crop "
+            "(the green box) would cut part of it off? If so, keep full width "
+            "(letterbox). If instead a real PERSON or live-action scene is the "
+            "main subject, follow it (crop). Judge only from what you see; "
+            "letterbox only if real readable text/graphics would be cut off."
         ),
         facts={
             "subject_x": round(x, 3),
