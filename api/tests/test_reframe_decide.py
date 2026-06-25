@@ -253,6 +253,61 @@ class TestWeakSubjectVerdicts:
         assert segs[0]["crops"][0]["source"] == "face"
 
 
+class TestActiveSpeakerVerdicts:
+    """#4: Gemini picks who is speaking; the crop re-centers on them (source=speaker)."""
+
+    def _seg(self, chosen_tid=1):
+        return {
+            "start": 0.0,
+            "end": 4.0,
+            "inner_ar": (9, 16),
+            "layout": "single",
+            "reason": "9:16 — face",
+            "crops": [{"track_id": chosen_tid, "x_target": 0.3, "source": "face"}],
+            "trace": {"source": "face", "coverage": 0.316},
+            "escalate": {
+                "kind": "active_speaker",
+                "key": "speaker:A:0.3,0.7",
+                "question": "who is speaking?",
+                "facts": {
+                    "candidates": [
+                        {"track_id": 1, "x": 0.3, "frac": 1.0, "pos": "left"},
+                        {"track_id": 2, "x": 0.7, "frac": 1.0, "pos": "right"},
+                    ],
+                    "n_faces": 2,
+                },
+                "fallback": {"action": "follow", "subject": "left"},
+            },
+        }
+
+    def test_center_right_speaker_retargets(self):
+        segs = [self._seg(chosen_tid=1)]
+        changed = apply_verdicts(
+            segs,
+            [{"key": "speaker:A:0.3,0.7", "action": "follow", "subject": "right"}],
+            SRC_W,
+            SRC_H,
+            None,
+        )
+        assert changed == 1
+        crop = segs[0]["crops"][0]
+        assert crop["track_id"] == 2 and crop["source"] == "speaker"
+        assert "center right speaker" in segs[0]["reason"]
+        assert segs[0]["trace"]["source"] == "gemini_speaker"
+
+    def test_confirming_fallback_no_change(self):
+        # Gemini agrees with the fallback (left) → already centered, no retarget.
+        segs = [self._seg(chosen_tid=1)]
+        changed = apply_verdicts(
+            segs,
+            [{"key": "speaker:A:0.3,0.7", "action": "follow", "subject": "left"}],
+            SRC_W,
+            SRC_H,
+            None,
+        )
+        assert changed == 0 and segs[0]["crops"][0]["track_id"] == 1
+
+
 class TestClusterSampleSecs:
     def test_multi_segment_cluster_uses_thumb_secs_not_span(self):
         # A caption recurs at 0:05 and 3:20; the cluster span covers the gap.

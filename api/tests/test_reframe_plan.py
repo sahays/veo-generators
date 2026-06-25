@@ -879,9 +879,12 @@ class TestDialogueFromDiarization:
             {"speaker_id": "B", "start_sec": 2.0, "end_sec": 4.0},
         ]
 
-    def test_diarization_dialogue_splits_with_no_scenes(self):
-        # The production path: reconcile([], ...) with empty scenes. Before the fix
-        # split could never fire here; the diarization turns now supply "dialogue".
+    def test_diarization_dialogue_centers_active_speaker(self):
+        # Speaker-centering now takes precedence over split: a two-speaker dialogue
+        # re-cuts at the turn and centers whoever is talking (single crop), instead
+        # of stacking both. Each turn carries an active_speaker escalation keyed by
+        # the dominant speaker, so the turns stay distinct (Gemini picks the talker;
+        # fallback = most-visible).
         plan = reconcile(
             [],
             self._frames(),
@@ -891,7 +894,11 @@ class TestDialogueFromDiarization:
             duration=4.0,
             speaker_segments=self._two_speakers(),
         )
-        assert plan[0]["layout"] == "split"
+        assert all(seg["layout"] == "single" for seg in plan)
+        # re-cut at the A→B turn (t=2.0) keeps two distinctly-keyed speaker segments
+        assert len(plan) == 2
+        kinds = [p["escalate"]["kind"] for p in plan if p.get("escalate")]
+        assert kinds == ["active_speaker", "active_speaker"]
 
     def test_single_speaker_does_not_split(self):
         plan = reconcile(
@@ -956,3 +963,98 @@ class TestDialogueWindow:
 
         assert _dialogue_in_window([], 0.0, 5.0) is False
         assert _dialogue_in_window(None or [], 0.0, 5.0) is False
+
+
+class TestSpeakerCentering:
+    """Multi-person → center the active speaker (audio↔face + Gemini fallback)."""
+
+    TALK = [0.10, 0.45, 0.10, 0.50, 0.12]  # mouth oscillates → speaking
+    STILL = [0.20, 0.21, 0.20, 0.19, 0.20]  # ~steady → listening
+
+    def _frames(self, talker_x=0.3, other_x=0.7, both_talk=False):
+        other = self.TALK if both_talk else self.STILL
+        return [
+            _ftrm(t, [(1, talker_x, self.TALK[t]), (2, other_x, other[t])])
+            for t in range(5)
+        ]
+
+    def _one_speaker(self):
+        return [{"speaker_id": "A", "start_sec": 0.0, "end_sec": 5.0}]
+
+    def test_associate_picks_mouth_mover_during_speech(self):
+        from reframe_plan import _associate_speaker_face
+
+        win = self._frames()
+        assert _associate_speaker_face(_stable_tracks(win), win, [(0.0, 5.0)]) == 1
+
+    def test_associate_none_without_speech(self):
+        # No diarized speech → mouth motion isn't anchored → no audio-visual pick.
+        from reframe_plan import _associate_speaker_face
+
+        win = self._frames()
+        assert _associate_speaker_face(_stable_tracks(win), win, []) is None
+
+    def test_associate_none_when_both_move(self):
+        from reframe_plan import _associate_speaker_face
+
+        win = self._frames(both_talk=True)
+        assert _associate_speaker_face(_stable_tracks(win), win, [(0.0, 5.0)]) is None
+
+    def test_centers_speaker_when_audio_visual_clear(self):
+        plan = reconcile(
+            [],
+            self._frames(),
+            cuts=[],
+            src_w=SRC_W,
+            src_h=SRC_H,
+            duration=5.0,
+            speaker_segments=self._one_speaker(),
+        )
+        crop = plan[0]["crops"][0]
+        assert crop["source"] == "speaker" and crop["track_id"] == 1
+        assert plan[0].get("escalate") is None  # resolved deterministically
+
+    def test_escalates_active_speaker_when_ambiguous(self):
+        # Both mouths move during speech → CPU can't tell → escalate; center the
+        # most-visible face as the deterministic fallback.
+        plan = reconcile(
+            [],
+            self._frames(both_talk=True),
+            cuts=[],
+            src_w=SRC_W,
+            src_h=SRC_H,
+            duration=5.0,
+            speaker_segments=self._one_speaker(),
+        )
+        seg = plan[0]
+        assert seg["layout"] == "single"
+        assert seg["escalate"]["kind"] == "active_speaker"
+        assert seg["escalate"]["fallback"]["action"] == "follow"
+        assert "candidates" in seg["escalate"]["facts"]
+
+
+class TestSpeakerTurnCuts:
+    def test_cuts_at_speaker_change(self):
+        from reframe_plan import _speaker_turn_cuts
+
+        segs = [
+            {"speaker_id": "A", "start_sec": 0.0, "end_sec": 3.0},
+            {"speaker_id": "B", "start_sec": 3.0, "end_sec": 6.0},
+        ]
+        assert _speaker_turn_cuts(segs, 1.8) == [3.0]
+
+    def test_rapid_alternation_does_not_overfragment(self):
+        from reframe_plan import _speaker_turn_cuts
+
+        segs = [
+            {"speaker_id": "A", "start_sec": 0.0, "end_sec": 0.5},
+            {"speaker_id": "B", "start_sec": 0.5, "end_sec": 1.0},
+            {"speaker_id": "A", "start_sec": 1.0, "end_sec": 4.0},
+        ]
+        assert _speaker_turn_cuts(segs, 1.8) == []  # all turns within min dwell
+
+    def test_empty(self):
+        from reframe_plan import _speaker_turn_cuts
+
+        assert _speaker_turn_cuts([], 1.8) == []
+        assert _speaker_turn_cuts(None, 1.8) == []

@@ -46,6 +46,9 @@ DECISION_INTRO = (
     "actually see.\n"
     "SUBJECT decisions (key 'subject:…'): action=follow and `subject` = left | "
     "center | right — the one person to track (whoever is speaking / the focus).\n"
+    "SPEAKER decisions (key 'speaker:…') — only ONE person is talking: action=follow "
+    "and `subject` = left | center | right for the person who is SPEAKING (open / "
+    "moving mouth, mid-gesture, others listening). This person will be centered.\n"
     "NO-SUBJECT decisions (key 'nosubj:…') — no person is in frame: action=letterbox "
     "if it's a full-frame graphic/slide (chart, map, UI, title) that the darkened "
     "crop would cut off, else crop for plain scenery/b-roll.\n"
@@ -154,7 +157,7 @@ def render_decision_thumbs(video_path: str, clusters: List[dict]) -> dict:
                     continue
                 if facts.get("crop_keeps"):  # text_presence / no_subject / weak_subject
                     frame = _overlay_text(frame, facts["crop_keeps"])
-                elif c["kind"] == "subject_choice" and facts.get("candidates"):
+                elif facts.get("candidates"):  # subject_choice / active_speaker
                     frame = _overlay_subjects(frame, facts["candidates"])
                 ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
                 if ok:
@@ -220,7 +223,7 @@ def apply_verdicts(
                         "gemini_text" if kind == "text_presence" else "gemini_graphic"
                     )
                 changed += 1
-        elif kind == "subject_choice" and v.get("subject"):
+        elif kind in ("subject_choice", "active_speaker") and v.get("subject"):
             if _apply_subject(
                 seg,
                 v["subject"],
@@ -228,14 +231,26 @@ def apply_verdicts(
                 track_times,
                 person_frames,
                 person_times,
+                kind,
             ):
                 changed += 1
     return changed
 
 
-def _apply_subject(seg, side, tracked_frames, track_times, person_frames, person_times):
+def _apply_subject(
+    seg,
+    side,
+    tracked_frames,
+    track_times,
+    person_frames,
+    person_times,
+    kind="subject_choice",
+):
     """Re-target a segment's crop to the Gemini-chosen person; refresh its focal
-    series so the pan follows the new track. Returns True if the subject changed."""
+    series so the pan follows the new track. Returns True if the subject changed.
+
+    `kind` distinguishes a "who is the subject" pick (subject_choice) from a "who is
+    speaking, center them" pick (active_speaker) for the label/source stamp."""
     cands = (seg.get("escalate", {}).get("facts") or {}).get("candidates") or []
     if not cands:
         return False
@@ -248,13 +263,18 @@ def _apply_subject(seg, side, tracked_frames, track_times, person_frames, person
     crop = seg["crops"][0]
     if crop.get("track_id") == chosen["track_id"]:
         return False
+    is_speaker = kind == "active_speaker"
     crop["track_id"] = chosen["track_id"]
     crop["x_target"] = chosen["x"]
-    crop["source"] = "face"
-    seg["reason"] = f"gemini: follow {side} subject"
+    crop["source"] = "speaker" if is_speaker else "face"
+    seg["reason"] = (
+        f"gemini: center {side} speaker"
+        if is_speaker
+        else f"gemini: follow {side} subject"
+    )
     if seg.get("trace"):
         seg["trace"]["trigger"] = seg["reason"]
-        seg["trace"]["source"] = "gemini_subject"
+        seg["trace"]["source"] = "gemini_speaker" if is_speaker else "gemini_subject"
     if tracked_frames is not None:
         from reframe_plan import _attach_focal_points
 

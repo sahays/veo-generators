@@ -97,6 +97,13 @@ SPLIT_MAX_MOTION = 0.06  # near-static: each track's x-span must stay below this
 # IS the two-person-dialogue signal those layouts need. Supplied to reconcile as
 # `speaker_segments` and injected as scene_type="dialogue" when no scene label set.
 DIALOGUE_MIN_SPEAK = 0.5  # seconds a speaker must talk in a window to count
+# Active-speaker centering: in a multi-person shot only one person speaks at a time
+# and that speaker must be centered. Mouth-motion (MAR) alone is noisy (laughing /
+# chewing), so we measure it ONLY over frames where diarization says someone is
+# speaking (audio↔face association) — and re-cut a shot when the dominant speaker
+# changes so the framing follows the turn. SPEAKER_TURN_MIN_DWELL keeps quick
+# back-and-forth from fragmenting the plan into sub-second flips.
+SPEAKER_TURN_MIN_DWELL = 1.8  # min seconds between speaker-change re-cuts
 
 # Pan smoothing per Gemini scene_type → (max_velocity frac/s, deadzone frac).
 # Replaces the old global content_type setting: framing adapts per scene, so an
@@ -284,16 +291,136 @@ def pick_active_speaker(track_mouth: dict) -> Optional[int]:
     return top_tid
 
 
-def _segment_track_mouth(win, track_ids) -> dict:
-    """Per-track mouth-aspect-ratio samples over the windowed frames."""
+def _segment_track_mouth(win, track_ids, speech_intervals=None) -> dict:
+    """Per-track mouth-aspect-ratio samples over the windowed frames.
+
+    When `speech_intervals` (clipped (lo, hi) spans where diarization says SOMEONE
+    is speaking) is given, only frames inside a span are sampled — so a steady
+    listener and stray motion during silence don't register as "talking". With no
+    intervals (no audio) it falls back to every frame (vision-only behaviour).
+    """
     ids = set(track_ids)
     out: dict = {tid: [] for tid in ids}
     for f in win:
+        if speech_intervals and not _in_intervals(f["time_sec"], speech_intervals):
+            continue
         for tr in f.get("tracks", []):
             m = tr.get("mouth")
             if tr["track_id"] in ids and m is not None:
                 out[tr["track_id"]].append(m)
     return out
+
+
+def _in_intervals(t: float, intervals: List[Tuple[float, float]]) -> bool:
+    return any(lo <= t <= hi for lo, hi in intervals)
+
+
+def _speech_intervals(speaker_segments, start: float, end: float):
+    """Diarization speech spans clipped to [start, end] (any speaker talking)."""
+    out: List[Tuple[float, float]] = []
+    for sp in speaker_segments or []:
+        lo = max(start, sp.get("start_sec", 0.0))
+        hi = min(end, sp.get("end_sec", 0.0))
+        if hi > lo:
+            out.append((lo, hi))
+    return out
+
+
+def _dominant_speaker(speaker_segments, start: float, end: float):
+    """speaker_id talking the most in [start, end], or None. Used to key the
+    active_speaker escalation so different-speaker turns stay distinct through
+    `_merge_short`, while same-speaker MAX_SEG_LEN subdivisions still recombine."""
+    talk: dict = {}
+    for sp in speaker_segments or []:
+        lo = max(start, sp.get("start_sec", 0.0))
+        hi = min(end, sp.get("end_sec", 0.0))
+        if hi > lo:
+            sid = sp.get("speaker_id")
+            talk[sid] = talk.get(sid, 0.0) + (hi - lo)
+    return max(talk, key=talk.get) if talk else None
+
+
+def _associate_speaker_face(stable, win, speech_intervals):
+    """Track id of the face that is speaking (audio↔face), or None if unclear.
+
+    Measures mouth motion ONLY during diarized speech and reuses the same
+    dominance test as `pick_active_speaker`. None when nobody clearly wins, when
+    the speaker's face isn't on screen, or when there's no speech to anchor on.
+    """
+    if not stable or not speech_intervals:
+        return None
+    mouth = _segment_track_mouth(win, [s["track_id"] for s in stable], speech_intervals)
+    return pick_active_speaker(mouth)
+
+
+def _maybe_speaker_escalation(stable, start, end, speaker_label=None):
+    """Decision point #4: which visible person is the one SPEAKING (to center).
+
+    Fires for a multi-person shot with speech where the CPU couldn't pin the
+    speaker by mouth motion. The fallback follows the most-visible face. The
+    `candidates` facts drive the thumbnail's per-person markers (reused from
+    subject_choice), and the verdict re-centers on the chosen person.
+
+    `speaker_label` (the window's dominant diarization speaker_id) is folded into
+    the key so adjacent turns by DIFFERENT speakers stay separate through merge,
+    while same-speaker subdivisions still recombine.
+    """
+    if len(stable) < 2:
+        return None
+    from reframe_escalation import make_point
+
+    cands = sorted(stable, key=lambda s: s["x"])
+    labels = [
+        {
+            "track_id": s["track_id"],
+            "x": round(s["x"], 3),
+            "frac": round(s["frac"], 2),
+            "pos": _side_of(s["x"]),
+        }
+        for s in cands
+    ]
+    fallback_tgt = max(stable, key=lambda s: s["frac"])
+    sig = ",".join(f"{round(s['x'], 1)}" for s in cands)
+    return make_point(
+        kind="active_speaker",
+        key=f"speaker:{speaker_label}:{sig}" if speaker_label else f"speaker:{sig}",
+        question=(
+            "Several people are visible ("
+            + "; ".join(f"{c['pos']} at x={c['x']}" for c in labels)
+            + "). Who is SPEAKING right now? Watch for lip movement, gesture and "
+            "engagement, and pick the one person to center (left / center / right)."
+        ),
+        facts={"candidates": labels, "n_faces": len(stable)},
+        fallback={"action": "follow", "subject": _side_of(fallback_tgt["x"])},
+        start=start,
+        end=end,
+    )
+
+
+def _speaker_turn_cuts(speaker_segments, min_dwell: float) -> List[float]:
+    """Times where the dominant audio speaker changes — extra cut points so a shot
+    re-frames onto the new speaker. Turns closer than `min_dwell` are skipped so a
+    rapid back-and-forth doesn't shred the plan into sub-second segments."""
+    segs = sorted(
+        (
+            s
+            for s in (speaker_segments or [])
+            if s.get("end_sec", 0) > s.get("start_sec", 0)
+        ),
+        key=lambda s: s.get("start_sec", 0.0),
+    )
+    cuts: List[float] = []
+    prev_speaker = None
+    last = None
+    for s in segs:
+        sid = s.get("speaker_id")
+        t = s.get("start_sec", 0.0)
+        if sid != prev_speaker and (last is None or t - last >= min_dwell):
+            if last is not None:  # don't cut at the very first turn (t≈0)
+                cuts.append(t)
+            last = t
+        prev_speaker = sid
+    return cuts
 
 
 def _keep_both_pair(stable: List[dict], scene: dict):
@@ -611,7 +738,18 @@ def _maybe_graphic_escalation(tgt, src_w, src_h, rungs, start, end):
 
 
 def _decide_segment(
-    scene, tf_win, pf_win, tx_win, start, end, label_map, src_w, src_h, rungs
+    scene,
+    tf_win,
+    pf_win,
+    tx_win,
+    start,
+    end,
+    label_map,
+    src_w,
+    src_h,
+    rungs,
+    speech_intervals=None,
+    speaker_label=None,
 ):
     """Decide layout, focal target and required coverage for one segment.
 
@@ -664,18 +802,38 @@ def _decide_segment(
     if stable:
         mouth = _segment_track_mouth(tf_win, [s["track_id"] for s in stable])
         faces = _competitors(stable, mouth)
+        has_speech = bool(speech_intervals)
+
+        # Speaker-centering takes precedence: in a shot with speech only one person
+        # talks at a time and we center them. Pin the speaking FACE by measuring
+        # mouth motion over the diarized speech (audio↔face); with no audio, fall
+        # back to vision-only mouth motion. A confident speaker → tight centered crop.
+        speaker_tid = _associate_speaker_face(stable, tf_win, speech_intervals)
+        if speaker_tid is None and not has_speech:
+            speaker_tid = pick_active_speaker(mouth)
+        if speaker_tid is not None:
+            tgt = next(s for s in stable if s["track_id"] == speaker_tid)
+            cm = min(tgt["w"], FACE_W_CAP)
+            crop = {"track_id": speaker_tid, "x_target": tgt["x"], "source": "speaker"}
+            return out("single", crop, cm + COVERAGE_MARGIN, cm, faces)
+
+        # Speech but the CPU couldn't pin the speaker among 2+ faces → ask Gemini who
+        # is talking and center them (#4); fallback follows the most-visible face.
+        # This also takes precedence over keep_both/split (center one speaker, not both).
+        if has_speech and len(stable) >= 2:
+            escalate = (
+                _maybe_speaker_escalation(stable, start, end, speaker_label) or escalate
+            )
+            tgt = max(stable, key=lambda s: s["frac"])
+            cm = min(tgt["w"], FACE_W_CAP)
+            crop = {"track_id": tgt["track_id"], "x_target": tgt["x"], "source": "face"}
+            return out("single", crop, cm + COVERAGE_MARGIN, cm, faces)
+
+        # No speech (b-roll, silent multi-person): keep both / stack, or follow one.
         pair = _keep_both_pair(stable, scene)
         if pair:
-            speaker = pick_active_speaker(mouth)
-            tgt = next((s for s in stable if s["track_id"] == speaker), None)
-            if tgt:  # ASD: one of the two is clearly talking → frame them large
-                cm = min(tgt["w"], FACE_W_CAP)
-                crop = {"track_id": speaker, "x_target": tgt["x"], "source": "speaker"}
-                return out("single", crop, cm + COVERAGE_MARGIN, cm, faces)
-
-            # Neither clearly dominates: if they're too far apart for 1:1 to hold
-            # both large AND the shot is a static dialogue, stack them as panels
-            # instead of letterboxing both tiny.
+            # Too far apart for 1:1 to hold both large AND a static dialogue → stack
+            # them as panels instead of letterboxing both tiny.
             split = _split_crops(pair, tf_win, start, end, scene)
             if split:
                 a, b = pair
@@ -703,22 +861,15 @@ def _decide_segment(
             }
             return out("keep_both", crop, span + COVERAGE_MARGIN, span, faces)
 
-        # Single-subject pick. A clearly-speaking face resolves it deterministically
-        # (#4); otherwise, among comparable faces, escalate "which subject?" (#3) and
-        # follow the deterministic pick as the fallback.
+        # Single silent subject pick. Among comparable faces, escalate "which
+        # subject?" (#3) and follow the deterministic pick as the fallback.
         fallback_tgt = _match_track(stable, scene, label_map)
         source = "face"
         if len(stable) >= 2:
-            speaker = pick_active_speaker(mouth)
-            if speaker is not None:
-                tgt = next(s for s in stable if s["track_id"] == speaker)
-                source = "speaker"
-            else:
-                tgt = fallback_tgt
-                escalate = (
-                    _maybe_subject_escalation(stable, fallback_tgt, start, end)
-                    or escalate
-                )
+            tgt = fallback_tgt
+            escalate = (
+                _maybe_subject_escalation(stable, fallback_tgt, start, end) or escalate
+            )
         else:
             tgt = fallback_tgt
             # A SOLE, low-confidence face may be a logo / title card / graphic the
@@ -738,7 +889,9 @@ def _decide_segment(
         crop = {"track_id": tgt["track_id"], "x_target": tgt["x"], "source": source}
         return out("single", crop, cm + COVERAGE_MARGIN, cm, faces)
 
-    # No stable face → try person/body detection.
+    # No stable face → try person/body detection. The body's measured width drives
+    # the rung directly (unlike a single face, which is capped) — so a wide body
+    # already letterboxes to 4:5 / 1:1 / 16:9 as its width grows, no escalation needed.
     persons = _segment_persons(pf_win)
     if persons and len(persons) / max(1, len(pf_win)) >= STABLE_FRAC:
         mean_x = sum(p["x"] for p in persons) / len(persons)
@@ -1036,7 +1189,10 @@ def reconcile(
     rungs = rungs or RUNGS
     label_map = _global_label_map(tracked_frames)
     scene_starts = [s.get("start_sec", 0.0) for s in scenes]
-    bounds = _boundaries(cuts, duration)
+    # Re-cut at speaker turns so a single visual shot re-frames onto whoever is
+    # talking (one speaker at a time → keep them centered through the turn).
+    turn_cuts = _speaker_turn_cuts(speaker_segments, SPEAKER_TURN_MIN_DWELL)
+    bounds = _boundaries(sorted(set(cuts) | set(turn_cuts)), duration)
 
     # Build the time indices ONCE; every per-segment window is then a bisect slice
     # of these sorted series rather than a full rescan — keeps the decision loop
@@ -1071,6 +1227,8 @@ def reconcile(
             src_w,
             src_h,
             rungs,
+            _speech_intervals(speaker_segments, start, end),
+            _dominant_speaker(speaker_segments, start, end),
         )
         if d["layout"] == "split":
             # Split fills the canvas with stacked panels — no rung, and it doesn't
