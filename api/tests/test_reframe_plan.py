@@ -881,13 +881,15 @@ class TestDialogueFromDiarization:
 
     def test_diarization_dialogue_centers_active_speaker(self):
         # Speaker-centering now takes precedence over split: a two-speaker dialogue
-        # re-cuts at the turn and centers whoever is talking (single crop), instead
-        # of stacking both. Each turn carries an active_speaker escalation keyed by
-        # the dominant speaker, so the turns stay distinct (Gemini picks the talker;
-        # fallback = most-visible).
+        # (both faces visibly mouthing) re-cuts at the turn and centers whoever is
+        # talking (single crop) instead of stacking both. Each turn carries an
+        # active_speaker escalation keyed by the dominant speaker, so the turns stay
+        # distinct (Gemini picks the talker; fallback = most-visible).
+        talk = [0.10, 0.45, 0.10, 0.50, 0.12]  # both mouths oscillate → talking shot
+        frames = [_ftrm(t, [(1, 0.25, talk[t]), (2, 0.75, talk[t])]) for t in range(5)]
         plan = reconcile(
             [],
-            self._frames(),
+            frames,
             cuts=[],
             src_w=1920,
             src_h=1080,
@@ -899,6 +901,23 @@ class TestDialogueFromDiarization:
         assert len(plan) == 2
         kinds = [p["escalate"]["kind"] for p in plan if p.get("escalate")]
         assert kinds == ["active_speaker", "active_speaker"]
+
+    def test_static_poster_with_voiceover_does_not_center_speaker(self):
+        # Speech over a STATIC poster (no face mouths moving) must NOT hijack
+        # speaker-centering — it falls through so the text/keep-both paths apply.
+        frames = self._frames()  # constant mouths (0.2) → nobody visibly talking
+        plan = reconcile(
+            [],
+            frames,
+            cuts=[],
+            src_w=1920,
+            src_h=1080,
+            duration=4.0,
+            speaker_segments=self._two_speakers(),
+        )
+        assert not any(
+            (p.get("escalate") or {}).get("kind") == "active_speaker" for p in plan
+        )
 
     def test_single_speaker_does_not_split(self):
         plan = reconcile(

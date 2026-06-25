@@ -800,7 +800,8 @@ def _decide_segment(
     # Margin pads the DETECTION-measured width (for tracker slop), not Gemini's
     # stated coverage (which is already a minimum) — avoids double-padding.
     if stable:
-        mouth = _segment_track_mouth(tf_win, [s["track_id"] for s in stable])
+        ids = [s["track_id"] for s in stable]
+        mouth = _segment_track_mouth(tf_win, ids)
         faces = _competitors(stable, mouth)
         has_speech = bool(speech_intervals)
 
@@ -808,9 +809,12 @@ def _decide_segment(
         # talks at a time and we center them. Pin the speaking FACE by measuring
         # mouth motion over the diarized speech (audio↔face); with no audio, fall
         # back to vision-only mouth motion. A confident speaker → tight centered crop.
-        speaker_tid = _associate_speaker_face(stable, tf_win, speech_intervals)
-        if speaker_tid is None and not has_speech:
+        if has_speech:
+            speaker_tid = _associate_speaker_face(stable, tf_win, speech_intervals)
+            speech_mouth = _segment_track_mouth(tf_win, ids, speech_intervals)
+        else:
             speaker_tid = pick_active_speaker(mouth)
+            speech_mouth = mouth
         if speaker_tid is not None:
             tgt = next(s for s in stable if s["track_id"] == speaker_tid)
             cm = min(tgt["w"], FACE_W_CAP)
@@ -819,8 +823,16 @@ def _decide_segment(
 
         # Speech but the CPU couldn't pin the speaker among 2+ faces → ask Gemini who
         # is talking and center them (#4); fallback follows the most-visible face.
-        # This also takes precedence over keep_both/split (center one speaker, not both).
-        if has_speech and len(stable) >= 2:
+        # Gate on a face ACTUALLY mouthing during the speech: a static poster / key
+        # art with off-screen narration has speech but no on-screen talker — it must
+        # NOT hijack speaker-centering from the text/keep-both paths (e.g. the closing
+        # "GULLAK … STREAMING NOW" key art). This also takes precedence over keep_both.
+        visible_talk = any(
+            len(v) >= SPEAKER_MIN_SAMPLES
+            and statistics.pstdev(v) >= SPEAKER_MIN_ACTIVITY
+            for v in speech_mouth.values()
+        )
+        if has_speech and len(stable) >= 2 and visible_talk:
             escalate = (
                 _maybe_speaker_escalation(stable, start, end, speaker_label) or escalate
             )
@@ -829,7 +841,8 @@ def _decide_segment(
             crop = {"track_id": tgt["track_id"], "x_target": tgt["x"], "source": "face"}
             return out("single", crop, cm + COVERAGE_MARGIN, cm, faces)
 
-        # No speech (b-roll, silent multi-person): keep both / stack, or follow one.
+        # No speech / no on-screen talker (b-roll, poster, silent group): keep both /
+        # stack, or follow one — and let the text-presence letterbox path apply.
         pair = _keep_both_pair(stable, scene)
         if pair:
             # Too far apart for 1:1 to hold both large AND a static dialogue → stack
