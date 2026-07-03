@@ -79,6 +79,35 @@ fi
 
 echo "🚀 Starting deployment for $SERVICE_NAME..."
 
+# Keep only the latest 5 revisions of a Cloud Run service; delete the rest.
+# Cloud Run never garbage-collects old revisions, so they pile up. The active
+# (traffic-serving) revision is always the newest, so it's safely within the
+# kept window. Non-fatal: deletion failures (e.g. a revision still serving
+# traffic) are ignored so a cleanup hiccup never aborts a successful deploy.
+prune_revisions() {
+    local service="$1"
+    echo "🧹 Pruning old revisions for $service (keeping latest 5)..."
+    local stale
+    stale=$(gcloud run revisions list \
+        --service "$service" \
+        --project "$PROJECT_ID" \
+        --region "$REGION" \
+        --sort-by='~metadata.creationTimestamp' \
+        --format='value(metadata.name)' 2>/dev/null | tail -n +6)
+    if [ -z "$stale" ]; then
+        echo "   Nothing to prune."
+        return 0
+    fi
+    while IFS= read -r rev; do
+        [ -z "$rev" ] && continue
+        echo "   Deleting revision $rev"
+        gcloud run revisions delete "$rev" \
+            --project "$PROJECT_ID" \
+            --region "$REGION" \
+            --quiet 2>/dev/null || echo "   ⚠️  Could not delete $rev (skipping)"
+    done <<< "$stale"
+}
+
 # Ensure Docker is authenticated with Artifact Registry
 gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
 
@@ -104,6 +133,7 @@ if [[ "$TARGET" == "all" || "$TARGET" == "api" ]]; then
     --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCS_BUCKET=$GCS_BUCKET,GEMINI_REGION=$GEMINI_REGION,VEO_REGION=$VEO_REGION,SERVICE_NAME=$SERVICE_NAME,OPTIMIZE_PROMPT_MODEL=$OPTIMIZE_PROMPT_MODEL,STORYBOARD_MODEL=$STORYBOARD_MODEL,VIDEO_GEN_MODEL=$VIDEO_GEN_MODEL,MASTER_INVITE_CODE=$MASTER_INVITE_CODE,AVATAR_LIVE_LOCATION=${AVATAR_LIVE_LOCATION:-us-central1},AVATAR_LIVE_PROJECT=${AVATAR_LIVE_PROJECT:-ffeldhaus-avatar-demo},AVATAR_LIVE_PRESET_NAME=${AVATAR_LIVE_PRESET_NAME:-Kira}" \
     --port 8080
 
+  prune_revisions "$SERVICE_NAME"
   echo "✅ API deployment complete!"
 fi
 
@@ -131,6 +161,7 @@ if [[ "$TARGET" == "all" || "$TARGET" == "worker" ]]; then
     --max-instances 1 \
     --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCS_BUCKET=$GCS_BUCKET,GEMINI_REGION=$GEMINI_REGION,GOOGLE_CLOUD_LOCATION=$REGION,SERVICE_NAME=$SERVICE_NAME,OPTIMIZE_PROMPT_MODEL=$OPTIMIZE_PROMPT_MODEL,WORKER_POLL_INTERVAL=5,WORKER_MAX_CONCURRENT=1"
 
+  prune_revisions "$WORKER_SERVICE_NAME"
   echo "✅ Worker deployment complete!"
 fi
 
