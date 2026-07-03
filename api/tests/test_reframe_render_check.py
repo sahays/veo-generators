@@ -246,3 +246,80 @@ class TestRealRenderIntegration:
             assert abs(actual - pred) < 0.04, (
                 f"frac_x={frac_x}: bar at out_x={actual:.3f}, plan predicted {pred:.3f}"
             )
+
+    def test_multi_segment_audio_muxed_once_and_in_sync(self, tmp_path):
+        # Segments render VIDEO-ONLY and the source audio muxes once at the end
+        # (per-segment AAC + concat used to add priming gaps at every join).
+        # A heterogeneous 3-segment plan must yield one continuous audio stream
+        # whose duration matches the video.
+        import json
+        import subprocess
+
+        from reframe_service import render_plan
+
+        dur = 6.0
+        src = tmp_path / "src_audio.mp4"
+        out = tmp_path / "out_audio.mp4"
+        _ffmpeg(
+            [
+                "-f",
+                "lavfi",
+                "-i",
+                f"testsrc2=size={self.SRC_W}x{self.SRC_H}:rate=25:duration={dur}",
+                "-f",
+                "lavfi",
+                "-i",
+                f"sine=frequency=440:duration={dur}",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-shortest",
+                str(src),
+            ]
+        )
+
+        def _seg(start, end, ar, x):
+            return {
+                "start": start,
+                "end": end,
+                "layout": "single",
+                "inner_ar": ar,
+                "crops": [
+                    {
+                        "track_id": None,
+                        "source": "center",
+                        "x_target": x,
+                        "keypoints": [(start, x, 0.5), (end, x, 0.5)],
+                    }
+                ],
+            }
+
+        segs = [
+            _seg(0.0, 2.0, (9, 16), 0.3),
+            _seg(2.0, 4.0, (1, 1), 0.7),
+            _seg(4.0, 6.0, (16, 9), 0.5),
+        ]
+        render_plan(str(src), str(out), segs, self.SRC_W, self.SRC_H, has_audio=True)
+
+        probe = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "stream=codec_type,duration",
+                "-of",
+                "json",
+                str(out),
+            ],
+            capture_output=True,
+            check=True,
+        )
+        streams = json.loads(probe.stdout)["streams"]
+        durs = {s["codec_type"]: float(s.get("duration") or 0.0) for s in streams}
+        assert "audio" in durs, "output lost its audio stream"
+        assert abs(durs["video"] - dur) < 0.15
+        assert abs(durs["audio"] - durs["video"]) < 0.25, (
+            f"A/V duration skew: audio={durs['audio']:.3f}s video={durs['video']:.3f}s"
+        )

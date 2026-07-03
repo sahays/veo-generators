@@ -9,10 +9,9 @@ import logging
 import os
 import tempfile
 import urllib.request
-from typing import List, Optional
+from typing import List
 
 import cv2
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -189,37 +188,6 @@ def detect_persons(frame, video_w: int, video_h: int) -> List[dict]:
             }
         )
     return persons
-
-
-def detect_motion(prev_frame, curr_frame, video_w: int, video_h: int) -> Optional[dict]:
-    """Detect motion between two frames via frame differencing."""
-    if prev_frame is None:
-        return None
-    gray1 = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
-    gray2 = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY)
-    diff = cv2.absdiff(gray1, gray2)
-    _, thresh = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)
-    thresh = cv2.dilate(thresh, np.ones((5, 5), np.uint8), iterations=2)
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return None
-    largest = max(contours, key=cv2.contourArea)
-    area = cv2.contourArea(largest)
-    if area < video_w * video_h * 0.005:
-        return None
-    M = cv2.moments(largest)
-    if M["m00"] == 0:
-        return None
-    return {
-        "x": (M["m10"] / M["m00"]) / video_w,
-        "y": (M["m01"] / M["m00"]) / video_h,
-        "confidence": min(1.0, area / (video_w * video_h) * 10),
-    }
-
-
-# ---------------------------------------------------------------------------
-# Full-video scan
-# ---------------------------------------------------------------------------
 
 
 def scan_video_faces(video_path: str, sample_fps: float = 1.0) -> List[dict]:

@@ -205,11 +205,13 @@ class TranscoderService:
         has_audio: bool = True,
         blurred_bg: bool = False,
         out_h: int = 1920,
+        fps: float = 0.0,
     ) -> tuple:
         """Encode a reframed video. Returns (job_name, output_gcs_uri).
 
         Output width is always 1080; `out_h` sets the height (1920 for 9:16,
-        1440 for 3:4).
+        1440 for 3:4). `fps` should be the SOURCE frame rate — forcing a 24/25
+        fps source to 30 makes the delivery encode judder; 0 falls back to 30.
         """
         import os
 
@@ -224,7 +226,7 @@ class TranscoderService:
                         height_pixels=out_h,
                         width_pixels=1080,
                         bitrate_bps=8000000,
-                        frame_rate=30,
+                        frame_rate=fps or 30,
                         crf_level=18,
                         rate_control_mode="crf",
                         profile="high",

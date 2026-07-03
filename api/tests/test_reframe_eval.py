@@ -332,3 +332,89 @@ class TestSplitEval:
         assert talker is not None
         assert talker["framed_speaker_active_rate"] > 0.5
         assert talker["speaker_miss_rate"] in (None, 0.0)
+
+
+# ---------------------------------------------------------------------------
+# Stability — crop jumps are near-instant repositions, not deliberate pans
+# ---------------------------------------------------------------------------
+class TestCropJumps:
+    def _run(self, segs):
+        frames = _frames([(float(t), [_tr(1, 0.5)]) for t in range(10)])
+        return evaluate(segs, frames, [], [], SRC_W, SRC_H, 10.0)
+
+    def _seg_kps(self, start, end, kps, at_cut=True):
+        return {
+            "start": start,
+            "end": end,
+            "inner_ar": (9, 16),
+            "crops": [{"track_id": 1, "keypoints": kps}],
+            "reason": "9:16",
+            "starts_at_cut": at_cut,
+        }
+
+    def test_slow_pan_is_not_a_jump(self):
+        # A 0.4s eased re-frame (attach_keypoints PAN_IN) is a pan, not a jump.
+        segs = [
+            self._seg_kps(0, 10, [(0.0, 0.3, 0.5), (0.4, 0.7, 0.5), (10.0, 0.7, 0.5)])
+        ]
+        rep = self._run(segs)
+        assert rep["stability"]["crop_jumps_per_min"] == 0.0
+
+    def test_instant_move_is_a_jump(self):
+        segs = [
+            self._seg_kps(0, 10, [(0.0, 0.3, 0.5), (0.1, 0.7, 0.5), (10.0, 0.7, 0.5)])
+        ]
+        rep = self._run(segs)
+        assert rep["stability"]["crop_jumps_per_min"] > 0.0
+
+    def test_mid_shot_boundary_discontinuity_is_a_jump(self):
+        # The renderer hard-cuts between segments; a big delta at a non-cut
+        # boundary is visible verbatim.
+        segs = [
+            self._seg_kps(0, 5, [(0.0, 0.2, 0.5), (5.0, 0.2, 0.5)]),
+            self._seg_kps(5, 10, [(5.0, 0.8, 0.5), (10.0, 0.8, 0.5)], at_cut=False),
+        ]
+        rep = self._run(segs)
+        assert rep["stability"]["crop_jumps_per_min"] > 0.0
+
+    def test_cut_boundary_discontinuity_is_fine(self):
+        # A re-frame AT a scene cut is hidden by the cut.
+        segs = [
+            self._seg_kps(0, 5, [(0.0, 0.2, 0.5), (5.0, 0.2, 0.5)]),
+            self._seg_kps(5, 10, [(5.0, 0.8, 0.5), (10.0, 0.8, 0.5)], at_cut=True),
+        ]
+        rep = self._run(segs)
+        assert rep["stability"]["crop_jumps_per_min"] == 0.0
+
+
+class TestCenterOffsetFreedom:
+    def test_full_width_crop_not_graded_for_centering(self):
+        # A 16:9 (full-width) window can't slide — an off-center face there is
+        # the source's composition, not a framing miss.
+        frames = _frames([(float(t), [_tr(1, 0.85)]) for t in range(10)])
+        seg = {
+            "start": 0,
+            "end": 10,
+            "inner_ar": (16, 9),
+            "crops": [
+                {"track_id": 1, "keypoints": [(0.0, 0.5, 0.5), (10.0, 0.5, 0.5)]}
+            ],
+            "reason": "16:9",
+        }
+        rep = evaluate([seg], frames, [], [], SRC_W, SRC_H, 10.0)
+        assert rep["stability"]["center_offset_p90"] == 0.0  # nothing gradable
+
+    def test_slidable_crop_still_graded(self):
+        # A 9:16 crop CAN center its subject — off-center is a real miss.
+        frames = _frames([(float(t), [_tr(1, 0.62)]) for t in range(10)])
+        seg = {
+            "start": 0,
+            "end": 10,
+            "inner_ar": (9, 16),
+            "crops": [
+                {"track_id": 1, "keypoints": [(0.0, 0.5, 0.5), (10.0, 0.5, 0.5)]}
+            ],
+            "reason": "9:16",
+        }
+        rep = evaluate([seg], frames, [], [], SRC_W, SRC_H, 10.0)
+        assert rep["stability"]["center_offset_p90"] > 0.1

@@ -115,7 +115,7 @@ class ReframeProcessor(JobProcessor):
             person_frames=person_frames,
             text_frames=text_frames,
         )
-        attach_keypoints(segments, probe["fps"])
+        attach_keypoints(segments, probe["fps"], probe["width"], probe["height"])
         self._store_segment_plan(record_id, segments)
 
         self.update_status(record_id, "processing", 60)
@@ -156,10 +156,12 @@ class ReframeProcessor(JobProcessor):
             f"[reframe:{record_id}] Source: {probe['width']}x{probe['height']} "
             f"@ {probe['fps']}fps, {probe['duration']:.1f}s, audio={probe.get('has_audio', True)}"
         )
-        if probe["width"] <= probe["height"]:
+        # `<` (not `<=`): a square source still has width to crop away and the
+        # filter layer handles it (unit-tested) — only true portrait is rejected.
+        if probe["width"] < probe["height"]:
             raise ValueError(
                 f"Source not landscape ({probe['width']}x{probe['height']}). "
-                "Reframe requires 16:9 or wider."
+                "Reframe requires a landscape or square source."
             )
         return src_path, probe
 
@@ -256,7 +258,7 @@ class ReframeProcessor(JobProcessor):
             tracked_frames,
             person_frames,
         )
-        attach_keypoints(segments, fps)
+        attach_keypoints(segments, fps, w, h)
         self._store_segment_plan(record_id, segments)
         logger.info(f"[reframe:{record_id}] plan: {len(segments)} segments")
 
@@ -306,6 +308,9 @@ class ReframeProcessor(JobProcessor):
                 "trace": s.get("trace"),
                 # decision point #1+ : the judgment deferred to gemini-3.5-flash
                 "escalate": s.get("escalate"),
+                # False = mid-shot boundary (subdivision / speaker turn): the pan
+                # eases across it and letterbox verdicts may extend across it.
+                "starts_at_cut": s.get("starts_at_cut"),
             }
             for s in segments
         ]
@@ -374,7 +379,7 @@ class ReframeProcessor(JobProcessor):
         failure leaves every segment on its deterministic fallback, so the plan is
         always renderable.
         """
-        from reframe_decide import apply_verdicts
+        from reframe_decide import apply_verdicts, harmonize_letterbox
         from reframe_escalation import plan_batches, summarize
         from reframe_plan import collect_escalation_points
 
@@ -400,9 +405,13 @@ class ReframeProcessor(JobProcessor):
         changed = apply_verdicts(
             segments, verdicts, src_w, src_h, rungs, tracked_frames, person_frames
         )
+        # A text letterbox that covers only part of a shot would pop its bars
+        # on/off at a subdivision boundary mid-shot — extend it to same-shot
+        # neighbors that also measured text.
+        widened = harmonize_letterbox(segments, src_w, src_h, rungs)
         logger.info(
             f"[reframe:{record_id}] gemini verdicts: {len(verdicts)} returned, "
-            f"{changed} segment(s) re-framed"
+            f"{changed} segment(s) re-framed, {widened} widened across shots"
         )
         usage = result.usage
         if usage and usage.cost_usd:
@@ -615,16 +624,6 @@ class ReframeProcessor(JobProcessor):
         logger.info(f"[reframe:{record_id}] {len(scenes)} scenes from Gemini")
         return scenes
 
-    def _run_mediapipe(self, record_id, src_path, sample_fps: float = 0.5):
-        """Step 3b: MediaPipe face/pose detection + tracking."""
-        from mediapipe_detection import scan_video_faces, track_faces
-
-        logger.info(f"[reframe:{record_id}] MediaPipe scanning at {sample_fps}fps...")
-        frames_data = scan_video_faces(src_path, sample_fps=sample_fps)
-        tracked = track_faces(frames_data)
-        logger.info(f"[reframe:{record_id}] MediaPipe: {len(tracked)} tracked frames")
-        return tracked
-
     def _upload_and_encode(self, record, record_id, out_path, probe):
         """Step 5-6: Upload to GCS and transcode."""
         from reframe_filters import OUTPUT_CANVAS
@@ -648,6 +647,7 @@ class ReframeProcessor(JobProcessor):
             intermediate_uri,
             has_audio=has_audio,
             out_h=out_h,
+            fps=probe.get("fps") or 0.0,
         )
         self._poll_transcoder(record_id, job_name)
         accumulate_transcoder_cost("reframe", record_id, probe["duration"] / 60.0)

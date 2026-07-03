@@ -36,7 +36,10 @@ AV_SYNC = (0.30, 0.10)
 FRAMED_ACTIVE = (0.60, 0.40)
 
 EDGE_EPS = 0.005  # ignore sub-half-percent clipping (rounding noise)
-JUMP_FRAC = 0.15  # adjacent-keypoint x jump above this = a crop jump
+JUMP_FRAC = 0.15  # x discontinuity above this = a crop jump
+# An x move above JUMP_FRAC completed faster than this reads as a glitch; slower
+# is a deliberate pan (attach_keypoints eases mid-shot re-frames over ~0.4s).
+JUMP_MIN_SEC = 0.25
 ACTIVITY_HI = SPEAKER_MIN_ACTIVITY  # windowed MAR stdev above this = "talking"
 # Local mouth-movement is measured over a TIME radius, not a sample COUNT: detection
 # sampling rate varies (sample_fps) and a face can appear intermittently, so a fixed
@@ -244,6 +247,8 @@ def evaluate(
         framed_tids = [
             c.get("track_id") for c in crops if c.get("track_id") is not None
         ]
+        for c in crops:  # a keep-both crop frames several people (track_ids)
+            framed_tids.extend(c.get("track_ids") or [])
         framed_present = [tr for tr in tracks if tr.get("track_id") in framed_tids]
         framed_w = max((tr["w"] for tr in framed_present), default=0.0)
 
@@ -291,7 +296,11 @@ def evaluate(
             fl, frt = tr["x"] - tr["w"] / 2, tr["x"] + tr["w"] / 2
             if fl >= left - EDGE_EPS and frt <= right + EDGE_EPS:
                 subj_contained += 1
-            center_offsets.append(abs(tr["x"] - (left + right) / 2.0))
+            # Centering is only gradable where the crop HAS horizontal freedom:
+            # a full-width (16:9) window can't slide, so an off-center face
+            # there is the source's composition, not a framing miss.
+            if (right - left) < 1.0 - EDGE_EPS:
+                center_offsets.append(abs(tr["x"] - (left + right) / 2.0))
 
         # Goal 2: talker metrics over dialogue (multi-face MAR) frames.
         mouthed = [tr for tr in tracks if tr.get("mouth") is not None]
@@ -421,12 +430,22 @@ def evaluate(
         return tuple(ar) if ar else None  # split (None) is its own key
 
     ar_changes = sum(1 for a, b in zip(plan, plan[1:]) if _ar_key(a) != _ar_key(b))
+    # A "jump" is a near-instant reposition the viewer sees as a glitch: a big x
+    # move faster than JUMP_MIN_SEC inside a segment, or a discontinuity across
+    # a segment boundary that is NOT a real scene cut (the renderer hard-cuts
+    # between segments, so mid-shot boundary deltas are visible verbatim). A big
+    # move spread over ≥ JUMP_MIN_SEC is a deliberate pan, not a jump.
     crop_jumps = 0
+    prev_last_x = None
     for seg in plan:
         kps = seg["crops"][0].get("keypoints", []) if seg.get("crops") else []
-        for (_, x0, _), (_, x1, _) in zip(kps, kps[1:]):
-            if abs(x1 - x0) > JUMP_FRAC:
+        if kps and prev_last_x is not None and not seg.get("starts_at_cut", True):
+            if abs(kps[0][1] - prev_last_x) > JUMP_FRAC:
                 crop_jumps += 1
+        for (t0, x0, _), (t1, x1, _) in zip(kps, kps[1:]):
+            if abs(x1 - x0) > JUMP_FRAC and (t1 - t0) < JUMP_MIN_SEC:
+                crop_jumps += 1
+        prev_last_x = kps[-1][1] if kps else None
     stability = {
         "ar_changes_per_min": round(ar_changes / minutes, 2),
         "crop_jumps_per_min": round(crop_jumps / minutes, 2),

@@ -9,6 +9,7 @@ from reframe_decide import (  # noqa: E402
     _cluster_sample_secs,
     apply_verdicts,
     build_cluster_block,
+    harmonize_letterbox,
 )
 
 SRC_W, SRC_H = 1920, 1080
@@ -90,6 +91,59 @@ class TestApplyVerdicts:
         )
         assert changed == 0
         assert segs[0]["inner_ar"] == (9, 16)
+
+    def test_missing_coverage_falls_back_to_measured_band(self):
+        # Model says letterbox but omits `coverage` → use the measured band
+        # (facts.text_coverage), NOT a full-width 16:9 jump.
+        segs = [_esc_seg(coverage=0.55)]
+        changed = apply_verdicts(
+            segs,
+            [{"key": segs[0]["escalate"]["key"], "action": "letterbox"}],
+            SRC_W,
+            SRC_H,
+            None,
+        )
+        assert changed == 1
+        assert segs[0]["inner_ar"] == (1, 1)  # 0.55 fits 1:1, not 16:9
+
+    def test_letterbox_always_widens_at_least_one_rung(self):
+        # A small stated coverage maps back to the current tight rung — the
+        # verdict said letterbox, so it must widen SOMETHING, not silently no-op.
+        segs = [_esc_seg(coverage=0.2)]
+        changed = apply_verdicts(
+            segs,
+            [_v(segs[0]["escalate"]["key"], "letterbox", 0.3)],
+            SRC_W,
+            SRC_H,
+            None,
+        )
+        assert changed == 1
+        assert segs[0]["inner_ar"] == (4, 5)  # one rung looser than 9:16
+
+    def test_letterbox_on_loosest_rung_is_noop(self):
+        segs = [_esc_seg(inner_ar=(16, 9))]
+        changed = apply_verdicts(
+            segs, [_v(segs[0]["escalate"]["key"], "letterbox", 1.0)], SRC_W, SRC_H, None
+        )
+        assert changed == 0 and segs[0]["inner_ar"] == (16, 9)
+
+    def test_letterbox_converts_split_to_single(self):
+        # Stacked panels can't show a full-width caption — a letterbox verdict
+        # over a split shot falls back to one wide centered crop.
+        seg = _esc_seg(coverage=0.9)
+        seg["layout"] = "split"
+        seg["inner_ar"] = None
+        seg["crops"] = [
+            {"track_id": 1, "x_target": 0.25, "source": "split_top"},
+            {"track_id": 2, "x_target": 0.75, "source": "split_bottom"},
+        ]
+        segs = [seg]
+        changed = apply_verdicts(
+            segs, [_v(seg["escalate"]["key"], "letterbox", 0.9)], SRC_W, SRC_H, None
+        )
+        assert changed == 1
+        assert seg["layout"] == "single" and seg["inner_ar"] == (16, 9)
+        assert len(seg["crops"]) == 1 and seg["crops"][0]["source"] == "center"
 
 
 def _subject_seg(key="subject:0.3,0.7", chosen_tid=1):
@@ -320,6 +374,195 @@ class TestActiveSpeakerVerdicts:
         )
         assert changed == 1 and segs[0]["inner_ar"] == (16, 9)
         assert "full-frame graphic" in segs[0]["reason"]
+
+
+def _speaker_pair_seg(can_split=False):
+    """An active_speaker escalation that OFFERED keep_both (and maybe split)."""
+    facts = {
+        "candidates": [
+            {"track_id": 1, "x": 0.25, "w": 0.1, "frac": 1.0, "pos": "left"},
+            {"track_id": 2, "x": 0.75, "w": 0.1, "frac": 1.0, "pos": "right"},
+        ],
+        "n_faces": 2,
+        "pair": [1, 2],
+        "can_keep_both": True,
+    }
+    if can_split:
+        facts["can_split"] = True
+    return {
+        "start": 0.0,
+        "end": 4.0,
+        "inner_ar": (9, 16),
+        "layout": "single",
+        "reason": "9:16 — face",
+        "crops": [{"track_id": 1, "x_target": 0.25, "source": "face"}],
+        "trace": {"source": "face", "coverage": 0.316, "n_faces": 2},
+        "escalate": {
+            "kind": "active_speaker",
+            "key": "speaker:A:0.2,0.8",
+            "question": "who is speaking? (keep_both offered)",
+            "facts": facts,
+            "fallback": {"action": "follow", "subject": "left"},
+        },
+    }
+
+
+class TestKeepBothSplitVerdicts:
+    """#4 keep_both/split answers — a real two-shot conversation is framed as
+    both people, not forced to one centered speaker or a letterbox."""
+
+    def test_keep_both_frames_the_pair(self):
+        segs = [_speaker_pair_seg()]
+        changed = apply_verdicts(
+            segs,
+            [{"key": "speaker:A:0.2,0.8", "action": "keep_both"}],
+            SRC_W,
+            SRC_H,
+            None,
+        )
+        assert changed == 1
+        seg = segs[0]
+        assert seg["layout"] == "keep_both"
+        # span 0.2..0.8 (+face halves +margin) needs the full-width rung
+        assert seg["inner_ar"] == (16, 9)
+        assert len(seg["crops"]) == 1
+        assert seg["crops"][0]["source"] == "center"
+        assert abs(seg["crops"][0]["x_target"] - 0.5) < 1e-6
+        assert seg["trace"]["source"] == "gemini_keep_both"
+
+    def test_split_stacks_the_pair_when_offered(self):
+        segs = [_speaker_pair_seg(can_split=True)]
+        changed = apply_verdicts(
+            segs,
+            [{"key": "speaker:A:0.2,0.8", "action": "split"}],
+            SRC_W,
+            SRC_H,
+            None,
+        )
+        assert changed == 1
+        seg = segs[0]
+        assert seg["layout"] == "split" and seg["inner_ar"] is None
+        top, bot = seg["crops"]
+        assert top["track_id"] == 1 and top["source"] == "split_top"
+        assert bot["track_id"] == 2 and bot["source"] == "split_bottom"
+
+    def test_speaker_letterbox_uses_carried_text_band(self):
+        # The speaker question carried a text-band note (see _text_note); a
+        # letterbox answer without coverage widens to the measured band, not
+        # to full 16:9.
+        segs = [_speaker_pair_seg()]
+        segs[0]["escalate"]["facts"]["text_coverage"] = 0.55
+        changed = apply_verdicts(
+            segs,
+            [{"key": "speaker:A:0.2,0.8", "action": "letterbox"}],
+            SRC_W,
+            SRC_H,
+            None,
+        )
+        assert changed == 1
+        assert segs[0]["inner_ar"] == (1, 1)
+
+    def test_subject_choice_letterbox_widens(self):
+        # subject_choice can also carry a text-band note → honor letterbox.
+        segs = [_subject_seg()]
+        segs[0]["escalate"]["facts"]["text_coverage"] = 0.9
+        changed = apply_verdicts(
+            segs,
+            [{"key": segs[0]["escalate"]["key"], "action": "letterbox"}],
+            SRC_W,
+            SRC_H,
+            None,
+        )
+        assert changed == 1
+        assert segs[0]["inner_ar"] == (16, 9)
+
+    def test_split_without_offer_degrades_to_keep_both(self):
+        # The split gates didn't pass (planner never offered it) → the safe
+        # reading of a split answer is keep-both in one wide crop.
+        segs = [_speaker_pair_seg(can_split=False)]
+        changed = apply_verdicts(
+            segs,
+            [{"key": "speaker:A:0.2,0.8", "action": "split"}],
+            SRC_W,
+            SRC_H,
+            None,
+        )
+        assert changed == 1
+        assert segs[0]["layout"] == "keep_both"
+
+
+def _shot_seg(start, end, source, inner_ar, text=0.4, nf=1, at_cut=False):
+    return {
+        "start": start,
+        "end": end,
+        "inner_ar": inner_ar,
+        "layout": "single",
+        "reason": "r",
+        "crops": [{"track_id": 1, "x_target": 0.5, "source": "face"}],
+        "trace": {"source": source, "text_measured": text, "n_faces": nf},
+        "starts_at_cut": at_cut,
+    }
+
+
+class TestHarmonizeLetterbox:
+    """A text letterbox that covers part of a shot is extended to same-shot
+    neighbors that also measured text — no bars popping mid-shot."""
+
+    def test_extends_forward_within_shot(self):
+        segs = [
+            _shot_seg(0, 5, "gemini_text", (16, 9), at_cut=True),
+            _shot_seg(5, 10, "face", (9, 16)),  # band dipped; same shot
+        ]
+        assert harmonize_letterbox(segs, SRC_W, SRC_H) == 1
+        assert segs[1]["inner_ar"] == (16, 9)
+        assert segs[1]["trace"]["source"] == "gemini_text"
+
+    def test_stops_at_real_cut(self):
+        segs = [
+            _shot_seg(0, 5, "gemini_text", (16, 9), at_cut=True),
+            _shot_seg(5, 10, "face", (9, 16), at_cut=True),  # new shot
+        ]
+        assert harmonize_letterbox(segs, SRC_W, SRC_H) == 0
+        assert segs[1]["inner_ar"] == (9, 16)
+
+    def test_stops_at_textless_cell(self):
+        segs = [
+            _shot_seg(0, 5, "gemini_text", (16, 9), at_cut=True),
+            _shot_seg(5, 10, "face", (9, 16), text=0.0),  # no text here
+            _shot_seg(10, 15, "face", (9, 16)),  # ...so this is not reached
+        ]
+        assert harmonize_letterbox(segs, SRC_W, SRC_H) == 0
+        assert segs[1]["inner_ar"] == (9, 16) and segs[2]["inner_ar"] == (9, 16)
+
+    def test_extends_backward_and_respects_faceness(self):
+        segs = [
+            _shot_seg(0, 5, "face", (9, 16), nf=0, at_cut=True),  # graphic cell
+            _shot_seg(5, 10, "gemini_text", (16, 9), nf=1),
+        ]
+        # face/no-face state differs → not extended backward
+        assert harmonize_letterbox(segs, SRC_W, SRC_H) == 0
+        assert segs[0]["inner_ar"] == (9, 16)
+
+    def test_bridges_a_band_dip_between_letterboxed_cells(self):
+        # The middle cell's band dipped below the persistence floor (measures
+        # 0.0) but the same caption is letterboxed on both sides — bridging it
+        # stops the bars flickering out and back mid-caption.
+        segs = [
+            _shot_seg(0, 5, "gemini_text", (16, 9), at_cut=True),
+            _shot_seg(5, 10, "face", (9, 16), text=0.0),  # the dip
+            _shot_seg(10, 15, "gemini_text", (16, 9)),
+        ]
+        assert harmonize_letterbox(segs, SRC_W, SRC_H) == 1
+        assert segs[1]["inner_ar"] == (16, 9)
+
+    def test_dip_before_a_real_cut_not_bridged(self):
+        segs = [
+            _shot_seg(0, 5, "gemini_text", (16, 9), at_cut=True),
+            _shot_seg(5, 10, "face", (9, 16), text=0.0),
+            _shot_seg(10, 15, "gemini_text", (16, 9), at_cut=True),  # new shot
+        ]
+        assert harmonize_letterbox(segs, SRC_W, SRC_H) == 0
+        assert segs[1]["inner_ar"] == (9, 16)
 
 
 class TestClusterSampleSecs:

@@ -13,8 +13,8 @@
           },
           "action": {
             "type": "string",
-            "enum": ["letterbox", "crop", "follow"],
-            "description": "For a text decision: letterbox = keep full width so the side text/graphics stays in frame; crop = follow the speaker (band is just background). For a subject decision: follow = frame the chosen person (see `subject`)."
+            "enum": ["letterbox", "crop", "follow", "keep_both", "split"],
+            "description": "For a text decision: letterbox = keep full width so the side text/graphics stays in frame; crop = follow the speaker (band is just background). For a subject/speaker decision: follow = frame the chosen person (see `subject`). For a speaker decision that offers it: keep_both = frame both people of a genuine two-shot conversation together; split = stack the two as panels (only when offered)."
           },
           "coverage": {
             "type": "number",

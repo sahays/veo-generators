@@ -4,7 +4,7 @@ All hardcoded rates must live here. Verified against Google Cloud pricing
 pages in April 2026. See docstring on each rate for the source.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
 
@@ -78,13 +78,19 @@ GEMINI_FLASH_3 = TextModelRate(
 )
 
 GEMINI_FLASH_LITE_31 = TextModelRate(
-    model_id="gemini-3.1-flash-lite-preview",
+    model_id="gemini-3.1-flash-lite",
     label="Gemini 3.1 Flash Lite",
     tiers=(
         TokenTier(
             threshold_tokens=None, input_per_token=0.25e-6, output_per_token=1.5e-6
         ),
     ),
+)
+# Pre-GA id, same rates — still referenced by existing env config
+# (e.g. GEMINI_AGENT_ORCHESTRATOR). Unknown ids fall back to PRO pricing in
+# cost_for_text, so both ids must resolve here.
+GEMINI_FLASH_LITE_31_PREVIEW = replace(
+    GEMINI_FLASH_LITE_31, model_id="gemini-3.1-flash-lite-preview"
 )
 
 GEMINI_25_PRO = TextModelRate(
@@ -175,6 +181,7 @@ TEXT_MODELS: dict[str, TextModelRate] = {
         GEMINI_PRO_3,
         GEMINI_FLASH_3,
         GEMINI_FLASH_LITE_31,
+        GEMINI_FLASH_LITE_31_PREVIEW,
         GEMINI_25_PRO,
         GEMINI_25_FLASH,
         GEMINI_25_FLASH_LITE,

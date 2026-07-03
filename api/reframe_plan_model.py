@@ -43,10 +43,10 @@ class EscalationKind(str, Enum):
     TEXT_PRESENCE = "text_presence"
     SUBJECT_CHOICE = "subject_choice"
     ACTIVE_SPEAKER = "active_speaker"
-    KEEP_BOTH = "keep_both"
-    SPLIT = "split"
     NO_SUBJECT = "no_subject"
-    PERSON_WIDEN = "person_widen"
+    # Was missing while never-emitted kinds (keep_both/split/person_widen) were
+    # listed — stored #7b escalations parsed/EXPLAINed as NO_SUBJECT.
+    WEAK_SUBJECT = "weak_subject"
 
 
 class DecisionStatus(str, Enum):

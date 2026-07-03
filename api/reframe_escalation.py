@@ -22,10 +22,16 @@ Pass 2 (the actual model call) consumes `plan_batches(...)["batches"]` and runs
 them sequentially with exponential backoff. This module makes NO network calls.
 """
 
+import os
 from typing import List, Optional
 
 # The decision model for every escalated call (multimodal: facts + thumbnails).
-DECISION_MODEL = "gemini-3.5-flash"
+# gemini-3.1-flash-lite-preview: A/B'd against gemini-3.5-flash on the three
+# reference videos (2026-07-03) — 88% verdict agreement, equal-or-better eval
+# metrics, 88% cheaper Pass-2 ($0.62 → $0.08 across the three). Overridable per
+# environment so models can be re-A/B'd without a deploy (the local harness in
+# the project memory sets REFRAME_DECISION_MODEL on the worker container).
+DECISION_MODEL = os.getenv("REFRAME_DECISION_MODEL", "gemini-3.1-flash-lite")
 
 # Batching guard. Calls run SEQUENTIALLY (one at a time, with backoff) — multiple
 # calls per video are fine, parallel fan-out is what trips 429s. Each request
@@ -40,16 +46,15 @@ MAX_POINTS_PER_CALL = 5
 MAX_CALLS_PER_VIDEO = 30
 MAX_THUMBS_PER_CLUSTER = 3  # representative frames a clustered question sends
 
-# Known escalation kinds (one per fuzzy decision point in reframe_plan).
+# Known escalation kinds (one per fuzzy decision point in reframe_plan). NOTE:
+# keep-both/split are verdict ACTIONS offered inside the active_speaker
+# question, not standalone kinds.
 KINDS = (
     "text_presence",  # #1 wide band: meaningful side text/graphics, or background?
     "subject_choice",  # #3 which of several comparable faces is THE subject?
-    "active_speaker",  # #4 who is talking when mouth-variance is inconclusive?
-    "keep_both",  # #5 two important people, or one subject + a bystander?
-    "split",  # #6 genuine static two-person dialogue worth stacking?
+    "active_speaker",  # #4 who is talking? (may answer keep_both/split/letterbox)
     "no_subject",  # #7 nothing detected — what's the subject (b-roll/graphics)?
     "weak_subject",  # #7b sole low-confidence face — real person, or a graphic/logo?
-    "person_widen",  # #8 borderline wide body — real reason to widen?
 )
 
 

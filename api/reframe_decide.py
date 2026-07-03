@@ -16,7 +16,14 @@ import json
 import logging
 from typing import List
 
-from reframe_plan import pick_rung, rung_coverage
+from reframe_plan import (
+    COVERAGE_MARGIN,
+    RUNGS,
+    _group_crop,
+    _seg_has_face,
+    pick_rung,
+    rung_coverage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +53,15 @@ DECISION_INTRO = (
     "actually see.\n"
     "SUBJECT decisions (key 'subject:…'): action=follow and `subject` = left | "
     "center | right — the one person to track (whoever is speaking / the focus).\n"
-    "SPEAKER decisions (key 'speaker:…') — only ONE person is talking: action=follow "
-    "and `subject` = left | center | right for the person who is SPEAKING (open / "
-    "moving mouth, mid-gesture, others listening); this person will be centered. If "
-    "NO one on screen is actually talking (a static poster, key art, title card, or "
-    "graphic with off-screen narration), answer action=letterbox to keep it full "
-    "width instead.\n"
+    "SPEAKER decisions (key 'speaker:…') — usually ONE person is talking: "
+    "action=follow and `subject` = left | center | right for the person who is "
+    "SPEAKING (open / moving mouth, mid-gesture, others listening); this person "
+    "will be centered. If NO one on screen is actually talking (a static poster, "
+    "key art, title card, or graphic with off-screen narration), answer "
+    "action=letterbox to keep it full width instead. If the point's question "
+    "offers it and this is a genuine two-shot conversation where both people "
+    "matter equally, action=keep_both frames both together; action=split (only "
+    "when offered) stacks the two as panels.\n"
     "NO-SUBJECT decisions (key 'nosubj:…') — no person is in frame: action=letterbox "
     "if it's a full-frame graphic/slide (chart, map, UI, title) that the darkened "
     "crop would cut off, else crop for plain scenery/b-roll.\n"
@@ -207,15 +217,40 @@ def apply_verdicts(
             continue  # no verdict (dropped over budget / call failed) → fallback
         seg["escalate"] = {**esc, "verdict": v}
         kind = esc["kind"]
-        # active_speaker can answer "letterbox" too: it's a static poster / key art
-        # with off-screen narration, not a real on-screen talker → keep it wide.
+        ladder = rungs or RUNGS
+        # active_speaker/subject_choice can answer "letterbox" too: a static
+        # poster with off-screen narration, or a measured text band the question
+        # flagged (see _text_note) that matters more than centering one person.
         if (
-            kind in ("text_presence", "no_subject", "weak_subject", "active_speaker")
+            kind
+            in (
+                "text_presence",
+                "no_subject",
+                "weak_subject",
+                "active_speaker",
+                "subject_choice",
+            )
             and v.get("action") == "letterbox"
         ):
             cov = float(v.get("coverage") or esc["facts"].get("text_coverage") or 1.0)
-            new_ar = pick_rung(min(1.0, cov), src_w, src_h, None, rungs)
-            if new_ar != seg.get("inner_ar"):
+            new_ar = pick_rung(min(1.0, cov), src_w, src_h, ladder)
+            cur = seg.get("inner_ar")
+            cur = tuple(cur) if cur else None
+            # A letterbox verdict must actually WIDEN something: a small stated
+            # coverage can map back to the segment's current (or a tighter) rung,
+            # silently no-opping the verdict. Bump at least one rung looser than
+            # current (there is nothing to widen past the last rung).
+            if cur in ladder:
+                idx = max(ladder.index(new_ar), ladder.index(cur) + 1)
+                new_ar = ladder[min(idx, len(ladder) - 1)]
+            if new_ar != cur:
+                if seg.get("layout") == "split":
+                    # A letterbox over a split shot means "keep the full width" —
+                    # stacked panels can't show it; fall back to one wide crop.
+                    seg["layout"] = "single"
+                    seg["crops"] = [
+                        {"track_id": None, "x_target": 0.5, "source": "center"}
+                    ]
                 seg["inner_ar"] = new_ar
                 label = "side text" if kind == "text_presence" else "full-frame graphic"
                 seg["reason"] = f"gemini: letterbox for {label} (cov {cov:.2f})"
@@ -224,9 +259,23 @@ def apply_verdicts(
                     trace["chosen_ar"] = list(new_ar)
                     trace["coverage"] = round(rung_coverage(new_ar, src_w, src_h), 3)
                     trace["trigger"] = seg["reason"]
+                    trace["layout"] = seg["layout"]
                     trace["source"] = (
                         "gemini_text" if kind == "text_presence" else "gemini_graphic"
                     )
+                changed += 1
+        elif kind == "active_speaker" and v.get("action") in ("keep_both", "split"):
+            if _apply_keep_both(
+                seg,
+                v["action"],
+                src_w,
+                src_h,
+                ladder,
+                tracked_frames,
+                track_times,
+                person_frames,
+                person_times,
+            ):
                 changed += 1
         elif kind in ("subject_choice", "active_speaker") and v.get("subject"):
             if _apply_subject(
@@ -239,6 +288,161 @@ def apply_verdicts(
                 kind,
             ):
                 changed += 1
+    return changed
+
+
+def _apply_keep_both(
+    seg,
+    action,
+    src_w,
+    src_h,
+    rungs,
+    tracked_frames,
+    track_times,
+    person_frames,
+    person_times,
+):
+    """Convert a speaker-escalated segment to keep_both (or split) per Gemini.
+
+    The escalation offered these options only when the pair geometry supported
+    them (`_maybe_speaker_escalation`); the candidates' measured x/w drive the
+    span exactly like the deterministic keep-both path. Returns True on change.
+    """
+    facts = (seg.get("escalate") or {}).get("facts") or {}
+    cands = facts.get("candidates") or []
+    pair_ids = facts.get("pair") or []
+    pair = [c for c in cands if c["track_id"] in pair_ids]
+    if len(pair) != 2:
+        pair = sorted(cands, key=lambda c: -(c.get("frac") or 0.0))[:2]
+    if len(pair) < 2:
+        return False
+    a, b = sorted(pair, key=lambda c: c["x"])
+    if action == "split" and facts.get("can_split"):
+        seg["layout"] = "split"
+        seg["inner_ar"] = None
+        seg["crops"] = [
+            {"track_id": a["track_id"], "x_target": a["x"], "source": "split_top"},
+            {"track_id": b["track_id"], "x_target": b["x"], "source": "split_bottom"},
+        ]
+        seg["reason"] = "gemini: split two-person dialogue"
+        src = "gemini_split"
+    else:
+        # keep_both — also the safe reading of a `split` answer the planner never
+        # offered (the split gates didn't pass; keep both in one wide crop).
+        crop, span = _group_crop([a, b])
+        seg["layout"] = "keep_both"
+        seg["inner_ar"] = pick_rung(
+            min(1.0, span + COVERAGE_MARGIN), src_w, src_h, rungs
+        )
+        seg["crops"] = [crop]
+        seg["reason"] = "gemini: keep both speakers"
+        src = "gemini_keep_both"
+    trace = seg.get("trace")
+    if trace:
+        trace["trigger"] = seg["reason"]
+        trace["source"] = src
+        trace["layout"] = seg["layout"]
+        trace["chosen_ar"] = list(seg["inner_ar"]) if seg["inner_ar"] else None
+    if tracked_frames is not None:
+        from reframe_plan import _attach_focal_points
+
+        _attach_focal_points(
+            seg, tracked_frames, track_times, person_frames or [], person_times or []
+        )
+    return True
+
+
+def harmonize_letterbox(segments, src_w, src_h, rungs=None) -> int:
+    """Extend a Pass-2 TEXT letterbox across same-shot neighbors. Returns # widened.
+
+    An escalation only fires for the cells whose measured band stayed above the
+    width floor; a neighboring cell of the SAME shot where the band briefly
+    dipped keeps its tight rung — so the verdict's bars pop on/off mid-shot at a
+    subdivision boundary. Walk outward from each gemini_text segment while the
+    boundary is not a real cut (`starts_at_cut`) and the neighbor also measured
+    text (nonzero band) with the same face/no-face state, and widen it to the
+    verdict's rung. Stops at the first non-matching cell, so the rung change
+    lands on a content boundary instead of an arbitrary 5s grid line.
+    """
+    ladder = rungs or RUNGS
+    changed = 0
+    n = len(segments)
+
+    def _widen(nb, target, reason):
+        cur = nb.get("inner_ar")
+        cur = tuple(cur) if cur else None
+        if cur not in ladder or ladder.index(cur) >= ladder.index(target):
+            return False
+        nb["inner_ar"] = target
+        nb["reason"] = reason
+        trace = nb.get("trace")
+        if trace:
+            trace["chosen_ar"] = list(target)
+            trace["coverage"] = round(rung_coverage(target, src_w, src_h), 3)
+            trace["trigger"] = reason
+            trace["source"] = "gemini_text"
+        return True
+
+    for i, seg in enumerate(segments):
+        if (seg.get("trace") or {}).get("source") != "gemini_text":
+            continue
+        if not seg.get("inner_ar"):
+            continue
+        target = tuple(seg["inner_ar"])
+        if target not in ladder:
+            continue
+        reason = f"{seg.get('reason', 'gemini: letterbox')} (extended across shot)"
+        # boundary between segments[k-1] and segments[k] is segments[k]'s flag
+        k = i + 1
+        while k < n and not segments[k].get("starts_at_cut", True):
+            nb = segments[k]
+            if (
+                nb.get("layout") == "split"
+                or _seg_has_face(nb) != _seg_has_face(seg)
+                or (nb.get("trace") or {}).get("text_measured", 0.0) <= 0.0
+            ):
+                break
+            if _widen(nb, target, reason):
+                changed += 1
+            k += 1
+        k = i - 1
+        while k >= 0 and not segments[k + 1].get("starts_at_cut", True):
+            nb = segments[k]
+            if (
+                nb.get("layout") == "split"
+                or _seg_has_face(nb) != _seg_has_face(seg)
+                or (nb.get("trace") or {}).get("text_measured", 0.0) <= 0.0
+            ):
+                break
+            if _widen(nb, target, reason):
+                changed += 1
+            k -= 1
+
+    # Sandwich pass: a cell whose band briefly DIPPED below the persistence
+    # floor measures 0.0 (so the walks above stop at it), yet sits between two
+    # letterboxed cells of the same caption — leaving it tight makes the bars
+    # flicker out and back mid-caption. Widen a same-shot, same-face cell whose
+    # both neighbors carry the same gemini_text rung.
+    def _is_text(s):
+        return (s.get("trace") or {}).get("source") == "gemini_text" and s.get(
+            "inner_ar"
+        )
+
+    for i in range(1, n - 1):
+        mid, a, b = segments[i], segments[i - 1], segments[i + 1]
+        if not (_is_text(a) and _is_text(b)) or _is_text(mid):
+            continue
+        if tuple(a["inner_ar"]) != tuple(b["inner_ar"]):
+            continue
+        if mid.get("starts_at_cut", True) or b.get("starts_at_cut", True):
+            continue  # a real cut between them — not the same caption
+        if mid.get("layout") == "split" or _seg_has_face(mid) != _seg_has_face(a):
+            continue
+        target = tuple(a["inner_ar"])
+        if target in ladder and _widen(
+            mid, target, f"{a.get('reason', 'gemini: letterbox')} (bridged dip)"
+        ):
+            changed += 1
     return changed
 
 
@@ -264,7 +468,15 @@ def _apply_subject(
     elif side == "right":
         chosen = max(cands, key=lambda c: c["x"])
     else:
-        chosen = min(cands, key=lambda c: abs(c["x"] - 0.5))
+        # "center" must mean the same person the label meant. Labels fall back
+        # to rank-by-x when position buckets collide (e.g. three faces all left
+        # of frame), so pick the middle-by-rank candidate when the count is odd;
+        # nearest-0.5 only breaks the tie for even counts.
+        ordered = sorted(cands, key=lambda c: c["x"])
+        if len(ordered) % 2 == 1:
+            chosen = ordered[len(ordered) // 2]
+        else:
+            chosen = min(ordered, key=lambda c: abs(c["x"] - 0.5))
     crop = seg["crops"][0]
     if crop.get("track_id") == chosen["track_id"]:
         return False

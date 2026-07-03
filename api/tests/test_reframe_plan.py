@@ -82,13 +82,11 @@ class TestPickRung:
         # but a genuinely wide requirement still letterboxes
         assert pick_rung(0.75, SRC_W, SRC_H) == (16, 9)
 
-    def test_hysteresis_keeps_prev_when_it_still_fits(self):
-        # required fits in 4:5; prev is the looser 1:1 → stay to avoid flip-flop.
-        assert pick_rung(0.40, SRC_W, SRC_H, prev=(1, 1)) == (1, 1)
-
-    def test_hysteresis_still_tightens_when_needed(self):
-        # prev was loose but a much tighter rung now suffices → tighten.
-        assert pick_rung(0.10, SRC_W, SRC_H, prev=(1, 1)) == (9, 16)
+    def test_always_returns_the_ideal_rung(self):
+        # Temporal damping is assign_rungs' job now — pick_rung is purely the
+        # per-segment ideal.
+        assert pick_rung(0.40, SRC_W, SRC_H) == (4, 5)
+        assert pick_rung(0.10, SRC_W, SRC_H) == (9, 16)
 
 
 class TestPickRung34:
@@ -104,8 +102,14 @@ class TestPickRung34:
         for req in (0.0, 0.2, 0.42, 0.55, 0.9, 1.0):
             assert pick_rung(req, SRC_W, SRC_H, rungs=self.R34) == (3, 4)
 
-    def test_hysteresis_is_noop_with_one_rung(self):
-        assert pick_rung(0.9, SRC_W, SRC_H, prev=(3, 4), rungs=self.R34) == (3, 4)
+    def test_single_rung_ladder_dp_is_noop(self):
+        from reframe_plan import assign_rungs
+
+        cells = [
+            {"C": c, "dur": 3.0, "starts_at_cut": True, "split": False}
+            for c in (0.2, 0.9, 0.5)
+        ]
+        assert assign_rungs(cells, SRC_W, SRC_H, self.R34) == [(3, 4)] * 3
 
 
 # ---------------------------------------------------------------------------
@@ -177,8 +181,21 @@ class TestTextEscalationPredicate:
         assert self._esc(0.40, 0.62) is None
 
     def test_band_below_wide_threshold_no_escalation(self):
-        # cov < TEXT_WIDE_MIN (0.50): not a persistent wide band.
-        assert self._esc(0.05, 0.95, cov=0.3) is None
+        # cov < TEXT_WIDE_MIN (0.30): not a significant band.
+        assert self._esc(0.05, 0.95, cov=0.2) is None
+
+    def test_narrow_caption_escalates(self):
+        # A 35%-wide lower-third at the frame edge is real information — it must
+        # reach Gemini (the old 0.50 floor silently cropped it).
+        e = self._esc(0.02, 0.37, cov=0.35)
+        assert e is not None and e["facts"]["check_side"] == "left"
+
+    def test_facts_carry_measured_band(self):
+        # apply_verdicts falls back to the measured coverage when the model
+        # omits `coverage` — the fact must actually be populated.
+        e = self._esc(0.05, 0.90, cov=0.85)
+        assert e["facts"]["text_coverage"] == 0.85
+        assert e["facts"]["band"] == [0.05, 0.90]
 
     def test_band_left_only(self):
         e = self._esc(0.05, 0.55)  # pokes past the left edge, not the right
@@ -272,6 +289,184 @@ class TestMergeShort:
         assert out[0]["end"] == 5.5
 
 
+class TestMergeShortContentGates:
+    """A sub-dwell fold must never cross a content change (a <2s title card after
+    a talking head used to inherit the speaker's crop and lose its escalation)."""
+
+    def _seg(self, start, end, nf, esc=None, ar=(9, 16)):
+        return {
+            "start": start,
+            "end": end,
+            "inner_ar": ar,
+            "layout": "single",
+            "crops": [{"track_id": 1 if nf else None, "x_target": 0.5}],
+            "trace": {"n_faces": nf},
+            "reason": "",
+            "escalate": esc,
+        }
+
+    def _graphic_esc(self, t=5.0):
+        return {"kind": "no_subject", "key": f"nosubj:{t}"}
+
+    def test_short_graphic_not_folded_into_speaker(self):
+        # 1.5s no-face graphic after a 5s face shot: content differs → standalone.
+        segs = [
+            self._seg(0, 5, 1),
+            self._seg(5, 6.5, 0, esc=self._graphic_esc()),
+        ]
+        out = _merge_short(segs, 2.0)
+        assert len(out) == 2
+        assert out[1]["escalate"]["kind"] == "no_subject"  # escalation survives
+
+    def test_short_graphic_folds_forward_into_matching_shot(self):
+        # 1.5s graphic cell then a longer cell of the SAME graphic (both no-face,
+        # both no_subject): the short slice folds forward, not backward across
+        # the cut into the speaker.
+        segs = [
+            self._seg(0, 5, 1),
+            self._seg(5, 6.5, 0, esc=self._graphic_esc(5.0)),
+            self._seg(6.5, 11, 0, esc=self._graphic_esc(6.5)),
+        ]
+        out = _merge_short(segs, 2.0)
+        assert len(out) == 2
+        assert out[1]["start"] == 5 and out[1]["end"] == 11
+        assert out[1]["escalate"] is not None
+
+    def test_forward_fold_keeps_looser_rung(self):
+        # The folded short slice needed a looser rung — never crop it out.
+        segs = [
+            self._seg(0, 5, 1),
+            self._seg(5, 6.5, 0, esc=self._graphic_esc(5.0), ar=(16, 9)),
+            self._seg(6.5, 11, 0, esc=self._graphic_esc(6.5), ar=(9, 16)),
+        ]
+        out = _merge_short(segs, 2.0)
+        assert len(out) == 2
+        assert out[1]["inner_ar"] == (16, 9)
+
+    def test_escalation_not_overwritten_by_folded_slice(self):
+        # Prev keeps its own escalation when the folded compatible slice has the
+        # same signature (no_subject folds by kind).
+        segs = [
+            self._seg(0, 5, 0, esc=self._graphic_esc(0.0)),
+            self._seg(5, 6.5, 0, esc=self._graphic_esc(5.0)),
+        ]
+        out = _merge_short(segs, 2.0)
+        assert len(out) == 1
+        assert out[0]["escalate"]["key"] == "nosubj:0.0"
+
+    def test_short_speaker_cell_still_folds_backward(self):
+        # Content-compatible sub-dwell folds keep the old behavior.
+        segs = [self._seg(0, 5, 1), self._seg(5, 6.5, 1)]
+        out = _merge_short(segs, 2.0)
+        assert len(out) == 1 and out[0]["end"] == 6.5
+
+    def test_mid_shot_detector_dropout_bridges(self):
+        # A sub-dwell "no detection" slice whose boundary is NOT a real cut is
+        # the detector dropping the face for a beat, not a real cutaway — it
+        # folds into its own shot despite the face↔no-face change (rf-udcpl2hd).
+        segs = [self._seg(0, 5, 1), self._seg(5, 5.7, 0, esc=self._graphic_esc())]
+        segs[1]["starts_at_cut"] = False  # subdivision / turn boundary, same shot
+        out = _merge_short(segs, 2.0)
+        assert len(out) == 1 and out[0]["end"] == 5.7
+        # ...and the speaker shot keeps its own framing (n_faces stays 1)
+        assert out[0]["trace"]["n_faces"] == 1
+
+
+class TestRungDP:
+    """Global rung assignment: flip-flops damped, no chaining, mid-shot stable."""
+
+    def _cells(self, spec):
+        # spec: list of (required_coverage, dur, starts_at_cut)
+        return [
+            {"C": c, "dur": d, "starts_at_cut": cut, "split": False}
+            for c, d, cut in spec
+        ]
+
+    def test_sustained_waste_retightens_at_the_cut(self):
+        # Wide shot then two long narrow shots: no reason to hold 4:5 — bars
+        # come off at the first cut (the ashley-trip chain, dead by construction).
+        from reframe_plan import assign_rungs
+
+        got = assign_rungs(
+            self._cells([(0.42, 5, True), (0.2, 5, True), (0.2, 5, True)]),
+            SRC_W,
+            SRC_H,
+        )
+        assert got == [(4, 5), (9, 16), (9, 16)]
+
+    def test_true_flip_flop_is_damped(self):
+        # A-B-A shot pattern with a SHORT middle shot: holding 4:5 through it
+        # avoids bars popping off and back on within two seconds.
+        from reframe_plan import assign_rungs
+
+        got = assign_rungs(
+            self._cells([(0.42, 5, True), (0.2, 2, True), (0.42, 5, True)]),
+            SRC_W,
+            SRC_H,
+        )
+        assert got == [(4, 5), (4, 5), (4, 5)]
+
+    def test_mid_shot_widening_beats_bar_pops(self):
+        # One long take subdivided into cells; the middle cell needs 4:5 (two
+        # faces walk in). Changing bars twice MID-SHOT is worse than holding
+        # the whole take at 4:5.
+        from reframe_plan import assign_rungs
+
+        got = assign_rungs(
+            self._cells([(0.2, 5, True), (0.42, 2, False), (0.2, 5, False)]),
+            SRC_W,
+            SRC_H,
+        )
+        assert got == [(4, 5), (4, 5), (4, 5)]
+
+    def test_coverage_is_never_sacrificed(self):
+        # A cell whose content needs full width must get 16:9 regardless of
+        # what stability would prefer.
+        from reframe_plan import assign_rungs
+
+        got = assign_rungs(
+            self._cells([(0.2, 5, True), (0.95, 2, False), (0.2, 5, False)]),
+            SRC_W,
+            SRC_H,
+        )
+        assert got[1] == (16, 9)
+
+    def test_split_cells_break_the_chain(self):
+        from reframe_plan import assign_rungs
+
+        cells = self._cells([(0.42, 5, True), (0.2, 5, True)])
+        cells.insert(1, {"C": 1.0, "dur": 4, "starts_at_cut": True, "split": True})
+        got = assign_rungs(cells, SRC_W, SRC_H)
+        assert got[1] is None
+        assert got[2] == (9, 16)  # no transition pressure across the split
+
+    def test_reconcile_end_to_end_no_chaining(self):
+        # Same scenario as the old greedy-hysteresis chain test, through the
+        # full planner: the wide shot's rung must not leak past the next cut.
+        tracked = (
+            [_frame(float(t), [_tr(1, 0.35), _tr(2, 0.62)]) for t in range(0, 5)]
+            + [_frame(float(t), [_tr(3, 0.5)]) for t in range(5, 10)]
+            + [_frame(float(t), [_tr(4, 0.5)]) for t in range(10, 15)]
+        )
+        plan = reconcile(
+            [], tracked, cuts=[5.0, 10.0], src_w=SRC_W, src_h=SRC_H, duration=15.0
+        )
+        assert plan[0]["inner_ar"] == (4, 5)  # earned: two-face span
+        assert all(s["inner_ar"] == (9, 16) for s in plan[1:])  # no leak
+
+
+class TestBoundaryHairlines:
+    def test_coincident_cuts_do_not_make_subframe_cells(self):
+        # A scene cut and a speaker-turn cut microseconds apart → one boundary.
+        bounds = _boundaries([3.6, 3.6004], 10.0)
+        assert all((e - s) > 0.05 for s, e in bounds), bounds
+
+    def test_cut_next_to_video_end_dropped(self):
+        bounds = _boundaries([9.97], 10.0)
+        assert bounds[-1][1] == 10.0
+        assert all((e - s) > 0.05 for s, e in bounds), bounds
+
+
 # ---------------------------------------------------------------------------
 # End-to-end reconcile
 # ---------------------------------------------------------------------------
@@ -328,14 +523,26 @@ class TestReconcile:
         assert plan[0]["layout"] == "single"
 
     def test_two_comparable_faces_escalate_subject(self):
-        # Two close, comparably-present faces, neither clearly speaking → the single-
-        # subject pick is ambiguous → escalate which-subject (#3/#4) to gemini-3.5.
+        # Comparably PRESENT but differently SIZED faces (not an equal pair),
+        # neither clearly speaking → the single-subject pick is ambiguous →
+        # escalate which-subject (#3/#4) to gemini-3.5.
         tracked = [
-            _frame(t, [_tr(1, 0.45, w=0.12), _tr(2, 0.55, w=0.12)]) for t in (0, 2, 4)
+            _frame(t, [_tr(1, 0.45, w=0.12), _tr(2, 0.55, w=0.05)]) for t in (0, 2, 4)
         ]
         plan = reconcile([], tracked, cuts=[], src_w=SRC_W, src_h=SRC_H, duration=6.0)
         pts = collect_escalation_points(plan)
         assert any(p["kind"] == "subject_choice" for p in pts)
+
+    def test_two_equal_faces_keep_both(self):
+        # PRODUCT RULE: equally present AND equally sized people are framed
+        # together — no single-subject pick, no escalation needed.
+        tracked = [
+            _frame(t, [_tr(1, 0.45, w=0.12), _tr(2, 0.55, w=0.12)]) for t in (0, 2, 4)
+        ]
+        plan = reconcile([], tracked, cuts=[], src_w=SRC_W, src_h=SRC_H, duration=6.0)
+        assert plan[0]["layout"] == "keep_both"
+        assert plan[0]["crops"][0]["track_ids"] == [1, 2]
+        assert not collect_escalation_points(plan)
 
     def test_merge_keeps_content_changes_separate(self):
         # A speaker shot and a full-screen graphic both plan to 9:16, but must NOT
@@ -615,20 +822,20 @@ class TestRobustness:
 
 
 def _ftrm(t, specs):
-    # specs: list of (track_id, x, mouth)
+    # specs: list of (track_id, x, mouth[, w])
     return {
         "time_sec": float(t),
         "tracks": [
             {
-                "track_id": tid,
-                "x": x,
+                "track_id": s[0],
+                "x": s[1],
                 "y": 0.45,
-                "w": 0.1,
+                "w": s[3] if len(s) > 3 else 0.1,
                 "h": 0.2,
                 "confidence": 0.9,
-                "mouth": m,
+                "mouth": s[2],
             }
-            for tid, x, m in specs
+            for s in specs
         ],
     }
 
@@ -649,7 +856,9 @@ class TestActiveSpeaker:
     def test_too_few_samples_returns_none(self):
         assert pick_active_speaker({1: [0.1, 0.5]}) is None
 
-    def test_reconcile_frames_speaker_not_keepboth(self):
+    def test_equal_pair_keeps_both_despite_clear_talker(self):
+        # PRODUCT RULE: equally prominent people are framed together even when
+        # one clearly talks — never push the equal listener out of frame.
         frames = [
             _ftrm(t, [(1, 0.30, self.TALK[t]), (2, 0.70, self.STILL[t])])
             for t in range(5)
@@ -660,6 +869,24 @@ class TestActiveSpeaker:
                 "end_sec": 5,
                 "scene_type": "dialogue",
                 "active_subject": "both",
+            }
+        ]
+        plan = reconcile(scenes, frames, cuts=[], src_w=1920, src_h=1080, duration=5.0)
+        assert plan[0]["layout"] in ("keep_both", "split")
+
+    def test_reconcile_frames_speaker_when_listener_smaller(self):
+        # A clearly-smaller background face is NOT an equal pair → follow the
+        # talker as before.
+        frames = [
+            _ftrm(t, [(1, 0.30, self.TALK[t], 0.12), (2, 0.70, self.STILL[t], 0.05)])
+            for t in range(5)
+        ]
+        scenes = [
+            {
+                "start_sec": 0,
+                "end_sec": 5,
+                "scene_type": "general",
+                "active_subject": "left",
             }
         ]
         plan = reconcile(scenes, frames, cuts=[], src_w=1920, src_h=1080, duration=5.0)
@@ -835,9 +1062,12 @@ class TestSplitLayout:
         plan = self._plan(self._frames(), _split_scene("general", "side_by_side"))
         assert plan[0]["layout"] == "split"
 
-    def test_close_together_is_single_not_split(self):
+    def test_close_together_is_keep_both_not_split(self):
+        # An equal close pair: one tight crop holds both (keep_both on the
+        # tightest rung) — stacking would be pointless.
         plan = self._plan(self._frames(x1=0.45, x2=0.55), _split_scene())
-        assert plan[0]["layout"] == "single"
+        assert plan[0]["layout"] == "keep_both"
+        assert plan[0]["inner_ar"] == (9, 16)  # span fits the full-bleed rung
 
     def test_moving_two_shot_keeps_both_not_split(self):
         # One subject drifts > SPLIT_MAX_MOTION → too busy to stack → keep_both.
@@ -857,10 +1087,20 @@ class TestSplitLayout:
         seg = self._plan(self._frames(), _split_scene("general"))[0]
         assert seg["layout"] == "keep_both"
 
-    def test_dominant_speaker_follows_single_not_split(self):
-        # If one mouth clearly dominates, follow that speaker instead of stacking.
+    def test_dominant_speaker_on_equal_pair_still_frames_both(self):
+        # PRODUCT RULE: a clear talker does not excuse losing an equally
+        # prominent listener — the equal pair splits (gates pass here).
         talk = [0.10, 0.45, 0.10, 0.50, 0.12]
         frames = [_ftrm(t, [(1, 0.25, talk[t]), (2, 0.75, 0.2)]) for t in range(5)]
+        seg = self._plan(frames, _split_scene())[0]
+        assert seg["layout"] == "split"
+
+    def test_dominant_speaker_follows_when_listener_smaller(self):
+        # Not an equal pair (listener clearly smaller) → follow the talker.
+        talk = [0.10, 0.45, 0.10, 0.50, 0.12]
+        frames = [
+            _ftrm(t, [(1, 0.25, talk[t], 0.12), (2, 0.75, 0.2, 0.05)]) for t in range(5)
+        ]
         seg = self._plan(frames, _split_scene())[0]
         assert seg["layout"] == "single"
         assert seg["crops"][0]["source"] == "speaker"
@@ -879,14 +1119,11 @@ class TestDialogueFromDiarization:
             {"speaker_id": "B", "start_sec": 2.0, "end_sec": 4.0},
         ]
 
-    def test_diarization_dialogue_centers_active_speaker(self):
-        # Speaker-centering now takes precedence over split: a two-speaker dialogue
-        # re-cuts at the turn and centers whoever is talking (single crop) instead of
-        # stacking both. Each turn carries an active_speaker escalation keyed by the
-        # dominant speaker, so the turns stay distinct. The 1 fps mouth signal can't
-        # reliably tell a talker from a poster, so the escalation always fires for
-        # multi-person speech and Gemini resolves it (follow a speaker, or letterbox
-        # if it's a graphic); fallback = most-visible.
+    def test_diarization_dialogue_keeps_equal_pair_together(self):
+        # PRODUCT RULE: an equal two-person dialogue is framed together
+        # (keep-both / split), not speaker-centered per turn — a centered crop
+        # would push the equally-prominent listener out of frame during every
+        # other turn. Identical turn cells re-merge into one steady segment.
         plan = reconcile(
             [],
             self._frames(),
@@ -896,12 +1133,30 @@ class TestDialogueFromDiarization:
             duration=4.0,
             speaker_segments=self._two_speakers(),
         )
+        assert all(seg["layout"] in ("keep_both", "split") for seg in plan)
+        assert len(plan) == 1  # same framing across the turn → merged back
+        assert not collect_escalation_points(plan)
+
+    def test_diarization_dialogue_unequal_pair_escalates_speaker(self):
+        # A dialogue where the second face is clearly smaller still runs the
+        # speaker machinery: escalate per turn (mouths ambiguous at 0.2 const),
+        # offering the poster escape (letterbox) too.
+        frames = [
+            _ftrm(t, [(1, 0.25, 0.2, 0.12), (2, 0.75, 0.2, 0.05)]) for t in range(5)
+        ]
+        plan = reconcile(
+            [],
+            frames,
+            cuts=[],
+            src_w=1920,
+            src_h=1080,
+            duration=4.0,
+            speaker_segments=self._two_speakers(),
+        )
         assert all(seg["layout"] == "single" for seg in plan)
-        # re-cut at the A→B turn (t=2.0) keeps two distinctly-keyed speaker segments
-        assert len(plan) == 2
+        assert len(plan) == 2  # re-cut at the A→B turn keeps distinct keys
         kinds = [p["escalate"]["kind"] for p in plan if p.get("escalate")]
         assert kinds == ["active_speaker", "active_speaker"]
-        # the escalation offers Gemini the poster escape (letterbox) too
         assert "letterbox" in plan[0]["escalate"]["question"].lower()
 
     def test_single_speaker_does_not_split(self):
@@ -975,10 +1230,14 @@ class TestSpeakerCentering:
     TALK = [0.10, 0.45, 0.10, 0.50, 0.12]  # mouth oscillates → speaking
     STILL = [0.20, 0.21, 0.20, 0.19, 0.20]  # ~steady → listening
 
-    def _frames(self, talker_x=0.3, other_x=0.7, both_talk=False):
+    def _frames(self, talker_x=0.3, other_x=0.7, both_talk=False, other_w=0.05):
+        # Listener smaller by default so these exercise the SPEAKER path (an
+        # equal pair is framed together by the equal-prominence product rule).
         other = self.TALK if both_talk else self.STILL
         return [
-            _ftrm(t, [(1, talker_x, self.TALK[t]), (2, other_x, other[t])])
+            _ftrm(
+                t, [(1, talker_x, self.TALK[t], 0.12), (2, other_x, other[t], other_w)]
+            )
             for t in range(5)
         ]
 
@@ -1035,6 +1294,199 @@ class TestSpeakerCentering:
         assert seg["escalate"]["kind"] == "active_speaker"
         assert seg["escalate"]["fallback"]["action"] == "follow"
         assert "candidates" in seg["escalate"]["facts"]
+
+
+class TestSpeakerEscalationOffersKeepBoth:
+    """#4 must offer keep_both/split when the two-shot geometry supports them —
+    otherwise a wide two-person conversation (which always has speech) could
+    only ever be answered with one centered person or a letterbox.
+
+    Faces here are UNEQUAL sizes: an equal pair is framed together
+    deterministically (equal-prominence rule) and never escalates."""
+
+    def _frames(self, x1=0.25, x2=0.75, n=5):
+        return [_ftrm(t, [(1, x1, 0.2, 0.12), (2, x2, 0.2, 0.05)]) for t in range(n)]
+
+    def _two_speakers(self):
+        return [
+            {"speaker_id": "A", "start_sec": 0.0, "end_sec": 2.0},
+            {"speaker_id": "B", "start_sec": 2.0, "end_sec": 4.0},
+        ]
+
+    def test_far_apart_pair_offers_keep_both(self):
+        plan = reconcile(
+            [],
+            self._frames(),
+            cuts=[],
+            src_w=SRC_W,
+            src_h=SRC_H,
+            duration=4.0,
+            speaker_segments=self._two_speakers(),
+        )
+        esc = plan[0]["escalate"]
+        assert esc["kind"] == "active_speaker"
+        assert esc["facts"].get("can_keep_both") is True
+        assert sorted(esc["facts"]["pair"]) == [1, 2]
+        assert "keep_both" in esc["question"]
+        # candidates carry measured widths so a keep_both verdict can size the span
+        assert all("w" in c for c in esc["facts"]["candidates"])
+
+    def test_moderate_separation_offers_keep_both_without_dialogue_label(self):
+        # sep ≈ 0.32: above KEEP_BOTH_SEPARATION but below the 0.45 no-label bar.
+        # The OFFER must not need the intent gate — Gemini judges intent from
+        # pixels (rf-udcpl2hd lost the second person entirely at sep 0.32).
+        plan = reconcile(
+            [],
+            self._frames(x1=0.34, x2=0.66),
+            cuts=[],
+            src_w=SRC_W,
+            src_h=SRC_H,
+            duration=4.0,
+            speaker_segments=[
+                {"speaker_id": "A", "start_sec": 0.0, "end_sec": 4.0}
+            ],  # one speaker → no dialogue label
+        )
+        esc = plan[0]["escalate"]
+        assert esc["kind"] == "active_speaker"
+        assert esc["facts"].get("can_keep_both") is True
+
+    def test_coexisting_text_band_folds_into_speaker_question(self):
+        # A caption AND a speaker ambiguity in the same segment: the speaker
+        # escalation replaces the text one, so it must carry the text conflict
+        # itself — else Gemini is never told text is at stake and a press quote
+        # gets cropped (observed on rf-udcpl2hd at 5.9-12.9s).
+        text_frames = [_txt(t * 0.5, 0.8) for t in range(8)]
+        plan = reconcile(
+            [],
+            self._frames(),
+            cuts=[],
+            src_w=SRC_W,
+            src_h=SRC_H,
+            duration=4.0,
+            speaker_segments=self._two_speakers(),
+            text_frames=text_frames,
+        )
+        esc = plan[0]["escalate"]
+        assert esc["kind"] == "active_speaker"
+        assert esc["facts"]["text_coverage"] == 0.8
+        assert "band" in esc["facts"]
+        assert "readable text" in esc["question"]
+
+    def test_close_pair_does_not_offer_keep_both(self):
+        plan = reconcile(
+            [],
+            self._frames(x1=0.45, x2=0.55),
+            cuts=[],
+            src_w=SRC_W,
+            src_h=SRC_H,
+            duration=4.0,
+            speaker_segments=self._two_speakers(),
+        )
+        esc = plan[0]["escalate"]
+        assert esc["kind"] == "active_speaker"
+        assert "can_keep_both" not in esc["facts"]
+        assert "keep_both" not in esc["question"]
+
+
+class TestCandidateLabels:
+    def test_distinct_buckets_kept(self):
+        from reframe_plan import _candidate_labels
+
+        assert _candidate_labels([{"x": 0.2}, {"x": 0.8}]) == ["left", "right"]
+
+    def test_two_center_faces_disambiguated(self):
+        from reframe_plan import _candidate_labels
+
+        # Both bucket to "center" → a `subject=center` verdict would be ambiguous.
+        assert _candidate_labels([{"x": 0.45}, {"x": 0.55}]) == ["left", "right"]
+
+    def test_three_clustered_faces_ranked(self):
+        from reframe_plan import _candidate_labels
+
+        got = _candidate_labels([{"x": 0.1}, {"x": 0.2}, {"x": 0.3}])
+        assert got == ["left", "center", "right"]
+
+
+class TestPanContinuity:
+    """Adjacent cells of the same shot must pan, not jump, at their boundary."""
+
+    def _drifting_track(self):
+        # One track that sits at 0.2 for the first cell and 0.8 for the second —
+        # a slow reposition a per-cell median lock would turn into a hard jump.
+        return [_frame(float(t), [_tr(1, 0.2 if t < 5 else 0.8)]) for t in range(10)]
+
+    def test_mid_shot_boundary_pans_from_previous_x(self):
+        plan = reconcile(
+            [], self._drifting_track(), cuts=[], src_w=SRC_W, src_h=SRC_H, duration=10.0
+        )
+        assert len(plan) == 2  # x differs beyond MERGE_X_TOL → separate cells
+        assert plan[1]["starts_at_cut"] is False  # subdivision, not a real cut
+        attach_keypoints(plan, fps=30)
+        end_x = plan[0]["crops"][0]["keypoints"][-1][1]
+        kps = plan[1]["crops"][0]["keypoints"]
+        assert abs(kps[0][1] - end_x) < 0.02  # starts where the last cell ended
+        assert abs(kps[-1][1] - 0.8) < 0.05  # ...and still reaches its target
+
+    def test_real_cut_reframes_hard(self):
+        plan = reconcile(
+            [],
+            self._drifting_track(),
+            cuts=[5.0],
+            src_w=SRC_W,
+            src_h=SRC_H,
+            duration=10.0,
+        )
+        assert len(plan) == 2
+        assert plan[1]["starts_at_cut"] is True
+        attach_keypoints(plan, fps=30)
+        kps = plan[1]["crops"][0]["keypoints"]
+        assert abs(kps[0][1] - 0.8) < 0.05  # no seeding across a scene cut
+
+
+class TestSingleRungLadderSkipsLetterboxEscalations:
+    """3:4 (single-rung) can never letterbox — the letterbox-only escalation
+    kinds are guaranteed no-ops there and must not be emitted (or billed)."""
+
+    R34 = RUNGS_BY_CANVAS["3:4"]
+
+    def test_no_subject_not_escalated(self):
+        plan = reconcile(
+            [], [], cuts=[], src_w=SRC_W, src_h=SRC_H, duration=6.0, rungs=self.R34
+        )
+        assert collect_escalation_points(plan) == []
+
+    def test_wide_text_not_escalated(self):
+        text_frames = [_txt(t, 0.9) for t in range(6)]
+        plan = reconcile(
+            [],
+            [],
+            cuts=[],
+            src_w=SRC_W,
+            src_h=SRC_H,
+            duration=6.0,
+            rungs=self.R34,
+            text_frames=text_frames,
+        )
+        assert collect_escalation_points(plan) == []
+
+    def test_speaker_escalation_still_fires(self):
+        # A `follow` verdict re-targets the crop — useful on any ladder.
+        # (Unequal sizes: an equal pair keeps both deterministically instead.)
+        frames = [
+            _ftrm(t, [(1, 0.3, 0.2, 0.12), (2, 0.7, 0.2, 0.05)]) for t in range(5)
+        ]
+        plan = reconcile(
+            [],
+            frames,
+            cuts=[],
+            src_w=SRC_W,
+            src_h=SRC_H,
+            duration=5.0,
+            rungs=self.R34,
+            speaker_segments=[{"speaker_id": "A", "start_sec": 0.0, "end_sec": 5.0}],
+        )
+        kinds = {p["kind"] for p in collect_escalation_points(plan)}
+        assert kinds == {"active_speaker"}
 
 
 class TestSpeakerTurnCuts:

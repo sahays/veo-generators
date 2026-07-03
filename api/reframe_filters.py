@@ -30,66 +30,6 @@ def _to_pixel_keypoints(
     return result
 
 
-def build_crop_filter(
-    keypoints: List[Tuple[float, float, float]],
-    src_w: int,
-    src_h: int,
-) -> str:
-    """Generate crop + scale filter for 9:16 dynamic panning (1080x1920 output)."""
-    crop_w = int(src_h * 9 / 16)
-    max_x = src_w - crop_w
-    if max_x <= 0:
-        return "scale=1080:1920"
-
-    pixel_kps = _to_pixel_keypoints(keypoints, src_w, crop_w, max_x)
-    if not pixel_kps:
-        return (
-            f"crop={crop_w}:{src_h}:{max(0, (src_w - crop_w) // 2)}:0,scale=1080:1920"
-        )
-    if len(pixel_kps) == 1:
-        return f"crop={crop_w}:{src_h}:{pixel_kps[0][1]}:0,scale=1080:1920"
-
-    x_expr = _build_piecewise_linear_expr(pixel_kps)
-    return f"crop={crop_w}:{src_h}:clip({x_expr}\\,0\\,{max_x}):0,scale=1080:1920"
-
-
-def build_blurred_bg_filter(
-    keypoints: List[Tuple[float, float, float]],
-    src_w: int,
-    src_h: int,
-) -> str:
-    """Generate filter_complex for 9:16 blurred-background reframe (1080x1920 output).
-
-    Content is cropped at 4:5, scaled to 1080x1350, and centered vertically
-    over a blurred full-frame background that fills 1080x1920.
-    """
-    out_w, out_h = 1080, 1920
-    fg_w, fg_h = 1080, 1350
-    y_offset = (out_h - fg_h) // 2  # 285
-    crop_w = min(int(src_h * 4 / 5), src_w)
-    max_x = src_w - crop_w
-    bg = _blurred_bg_base(out_w, out_h)
-
-    if max_x <= 0 or not keypoints:
-        return f"{bg};[0:v]scale={fg_w}:{fg_h}[fg];[bg][fg]overlay=0:{y_offset}[v]"
-
-    pixel_kps = _to_pixel_keypoints(keypoints, src_w, crop_w, max_x)
-    if len(pixel_kps) <= 1:
-        x = pixel_kps[0][1] if pixel_kps else max(0, (src_w - crop_w) // 2)
-        return (
-            f"{bg};[0:v]crop={crop_w}:{src_h}:{x}:0,"
-            f"scale={fg_w}:{fg_h}[fg];[bg][fg]overlay=0:{y_offset}[v]"
-        )
-
-    x_expr = _build_piecewise_linear_expr(pixel_kps)
-    return (
-        f"{bg};"
-        f"[0:v]crop={crop_w}:{src_h}:clip({x_expr}\\,0\\,{max_x}):0[cropped];"
-        f"[cropped]scale={fg_w}:{fg_h}[fg];"
-        f"[bg][fg]overlay=0:{y_offset}[v]"
-    )
-
-
 def _even(n: int) -> int:
     """Round down to the nearest even int (libx264 + yuv420p require even dims)."""
     return int(n) - (int(n) % 2)
