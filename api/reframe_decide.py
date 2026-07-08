@@ -52,15 +52,20 @@ _DECISION_INTRO_TMPL = (
     "  • for subject choices, vertical lines mark each candidate person, labeled "
     "left / center / right.\n"
     "Answer each point by echoing its exact `key` and an `action`.\n"
-    "TEXT decisions (key 'text:…') — look at the DARKENED (cut) area across the "
-    "frames:\n"
-    "  • letterbox — readable on-screen text or a graphic (caption, title, lower-"
-    "third, chart/table, map, UI, logo) sits in the cut area and would be lost; "
-    "also give `coverage` = fraction of width (0-1) to keep so it stays visible.\n"
-    "  • crop — the cut area is only background: scenery, a building, landscape, "
-    "plants, a wall, blur, or out-of-focus decor. A PERSON in front of a busy "
-    "background is crop, NOT letterbox. Judge only by readable text/graphics you "
-    "actually see.\n"
+    "TEXT decisions (key 'text:…') — a pure READABILITY check. Look at the DARKENED "
+    "(cut) area across the frames and ask ONLY: can you read any letters or words "
+    "there? Do NOT weigh whether that text is important, vital, essential, "
+    "decorative, branding, or 'just an overlay' — importance is IRRELEVANT to this "
+    "decision.\n"
+    "  • letterbox — you can read ANY text/label/word/graphic in the cut area (a "
+    "product call-out, feature or spec label, caption, title, logo, chart, map, "
+    "UI, price, %) that would be clipped, even partially, and even while a person "
+    "is the moving/centered subject. If it is READABLE and would be cut, letterbox. "
+    "Give `coverage` = fraction of width (0-1) to keep it fully visible.\n"
+    "  • crop — ONLY when the cut area has ZERO readable characters: it is pure "
+    "background (scenery, building, landscape, plants, wall, blur, out-of-focus "
+    "decor) or a bare person/limb in front of it. Never crop away text you can "
+    "read.\n"
     "SUBJECT decisions (key 'subject:…'): action=follow and `subject` = left | "
     "center | right — the one person to track (whoever is speaking / the focus).\n"
     "SPEAKER decisions (key 'speaker:…') — usually ONE person is talking: "
@@ -243,6 +248,17 @@ def apply_verdicts(
             and v.get("action") == "letterbox"
         ):
             cov = float(v.get("coverage") or esc["facts"].get("text_coverage") or 1.0)
+            # Center-relative containment: a subject-centered rung sized only to the
+            # band WIDTH can still clip an off-center band, because the crop centers
+            # on the subject, not the band midpoint. Size the requirement to the
+            # band's farther edge from the crop center so a `letterbox` verdict keeps
+            # ALL the flagged text. Verdicts without a measured band (graphic /
+            # no_subject) carry no `band` and keep the stated coverage.
+            band = esc["facts"].get("band")
+            if band and seg.get("crops"):
+                cx = seg["crops"][0].get("x_target", 0.5)
+                req = 2.0 * max(cx - float(band[0]), float(band[1]) - cx)
+                cov = max(cov, req + COVERAGE_MARGIN)
             new_ar = pick_rung(min(1.0, cov), src_w, src_h, ladder)
             cur = seg.get("inner_ar")
             cur = tuple(cur) if cur else None

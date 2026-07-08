@@ -48,6 +48,48 @@ class TestDetectTextCoverage:
         cov, _ = detect_text_coverage(img)
         assert cov == 0.0
 
+    def test_scattered_callouts_union_both_sides(self):
+        # Product-ad callouts on DIFFERENT baselines at opposite edges never form a
+        # single wide line, but their union must reach both edges — the case a
+        # widest-single-line detector missed (rf-r5eik9j2 seg2, text cropped off).
+        img = _blank()
+        cv2.putText(
+            img,
+            "ANTIMICROBIAL FABRIC",
+            (60, 200),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            2.2,
+            (255, 255, 255),
+            5,
+        )
+        cv2.putText(
+            img,
+            "PERFECT SLIM FIT",
+            (1150, 820),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            2.2,
+            (255, 255, 255),
+            5,
+        )
+        cov, (x0, x1) = detect_text_coverage(img)
+        assert x0 < 0.15 and x1 > 0.85  # union reaches both edges
+        assert cov > 0.7
+
+    def test_opposite_edge_specks_do_not_union(self):
+        # Two marks too small to be a text LINE on the same baseline must NOT union
+        # into a fake wide band: the unchanged per-line density filter rejects a
+        # span that is mostly empty between two specks. This is what makes the
+        # multi-region union safe without a separate band-density guard.
+        img = _blank()
+        cv2.putText(
+            img, ".", (40, 540), cv2.FONT_HERSHEY_SIMPLEX, 2.0, (255, 255, 255), 4
+        )
+        cv2.putText(
+            img, ".", (W - 60, 540), cv2.FONT_HERSHEY_SIMPLEX, 2.0, (255, 255, 255), 4
+        )
+        cov, _ = detect_text_coverage(img)
+        assert cov == 0.0
+
     def test_tiny_frame_skipped(self):
         cov, span = detect_text_coverage(np.zeros((16, 16, 3), dtype=np.uint8))
         assert cov == 0.0

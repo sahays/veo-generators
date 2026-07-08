@@ -12,7 +12,7 @@ from typing import List, Optional, Tuple
 
 from reframe_escalation import make_point
 from reframe_rungs import rung_coverage
-from reframe_signals import TEXT_WIDE_MIN, _hint_x
+from reframe_signals import _hint_x
 
 # Subject-choice escalation (decision points #3/#4): when framing ONE of several
 # comparable faces and no face is clearly speaking, the CPU can't tell who the
@@ -196,8 +196,12 @@ def _maybe_text_escalation(text_band, subj_x, n_faces, src_w, src_h, rungs, star
     text letterbox — there is no CPU self-trigger and no Gemini coverage floor.
     """
     cov, (x0, x1) = text_band
-    if cov < TEXT_WIDE_MIN:
-        return None
+    if cov <= 0.0:
+        return None  # no text present in the window
+    # Significance is a per-side REACH property, not a total-width one: a caption
+    # narrower than any fixed width floor is still clip-worthy when it sits past the
+    # crop window. The poke-out test below IS the significance gate — a band fully
+    # behind the subject is kept by the crop and never escalates.
     wl, wr = _tight_window(subj_x, src_w, src_h, rungs)
     left_out = (wl - x0) > SIDE_TEXT_MARGIN
     right_out = (x1 - wr) > SIDE_TEXT_MARGIN

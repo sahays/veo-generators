@@ -43,19 +43,19 @@ DIALOGUE_MIN_SPEAK = 0.5  # seconds a speaker must talk in a window to count
 # immediately folds away (which would defeat the re-cut).
 SPEAKER_TURN_MIN_DWELL = 2.0  # min seconds between speaker-change re-cuts
 
-# Wide-text detection (Phase 2): the CPU measures a persistent wide text band so
-# the planner can ask Gemini the right question when it would be clipped (decision
+# On-screen text detection (Phase 2): the CPU flags a persistent text band so the
+# planner can ask Gemini the right question when a crop would clip it (decision
 # point #1). The CPU never self-letterboxes from it — see _maybe_text_escalation.
-# The width floor is a significance filter, not a protection bound: the poke-out
-# test (SIDE_TEXT_MARGIN) already establishes the *conflict*, and Gemini
-# arbitrates every escalation — so err low. At 0.50 a 30-45% lower-third at the
-# frame edge was silently cropped with no Gemini consult (information loss); a
-# false band over a busy background only costs a thumbnail question.
-TEXT_WIDE_MIN = 0.30  # a sampled frame counts as wide-text at/above this coverage
-TEXT_PERSIST_FRAC = 0.50  # text must show in ≥ this fraction of a segment's frames
-TEXT_MIN_FRAMES = (
-    2  # ...and in at least this many frames (one 0.5fps sample ≠ persistent)
+# Significance is deliberately NOT a total-width floor: a detected line is already
+# ≥ _MIN_LINE_W (0.20) wide by construction, and the poke-out test (SIDE_TEXT_MARGIN)
+# establishes the *conflict*; Gemini arbitrates every escalation, so err low. A
+# wide-coverage floor silently cropped animated / narrow-but-peripheral captions
+# (rf-r5eik9j2: a product ad's callouts read 0.28-0.29 wide and were dropped) — the
+# cost of a false band over a busy background is only a thumbnail question.
+TEXT_PERSIST_FRAC = (
+    0.50  # text must be present in ≥ this fraction of a segment's frames
 )
+TEXT_MIN_FRAMES = 2  # ...and in at least this many frames (one sample ≠ persistent)
 
 
 # ---------------------------------------------------------------------------
@@ -301,29 +301,32 @@ def _dialogue_in_window(speaker_segments: List[dict], start: float, end: float) 
 
 
 def _segment_text_band(win) -> Tuple[float, Tuple[float, float]]:
-    """Median wide-text coverage AND its horizontal span over the window.
+    """Median text coverage AND its horizontal span over the window.
 
     `win` is the `text_detect.scan_video_text` frames in this segment (each with
-    `coverage` and `span`). Requires wide text in ≥ TEXT_PERSIST_FRAC of them
-    (rejects a one-frame flash / a swish-pan title), then returns the median
-    width of those that *did* carry it, plus the median (x0, x1) of that band.
+    `coverage` and `span`). Persistence is measured on text *presence*, not on
+    instantaneous width: on-screen callouts animate (type / fade in and out), so a
+    continuously-displayed caption swings in measured width frame-to-frame and a
+    "wide in ≥ half the frames" gate drops it (observed on rf-r5eik9j2 — the
+    product-ad callouts read 0.28-0.29 wide yet were persistently on screen). A
+    frame with ANY detected line (`coverage > 0` ⟹ a ≥ _MIN_LINE_W line exists)
+    counts as present; requiring presence in ≥ TEXT_PERSIST_FRAC of the window
+    (and ≥ TEXT_MIN_FRAMES) still rejects a one-frame flash / swish-pan title.
 
-    The span is what lets the planner ask the right question: a band that sits
-    *behind* the subject is harmless, but one that extends past the crop window
-    on a side would be clipped — the ambiguous "is that meaningful side
+    Returns the median coverage over the present frames plus the median (x0, x1)
+    of that band. The span is what lets the planner ask the right question: a band
+    that sits *behind* the subject is harmless, but one that extends past the crop
+    window on a side would be clipped — the ambiguous "is that meaningful side
     text/graphics?" case that escalates to Gemini (see _maybe_text_escalation).
     """
     if not win:
         return 0.0, (0.0, 0.0)
-    wide = [f for f in win if f["coverage"] >= TEXT_WIDE_MIN]
-    # Persistence needs corroboration: at 0.5 fps a short segment can hold a
-    # single text sample, and one frame proves nothing (a swish-pan title, a
-    # detector blip). Require a second supporting frame as well as the fraction.
-    if len(wide) < TEXT_MIN_FRAMES or len(wide) / len(win) < TEXT_PERSIST_FRAC:
+    present = [f for f in win if f["coverage"] > 0.0]
+    if len(present) < TEXT_MIN_FRAMES or len(present) / len(win) < TEXT_PERSIST_FRAC:
         return 0.0, (0.0, 0.0)
-    cov = statistics.median([f["coverage"] for f in wide])
-    x0 = statistics.median([f.get("span", (0.0, 0.0))[0] for f in wide])
-    x1 = statistics.median([f.get("span", (0.0, 0.0))[1] for f in wide])
+    cov = statistics.median([f["coverage"] for f in present])
+    x0 = statistics.median([f.get("span", (0.0, 0.0))[0] for f in present])
+    x1 = statistics.median([f.get("span", (0.0, 0.0))[1] for f in present])
     return cov, (x0, x1)
 
 

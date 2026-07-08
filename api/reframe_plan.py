@@ -81,7 +81,6 @@ from reframe_signals import (  # noqa: F401  (re-exported)
     STABLE_FRAC,
     TEXT_MIN_FRAMES,
     TEXT_PERSIST_FRAC,
-    TEXT_WIDE_MIN,
     _associate_speaker_face,
     _dialogue_in_window,
     _dominant_speaker,

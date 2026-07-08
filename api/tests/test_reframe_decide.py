@@ -127,6 +127,58 @@ class TestApplyVerdicts:
         )
         assert changed == 0 and segs[0]["inner_ar"] == (16, 9)
 
+    def _band_seg(self, band, x_target=0.5, coverage=0.6, inner_ar=(9, 16)):
+        return {
+            "start": 0.0,
+            "end": 6.0,
+            "inner_ar": inner_ar,
+            "layout": "single",
+            "reason": "9:16 — face",
+            "crops": [{"track_id": 1, "x_target": x_target, "source": "face"}],
+            "trace": {"source": "face", "coverage": 0.316, "chosen_ar": list(inner_ar)},
+            "escalate": {
+                "kind": "text_presence",
+                "key": f"text:both:{band[0]}-{band[1]}@{x_target}",
+                "question": "caption?",
+                "facts": {
+                    "text_coverage": coverage,
+                    "band": list(band),
+                    "check_side": "both",
+                },
+                "fallback": {"action": "crop"},
+            },
+        }
+
+    def test_offcenter_band_widens_to_contain_it(self):
+        # Band (0.35, 0.95) around a subject at x=0.5: sizing the rung to the band
+        # WIDTH (0.60 → 1:1) still clips the far edge, because the crop centers on
+        # the subject, not the band. The widen must reach the band's farther edge
+        # from the crop center (0.9 → full 16:9).
+        seg = self._band_seg((0.35, 0.95), x_target=0.5, coverage=0.6)
+        changed = apply_verdicts(
+            [seg],
+            [_v(seg["escalate"]["key"], "letterbox", 0.6)],
+            SRC_W,
+            SRC_H,
+            None,
+        )
+        assert changed == 1
+        assert seg["inner_ar"] == (16, 9)  # contains the off-center band, not (1, 1)
+
+    def test_centered_band_not_overwidened(self):
+        # A band symmetric about the subject needs only its width — containment must
+        # not inflate it (no over-letterboxing regression). (0.30, 0.70) at x=0.5 →
+        # req 0.40, so the stated 0.55 still lands on 1:1 as before.
+        seg = self._band_seg((0.30, 0.70), x_target=0.5, coverage=0.55)
+        apply_verdicts(
+            [seg],
+            [_v(seg["escalate"]["key"], "letterbox", 0.55)],
+            SRC_W,
+            SRC_H,
+            None,
+        )
+        assert seg["inner_ar"] == (1, 1)  # unchanged from width-based sizing
+
     def test_letterbox_converts_split_to_single(self):
         # Stacked panels can't show a full-width caption — a letterbox verdict
         # over a split shot falls back to one wide centered crop.

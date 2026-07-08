@@ -106,7 +106,7 @@ class ReframeProcessor(JobProcessor):
         from text_detect import scan_video_text
 
         cuts = detect_cuts(det_src)
-        text_frames = scan_video_text(det_src)
+        text_frames = scan_video_text(det_src, sample_fps=2.0)
         scenes = self._analyze_scenes(
             record, record_id, chirp_context, track_summary, cuts=cuts
         )
@@ -231,7 +231,7 @@ class ReframeProcessor(JobProcessor):
         # Measure on-screen text bands (independent pass). A persistent wide band
         # that the subject's crop would clip is escalated to gemini-3.5-flash in
         # Pass 2 (decision point #1) — the CPU never self-letterboxes from it.
-        text_frames = scan_video_text(det_src)
+        text_frames = scan_video_text(det_src, sample_fps=2.0)
 
         # RETIRED: the dense gemini-3.1-pro full-video scene pass. Subject choice is
         # now decided per-ambiguity by gemini-3.5-flash (Pass 2, #3/#4), letterboxing

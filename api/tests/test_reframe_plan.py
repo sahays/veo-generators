@@ -196,9 +196,12 @@ class TestTextEscalationPredicate:
         # A band fully behind the subject (within the kept region) → nothing cut.
         assert self._esc(0.40, 0.62) is None
 
-    def test_band_below_wide_threshold_no_escalation(self):
-        # cov < TEXT_WIDE_MIN (0.30): not a significant band.
-        assert self._esc(0.05, 0.95, cov=0.2) is None
+    def test_narrow_peripheral_band_escalates(self):
+        # Significance is reach past the crop window, not total width: a caption
+        # narrower than the old 0.30 floor but sitting outside the crop still gets
+        # clipped, so it must reach Gemini (rf-r5eik9j2's ~0.28-wide side callouts).
+        e = self._esc(0.02, 0.26, cov=0.24)
+        assert e is not None and e["facts"]["check_side"] == "left"
 
     def test_narrow_caption_escalates(self):
         # A 35%-wide lower-third at the frame edge is real information — it must
@@ -707,6 +710,29 @@ class TestWeakSubjectEscalation:
         tracked = [_frame(t, [_trc(1, 0.48, 0.95, w=0.31)]) for t in (0, 1, 2, 3)]
         plan = reconcile([], tracked, cuts=[], src_w=SRC_W, src_h=SRC_H, duration=4.0)
         assert collect_escalation_points(plan) == []
+
+    def test_low_conf_face_with_side_text_routes_to_text_not_graphic(self):
+        # rf-r5eik9j2 seg2/seg3: a sole low-conf face (a running person) with
+        # product callouts reaching both edges. The text-band conflict must PRE-EMPT
+        # the person-vs-graphic question — otherwise Gemini is asked "person or
+        # graphic?", sees the person, and crops the callouts off. A both-sides band
+        # sets `escalate` before the graphic branch, so the shot escalates
+        # `text_presence` (which carries the band for the letterbox widen).
+        tracked = [_frame(t, [_trc(1, 0.5, 0.35, w=0.2)]) for t in (0, 1, 2, 3)]
+        text_frames = [_txt(t, 0.9) for t in range(5)]  # span (0.05, 0.95): both sides
+        plan = reconcile(
+            [],
+            tracked,
+            cuts=[],
+            src_w=SRC_W,
+            src_h=SRC_H,
+            duration=4.0,
+            text_frames=text_frames,
+        )
+        pts = collect_escalation_points(plan)
+        assert [p["kind"] for p in pts] == ["text_presence"]  # not weak_subject
+        assert pts[0]["facts"]["check_side"] == "both"
+        assert pts[0]["facts"]["band"]  # carried for the containment-aware widen
 
     def test_gemini_subject_hint_suppresses_graphic_escalation(self):
         # If a Gemini scene already named the subject, trust it — no graphic check.

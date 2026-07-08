@@ -71,11 +71,19 @@ def _group_lines(boxes):
 
 
 def detect_text_coverage(frame) -> Tuple[float, Tuple[float, float]]:
-    """Widest text-line coverage in a single BGR frame.
+    """Horizontal reach of the on-screen text in a single BGR frame.
 
-    Returns ``(coverage_frac, (x0_frac, x1_frac))`` for the widest qualifying
-    text line — coverage is that line's union width / frame width — or
-    ``(0.0, (0.0, 0.0))`` when no text-like region is found.
+    Returns ``(coverage_frac, (x0_frac, x1_frac))`` where the span is the UNION
+    reach of every qualifying text line (leftmost start → rightmost end) and
+    coverage is that reach / frame width — or ``(0.0, (0.0, 0.0))`` when no
+    text-like region is found.
+
+    Clip risk is a per-side *reach* property, not a single-line one: scattered
+    callouts on different baselines (a product ad's labels) never form one wide
+    line, but their union reaches both edges, so a tight centre crop would clip
+    them. Each contributing line still passes the strict per-line text filters
+    below unchanged, so plain/busy backgrounds contribute nothing — the union can
+    only be spanned by regions already certified as text.
     """
     if cv2 is None or frame is None or getattr(frame, "size", 0) == 0:
         return 0.0, (0.0, 0.0)
@@ -113,8 +121,12 @@ def detect_text_coverage(frame) -> Tuple[float, Tuple[float, float]]:
             continue
         glyphs.append((bx, by, bx + bw_, by + bh_))
 
-    best_cov = 0.0
-    best_span = (0.0, 0.0)
+    # Union the horizontal reach of ALL qualifying lines (not just the widest):
+    # clip risk is about how far text reaches toward each edge, which scattered
+    # callouts express only in aggregate. The per-line filters are unchanged, so a
+    # line contributes only if it is genuinely text — the union can widen but never
+    # admits a region a single-line pass would have rejected.
+    xs: List[Tuple[float, float]] = []
     for x0, y0, x1, y1, sum_w in _group_lines(glyphs):
         union_w = x1 - x0
         if union_w < _MIN_LINE_W * w:
@@ -123,20 +135,27 @@ def detect_text_coverage(frame) -> Tuple[float, Tuple[float, float]]:
             continue
         if sum_w / union_w < _MIN_LINE_DENSITY:
             continue
-        cov = union_w / w
-        if cov > best_cov:
-            best_cov = cov
-            best_span = (x0 / w, x1 / w)
-    return best_cov, best_span
+        xs.append((x0, x1))
+    if not xs:
+        return 0.0, (0.0, 0.0)
+    min_x0 = min(a for a, _ in xs)
+    max_x1 = max(b for _, b in xs)
+    return (max_x1 - min_x0) / w, (min_x0 / w, max_x1 / w)
 
 
-def scan_video_text(video_path: str, sample_fps: float = 0.5) -> List[dict]:
+def scan_video_text(video_path: str, sample_fps: float = 2.0) -> List[dict]:
     """Sample the video and measure wide-text coverage per frame.
 
-    Returns ``[{"time_sec", "coverage", "span": (x0, x1)}]``. On-screen text
-    persists across seconds, so a sparse sample is enough; this runs its own
-    decode pass (an independent Stage-1 precision pass) and degrades to ``[]``
-    if the video can't be opened or cv2 is unavailable.
+    Returns ``[{"time_sec", "coverage", "span": (x0, x1)}]``. Runs its own decode
+    pass (an independent Stage-1 precision pass) and degrades to ``[]`` if the
+    video can't be opened or cv2 is unavailable.
+
+    ``sample_fps`` defaults to 2.0 so even a short (~1-1.5s) shot yields the ≥2
+    samples the per-segment persistence gate (``_segment_text_band``) needs to
+    tell persistent text from a one-frame flash — at the old 0.5fps a sub-2s
+    caption shot could fall below that and be silently dropped. Decode cost is
+    unchanged (every frame is read regardless); only the per-sample morphology
+    runs more often, which is cheap.
     """
     if cv2 is None:
         logger.warning("text_detect: cv2 unavailable — text detection disabled")
