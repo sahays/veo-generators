@@ -90,26 +90,42 @@ class TestPickRung:
 
 
 class TestPickRung34:
-    """3:4 is a fixed full-bleed crop: a single-rung ladder, always (3,4)."""
+    """3:4 is an adaptive ladder: full-bleed (3,4) then looser rungs that
+    letterbox wide content — mirrors 9:16 on the shorter 1080x1440 canvas."""
 
     R34 = RUNGS_BY_CANVAS["3:4"]
 
-    def test_ladder_is_just_full_bleed(self):
-        assert self.R34 == [(3, 4)]
+    def test_ladder_full_bleed_then_looser(self):
+        assert self.R34 == [(3, 4), (1, 1), (16, 9)]
+        assert self.R34[0] == (3, 4)  # tightest rung = full-bleed, matches canvas
+        covs = [rung_coverage(r, SRC_W, SRC_H) for r in self.R34]
+        assert covs == sorted(covs)  # tightest → loosest
 
-    def test_always_picks_3x4_regardless_of_coverage(self):
-        # No looser rungs → never letterboxes, even for very wide content.
-        for req in (0.0, 0.2, 0.42, 0.55, 0.9, 1.0):
+    def test_narrow_subject_picks_full_bleed(self):
+        # A subject that fits the (3,4) crop (keeps ~0.42 of width) never letterboxes.
+        for req in (0.0, 0.2, 0.42):
             assert pick_rung(req, SRC_W, SRC_H, rungs=self.R34) == (3, 4)
 
-    def test_single_rung_ladder_dp_is_noop(self):
+    def test_wide_content_letterboxes(self):
+        # A two-shot needing ~0.55 width can't fit (3,4) → step to (1,1); a
+        # genuinely full-width shot goes to (16,9). This is the crux of "adaptive".
+        assert pick_rung(0.55, SRC_W, SRC_H, rungs=self.R34) == (1, 1)
+        assert pick_rung(0.95, SRC_W, SRC_H, rungs=self.R34) == (16, 9)
+
+    def test_dp_widens_wide_cells_never_crops_below_requirement(self):
         from reframe_plan import assign_rungs
+        from reframe_rungs import RUNG_TOLERANCE
 
         cells = [
             {"C": c, "dur": 3.0, "starts_at_cut": True, "split": False}
             for c in (0.2, 0.9, 0.5)
         ]
-        assert assign_rungs(cells, SRC_W, SRC_H, self.R34) == [(3, 4)] * 3
+        out = assign_rungs(cells, SRC_W, SRC_H, self.R34)
+        assert out[0] == (3, 4)  # narrow → full-bleed, no bars
+        assert out[1] == (16, 9)  # very wide → full-width letterbox
+        # The rung guarantee: every chosen rung covers its cell's requirement.
+        for cell, rung in zip(cells, out):
+            assert rung_coverage(rung, SRC_W, SRC_H) + RUNG_TOLERANCE >= cell["C"]
 
 
 # ---------------------------------------------------------------------------
@@ -1443,31 +1459,30 @@ class TestPanContinuity:
         assert abs(kps[0][1] - 0.8) < 0.05  # no seeding across a scene cut
 
 
-class TestSingleRungLadderSkipsLetterboxEscalations:
-    """3:4 (single-rung) can never letterbox — the letterbox-only escalation
-    kinds are guaranteed no-ops there and must not be emitted (or billed)."""
+class TestAdaptive34EscalatesLikeMultiRung:
+    """3:4 is now a multi-rung adaptive ladder (can_letterbox=True), so it emits
+    the SAME letterbox escalations as 9:16 — wide text/graphics are Gemini's call
+    to preserve, not silently cropped."""
 
     R34 = RUNGS_BY_CANVAS["3:4"]
+    R916 = RUNGS_BY_CANVAS["9:16"]
 
-    def test_no_subject_not_escalated(self):
+    def _kinds(self, rungs, **kw):
         plan = reconcile(
-            [], [], cuts=[], src_w=SRC_W, src_h=SRC_H, duration=6.0, rungs=self.R34
+            [], [], cuts=[], src_w=SRC_W, src_h=SRC_H, duration=6.0, rungs=rungs, **kw
         )
-        assert collect_escalation_points(plan) == []
+        return sorted(p["kind"] for p in collect_escalation_points(plan))
 
-    def test_wide_text_not_escalated(self):
+    def test_no_subject_escalates_like_9x16(self):
+        assert self._kinds(self.R34) == self._kinds(self.R916) == ["no_subject"]
+
+    def test_wide_text_escalates_like_9x16(self):
         text_frames = [_txt(t, 0.9) for t in range(6)]
-        plan = reconcile(
-            [],
-            [],
-            cuts=[],
-            src_w=SRC_W,
-            src_h=SRC_H,
-            duration=6.0,
-            rungs=self.R34,
-            text_frames=text_frames,
+        assert (
+            self._kinds(self.R34, text_frames=text_frames)
+            == self._kinds(self.R916, text_frames=text_frames)
+            == ["text_presence"]
         )
-        assert collect_escalation_points(plan) == []
 
     def test_speaker_escalation_still_fires(self):
         # A `follow` verdict re-targets the crop — useful on any ladder.

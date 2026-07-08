@@ -54,8 +54,11 @@ const ReframeCard = ({ record, onClick, onArchive, showArchive }: {
       onClick={onClick}
       className="glass bg-card p-4 rounded-xl text-left transition-all duration-200 hover:border-accent/40 group w-full flex gap-4"
     >
-      {/* First-frame thumbnail of the 9:16 output */}
-      <div className="w-16 shrink-0 aspect-[9/16] rounded-lg overflow-hidden bg-muted border border-border/50 flex items-center justify-center">
+      {/* First-frame thumbnail of the output, in its selected aspect ratio */}
+      <div className={cn(
+        "w-16 shrink-0 rounded-lg overflow-hidden bg-muted border border-border/50 flex items-center justify-center",
+        record.output_aspect_ratio === '3:4' ? "aspect-[3/4]" : "aspect-[9/16]",
+      )}>
         {record.output_signed_url ? (
           <video
             src={`${record.output_signed_url}#t=0.1`}
@@ -90,7 +93,7 @@ const ReframeCard = ({ record, onClick, onArchive, showArchive }: {
             {record.diagnostic_mode
               ? 'Diagnostic'
               : record.output_aspect_ratio === '3:4'
-                ? '3:4'
+                ? 'Adaptive 3:4'
                 : 'Adaptive 9:16'}
           </span>
         </div>
@@ -129,7 +132,7 @@ const ReframeCard = ({ record, onClick, onArchive, showArchive }: {
 export const ReframeLandingPage = () => (
   <LandingPageShell<ReframeRecord>
     title="Orientations"
-    subtitle="Smart reframe 16:9 videos to 9:16 with AI subject tracking"
+    subtitle="Smart reframe 16:9 videos to 9:16 or 3:4 with AI subject tracking"
     icon={Smartphone}
     fetchRecords={() => api.reframe.list()}
     archiveRecord={(id) => api.reframe.archive(id)}
@@ -140,6 +143,6 @@ export const ReframeLandingPage = () => (
       <ReframeCard key={record.id} record={record} onClick={onClick} onArchive={onArchive} showArchive={showArchive} />
     )}
     emptyTitle="No reframes yet"
-    emptyDescription="Select a landscape video to intelligently reframe it to 9:16 portrait using AI subject tracking."
+    emptyDescription="Select a landscape video to intelligently reframe it to 9:16 or 3:4 portrait using AI subject tracking."
   />
 )

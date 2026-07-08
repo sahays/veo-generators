@@ -114,7 +114,7 @@ Encodes the intermediate MP4 into delivery-ready formats via Google Cloud Transc
 
 | Mode | Output | Description |
 |------|--------|-------------|
-| **AI Reframe** | 9:16 (1080x1920) | Full pipeline — Gemini + MediaPipe + smooth path + FFmpeg crop |
+| **AI Reframe** | 9:16 (1080x1920) or 3:4 (1080x1440) | Full pipeline — Gemini + MediaPipe + smooth path + FFmpeg crop; output canvas selectable per job (`output_aspect_ratio`), both adaptive |
 | **Blurred Background** | 4:5 (1080x1350) | Cropped content centered over blurred scaled-up source |
 | **Vertical Split** | 9:16 (1080x1920) | Simple 4:3 crop split into two halves stacked vertically |
 

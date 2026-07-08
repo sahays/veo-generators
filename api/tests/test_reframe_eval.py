@@ -262,6 +262,29 @@ def test_3x4_canvas_full_bleed_has_no_letterbox():
     assert all(s["letterbox_pct"] == 0.0 for s in rep["segments"])
 
 
+def test_3x4_canvas_wide_rung_letterboxes():
+    # The adaptive 3:4 ladder letterboxes wide content: a (16,9) plan on the
+    # 1440-tall canvas keeps ~0.42 of the height → ~0.58 bars (mirrors 9:16's
+    # letterbox behaviour, just on the shorter canvas).
+    from reframe_plan import RUNGS_BY_CANVAS
+
+    plan = [_seg(0, 10, (16, 9), 1, 0.5)]
+    frames = _frames([(t, [_tr(1, 0.5)]) for t in range(11)])
+    rep = evaluate(
+        plan,
+        frames,
+        [],
+        [],
+        SRC_W,
+        SRC_H,
+        10.0,
+        canvas_h=1440,
+        rungs=RUNGS_BY_CANVAS["3:4"],
+    )
+    assert rep["segments"][0]["letterbox_pct"] > 0.5
+    assert rep["letterbox"]["mean_letterbox_pct"] > 0.5
+
+
 def test_must_keep_width_from_detections():
     seg = _seg(0, 10, (1, 1), 1, 0.5)
     frames = _frames([(t, [_tr(1, 0.5, w=0.2)]) for t in range(11)])

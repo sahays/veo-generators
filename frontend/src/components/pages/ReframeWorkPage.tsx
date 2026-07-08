@@ -184,7 +184,7 @@ export const ReframeWorkPage = () => {
 
       <div className="space-y-1">
         <h2 className="text-lg font-heading font-bold text-foreground">New Reframe</h2>
-        <p className="text-sm text-muted-foreground">Select a landscape (16:9) video to reframe to portrait (9:16)</p>
+        <p className="text-sm text-muted-foreground">Select a landscape (16:9) video to reframe to portrait (9:16 or 3:4)</p>
       </div>
 
       <VideoSourceSelector
@@ -221,7 +221,7 @@ export const ReframeWorkPage = () => {
             <div className="flex gap-3">
               {[
                 { id: '9:16' as const, label: 'Adaptive 9:16', icon: Smartphone, desc: 'Each scene picks its own aspect ratio on a 9:16 canvas' },
-                { id: '3:4' as const, label: 'Reframe to 3:4', icon: RectangleVertical, desc: 'Subject-following reframe onto a 3:4 canvas' },
+                { id: '3:4' as const, label: 'Adaptive 3:4', icon: RectangleVertical, desc: 'Each scene picks its own aspect ratio on a 3:4 canvas' },
               ].map((opt) => (
                 <button
                   key={opt.id}
@@ -253,7 +253,7 @@ export const ReframeWorkPage = () => {
                 Diagnostic preview
               </span>
               <p className="text-xs text-muted-foreground">
-                Skip cropping — render the full frame letterboxed in 9:16 with detected faces and scene labels drawn on top, to see what the models see
+                Skip cropping — render the full frame letterboxed in {outputAspectRatio} with detected faces and scene labels drawn on top, to see what the models see
               </p>
             </div>
           </label>

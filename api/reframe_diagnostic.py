@@ -2,8 +2,8 @@
 
 Draws what the detection models *see* — MediaPipe face-track boxes (red) and
 per-scene Gemini labels — onto the full, uncropped 16:9 frame, then letterboxes
-it into the 9:16 mobile canvas over a blurred background. A visualization/debug
-feature (per-job toggle), not part of the crop pipeline.
+it into the selected output canvas (9:16 or 3:4) over a blurred background. A
+visualization/debug feature (per-job toggle), not part of the crop pipeline.
 
 Optionally overlays the chosen crop window per segment (green) when a reframe
 plan is supplied, so you can see exactly what the v2 pipeline would keep vs.
@@ -256,11 +256,14 @@ def render_diagnostic(
     segments: Optional[List[dict]] = None,
     has_audio: bool = True,
     person_frames: Optional[List[dict]] = None,
+    out_w: int = CANVAS_W,
+    out_h: int = CANVAS_H,
 ) -> str:
-    """Render an annotated 9:16 letterboxed diagnostic video.
+    """Render an annotated letterboxed diagnostic video onto the output canvas.
 
     Draws detector overlays on every native-resolution frame, then letterboxes
-    the result into 1080×1920 over a blurred background (audio copied from src).
+    the result into `out_w`×`out_h` (default 9:16 1080×1920; pass 1080×1440 for
+    3:4) over a blurred background (audio copied from src).
     """
     cap = cv2.VideoCapture(src_path)
     if not cap.isOpened():
@@ -298,16 +301,18 @@ def render_diagnostic(
         cap.release()
         writer.release()
 
-    _letterbox_to_canvas(annotated, src_path, out_path, has_audio)
+    _letterbox_to_canvas(annotated, src_path, out_path, has_audio, out_w, out_h)
     return out_path
 
 
-def _letterbox_to_canvas(annotated, src_path, out_path, has_audio):
-    """Scale the annotated 16:9 frame to fit 1080 wide, center over blurred bg."""
+def _letterbox_to_canvas(
+    annotated, src_path, out_path, has_audio, out_w=CANVAS_W, out_h=CANVAS_H
+):
+    """Scale the annotated 16:9 frame to fit the canvas width, center over blurred bg."""
     filter_complex = (
-        f"[0:v]scale={CANVAS_W}:{CANVAS_H}:force_original_aspect_ratio=increase,"
-        f"crop={CANVAS_W}:{CANVAS_H},gblur=sigma=40[bg];"
-        f"[0:v]scale={CANVAS_W}:-2[fg];"
+        f"[0:v]scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
+        f"crop={out_w}:{out_h},gblur=sigma=40[bg];"
+        f"[0:v]scale={out_w}:-2[fg];"
         f"[bg][fg]overlay=0:(H-h)/2[v]"
     )
     cmd = [

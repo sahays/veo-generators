@@ -31,8 +31,18 @@ DECISION_SCHEMA = "reframe-decisions-schema"
 
 THUMBS_PER_CLUSTER = 3  # frames sampled across a segment so a verdict isn't from 1
 
-DECISION_INTRO = (
-    "You are the decision engine for a 16:9 → 9:16 (portrait) video reframer. "
+
+def build_decision_intro(canvas: str = "9:16") -> str:
+    """The decision-engine system prompt, keyed to the target output canvas.
+
+    `canvas` ("9:16" or "3:4") only changes the stated target ratio — the crop /
+    letterbox judgment is identical (both are taller-than-wide portrait canvases).
+    """
+    return _DECISION_INTRO_TMPL.format(canvas=canvas)
+
+
+_DECISION_INTRO_TMPL = (
+    "You are the decision engine for a 16:9 → {canvas} (portrait) video reframer. "
     "Deterministic CV handles geometry; you resolve only what needs human-like "
     "judgment from the pixels. Each decision point below gives its `key`, a "
     "question, and SEVERAL thumbnail frames sampled across that shot. The frames "

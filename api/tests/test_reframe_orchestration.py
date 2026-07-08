@@ -78,7 +78,7 @@ def _make_processor(monkeypatch, decide_impl):
 
     monkeypatch.setattr(deps, "firestore_svc", MagicMock())
 
-    async def _decide(batches, src_path, region=None):
+    async def _decide(batches, src_path, region=None, canvas="9:16"):
         return await decide_impl(batches, src_path, region)
 
     monkeypatch.setattr(deps, "ai_svc", SimpleNamespace(decide_escalations=_decide))
@@ -124,7 +124,7 @@ class TestOrchestration:
     def test_no_escalations_skips_model_call(self, monkeypatch):
         called = {"n": 0}
 
-        async def decide(batches, src_path, region=None):
+        async def decide(batches, src_path, region=None, canvas="9:16"):
             called["n"] += 1
             return _result([])
 
@@ -137,7 +137,7 @@ class TestOrchestration:
     def test_model_failure_keeps_every_fallback(self, monkeypatch):
         # The crux invariant: if the decision call blows up, the plan is untouched
         # and fully renderable on its deterministic fallbacks.
-        async def decide(batches, src_path, region=None):
+        async def decide(batches, src_path, region=None, canvas="9:16"):
             raise RuntimeError("429 / model exploded")
 
         proc, cost = _make_processor(monkeypatch, decide)
@@ -150,7 +150,7 @@ class TestOrchestration:
     def test_partial_verdicts_only_matched_keys_change(self, monkeypatch):
         # Verdict returned for shot 'a' (letterbox) but not 'b' → only a changes.
         # The model echoes the per-cluster unique keys it was sent.
-        async def decide(batches, src_path, region=None):
+        async def decide(batches, src_path, region=None, canvas="9:16"):
             keys = [c["key"] for b in batches for c in b]
             akey = next(k for k in keys if k.startswith("text:a"))
             return _result(
@@ -168,7 +168,7 @@ class TestOrchestration:
         assert len(cost) == 1  # usage billed once for the successful call
 
     def test_crop_verdict_keeps_fallback_but_records_verdict(self, monkeypatch):
-        async def decide(batches, src_path, region=None):
+        async def decide(batches, src_path, region=None, canvas="9:16"):
             keys = [c["key"] for b in batches for c in b]
             return _result([{"key": k, "action": "crop"} for k in keys], cost=0.01)
 
@@ -182,7 +182,7 @@ class TestOrchestration:
         # Two shots share the geometric key but sit 20s apart → SEPARATE clusters.
         # A letterbox verdict on the first run must NOT letterbox the distant one
         # (the rf-vlsygfxe bleed: one verdict stamped onto 7 shots video-wide).
-        async def decide(batches, src_path, region=None):
+        async def decide(batches, src_path, region=None, canvas="9:16"):
             keys = [c["key"] for b in batches for c in b]
             earliest = min(keys, key=lambda k: float(k.split("#t")[1]))
             return _result(
@@ -197,7 +197,7 @@ class TestOrchestration:
         assert s2["inner_ar"] == (9, 16)  # distant run kept its fallback — no bleed
 
     def test_zero_cost_usage_not_billed(self, monkeypatch):
-        async def decide(batches, src_path, region=None):
+        async def decide(batches, src_path, region=None, canvas="9:16"):
             keys = [c["key"] for b in batches for c in b]
             return _result(
                 [{"key": k, "action": "letterbox", "coverage": 0.9} for k in keys],

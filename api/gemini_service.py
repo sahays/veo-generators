@@ -353,6 +353,7 @@ class GeminiService:
         batches: list,
         video_path: str,
         region: Optional[str] = None,
+        canvas: str = "9:16",
     ) -> AIResponseWrapper:
         """Pass 2: resolve the planner's escalated decision points with the
         decision model (gemini-3.5-flash).
@@ -364,9 +365,9 @@ class GeminiService:
         video upload. Returns merged verdicts + summed usage.
         """
         from reframe_decide import (
-            DECISION_INTRO,
             DECISION_SCHEMA,
             build_cluster_block,
+            build_decision_intro,
             render_decision_thumbs,
         )
         from reframe_escalation import DECISION_MODEL
@@ -377,12 +378,13 @@ class GeminiService:
         client = self._get_client(region)
         schema = load_schema(DECISION_SCHEMA)
         thumbs = render_decision_thumbs(video_path, [c for b in batches for c in b])
+        intro = build_decision_intro(canvas)
 
         verdicts: list = []
         in_tok = out_tok = 0
         cost = 0.0
         for i, batch in enumerate(batches):
-            contents: list = [DECISION_INTRO]
+            contents: list = [intro]
             for c in batch:
                 contents.append(build_cluster_block(c))
                 for b in thumbs.get(c["key"], []):

@@ -13,12 +13,15 @@ vs. letterbox** on a fixed portrait canvas — instead of force-cropping everyth
 - Side-by-side podcasts / interviews (two people a hard crop can't both contain).
 - Presentation / slide footage.
 
-The output is always a single fixed **1080×1920 (9:16) canvas** — the mobile
-full-screen viewport. "Per-scene aspect ratio" means the *inner content's* aspect
-ratio varies; the leftover canvas is filled with the **same scene, full-height,
-blurred** (the existing blurred-background effect, generalized). This is **adaptive
-letterboxing**, not multi-aspect-ratio video (a file has one frame size; the player
-viewport is fixed).
+The output canvas is **selectable per job** (`output_aspect_ratio`): **9:16 →
+1080×1920** (the mobile full-screen viewport) or **3:4 → 1080×1440** (a taller feed
+format). Width is always 1080; only the height changes. Whichever canvas is chosen,
+it is *fixed for that job* — "per-scene aspect ratio" means the *inner content's*
+aspect ratio varies across the canvas's rung ladder; the leftover canvas is filled
+with the **same scene, full-height, blurred** (the existing blurred-background
+effect, generalized). This is **adaptive letterboxing**, not multi-aspect-ratio
+video (a file has one frame size; the player viewport is fixed). Both canvases run
+the *same* adaptive pipeline — only their rung ladders differ (see below).
 
 ## Core principle: Gemini understands, CPU models locate
 
@@ -81,7 +84,11 @@ This **subsumes both existing filters**:
 ### Inner-AR rung ladder (1920×1080 source)
 
 The inner-AR choice is a "how wide a slice do I keep" dial — more crop = bigger
-content; less crop = smaller content with more blur.
+content; less crop = smaller content with more blur. Each canvas has its own ladder
+(`RUNGS_BY_CANVAS` in `reframe_rungs.py`); the tightest rung equals the canvas
+aspect (full-bleed, 0 bars).
+
+**9:16 canvas (1080×1920):**
 
 | Inner AR | crop_w | % source width kept | bars (px) | use when |
 |---|---|---|---|---|
@@ -92,6 +99,18 @@ content; less crop = smaller content with more blur.
 
 (9:16 keeps only ~32% of the width — that's *why* it chops wide logos and split
 two-shots.)
+
+**3:4 canvas (1080×1440):** same adaptive logic, shorter canvas — the ladder is
+`[(3,4), (1,1), (16,9)]`.
+
+| Inner AR | crop_w | % source width kept | bars (px) | use when |
+|---|---|---|---|---|
+| 3:4 | 810 | **42%** | 0 | single subject (full-bleed) |
+| 1:1 | 1080 | **56%** | 360 | side-by-side |
+| 16:9 letterbox | 1920 | **100%** | 832 | full-width text / logo / slide |
+
+(3:4 full-bleed keeps ~42% of the width — a little more than 9:16's 32%, since the
+canvas is less tall.)
 
 ## The decision function
 
@@ -332,7 +351,10 @@ keep-both). Not planned; revisit only if real usage shows a concrete need.
   (recommended) vs. Gemini proposes / PySceneDetect refines (messier). Pick the former.
 - **Two-shot default:** per content type — podcasts lean "keep both / split"; news/
   promos may prefer active-speaker cut.
-- **Delivery vs. canvas:** one 9:16 deliverable with adaptive inner content, or
-  multiple per-platform canvases (4:5 feed, 1:1 square)? Keep these axes separate.
+- **Delivery vs. canvas:** *resolved* — the output canvas is selectable per job
+  (`output_aspect_ratio`: 9:16 or 3:4), each running the same adaptive pipeline on
+  its own rung ladder. Still single-output per job (one chosen canvas, not several
+  at once); adding more canvases (4:5 feed, 1:1 square) is just two more dict
+  entries (`OUTPUT_CANVAS` + `RUNGS_BY_CANVAS`) plus a selector option.
 - **CPU model footprint:** ASD/DBNet/YOLO add worker CPU + cold-start cost; confirm
   the worker image and per-job latency budget before committing to phase 2.

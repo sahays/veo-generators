@@ -269,10 +269,11 @@ def _decide_segment(
     # to gemini-3.5-flash (decision point #1) — Pass 2 decides text, never Pass 1.
     text_meas, text_span = _segment_text_band(tx_win)
 
-    # A single-rung ladder (3:4 full-bleed) can never letterbox, so the
+    # A single-rung ladder (only the full-bleed rung) can never letterbox, so the
     # letterbox-only escalation kinds (text/no-subject/graphic) would be
     # guaranteed no-ops — don't emit them (or pay Gemini for them). Subject and
     # speaker escalations still apply (a `follow` verdict re-targets the crop).
+    # Both shipped canvases (9:16 and 3:4) are multi-rung, so this is True for them.
     can_letterbox = len(rungs) > 1
 
     # Subject we'd crop to (face → body → spatial hint); escalate only when a wide

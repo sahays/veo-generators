@@ -10,13 +10,15 @@ import math
 from typing import List, Optional, Tuple
 
 # Inner-AR rungs, tightest crop → loosest (most letterbox). Chosen by coverage.
-# 9:16 is the historical *adaptive* ladder: each scene picks a rung, letterboxing
-# wide content. 3:4 is a *fixed* full-bleed crop — a single-rung ladder so every
-# scene crops to fill the 3:4 frame (subject-following pan), never letterboxes.
+# Both canvases are *adaptive* ladders: each scene picks a rung, letterboxing wide
+# content (two-shots, side captions) instead of cropping it out. The tightest rung
+# equals the canvas aspect (full-bleed). On a 16:9 source the 3:4 rungs cover
+# 0.42 / 0.56 / 1.0 of the width (bars 0% / 25% / 58%) — mirroring the 9:16 ladder's
+# gradual steps, just on the shorter 1080×1440 canvas.
 RUNGS: List[Tuple[int, int]] = [(9, 16), (4, 5), (1, 1), (16, 9)]
 RUNGS_BY_CANVAS: dict = {
     "9:16": RUNGS,
-    "3:4": [(3, 4)],
+    "3:4": [(3, 4), (1, 1), (16, 9)],
 }
 
 RUNG_TOLERANCE = 0.05  # accept a rung that covers within this of the requirement

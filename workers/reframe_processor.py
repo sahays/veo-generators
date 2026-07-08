@@ -64,8 +64,16 @@ class ReframeProcessor(JobProcessor):
     def _run_diagnostic(self, record, record_id, src_path, out_path, probe, tmp):
         """Diagnostic mode: run detection, render detector overlays (no crop)."""
         from reframe_diagnostic import render_diagnostic
+        from reframe_filters import OUTPUT_CANVAS
+        from reframe_plan import RUNGS_BY_CANVAS
 
         has_audio = probe.get("has_audio", True)
+
+        # Same output canvas + rung ladder selection as the real reframe path, so
+        # the diagnostic previews what the chosen aspect ratio (9:16 or 3:4) crops.
+        ar = getattr(record, "output_aspect_ratio", "9:16") or "9:16"
+        out_w, out_h = OUTPUT_CANVAS.get(ar, OUTPUT_CANVAS["9:16"])
+        rungs = RUNGS_BY_CANVAS.get(ar, RUNGS_BY_CANVAS["9:16"])
 
         chirp_context, _speaker_segments = self._run_diarization(
             record, record_id, src_path, probe, tmp, has_audio
@@ -113,13 +121,14 @@ class ReframeProcessor(JobProcessor):
             probe["height"],
             probe["duration"],
             person_frames=person_frames,
+            rungs=rungs,
             text_frames=text_frames,
         )
         attach_keypoints(segments, probe["fps"], probe["width"], probe["height"])
         self._store_segment_plan(record_id, segments)
 
         self.update_status(record_id, "processing", 60)
-        logger.info(f"[reframe:{record_id}] Rendering diagnostic overlay...")
+        logger.info(f"[reframe:{record_id}] Rendering diagnostic overlay ({ar})...")
         render_diagnostic(
             src_path=det_src,
             out_path=out_path,
@@ -130,10 +139,12 @@ class ReframeProcessor(JobProcessor):
             has_audio=has_audio,
             person_frames=person_frames,
             segments=segments,
+            out_w=out_w,
+            out_h=out_h,
         )
 
     def _upload_diagnostic(self, record_id, out_path):
-        """Upload the diagnostic video (already 1080x1920 — no transcode)."""
+        """Upload the diagnostic video (already the output canvas size — no transcode)."""
         bucket = os.getenv("GCS_BUCKET")
         uri = f"gs://{bucket}/reframes/{record_id}/diagnostic.mp4"
         deps.storage_svc.upload_from_file(out_path, uri)
@@ -396,6 +407,7 @@ class ReframeProcessor(JobProcessor):
                     batch["batches"],
                     src_path,
                     region=getattr(record, "region", None),
+                    canvas=getattr(record, "output_aspect_ratio", "9:16") or "9:16",
                 )
             )
         except Exception as e:

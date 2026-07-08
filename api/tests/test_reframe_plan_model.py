@@ -93,6 +93,15 @@ class TestLetterboxFlag:
         )
         assert plan.segments[0].letterboxed is False
 
+    def test_three_four_canvas_wide_rung_letterboxed(self):
+        # On the adaptive 3:4 canvas, any rung looser than the (3,4) full-bleed
+        # (e.g. a two-shot pulled to 1:1, or full-width 16:9) letterboxes.
+        for ar in ([1, 1], [16, 9]):
+            plan = ReframePlan.from_dict(
+                _record([_seg(0, 4, ar, coverage=1.0)], canvas="3:4")
+            )
+            assert plan.segments[0].letterboxed is True
+
 
 class TestEscalation:
     def _esc(self):
