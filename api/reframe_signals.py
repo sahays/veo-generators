@@ -7,11 +7,43 @@ consumes these facts and chooses layouts/escalations. Pure logic, no I/O.
 """
 
 import bisect
+import os
 import re
 import statistics
 from typing import List, Optional, Tuple
 
 STABLE_FRAC = 0.30  # a track must appear in ≥ this fraction of segment frames
+
+# Fused prominence (Phase 2): "which face matters" was previously max(frac) —
+# visibility alone — which framed a persistent small background face over a
+# fragmented large foreground one (production case: a w=0.16 face framed while
+# a w=0.51 face was clipped 35%). Size is the prominence carrier; frac (damped:
+# after the tracker fixes it answers "reliably trackable", not "important")
+# and confidence weigh it; a mild center prior breaks ties toward composition.
+# `speak_mult` is applied by the speaker pin (a talking face outranks a larger
+# silent one). REFRAME_PROMINENCE=frac restores the legacy pick.
+PROM_CENTER_PULL = 0.2  # max penalty for a subject at the frame edge
+PROM_SPEAK_MULT = 1.5  # boost for the pinned active speaker
+
+
+def _prom(s: dict, max_w: float) -> float:
+    center_prior = 1.0 - PROM_CENTER_PULL * min(1.0, 2.0 * abs(s["x"] - 0.5))
+    w_ratio = (s["w"] / max_w) if max_w > 0 else 0.0
+    return (
+        (0.5 + 0.5 * s.get("conf", 0.5))
+        * (s["frac"] ** 0.5)
+        * w_ratio
+        * center_prior
+        * s.get("speak_mult", 1.0)
+    )
+
+
+def prominence(s: dict) -> float:
+    """Sort key for subject picks (env-switchable back to legacy frac)."""
+    if os.getenv("REFRAME_PROMINENCE", "fused") == "frac":
+        return s["frac"]
+    return s.get("prom", s["frac"])
+
 
 # Active-speaker detection (Phase 2): in a multi-person shot, frame the talking
 # face (mouth moving) as a single crop instead of letterboxing both. Speaking is
@@ -110,7 +142,11 @@ def _stable_tracks(win):
         }
         for tid, a in agg.items()
     ]
-    return [s for s in stats if s["frac"] >= STABLE_FRAC]
+    stable = [s for s in stats if s["frac"] >= STABLE_FRAC]
+    max_w = max((s["w"] for s in stable), default=0.0)
+    for s in stable:
+        s["prom"] = round(_prom(s, max_w), 4)
+    return stable
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +178,7 @@ def _match_track(stable: List[dict], scene: dict, label_map: dict) -> dict:
         return max(stable, key=lambda s: s["x"])
     if "center" in h:
         return min(stable, key=lambda s: abs(s["x"] - 0.5))
-    return max(stable, key=lambda s: s["frac"])  # most prominent
+    return max(stable, key=prominence)  # most prominent
 
 
 def _scene_for(
@@ -232,6 +268,27 @@ def _dominant_speaker(speaker_segments, start: float, end: float):
             sid = sp.get("speaker_id")
             talk[sid] = talk.get(sid, 0.0) + (hi - lo)
     return max(talk, key=talk.get) if talk else None
+
+
+def _norm_speaker(s) -> str:
+    """Normalize a speaker label for matching ('Speaker 1' / 'S1' / 1 → '1')."""
+    n = re.sub(r"[^a-z0-9]", "", str(s).lower())
+    return n.removeprefix("speaker").removeprefix("s") or n
+
+
+def _semantic_speaker_position(scene: dict, speaker_label) -> Optional[str]:
+    """WHERE the window's dominant Chirp speaker appears on screen, per the
+    semantic pass — 'left'/'center'/'right'/'offscreen', or None when the shot
+    carries no entry for that speaker. 'offscreen' is the load-bearing value:
+    narration/voiceover must not trigger speaker-centering."""
+    if speaker_label is None:
+        return None
+    want = _norm_speaker(speaker_label)
+    for sp in scene.get("speakers") or []:
+        if _norm_speaker(sp.get("speaker_id")) == want:
+            pos = sp.get("position")
+            return pos if pos in ("left", "center", "right", "offscreen") else None
+    return None
 
 
 def _associate_speaker_face(stable, win, speech_intervals):
@@ -330,6 +387,38 @@ def _segment_text_band(win) -> Tuple[float, Tuple[float, float]]:
     return cov, (x0, x1)
 
 
+def _segment_text_regions(win, regions):
+    """Per-region text facts for one segment window.
+
+    Returns ``(coverage, (x0, x1), active_regions)`` where ``active_regions``
+    are the persistent CANDIDATE regions (never bugs/watermarks) present in
+    enough of this window's frames, and the span is their union — so a corner
+    channel bug can no longer inflate a caption into a frame-wide band.
+
+    ``regions is None`` (legacy capture with no per-line data) falls back to
+    the union-band measurement so old fixtures replay unchanged.
+    """
+    if regions is None:
+        cov, span = _segment_text_band(win)
+        return cov, span, []
+    if not win:
+        return 0.0, (0.0, 0.0), []
+    n = len(win)
+    t0, t1 = win[0]["time_sec"], win[-1]["time_sec"]
+    active = []
+    for r in regions:
+        if r.get("kind") == "bug":
+            continue
+        cnt = sum(1 for t in r.get("times", []) if t0 <= t <= t1)
+        if cnt >= TEXT_MIN_FRAMES and cnt / n >= TEXT_PERSIST_FRAC:
+            active.append(r)
+    if not active:
+        return 0.0, (0.0, 0.0), []
+    x0 = min(r["box"][0] for r in active)
+    x1 = max(r["box"][2] for r in active)
+    return max(0.0, x1 - x0), (x0, x1), active
+
+
 # ---------------------------------------------------------------------------
 # Per-frame focal series (for intra-segment panning)
 # ---------------------------------------------------------------------------
@@ -354,20 +443,105 @@ def _track_x_spread(win, track_id) -> float:
     return (max(xs) - min(xs)) if xs else 0.0
 
 
-def _segment_persons(win):
-    """Per-frame largest person over the windowed frames → {time_sec, x, y, w}."""
-    out = []
+PERSON_GROUP_IOU = 0.3  # same clustering bar persistent_text_regions uses
+PERSON_BUCKET_IOF = 0.5  # a group is "in" the hinted third when mostly inside it
+
+
+def _person_groups(win, tf_win=None) -> List[dict]:
+    """Cluster a window's person detections into distinct people.
+
+    Person boxes carry no track ids, so detections are grouped by horizontal-
+    interval IoU against each group's running span. Each group carries its
+    detection series (`pts`) plus the subject-pick evidence: accumulated box
+    area, and whether ANY face detection ever landed inside one of its boxes
+    (frontality — someone seen from behind never shows a face).
+    """
+    faces_at = {}
+    for f in tf_win or []:
+        faces_at[round(f["time_sec"], 3)] = f.get("tracks") or []
+    groups: List[dict] = []
     for f in win:
-        ps = f.get("persons", [])
-        if not ps:
-            continue
-        big = max(ps, key=lambda p: p.get("w", 0.0) * p.get("h", 0.0))
-        out.append(
-            {
-                "time_sec": f["time_sec"],
-                "x": big["x"],
-                "y": big.get("y", 0.5),
-                "w": big.get("w", 0.0),
-            }
-        )
-    return out
+        faces = faces_at.get(round(f["time_sec"], 3), [])
+        for p in f.get("persons", []):
+            w = p.get("w", 0.0)
+            lo, hi = p["x"] - w / 2, p["x"] + w / 2
+            best, best_iou = None, PERSON_GROUP_IOU
+            for g in groups:
+                inter = min(hi, g["hi"]) - max(lo, g["lo"])
+                union = max(hi, g["hi"]) - min(lo, g["lo"])
+                iou = (inter / union) if union > 0 else 0.0
+                if iou >= best_iou:
+                    best, best_iou = g, iou
+            if best is None:
+                best = {"lo": lo, "hi": hi, "area": 0.0, "face": False, "pts": []}
+                groups.append(best)
+            n = len(best["pts"])
+            best["lo"] = (best["lo"] * n + lo) / (n + 1)
+            best["hi"] = (best["hi"] * n + hi) / (n + 1)
+            best["area"] += w * p.get("h", 0.5)
+            best["pts"].append(
+                {
+                    "time_sec": f["time_sec"],
+                    "x": p["x"],
+                    "y": p.get("y", 0.5),
+                    "w": w,
+                }
+            )
+            if not best["face"]:
+                best["face"] = any(lo <= tr["x"] <= hi for tr in faces)
+    return groups
+
+
+def _pick_person_group(groups: List[dict], hint_x: Optional[float]) -> dict:
+    """The subject group, lexicographically: in the hinted third → shows a
+    face → biggest. A person who ever shows a face is more subject-like than
+    one who never does (backs of heads don't carry scenes), and Gemini's
+    position bucket settles which side of the frame the story is on — size
+    only breaks the remaining ties (the legacy criterion)."""
+
+    def in_bucket(g) -> bool:
+        if hint_x is None:
+            return False
+        b0 = int(min(max(hint_x, 0.0), 0.999) * 3) / 3.0
+        span = max(g["hi"] - g["lo"], 1e-6)
+        inter = max(0.0, min(g["hi"], b0 + 1 / 3.0) - max(g["lo"], b0))
+        return inter / span >= PERSON_BUCKET_IOF
+
+    return max(groups, key=lambda g: (in_bucket(g), g["face"], g["area"]))
+
+
+def _segment_persons(win, tf_win=None, hint_x=None):
+    """Per-frame subject person over the windowed frames → {time_sec, x, y, w}.
+
+    Legacy behavior (kept for the REFRAME_PROMINENCE=frac escape hatch, and
+    when called with no evidence): the LARGEST box per frame. That picks
+    whoever fills the most pixels — e.g. an out-of-focus foreground back —
+    over the actual story subject, and can flicker between people mid-segment.
+
+    Subject-aware mode clusters detections into people (`_person_groups`),
+    picks one group (`_pick_person_group`, biased by the semantic subject
+    bucket `hint_x` when the scene carries one), and returns that group's own
+    series — the crop follows ONE person for the whole window.
+    """
+    if os.getenv("REFRAME_PROMINENCE", "fused") == "frac" or (
+        tf_win is None and hint_x is None
+    ):
+        out = []
+        for f in win:
+            ps = f.get("persons", [])
+            if not ps:
+                continue
+            big = max(ps, key=lambda p: p.get("w", 0.0) * p.get("h", 0.0))
+            out.append(
+                {
+                    "time_sec": f["time_sec"],
+                    "x": big["x"],
+                    "y": big.get("y", 0.5),
+                    "w": big.get("w", 0.0),
+                }
+            )
+        return out
+    groups = _person_groups(win, tf_win)
+    if not groups:
+        return []
+    return _pick_person_group(groups, hint_x)["pts"]

@@ -348,12 +348,59 @@ class GeminiService:
         data["prompt_text_used"] = prompt_text
         return AIResponseWrapper(data=data, usage=compute_usage(response, model_id))
 
+    async def analyze_video_semantics(
+        self,
+        gcs_uri: str,
+        cuts: Optional[list],
+        chirp_context: str,
+        duration: float,
+        mime_type: str = "video/mp4",
+        model_id: Optional[str] = None,
+        region: Optional[str] = None,
+    ) -> AIResponseWrapper:
+        """Whole-video semantic pass (reframe Phase 4): per-shot categorical
+        judgments — content kind, text importance, speaker screen positions.
+
+        One flash-lite video+audio call (~100 tokens/s of video at 1 fps) that
+        replaces the sparse thumbnail escalations for text/graphic/no-subject
+        decisions. Returns the raw schema payload; ``reframe_semantic``
+        validates and reconciles it against CPU facts. Coordinates are NEVER
+        requested — video-mode spatial grounding is unreliable, and the CPU
+        owns all geometry by design.
+        """
+        from reframe_semantic import SEMANTIC_MODEL, build_semantic_prompt
+
+        model_id = model_id or SEMANTIC_MODEL
+        client = self._get_client(region)
+        prompt_text = build_semantic_prompt(cuts or [], chirp_context, duration)
+        contents = [
+            types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type),
+            prompt_text,
+        ]
+        # 1 fps sampling: shot-level labels need temporal coverage, not motion
+        # detail. Audio stays on — it is what distinguishes a talking head from
+        # a narrated poster and keys speakers to the Chirp labels.
+        contents[0].video_metadata = types.VideoMetadata(fps=1)
+        response = await gemini_call_with_retry(
+            client,
+            model_id,
+            contents,
+            types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=load_schema("reframe-semantic-schema"),
+                max_output_tokens=65536,
+            ),
+        )
+        data = response.parsed if isinstance(response.parsed, dict) else {"shots": []}
+        return AIResponseWrapper(data=data, usage=compute_usage(response, model_id))
+
     async def decide_escalations(
         self,
         batches: list,
         video_path: str,
         region: Optional[str] = None,
         canvas: str = "9:16",
+        active_area: Optional[dict] = None,
     ) -> AIResponseWrapper:
         """Pass 2: resolve the planner's escalated decision points with the
         decision model (gemini-3.5-flash).
@@ -362,7 +409,9 @@ class GeminiService:
         payloads, each a list of clustered decision points. Batches run
         SEQUENTIALLY (one request at a time; `gemini_call_with_retry` backs off on
         429). Thumbnails are decoded from the LOCAL source and sent inline — no
-        video upload. Returns merged verdicts + summed usage.
+        video upload. Returns merged verdicts + summed usage. `active_area`
+        trims baked-in source bars off the thumbnails so overlays line up with
+        the plan's active-picture coordinates.
         """
         from reframe_decide import (
             DECISION_SCHEMA,
@@ -377,7 +426,9 @@ class GeminiService:
 
         client = self._get_client(region)
         schema = load_schema(DECISION_SCHEMA)
-        thumbs = render_decision_thumbs(video_path, [c for b in batches for c in b])
+        thumbs = render_decision_thumbs(
+            video_path, [c for b in batches for c in b], active_area=active_area
+        )
         intro = build_decision_intro(canvas)
 
         verdicts: list = []

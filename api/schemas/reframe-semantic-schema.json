@@ -1,0 +1,100 @@
+{
+  "type": "object",
+  "properties": {
+    "format": {
+      "type": "string",
+      "enum": ["podcast", "interview", "documentary", "film", "trailer", "presentation", "ad", "music_video", "other"],
+      "description": "Overall genre of the video."
+    },
+    "shots": {
+      "type": "array",
+      "description": "One entry per shot, echoing the provided hard-cut boundaries.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "start_sec": { "type": "number" },
+          "end_sec": { "type": "number" },
+          "content_kind": {
+            "type": "string",
+            "enum": ["talking_head", "multi_person_dialogue", "screen_share_slide", "title_card", "poster_static", "action", "montage", "broll_scenery"],
+            "description": "What the shot IS. talking_head = one on-screen person speaking. multi_person_dialogue = two+ people conversing on screen. screen_share_slide = a slide, screen recording, chart or document fills the frame. title_card = designed full-frame text/branding card. poster_static = a static poster/key-art/photo held on screen (often with voiceover). action = subject(s) in significant motion. montage = fast-cut b-roll sequence. broll_scenery = scenery/establishing footage with no specific subject."
+          },
+          "key_subject": {
+            "type": "object",
+            "description": "The single subject the crop should follow, if any.",
+            "properties": {
+              "desc": { "type": "string", "description": "Who/what it is, briefly." },
+              "position": {
+                "type": "string",
+                "enum": ["left", "center", "right", "none"],
+                "description": "Rough horizontal position. none = no followable subject."
+              }
+            },
+            "required": ["position"]
+          },
+          "text_elements": {
+            "type": "array",
+            "description": "Burned-in text/graphics visible in this shot. Judge IMPORTANCE, not readability.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": ["title", "lower_third_caption", "subtitle", "watermark_bug", "slide_content", "credits", "callout"]
+                },
+                "importance": {
+                  "type": "string",
+                  "enum": ["essential", "contextual", "incidental"],
+                  "description": "essential = the viewer must read it (title, subtitle, price, chart label, speaker name). contextual = adds value but the shot works without it. incidental = watermark, channel bug, background signage, decorative type — losing it costs nothing."
+                },
+                "persistent": {
+                  "type": "boolean",
+                  "description": "True if this element stays on screen across many shots (a watermark/bug), false if it belongs to this shot."
+                },
+                "extent": {
+                  "type": "string",
+                  "enum": ["left_third", "center_third", "right_third", "left_half", "right_half", "full_width", "corner"],
+                  "description": "Rough horizontal reach. Coarse buckets only."
+                },
+                "sample": { "type": "string", "description": "First few words, for logging." }
+              },
+              "required": ["kind", "importance", "extent"]
+            }
+          },
+          "speakers": {
+            "type": "array",
+            "description": "Who is audibly speaking during this shot, keyed to the diarization labels provided in the prompt, and where they are ON SCREEN (offscreen = narrator / not visible).",
+            "items": {
+              "type": "object",
+              "properties": {
+                "speaker_id": { "type": "string" },
+                "position": {
+                  "type": "string",
+                  "enum": ["left", "center", "right", "offscreen"]
+                }
+              },
+              "required": ["speaker_id", "position"]
+            }
+          }
+        },
+        "required": ["start_sec", "end_sec", "content_kind"]
+      }
+    },
+    "watermarks": {
+      "type": "array",
+      "description": "Video-level persistent overlays (channel bugs, watermarks) present through most of the video.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "extent": {
+            "type": "string",
+            "enum": ["left_third", "center_third", "right_third", "left_half", "right_half", "full_width", "corner"]
+          },
+          "note": { "type": "string" }
+        },
+        "required": ["extent"]
+      }
+    }
+  },
+  "required": ["shots"]
+}

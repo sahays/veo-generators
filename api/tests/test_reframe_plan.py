@@ -542,15 +542,47 @@ class TestReconcile:
         assert plan[0]["layout"] == "single"
 
     def test_two_comparable_faces_escalate_subject(self):
-        # Comparably PRESENT but differently SIZED faces (not an equal pair),
+        # Comparably PROMINENT faces (fused size × presence × confidence score),
         # neither clearly speaking → the single-subject pick is ambiguous →
         # escalate which-subject (#3/#4) to gemini-3.5.
+        tracked = [
+            _frame(t, [_tr(1, 0.45, w=0.12), _tr(2, 0.55, w=0.08)]) for t in (0, 2, 4)
+        ]
+        plan = reconcile([], tracked, cuts=[], src_w=SRC_W, src_h=SRC_H, duration=6.0)
+        pts = collect_escalation_points(plan)
+        assert any(p["kind"] == "subject_choice" for p in pts)
+
+    def test_clearly_larger_face_dominates_without_escalation(self):
+        # Equal presence but a 2.4× size gap is NOT ambiguity: the large face is
+        # the subject, no Gemini call. (Under the retired frac-only ranking this
+        # escalated — presence alone said "comparable".)
         tracked = [
             _frame(t, [_tr(1, 0.45, w=0.12), _tr(2, 0.55, w=0.05)]) for t in (0, 2, 4)
         ]
         plan = reconcile([], tracked, cuts=[], src_w=SRC_W, src_h=SRC_H, duration=6.0)
         pts = collect_escalation_points(plan)
-        assert any(p["kind"] == "subject_choice" for p in pts)
+        assert not any(p["kind"] == "subject_choice" for p in pts)
+        assert plan[0]["crops"][0]["track_id"] == 1
+
+    def test_large_intermittent_face_beats_small_persistent_face(self):
+        # THE production wrong-subject case (rf-piemrxjm t=39-40s): a small face
+        # present in every sample (w=0.16, frac=1.0) was framed while a face 3×
+        # larger but intermittently tracked (w=0.51, frac=0.5) was clipped 35%.
+        # Fused prominence must not lose the large face; frac-only framed the
+        # small one and cropped the big one away.
+        big_times = (0, 2, 4)  # frac 0.5 of the 6 samples — above STABLE_FRAC
+        tracked = [
+            _frame(
+                t,
+                [_tr(1, 0.3, w=0.16)]
+                + ([_tr(2, 0.65, w=0.51)] if t in big_times else []),
+            )
+            for t in (0, 1, 2, 3, 4, 5)
+        ]
+        plan = reconcile([], tracked, cuts=[], src_w=SRC_W, src_h=SRC_H, duration=6.0)
+        crop = plan[0]["crops"][0]
+        kept = [crop.get("track_id")] + list(crop.get("track_ids") or [])
+        assert 2 in kept, f"large face lost again: {plan[0]}"
 
     def test_two_equal_faces_keep_both(self):
         # PRODUCT RULE: equally present AND equally sized people are framed

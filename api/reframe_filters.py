@@ -116,6 +116,7 @@ def build_canvas_filter(
     inner_ar: Tuple[int, int],
     out_w: int = 1080,
     out_h: int = 1920,
+    src_crop: str = "",
 ) -> str:
     """Unified per-segment filter_complex for any inner aspect ratio.
 
@@ -126,18 +127,22 @@ def build_canvas_filter(
     The canvas is `out_w`×`out_h` (default 9:16 1080×1920; pass 1080×1440 for 3:4).
     A rung whose `fg_h >= out_h` is full-bleed (no bars); a shorter `fg_h` letterboxes.
     inner_ar examples on a 9:16 canvas: (9,16) full-bleed, (4,5), (1,1), (16,9) letterbox.
+
+    `src_crop` (see reframe_active_area.crop_prefilter) trims baked-in
+    letterbox/pillarbox bars off the source before everything else; when set,
+    `src_w`/`src_h` and the keypoints are in ACTIVE-picture coordinates.
     """
     crop_w, fg_h, max_x = crop_geometry(inner_ar, src_w, src_h)
     if crop_w <= 0:
-        return f"[0:v]scale={out_w}:{out_h}[v]"
+        return f"[0:v]{src_crop}scale={out_w}:{out_h}[v]"
     x_off = _crop_x_offset(keypoints, src_w, crop_w, max_x)
-    fg_chain = f"crop={crop_w}:{src_h}:{x_off}:0,scale={out_w}:{fg_h}"
+    fg_chain = f"{src_crop}crop={crop_w}:{src_h}:{x_off}:0,scale={out_w}:{fg_h}"
 
     if fg_h >= out_h:  # full-bleed (e.g. 9:16) — foreground covers the canvas
         return f"[0:v]{fg_chain}[v]"
 
     y_off = (out_h - fg_h) // 2
-    bg = _blurred_bg_base(out_w, out_h)
+    bg = _blurred_bg_base(out_w, out_h, src_crop)
     return f"{bg};[0:v]{fg_chain}[fg];[bg][fg]overlay=0:{y_off}[v]"
 
 
@@ -163,29 +168,30 @@ def build_split_filter(
     src_h: int,
     out_w: int = 1080,
     out_h: int = 1920,
+    src_crop: str = "",
 ) -> str:
     """filter_complex for a stacked two-shot: left subject on top, right on bottom.
 
     Two full-height source slices (each panned to follow its subject) scaled to
     half-canvas panels and vstacked — no blurred background, since the panels fill
-    the canvas. Output label is [v].
+    the canvas. Output label is [v]. `src_crop` as in `build_canvas_filter`.
     """
     crop_w, panel_h, max_x = split_panel_geometry(src_w, src_h, out_w, out_h)
     if crop_w <= 0:
-        return f"[0:v]scale={out_w}:{out_h}[v]"
+        return f"[0:v]{src_crop}scale={out_w}:{out_h}[v]"
     top_x = _crop_x_offset(top_keypoints, src_w, crop_w, max_x)
     bot_x = _crop_x_offset(bot_keypoints, src_w, crop_w, max_x)
     return (
-        f"[0:v]crop={crop_w}:{src_h}:{top_x}:0,scale={out_w}:{panel_h}[top];"
-        f"[0:v]crop={crop_w}:{src_h}:{bot_x}:0,scale={out_w}:{panel_h}[bot];"
+        f"[0:v]{src_crop}crop={crop_w}:{src_h}:{top_x}:0,scale={out_w}:{panel_h}[top];"
+        f"[0:v]{src_crop}crop={crop_w}:{src_h}:{bot_x}:0,scale={out_w}:{panel_h}[bot];"
         f"[top][bot]vstack[v]"
     )
 
 
-def _blurred_bg_base(out_w: int, out_h: int) -> str:
-    """Background layer: scaled + heavily blurred source."""
+def _blurred_bg_base(out_w: int, out_h: int, src_crop: str = "") -> str:
+    """Background layer: scaled + heavily blurred source (bars trimmed first)."""
     return (
-        f"[0:v]scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
+        f"[0:v]{src_crop}scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
         f"crop={out_w}:{out_h},gblur=sigma=40[bg]"
     )
 

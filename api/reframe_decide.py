@@ -14,7 +14,7 @@ are wired.
 
 import json
 import logging
-from typing import List
+from typing import List, Optional
 
 from reframe_plan import (
     COVERAGE_MARGIN,
@@ -154,7 +154,9 @@ def _cluster_sample_secs(cluster: dict) -> List[float]:
     return thumbs[:THUMBS_PER_CLUSTER] or [s]
 
 
-def render_decision_thumbs(video_path: str, clusters: List[dict]) -> dict:
+def render_decision_thumbs(
+    video_path: str, clusters: List[dict], active_area: Optional[dict] = None
+) -> dict:
     """{cluster key → [annotated JPEG bytes]} — several representative frames.
 
     Samples each cluster at `_cluster_sample_secs` (its per-segment midpoints when
@@ -162,12 +164,18 @@ def render_decision_thumbs(video_path: str, clusters: List[dict]) -> dict:
     overlay (text) or candidate markers (subject), so the model judges from what the
     crop actually does, not from numbers. Best-effort: degrades to {} if cv2 is
     unavailable; skips frames that can't be read.
+
+    `active_area` trims baked-in source bars before the overlay — the plan's
+    fractions are active-picture coordinates, so overlays would land on the
+    wrong rows of a padded frame otherwise.
     """
     try:
         import cv2
     except Exception:
         logger.warning("reframe_decide: cv2 unavailable — no thumbnails")
         return {}
+    from reframe_active_area import slice_frame
+
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         logger.warning(f"reframe_decide: cannot open {video_path}")
@@ -183,6 +191,7 @@ def render_decision_thumbs(video_path: str, clusters: List[dict]) -> dict:
                 ok, frame = cap.read()
                 if not ok:
                     continue
+                frame = slice_frame(frame, active_area)
                 if facts.get("crop_keeps"):  # text_presence / no_subject / weak_subject
                     frame = _overlay_text(frame, facts["crop_keeps"])
                 elif facts.get("candidates"):  # subject_choice / active_speaker

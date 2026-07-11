@@ -1,0 +1,28 @@
+{
+  "rf-e70yrxvz": {
+    "ar_changes_per_min": 11.99,
+    "center_crop_segments": 1,
+    "crop_jumps_per_min": 0.0,
+    "face_cut_rate": 0.0,
+    "framed_speaker_active_rate": null,
+    "letterbox_16x9_segments": 1,
+    "mean_letterbox_pct": 0.091,
+    "over_letterbox_rate": 0.0,
+    "segments": 5,
+    "speaker_segments": 1,
+    "split_segments": 0
+  },
+  "rf-piemrxjm": {
+    "ar_changes_per_min": 8.75,
+    "center_crop_segments": 8,
+    "crop_jumps_per_min": 0.0,
+    "face_cut_rate": 0.191,
+    "framed_speaker_active_rate": 0.333,
+    "letterbox_16x9_segments": 13,
+    "mean_letterbox_pct": 0.095,
+    "over_letterbox_rate": 0.2,
+    "segments": 84,
+    "speaker_segments": 7,
+    "split_segments": 0
+  }
+}

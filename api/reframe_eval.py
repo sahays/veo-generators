@@ -105,6 +105,25 @@ def _crop_windows(
     return [_crop_window(seg, src_w, src_h, t)]
 
 
+def _subject_bucket_mismatch(seg: dict, src_w: int, src_h: int, canvas_h: int) -> bool:
+    """True when a person/center crop entirely excludes the semantic subject's
+    third of the frame — the "framed the wrong thing" tripwire. Only judged
+    where BOTH sides exist: a scene bucket from the semantic pass and a crop
+    that followed no specific face track."""
+    trace = seg.get("trace") or {}
+    if trace.get("source") not in ("person", "center"):
+        return False
+    bucket = ((trace.get("scene") or {}).get("active_subject") or "").lower()
+    if bucket not in ("left", "center", "right"):
+        return False
+    b0 = {"left": 0.0, "center": 1 / 3.0, "right": 2 / 3.0}[bucket]
+    t_mid = (seg["start"] + seg["end"]) / 2.0
+    windows = _crop_windows(seg, src_w, src_h, t_mid, canvas_h)
+    return bool(windows) and all(
+        min(right, b0 + 1 / 3.0) - max(left, b0) <= 0 for left, right in windows
+    )
+
+
 def _flag(value, warn, fail, higher_is_better: bool) -> str:
     if value is None:
         return "na"
@@ -180,12 +199,18 @@ def evaluate(
     sample_fps: float = 1.0,
     canvas_h: int = 1920,
     rungs: Optional[List[Tuple[int, int]]] = None,
+    perception: Optional[dict] = None,
 ) -> dict:
     """Reference-free per-run report card for a reframe plan.
 
     Returns ``{}`` for an empty plan. The ``talker`` block is ``null`` when no
     multi-face MAR data exists; its audio-dependent metrics are ``null`` when
     there are no speech intervals. See module docstring for the metric set.
+
+    ``perception`` (optional) carries detection-run facts from the worker
+    (backend actually used, expected sample count); when present it becomes a
+    ``perception`` block whose flag rolls into ``overall`` — the permanent
+    tripwire for detection silently breaking (Haar fallback, zero frames).
     """
     if not plan:
         return {}
@@ -341,6 +366,7 @@ def evaluate(
     mean_lb = 0.0
     lb_segments = 0
     over_lb_hits = 0
+    subj_mismatch = 0
     seg_reports: List[dict] = []
     for seg in plan:
         # A split fills the canvas with stacked panels — no letterbox bars, no rung.
@@ -356,6 +382,13 @@ def evaluate(
                 }
             )
             continue
+        # Semantic cross-check tripwire: a person/center crop whose window lies
+        # entirely OUTSIDE the third Gemini placed the subject in has (very
+        # likely) framed the wrong thing. Containment/face_cut can't see this
+        # class — they only grade the boxes the picker itself chose.
+        mismatch = _subject_bucket_mismatch(seg, src_w, src_h, canvas_h)
+        if mismatch:
+            subj_mismatch += 1
         _cw, fg_h, _mx = crop_geometry(tuple(seg["inner_ar"]), src_w, src_h)
         lb = max(0.0, 1.0 - fg_h / canvas_h)
         dur = max(0.0, seg["end"] - seg["start"])
@@ -363,24 +396,20 @@ def evaluate(
         over = False
         if lb > 0:  # this segment is letterboxed
             lb_segments += 1
-            # A Gemini-confirmed text letterbox is INTENTIONAL — the bars preserve
-            # on-screen text/graphics the subject-width geometry can't see, so it is
-            # never "over". over_letterbox_rate stays a measure of *needless*
-            # (unexplained) letterboxing, which is the regression it was built for.
-            verdict = (seg.get("escalate") or {}).get("verdict") or {}
-            gemini_text = (seg.get("trace") or {}).get(
-                "source"
-            ) == "gemini_text" or verdict.get("action") == "letterbox"
-            if not gemini_text:
-                need = _must_keep_width(seg, tracked_frames)
-                idx = (
-                    rungs.index(tuple(seg["inner_ar"]))
-                    if tuple(seg["inner_ar"]) in rungs
-                    else -1
-                )
-                if idx > 0 and rung_coverage(rungs[idx - 1], src_w, src_h) >= need:
-                    over = True
-                    over_lb_hits += 1
+            # No verdict is blanket-exempt: a Gemini text/graphic letterbox is
+            # justified only by its measured band or stated coverage (folded into
+            # _must_keep_width). Bars wider than their own evidence flag as
+            # "over", so text over-letterboxing is measurable — the blanket
+            # exemption this replaces made that failure class invisible.
+            need = _must_keep_width(seg, tracked_frames)
+            idx = (
+                rungs.index(tuple(seg["inner_ar"]))
+                if tuple(seg["inner_ar"]) in rungs
+                else -1
+            )
+            if idx > 0 and rung_coverage(rungs[idx - 1], src_w, src_h) >= need:
+                over = True
+                over_lb_hits += 1
         seg_reports.append(
             {
                 "start": round(seg["start"], 2),
@@ -389,6 +418,7 @@ def evaluate(
                 "letterbox_pct": round(lb, 3),
                 "over_letterbox": over,
                 "reason": seg.get("reason", ""),
+                **({"subject_mismatch": True} if mismatch else {}),
             }
         )
     mean_letterbox_pct = mean_lb / max(duration, 0.001)
@@ -477,52 +507,193 @@ def evaluate(
             )
     worst = worst[: _WORST_KEEP * 3]
 
+    # --- Perception tripwire --------------------------------------------------
+    # Detection silently breaking (missing GL libs → Haar fallback; AV1 → zero
+    # frames decoded) has twice shipped garbage output while jobs "completed".
+    # Surface the detection-run facts as a first-class block that can fail the
+    # report, so the failure is attributed here — not chased downstream.
+    perception_block = None
+    if perception is not None:
+        sampled = len(tracked_frames)
+        expected = perception.get("frames_expected")
+        faces_per_frame = (
+            sum(len(f.get("tracks", [])) for f in tracked_frames) / sampled
+            if sampled
+            else 0.0
+        )
+        if perception.get("face_backend") == "haar" or sampled == 0:
+            pflag = "fail"
+        elif expected and sampled < 0.5 * expected:
+            pflag = "warn"
+        else:
+            pflag = "ok"
+        perception_block = {
+            **perception,
+            "frames_sampled": sampled,
+            "faces_per_frame": round(faces_per_frame, 2),
+            "flag": pflag,
+        }
+
     overall = _rollup(
-        letterbox["flag"], stability["flag"], (talker or {}).get("flag", "na")
+        letterbox["flag"],
+        stability["flag"],
+        (talker or {}).get("flag", "na"),
+        (perception_block or {}).get("flag", "na"),
     )
 
-    return {
+    # --- Failing metrics (attribution) -----------------------------------------
+    # Name what drove the verdict so a warn/fail is explainable from the stored
+    # report (and one log line) without re-deriving thresholds by hand.
+    checks = [
+        ("face_cut_rate", face_cut_rate, FACE_CUT, False),
+        ("over_letterbox_rate", over_letterbox_rate, OVER_LETTERBOX, False),
+        ("subject_containment", subject_containment, CONTAINMENT, True),
+        (
+            "center_offset_p90",
+            _pct(center_offsets, 0.9) if center_offsets else None,
+            CENTER_OFFSET,
+            False,
+        ),
+    ]
+    if talker:
+        checks += [
+            ("av_sync_score", talker["av_sync_score"], AV_SYNC, True),
+            (
+                "framed_speaker_active_rate",
+                talker["framed_speaker_active_rate"],
+                FRAMED_ACTIVE,
+                True,
+            ),
+            ("speaker_miss_rate", talker["speaker_miss_rate"], SPEAKER_MISS, False),
+        ]
+    failing = [
+        {"metric": name, "value": _r(value), "flag": f, "warn": warn, "fail": fail}
+        for name, value, (warn, fail), higher in checks
+        for f in [_flag(value, warn, fail, higher_is_better=higher)]
+        if f in ("warn", "fail")
+    ]
+    if perception_block and perception_block["flag"] != "ok":
+        failing.append(
+            {
+                "metric": "perception",
+                "value": perception_block.get("face_backend"),
+                "flag": perception_block["flag"],
+                "warn": None,
+                "fail": None,
+            }
+        )
+    if subj_mismatch:
+        # Advisory (not rolled into `overall`): the bucket is Gemini's coarse
+        # judgment, so this names segments to eyeball, not a hard failure.
+        failing.append(
+            {
+                "metric": "subject_mismatch_segments",
+                "value": subj_mismatch,
+                "flag": "warn",
+                "warn": None,
+                "fail": None,
+            }
+        )
+
+    def _src_count(source: str) -> int:
+        return sum(1 for s in plan if (s.get("trace") or {}).get("source") == source)
+
+    report = {
         "letterbox": letterbox,
         "talker": talker,
         "stability": stability,
         "segments": seg_reports,
         "worst": worst,
         "overall": overall,
+        "failing": failing,
         "meta": {
             "duration": round(duration, 2),
             "segments": len(plan),
             "sampled_frames": len(tracked_frames),
             "has_speech": bool(speech),
+            # Plan-shape counters: what the regression harness gates on directly.
+            # BLIND center crops only: keep-both group crops also carry
+            # source="center" but frame real faces — n_faces==0 is the
+            # "planner had nothing to go on" condition this counter gates.
+            "center_crop_segments": sum(
+                1
+                for s in plan
+                if (s.get("trace") or {}).get("source") == "center"
+                and not (s.get("trace") or {}).get("n_faces")
+            ),
+            "speaker_segments": _src_count("speaker"),
+            "letterbox_16x9_segments": sum(
+                1 for s in plan if s.get("inner_ar") and tuple(s["inner_ar"]) == (16, 9)
+            ),
+            "split_segments": sum(1 for s in plan if s.get("layout") == "split"),
+            # Person/center crops that exclude the semantic subject's third —
+            # the wrong-subject class the containment metrics can't see.
+            "subject_mismatch_segments": subj_mismatch,
             "note": "reference-free proxies; tripwire + tuning scoreboard, not a grade",
         },
     }
+    if perception_block is not None:
+        report["perception"] = perception_block
+    return report
 
 
 def _must_keep_width(seg: dict, tracked_frames: List[dict]) -> float:
-    """Horizontal coverage the framed subject(s) actually need in this segment.
+    """Horizontal coverage this segment can actually justify.
 
     Measured from detections (independent of the rung the plan picked): the
     widest left→right span of the followed track(s) across the segment's frames,
     padded by COVERAGE_MARGIN. Falls back to the plan's required coverage
     (``trace.C``) when the crop follows no specific track (center/person).
+
+    A Gemini ``letterbox`` verdict adds the claim it was granted for: the
+    measured text band re-centered on the crop (same containment math as
+    ``apply_verdicts``) or, bandless, its stated coverage. An unsubstantiated
+    verdict (no band, no coverage) adds nothing — a rung wider than the
+    evidence flags as over-letterbox instead of being blanket-exempt.
     """
     ids = [c["track_id"] for c in seg.get("crops", []) if c.get("track_id") is not None]
     if not ids:
         # No followed track (center/person crop) — trust the plan's own required
         # coverage; if absent, claim nothing (0 → never flagged over-letterbox).
-        return float(seg.get("trace", {}).get("C") or 0.0)
-    span = 0.0
-    for fr in tracked_frames:
-        if not (seg["start"] <= fr["time_sec"] <= seg["end"]):
-            continue
-        xs = [
-            (tr["x"] - tr["w"] / 2, tr["x"] + tr["w"] / 2)
-            for tr in fr.get("tracks", [])
-            if tr.get("track_id") in ids
-        ]
-        if xs:
-            span = max(span, max(r for _, r in xs) - min(left for left, _ in xs))
-    return min(1.0, span + COVERAGE_MARGIN) if span else 0.0
+        need = float(seg.get("trace", {}).get("C") or 0.0)
+    else:
+        span = 0.0
+        for fr in tracked_frames:
+            if not (seg["start"] <= fr["time_sec"] <= seg["end"]):
+                continue
+            xs = [
+                (tr["x"] - tr["w"] / 2, tr["x"] + tr["w"] / 2)
+                for tr in fr.get("tracks", [])
+                if tr.get("track_id") in ids
+            ]
+            if xs:
+                span = max(span, max(r for _, r in xs) - min(left for left, _ in xs))
+        need = min(1.0, span + COVERAGE_MARGIN) if span else 0.0
+
+    esc = seg.get("escalate") or {}
+    verdict = esc.get("verdict") or {}
+    if verdict.get("action") == "letterbox":
+        band = (esc.get("facts") or {}).get("band")
+        if band:
+            crops = seg.get("crops") or []
+            cx = crops[0].get("x_target", 0.5) if crops else 0.5
+            req = 2.0 * max(cx - float(band[0]), float(band[1]) - cx)
+            need = max(need, min(1.0, req + COVERAGE_MARGIN))
+        else:
+            cov = verdict.get("coverage") or (esc.get("facts") or {}).get(
+                "text_coverage"
+            )
+            if cov:
+                need = max(need, min(1.0, float(cov)))
+    # Semantic two-key letterbox (Phase 4): the measured band the planner folded
+    # into C is this segment's evidence — same containment math as a verdict.
+    tk = (seg.get("trace") or {}).get("text_keep")
+    if tk:
+        crops = seg.get("crops") or []
+        cx = crops[0].get("x_target", 0.5) if crops else 0.5
+        req = 2.0 * max(cx - float(tk[0]), float(tk[1]) - cx)
+        need = max(need, min(1.0, req + COVERAGE_MARGIN))
+    return need
 
 
 def _r(v: Optional[float]) -> Optional[float]:

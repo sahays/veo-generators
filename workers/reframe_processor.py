@@ -75,7 +75,7 @@ class ReframeProcessor(JobProcessor):
         out_w, out_h = OUTPUT_CANVAS.get(ar, OUTPUT_CANVAS["9:16"])
         rungs = RUNGS_BY_CANVAS.get(ar, RUNGS_BY_CANVAS["9:16"])
 
-        chirp_context, _speaker_segments = self._run_diarization(
+        chirp_context, speaker_segments = self._run_diarization(
             record, record_id, src_path, probe, tmp, has_audio
         )
 
@@ -88,10 +88,18 @@ class ReframeProcessor(JobProcessor):
         # overlay render, which also reads frames via cv2) need a decodable copy.
         det_src = ensure_cv2_readable(src_path, tmp, record_id)
 
+        from reframe_plan import attach_keypoints, reconcile
+        from scene_detect import detect_cuts
+        from text_detect import scan_video_text
+
+        # Cuts before tracking: the v2 tracker resets identity at scene cuts.
+        cuts = detect_cuts(det_src)
+
         logger.info(f"[reframe:{record_id}] MediaPipe scanning (faces+persons)...")
         det_frames = scan_video_detections(det_src, sample_fps=4.0)
         tracked_frames = track_faces(
-            [{"time_sec": f["time_sec"], "faces": f["faces"]} for f in det_frames]
+            [{"time_sec": f["time_sec"], "faces": f["faces"]} for f in det_frames],
+            cuts=cuts,
         )
         person_frames = [
             {"time_sec": f["time_sec"], "persons": f["persons"]} for f in det_frames
@@ -101,12 +109,19 @@ class ReframeProcessor(JobProcessor):
             record_id, {"track_summary": track_summary}
         )
 
-        from reframe_plan import attach_keypoints, reconcile
-        from scene_detect import detect_cuts
-        from text_detect import scan_video_text
-
-        cuts = detect_cuts(det_src)
         text_frames = scan_video_text(det_src, sample_fps=2.0)
+        # Diagnostic runs detect at 4 fps — dump the same replay fixture as the
+        # main path so a diagnostic re-run of a reference job feeds the corpus.
+        self._dump_detection_fixture(
+            record_id,
+            probe,
+            ar,
+            cuts,
+            det_frames,
+            text_frames,
+            speaker_segments,
+            sample_fps=4.0,
+        )
         scenes = self._analyze_scenes(
             record, record_id, chirp_context, track_summary, cuts=cuts
         )
@@ -198,10 +213,9 @@ class ReframeProcessor(JobProcessor):
         rungs = RUNGS_BY_CANVAS.get(ar, RUNGS_BY_CANVAS["9:16"])
         logger.info(f"[reframe:{record_id}] output {ar} ({out_w}x{out_h})")
 
-        # Diarization still runs — speaker turns feed the quality eval (talker
-        # metrics). Its text summary no longer feeds a Gemini prompt (dense pass
-        # retired), so the context string is discarded.
-        _, speaker_segments = self._run_diarization(
+        # Diarization runs first — speaker turns feed the planner, the talker
+        # eval, and (as labeled context) the whole-video semantic pass.
+        chirp_context, speaker_segments = self._run_diarization(
             record, record_id, src_path, probe, tmp, has_audio
         )
 
@@ -214,11 +228,64 @@ class ReframeProcessor(JobProcessor):
         cuts = detect_cuts(det_src)
         logger.info(f"[reframe:{record_id}] {len(cuts)} cuts detected")
 
+        # Baked-in letterbox/pillarbox bars (cinema-scope trailer inside a 16:9
+        # file): detect the ACTIVE picture rect once and run the whole pipeline
+        # in active coordinates — detection slices frames before inference, the
+        # planner/eval get the active dims as src_w/src_h, and the renderer
+        # trims the same rect via a crop= prefix. None → full frame (no change).
+        from reframe_active_area import (
+            crop_prefilter,
+            detect_active_area,
+            outlier_shot_ranges,
+            rect_px,
+            summarize as summarize_active_area,
+        )
+
+        active_area = detect_active_area(det_src)
+        _ax, _ay, w, h = rect_px(active_area, probe["width"], probe["height"])
+        src_crop = crop_prefilter((_ax, _ay, w, h), probe["width"], probe["height"])
+        if active_area:
+            logger.info(
+                f"[reframe:{record_id}] baked bars detected — active picture "
+                f"{w}x{h}+{_ax}+{_ay} of {probe['width']}x{probe['height']}"
+            )
+
+        # Whole-video semantic pass (Phase 4, flag-gated): ONE flash-lite
+        # video+audio call for per-shot judgments (content kind, text
+        # importance, speaker positions) — replaces the text/no-subject/
+        # weak-subject thumbnail escalations. Launched here so it overlaps the
+        # MediaPipe scan below; joined (with the full fallback ladder) just
+        # before planning. Gemini never supplies a coordinate.
+        from reframe_semantic import semantic_pass_enabled
+
+        sem_future = sem_executor = None
+        if semantic_pass_enabled(record):
+            from concurrent.futures import ThreadPoolExecutor
+
+            sem_executor = ThreadPoolExecutor(max_workers=1)
+            sem_future = sem_executor.submit(
+                self._run_async,
+                deps.ai_svc.analyze_video_semantics(
+                    record.source_gcs_uri,
+                    cuts,
+                    chirp_context,
+                    dur,
+                    region=getattr(record, "region", None),
+                ),
+            )
+
         # Faces + persons in one decode pass; faces drive subject framing, persons
         # cover subjects with no visible face (distant, profile, walking away).
-        det_frames = scan_video_detections(det_src, sample_fps=1.0)
+        # 4 fps is the AutoFlip-derived floor: at the old 1 fps a fast-cut video
+        # (1-2s shots) yielded 1-2 samples per shot, starving every downstream
+        # gate (STABLE_FRAC, MAR) into blind center crops.
+        det_fps = float(os.getenv("REFRAME_DETECT_FPS", "4.0"))
+        det_frames = scan_video_detections(
+            det_src, sample_fps=det_fps, active_area=active_area
+        )
         tracked_frames = track_faces(
-            [{"time_sec": f["time_sec"], "faces": f["faces"]} for f in det_frames]
+            [{"time_sec": f["time_sec"], "faces": f["faces"]} for f in det_frames],
+            cuts=cuts,
         )
         person_frames = [
             {"time_sec": f["time_sec"], "persons": f["persons"]} for f in det_frames
@@ -231,15 +298,36 @@ class ReframeProcessor(JobProcessor):
         # Measure on-screen text bands (independent pass). A persistent wide band
         # that the subject's crop would clip is escalated to gemini-3.5-flash in
         # Pass 2 (decision point #1) — the CPU never self-letterboxes from it.
-        text_frames = scan_video_text(det_src, sample_fps=2.0)
+        text_frames = scan_video_text(det_src, sample_fps=2.0, active_area=active_area)
 
-        # RETIRED: the dense gemini-3.1-pro full-video scene pass. Subject choice is
-        # now decided per-ambiguity by gemini-3.5-flash (Pass 2, #3/#4), letterboxing
-        # by CPU subject geometry + Pass 2, and pan speed by measured motion. No
-        # whole-video Pro pass → no 100s–7.5min latency, no per-video Pro tokens.
+        # Raw pipeline inputs → GCS: the deterministic replay corpus for
+        # api/tests/test_reframe_regression.py (best-effort, never fails the job).
+        self._dump_detection_fixture(
+            record_id,
+            probe,
+            ar,
+            cuts,
+            det_frames,
+            text_frames,
+            speaker_segments,
+            sample_fps=det_fps,
+            active_area=active_area,
+        )
+
+        # Join the semantic pass (if launched). Failure at any rung of the
+        # ladder → scenes=[] → every segment keeps the full legacy escalation
+        # behavior, so the plan is always renderable.
+        scenes: list = []
+        semantic_status = "off"
+        if sem_future is not None:
+            scenes, semantic_status = self._collect_semantics(
+                record_id, sem_future, cuts, text_frames, dur
+            )
+            sem_executor.shutdown(wait=False)
+
         self.update_status(record_id, "processing", 40)
         segments = reconcile(
-            [],
+            scenes,
             tracked_frames,
             cuts,
             w,
@@ -252,6 +340,12 @@ class ReframeProcessor(JobProcessor):
             # now that the dense Gemini scene pass — which used to label it — is gone.
             speaker_segments=speaker_segments,
         )
+        # Minority full-bleed shots (a scope trailer's end slate): their pixels
+        # genuinely extend into the trim, so those segments render untrimmed.
+        for lo, hi in outlier_shot_ranges(active_area, cuts, dur):
+            for seg in segments:
+                if seg["start"] < hi and seg["end"] > lo:
+                    seg["src_full_frame"] = True
         # Pass 2: let gemini-3.5-flash settle the planner's escalated decision
         # points (real side text vs background; which subject) before keypoints.
         # Use det_src (the cv2-readable copy), NOT src_path: render_decision_thumbs
@@ -268,10 +362,18 @@ class ReframeProcessor(JobProcessor):
             rungs,
             tracked_frames,
             person_frames,
+            active_area=active_area,
         )
         attach_keypoints(segments, fps, w, h)
-        self._store_segment_plan(record_id, segments)
+        self._store_segment_plan(
+            record_id,
+            segments,
+            semantic_status=semantic_status,
+            active_area=summarize_active_area(active_area),
+        )
         logger.info(f"[reframe:{record_id}] plan: {len(segments)} segments")
+
+        from mediapipe_detection import detection_backend
 
         report = self._store_eval_report(
             record_id,
@@ -284,6 +386,12 @@ class ReframeProcessor(JobProcessor):
             dur,
             canvas_h=out_h,
             rungs=rungs,
+            perception={
+                **detection_backend(),
+                "sample_fps": det_fps,
+                "frames_expected": int(dur * det_fps),
+                "active_area": summarize_active_area(active_area),
+            },
         )
 
         self.update_status(record_id, "processing", 50)
@@ -296,6 +404,8 @@ class ReframeProcessor(JobProcessor):
             has_audio=has_audio,
             out_w=out_w,
             out_h=out_h,
+            src_crop=src_crop,
+            full_src_wh=(probe["width"], probe["height"]),
         )
 
         # Now that the canvas exists, validate OUTPUT pixels (catches render/encode
@@ -304,7 +414,110 @@ class ReframeProcessor(JobProcessor):
             record_id, report, out_path, segments, w, h, out_w, out_h
         )
 
-    def _store_segment_plan(self, record_id, segments):
+    def _collect_semantics(self, record_id, future, cuts, text_frames, duration):
+        """Join the semantic-pass thread → (scenes, status). Best-effort.
+
+        Ladder: call failed / timed out → legacy; payload fails validation →
+        legacy; partial validity → the valid shots only (uncovered spans get
+        `{}` = deterministic behavior). Usage is accounted whenever a response
+        exists, even an unusable one.
+        """
+        from reframe_semantic import reconcile_semantics, validate
+        from text_detect import persistent_text_regions
+
+        try:
+            result = future.result(timeout=180)
+        except Exception as e:
+            logger.warning(
+                f"[reframe:{record_id}] semantic pass failed ({e}) — "
+                "falling back to legacy escalations"
+            )
+            return [], "fallback_legacy"
+        usage = result.usage
+        if usage and usage.cost_usd:
+            accumulate_text_cost_on(
+                "reframe",
+                record_id,
+                cost_usd=usage.cost_usd,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                model_name=usage.model_name,
+            )
+        shots = validate(result.data, cuts, duration)
+        if shots is None:
+            logger.warning(
+                f"[reframe:{record_id}] semantic payload unusable — "
+                "falling back to legacy escalations"
+            )
+            return [], "fallback_legacy"
+        try:
+            deps.firestore_svc.update_reframe_record(
+                record_id, {"semantic_shots": shots}
+            )
+        except Exception as e:  # observability only — never fails the job
+            logger.warning(f"[reframe:{record_id}] semantic_shots store skipped ({e})")
+        scenes = reconcile_semantics(shots, persistent_text_regions(text_frames))
+        covered = sum(s["end_sec"] - s["start_sec"] for s in shots)
+        status = "ok" if covered >= 0.95 * max(duration, 0.001) else "partial"
+        logger.info(
+            f"[reframe:{record_id}] semantic pass: {len(scenes)} shots, "
+            f"{covered:.1f}/{duration:.1f}s covered ({status})"
+        )
+        return scenes, status
+
+    def _dump_detection_fixture(
+        self,
+        record_id,
+        probe,
+        canvas,
+        cuts,
+        det_frames,
+        text_frames,
+        speaker_segments,
+        sample_fps,
+        active_area=None,
+    ):
+        """Persist the raw pipeline inputs to GCS (gzipped JSON).
+
+        Everything the pure planning/eval pipeline consumes, so a production job
+        can be replayed deterministically in CI (see reframe_replay +
+        api/tests/test_reframe_regression.py). Best-effort: never fails the job.
+        """
+        import gzip
+        import json
+
+        try:
+            payload = {
+                "record_id": record_id,
+                "canvas": canvas,
+                "sample_fps": sample_fps,
+                "probe": {
+                    k: probe.get(k)
+                    for k in ("width", "height", "duration", "fps", "has_audio")
+                },
+                # Detections are normalized to this rect (replay must plan in
+                # active-picture dims, not probe dims). Absent → full frame.
+                "active_area": active_area,
+                "cuts": cuts,
+                "det_frames": det_frames,
+                "text_frames": text_frames,
+                "speaker_segments": speaker_segments,
+            }
+            data = gzip.compress(json.dumps(payload, default=float).encode("utf-8"))
+            uri = deps.storage_svc.upload_bytes(
+                data,
+                f"reframes/{record_id}/detections.json.gz",
+                content_type="application/gzip",
+            )
+            logger.info(
+                f"[reframe:{record_id}] detection fixture: {uri} ({len(data) // 1024} KiB)"
+            )
+        except Exception as e:
+            logger.warning(f"[reframe:{record_id}] fixture dump skipped ({e})")
+
+    def _store_segment_plan(
+        self, record_id, segments, semantic_status="off", active_area=None
+    ):
         """Persist the per-segment decision trace + a run summary (observability)."""
         from collections import Counter
 
@@ -340,6 +553,9 @@ class ReframeProcessor(JobProcessor):
             tr = s.get("trace", {})
             if tr.get("layout") == "keep_both":
                 why16["two-face span"] += 1
+            elif tr.get("source") == "semantic_graphic" or tr.get("text_keep"):
+                # Semantic pass: essential text/graphic, geometrically grounded.
+                why16["semantic text/graphic"] += 1
             elif tr.get("source") in ("gemini_text", "gemini_graphic"):
                 # Pass-2 verdict letterboxed to keep side text / a full-frame graphic.
                 why16["gemini text/graphic"] += 1
@@ -355,6 +571,18 @@ class ReframeProcessor(JobProcessor):
             ),
             "speaker_segments": src.get("speaker", 0),
             "split_segments": sum(1 for s in segments if s["layout"] == "split"),
+            "semantic": {
+                "status": semantic_status,
+                "text_keep_segments": sum(
+                    1 for s in segments if s.get("trace", {}).get("text_keep")
+                ),
+            },
+            # Baked-in source bars trimmed for this job (None = full frame).
+            "active_area": active_area,
+            # Segments rendered untrimmed (their shots genuinely fill the container).
+            "full_frame_segments": sum(
+                1 for s in segments if s.get("src_full_frame")
+            ),
         }
         # Record the (post-verdict) escalation call plan for observability.
         from reframe_escalation import plan_batches
@@ -382,6 +610,7 @@ class ReframeProcessor(JobProcessor):
         rungs,
         tracked_frames=None,
         person_frames=None,
+        active_area=None,
     ):
         """Pass 2: resolve the planner's escalated decision points (gemini-3.5-flash).
 
@@ -408,6 +637,7 @@ class ReframeProcessor(JobProcessor):
                     src_path,
                     region=getattr(record, "region", None),
                     canvas=getattr(record, "output_aspect_ratio", "9:16") or "9:16",
+                    active_area=active_area,
                 )
             )
         except Exception as e:
@@ -448,6 +678,7 @@ class ReframeProcessor(JobProcessor):
         duration,
         canvas_h=1920,
         rungs=None,
+        perception=None,
     ):
         """Reference-free quality report card (runs before render → visible mid-job).
 
@@ -471,6 +702,7 @@ class ReframeProcessor(JobProcessor):
                 duration,
                 canvas_h=canvas_h,
                 rungs=rungs,
+                perception=perception,
             )
             if not report:
                 return None
@@ -479,11 +711,17 @@ class ReframeProcessor(JobProcessor):
             report.setdefault("meta", {}).update({"src_w": src_w, "src_h": src_h})
             deps.firestore_svc.update_reframe_record(record_id, {"eval_report": report})
             lb, talker = report["letterbox"], report.get("talker") or {}
+            failing = report.get("failing") or []
+            fail_str = (
+                " failing=" + ",".join(f"{f['metric']}:{f['value']}" for f in failing)
+                if failing
+                else ""
+            )
             logger.info(
                 f"[reframe:{record_id}] eval: overall={report['overall']} "
                 f"face_cut={lb['face_cut_rate']} over_lb={lb['over_letterbox_rate']} "
                 f"av_sync={talker.get('av_sync_score')} "
-                f"miss={talker.get('speaker_miss_rate')}"
+                f"miss={talker.get('speaker_miss_rate')}{fail_str}"
             )
             return report
         except Exception as e:

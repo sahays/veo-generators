@@ -129,7 +129,7 @@ if [[ "$RAW" == "1" ]]; then
 fi
 
 FL_RESP="$RESP" python3 - <<'PY'
-import os, json
+import os, json, sys
 raw = os.environ.get("FL_RESP", "").strip()
 if not raw:
     print("(empty response from Logging API — check token/permissions or retry)")

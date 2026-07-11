@@ -20,7 +20,7 @@ background.
 """
 
 import logging
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -70,26 +70,19 @@ def _group_lines(boxes):
     return lines
 
 
-def detect_text_coverage(frame) -> Tuple[float, Tuple[float, float]]:
-    """Horizontal reach of the on-screen text in a single BGR frame.
+def detect_text_lines(frame) -> List[Tuple[float, float, float, float]]:
+    """Every qualifying text line in a single BGR frame.
 
-    Returns ``(coverage_frac, (x0_frac, x1_frac))`` where the span is the UNION
-    reach of every qualifying text line (leftmost start → rightmost end) and
-    coverage is that reach / frame width — or ``(0.0, (0.0, 0.0))`` when no
-    text-like region is found.
-
-    Clip risk is a per-side *reach* property, not a single-line one: scattered
-    callouts on different baselines (a product ad's labels) never form one wide
-    line, but their union reaches both edges, so a tight centre crop would clip
-    them. Each contributing line still passes the strict per-line text filters
-    below unchanged, so plain/busy backgrounds contribute nothing — the union can
-    only be spanned by regions already certified as text.
+    Returns normalized ``(x0, y0, x1, y1)`` boxes (fractions of frame dims), one
+    per line that passes the per-line text filters — the per-region geometry the
+    planner's conflict test and the persistent-region classifier consume. Empty
+    list when nothing text-like is found.
     """
     if cv2 is None or frame is None or getattr(frame, "size", 0) == 0:
-        return 0.0, (0.0, 0.0)
+        return []
     h, w = frame.shape[:2]
     if h < 32 or w < 32:
-        return 0.0, (0.0, 0.0)
+        return []
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     # Morphological gradient highlights glyph strokes (edges) regardless of text
@@ -121,12 +114,7 @@ def detect_text_coverage(frame) -> Tuple[float, Tuple[float, float]]:
             continue
         glyphs.append((bx, by, bx + bw_, by + bh_))
 
-    # Union the horizontal reach of ALL qualifying lines (not just the widest):
-    # clip risk is about how far text reaches toward each edge, which scattered
-    # callouts express only in aggregate. The per-line filters are unchanged, so a
-    # line contributes only if it is genuinely text — the union can widen but never
-    # admits a region a single-line pass would have rejected.
-    xs: List[Tuple[float, float]] = []
+    lines: List[Tuple[float, float, float, float]] = []
     for x0, y0, x1, y1, sum_w in _group_lines(glyphs):
         union_w = x1 - x0
         if union_w < _MIN_LINE_W * w:
@@ -135,15 +123,36 @@ def detect_text_coverage(frame) -> Tuple[float, Tuple[float, float]]:
             continue
         if sum_w / union_w < _MIN_LINE_DENSITY:
             continue
-        xs.append((x0, x1))
-    if not xs:
+        lines.append((x0 / w, y0 / h, x1 / w, y1 / h))
+    return lines
+
+
+def detect_text_coverage(frame) -> Tuple[float, Tuple[float, float]]:
+    """Horizontal reach of the on-screen text in a single BGR frame.
+
+    Returns ``(coverage_frac, (x0_frac, x1_frac))`` where the span is the UNION
+    reach of every qualifying text line (leftmost start → rightmost end) and
+    coverage is that reach / frame width — or ``(0.0, (0.0, 0.0))`` when no
+    text-like region is found.
+
+    Clip risk is a per-side *reach* property, not a single-line one: scattered
+    callouts on different baselines (a product ad's labels) never form one wide
+    line, but their union reaches both edges, so a tight centre crop would clip
+    them. NOTE: the union also inflates a narrow corner bug + a real caption
+    into one wide band — per-region consumers should prefer
+    ``detect_text_lines`` / ``persistent_text_regions``.
+    """
+    lines = detect_text_lines(frame)
+    if not lines:
         return 0.0, (0.0, 0.0)
-    min_x0 = min(a for a, _ in xs)
-    max_x1 = max(b for _, b in xs)
-    return (max_x1 - min_x0) / w, (min_x0 / w, max_x1 / w)
+    min_x0 = min(ln[0] for ln in lines)
+    max_x1 = max(ln[2] for ln in lines)
+    return max_x1 - min_x0, (min_x0, max_x1)
 
 
-def scan_video_text(video_path: str, sample_fps: float = 2.0) -> List[dict]:
+def scan_video_text(
+    video_path: str, sample_fps: float = 2.0, active_area: Optional[dict] = None
+) -> List[dict]:
     """Sample the video and measure wide-text coverage per frame.
 
     Returns ``[{"time_sec", "coverage", "span": (x0, x1)}]``. Runs its own decode
@@ -156,10 +165,15 @@ def scan_video_text(video_path: str, sample_fps: float = 2.0) -> List[dict]:
     caption shot could fall below that and be silently dropped. Decode cost is
     unchanged (every frame is read regardless); only the per-sample morphology
     runs more often, which is cheap.
+
+    ``active_area`` trims baked-in bars first (see scan_video_detections), so
+    line boxes are normalized to the real picture.
     """
     if cv2 is None:
         logger.warning("text_detect: cv2 unavailable — text detection disabled")
         return []
+    from reframe_active_area import slice_frame
+
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         logger.warning(f"text_detect: failed to open {video_path}")
@@ -175,12 +189,100 @@ def scan_video_text(video_path: str, sample_fps: float = 2.0) -> List[dict]:
             if not ret:
                 break
             if idx % step == 0:
-                cov, span = detect_text_coverage(frame)
-                out.append({"time_sec": idx / video_fps, "coverage": cov, "span": span})
+                lines = detect_text_lines(slice_frame(frame, active_area))
+                if lines:
+                    x0 = min(ln[0] for ln in lines)
+                    x1 = max(ln[2] for ln in lines)
+                    cov, span = x1 - x0, (x0, x1)
+                else:
+                    cov, span = 0.0, (0.0, 0.0)
+                out.append(
+                    {
+                        "time_sec": idx / video_fps,
+                        "coverage": cov,
+                        "span": span,
+                        "lines": [[round(v, 4) for v in ln] for ln in lines],
+                    }
+                )
             idx += 1
     finally:
         cap.release()
 
     wide = sum(1 for f in out if f["coverage"] >= _WIDE_COVERAGE)
     logger.info(f"text_detect: {len(out)} frames, {wide} with wide text")
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Cross-frame text regions (Phase 3)
+# ---------------------------------------------------------------------------
+# The per-frame union band inflates a corner watermark + a real caption into one
+# frame-wide band — the root of chronic over-letterboxing. Clustering lines
+# ACROSS frames yields stable regions the planner can reason about one by one:
+# a channel bug present through most of the video is never letterbox-driving; a
+# shot-local lower-third is a real candidate the crop must not clip.
+_REGION_IOU = 0.30  # a line joins the region it overlaps this much
+_BUG_VIDEO_FRAC = 0.60  # present in ≥ this fraction of ALL frames…
+_BUG_MAX_AREA = 0.02  # …no bigger than this fraction of the frame…
+_BUG_CORNER = 0.30  # …and centered within this of a frame corner = watermark/bug
+
+
+def _box_iou(a, b) -> float:
+    iw = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    ih = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = iw * ih
+    area_a = (a[2] - a[0]) * (a[3] - a[1])
+    area_b = (b[2] - b[0]) * (b[3] - b[1])
+    union = area_a + area_b - inter
+    return inter / union if union > 0 else 0.0
+
+
+def persistent_text_regions(text_frames: List[dict]):
+    """Cluster per-frame text lines into video-level regions and classify them.
+
+    Returns a list of ``{"box": [x0, y0, x1, y1], "times": [...],
+    "video_frac": float, "kind": "bug" | "candidate"}`` — or ``None`` when the
+    frames carry no per-line data (legacy captures), so callers can fall back to
+    the union-band path instead of concluding "no text".
+
+    ``bug``: small, corner-anchored, and present through most of the video — a
+    watermark/channel bug that must never drive a letterbox decision.
+    """
+    if not any("lines" in f for f in text_frames or []):
+        return None
+    total = len(text_frames) or 1
+    regions: List[dict] = []  # {box (running mean), times, n}
+    for f in text_frames:
+        for ln in f.get("lines") or []:
+            for r in regions:
+                if _box_iou(ln, r["box"]) >= _REGION_IOU:
+                    n = r["n"]
+                    r["box"] = [(r["box"][i] * n + ln[i]) / (n + 1) for i in range(4)]
+                    r["n"] = n + 1
+                    if not r["times"] or r["times"][-1] != f["time_sec"]:
+                        r["times"].append(f["time_sec"])
+                    break
+            else:
+                regions.append({"box": list(ln), "times": [f["time_sec"]], "n": 1})
+
+    out = []
+    for r in regions:
+        x0, y0, x1, y1 = r["box"]
+        video_frac = len(r["times"]) / total
+        area = max(0.0, x1 - x0) * max(0.0, y1 - y0)
+        cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+        corner = min(cx, 1 - cx) < _BUG_CORNER and min(cy, 1 - cy) < _BUG_CORNER
+        kind = (
+            "bug"
+            if video_frac >= _BUG_VIDEO_FRAC and area <= _BUG_MAX_AREA and corner
+            else "candidate"
+        )
+        out.append(
+            {
+                "box": [round(v, 4) for v in r["box"]],
+                "times": r["times"],
+                "video_frac": round(video_frac, 3),
+                "kind": kind,
+            }
+        )
     return out

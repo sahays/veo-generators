@@ -12,13 +12,16 @@ from typing import List, Optional, Tuple
 
 from reframe_escalation import make_point
 from reframe_rungs import rung_coverage
-from reframe_signals import _hint_x
+from reframe_signals import _hint_x, prominence
 
 # Subject-choice escalation (decision points #3/#4): when framing ONE of several
 # comparable faces and no face is clearly speaking, the CPU can't tell who the
-# subject is — escalate to gemini-3.5-flash. Only fires when the 2nd-most-visible
-# face is at least this fraction as present as the most-visible (else one clearly
-# dominates and we just follow it).
+# subject is — escalate to gemini-3.5-flash. Only fires when the 2nd-most-
+# prominent face is at least this fraction as prominent as the 1st (fused
+# size × presence × confidence score — else one clearly dominates and we just
+# follow it). Keyed on prominence, a large-but-intermittent face now surfaces
+# as ambiguity instead of being silently cropped away (the production
+# w=0.51-clipped-for-w=0.16 failure).
 SUBJECT_AMBIG_RATIO = 0.6
 
 # Text escalation (decision point #1): the morphology detector CANNOT tell a real
@@ -128,7 +131,7 @@ def _maybe_speaker_escalation(
     if len(stable) < 2:
         return None
     labels = _candidate_facts(stable)
-    fallback_tgt = max(stable, key=lambda s: s["frac"])
+    fallback_tgt = max(stable, key=prominence)
     sig = ",".join(f"{round(c['x'], 1)}" for c in labels)
     question = (
         "Several people are visible ("
@@ -178,13 +181,16 @@ def _competitors(stable, mouth) -> list:
                 "w": round(s["w"], 3),
                 "conf": round(s.get("conf", 0.5), 3),
                 "frac": round(s["frac"], 2),
+                "prom": round(prominence(s), 3),
                 "mouth_var": round(statistics.pstdev(m), 3) if len(m) >= 3 else None,
             }
         )
     return out
 
 
-def _maybe_text_escalation(text_band, subj_x, n_faces, src_w, src_h, rungs, start, end):
+def _maybe_text_escalation(
+    text_band, subj_x, n_faces, src_w, src_h, rungs, start, end, regions=None
+):
     """Decision point #1: a wide text band that the subject's tight crop would clip.
 
     Returns a `text_presence` escalation point (for gemini-3.5-flash) or None.
@@ -203,6 +209,23 @@ def _maybe_text_escalation(text_band, subj_x, n_faces, src_w, src_h, rungs, star
     # crop window. The poke-out test below IS the significance gate — a band fully
     # behind the subject is kept by the crop and never escalates.
     wl, wr = _tight_window(subj_x, src_w, src_h, rungs)
+    # Per-region conflict (Phase 3): when persistent regions are available, only
+    # regions that individually poke past the crop window count, and the band
+    # the verdict may letterbox to is the union of the OFFENDING regions only —
+    # a caption behind the subject plus a poking callout no longer inflates the
+    # requirement to their combined reach.
+    if regions:
+        offending = [
+            r
+            for r in regions
+            if (wl - r["box"][0]) > SIDE_TEXT_MARGIN
+            or (r["box"][2] - wr) > SIDE_TEXT_MARGIN
+        ]
+        if not offending:
+            return None  # every region sits behind the subject
+        x0 = min(r["box"][0] for r in offending)
+        x1 = max(r["box"][2] for r in offending)
+        cov = max(0.0, x1 - x0)
     left_out = (wl - x0) > SIDE_TEXT_MARGIN
     right_out = (x1 - wr) > SIDE_TEXT_MARGIN
     if not (left_out or right_out):
@@ -256,11 +279,9 @@ def _maybe_subject_escalation(stable, fallback_tgt, start, end, text_esc=None):
     """
     if len(stable) < 2:
         return None
-    by_vis = sorted(stable, key=lambda s: -s["frac"])
-    if (
-        by_vis[0]["frac"] <= 0
-        or by_vis[1]["frac"] / by_vis[0]["frac"] < SUBJECT_AMBIG_RATIO
-    ):
+    ranked = sorted(stable, key=prominence, reverse=True)
+    top_prom = prominence(ranked[0])
+    if top_prom <= 0 or prominence(ranked[1]) / top_prom < SUBJECT_AMBIG_RATIO:
         return None
     labels = _candidate_facts(stable)
     facts = {"candidates": labels, "n_faces": len(stable)}

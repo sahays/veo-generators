@@ -103,23 +103,57 @@ def test_not_over_letterbox_when_bars_needed():
     assert rep["letterbox"]["over_letterbox_rate"] == 0.0
 
 
-def test_gemini_text_letterbox_not_counted_as_over():
+def test_gemini_letterbox_justified_by_band_not_over():
     # Narrow subject in a 16:9 letterbox — geometrically a tighter rung fits, BUT
-    # the bars are an intentional Gemini text verdict (preserving side graphics the
-    # geometry can't see). Must NOT count as over-letterbox.
+    # the verdict carries a measured text band that genuinely needs the width
+    # (band far edge from the crop center → requirement ≈ 0.9). Justified.
     frames = _frames([(t, [_tr(1, 0.5, w=0.1)]) for t in range(11)])
-    by_source = _seg(0, 10, (16, 9), 1, 0.5, trace={"source": "gemini_text"})
+    justified = _seg(0, 10, (16, 9), 1, 0.5, trace={"source": "gemini_text"})
+    justified["crops"][0]["x_target"] = 0.5
+    justified["escalate"] = {
+        "verdict": {"action": "letterbox"},
+        "facts": {"band": (0.05, 0.95)},
+    }
     assert (
-        evaluate([by_source], frames, [], [], SRC_W, SRC_H, 10.0)["letterbox"][
+        evaluate([justified], frames, [], [], SRC_W, SRC_H, 10.0)["letterbox"][
             "over_letterbox_rate"
         ]
         == 0.0
     )
-    # Same geometry, but via a verdict field instead of the trace source.
-    by_verdict = _seg(0, 10, (16, 9), 1, 0.5)
-    by_verdict["escalate"] = {"verdict": {"action": "letterbox"}}
+
+
+def test_gemini_letterbox_wider_than_its_band_is_over():
+    # A letterbox verdict is exempt only up to its own evidence. A 16:9 rung
+    # granted for a narrow band (or for no band/coverage at all) that a tighter
+    # rung could keep IS over-letterbox — the pre-Phase-0 blanket exemption made
+    # exactly this failure class invisible (rf-e70yrxvz: 5/5 segments 16:9).
+    frames = _frames([(t, [_tr(1, 0.5, w=0.1)]) for t in range(11)])
+    narrow_band = _seg(0, 10, (16, 9), 1, 0.5, trace={"source": "gemini_text"})
+    narrow_band["crops"][0]["x_target"] = 0.5
+    narrow_band["escalate"] = {
+        "verdict": {"action": "letterbox"},
+        "facts": {"band": (0.4, 0.6)},  # requirement ~0.28 — 1:1 would keep it
+    }
     assert (
-        evaluate([by_verdict], frames, [], [], SRC_W, SRC_H, 10.0)["letterbox"][
+        evaluate([narrow_band], frames, [], [], SRC_W, SRC_H, 10.0)["letterbox"][
+            "over_letterbox_rate"
+        ]
+        == 1.0
+    )
+    # Unsubstantiated verdict: no band, no stated coverage → adds nothing.
+    bare = _seg(0, 10, (16, 9), 1, 0.5)
+    bare["escalate"] = {"verdict": {"action": "letterbox"}}
+    assert (
+        evaluate([bare], frames, [], [], SRC_W, SRC_H, 10.0)["letterbox"][
+            "over_letterbox_rate"
+        ]
+        == 1.0
+    )
+    # But a stated coverage that maps to the chosen rung justifies it.
+    stated = _seg(0, 10, (16, 9), 1, 0.5)
+    stated["escalate"] = {"verdict": {"action": "letterbox", "coverage": 0.9}}
+    assert (
+        evaluate([stated], frames, [], [], SRC_W, SRC_H, 10.0)["letterbox"][
             "over_letterbox_rate"
         ]
         == 0.0
@@ -441,3 +475,44 @@ class TestCenterOffsetFreedom:
         }
         rep = evaluate([seg], frames, [], [], SRC_W, SRC_H, 10.0)
         assert rep["stability"]["center_offset_p90"] > 0.1
+
+
+# ---------------------------------------------------------------------------
+# Semantic subject-mismatch tripwire (Step 4, 2026-07-11)
+# ---------------------------------------------------------------------------
+# A person/center crop whose window entirely excludes the third Gemini placed
+# the subject in framed the wrong thing (rf-yw9w9uk5: guard's back framed,
+# Spider-Man cropped out). Containment can't see it — it grades the box the
+# picker chose.
+class TestSubjectMismatch:
+    def _person_seg(self, x, bucket, source="person"):
+        return {
+            "start": 0,
+            "end": 10,
+            "inner_ar": (9, 16),
+            "crops": [{"track_id": None, "keypoints": [(0.0, x, 0.5), (10.0, x, 0.5)]}],
+            "reason": "9:16",
+            "trace": {"source": source, "scene": {"active_subject": bucket}},
+        }
+
+    def test_flags_crop_outside_subject_third(self):
+        # crop pinned right (x=0.85 → window ≈ [0.69, 1.0]), subject on the left
+        seg = self._person_seg(0.85, "left")
+        rep = evaluate([seg], _frames([(5.0, [])]), [], [], SRC_W, SRC_H, 10.0)
+        assert rep["meta"]["subject_mismatch_segments"] == 1
+        assert rep["segments"][0].get("subject_mismatch") is True
+        assert any(f["metric"] == "subject_mismatch_segments" for f in rep["failing"])
+
+    def test_ok_when_crop_overlaps_subject_third(self):
+        seg = self._person_seg(0.4, "center")
+        rep = evaluate([seg], _frames([(5.0, [])]), [], [], SRC_W, SRC_H, 10.0)
+        assert rep["meta"]["subject_mismatch_segments"] == 0
+        assert "subject_mismatch" not in rep["segments"][0]
+
+    def test_face_crops_and_bucketless_scenes_exempt(self):
+        seg = self._person_seg(0.85, "left", source="face")
+        rep = evaluate([seg], _frames([(5.0, [])]), [], [], SRC_W, SRC_H, 10.0)
+        assert rep["meta"]["subject_mismatch_segments"] == 0
+        seg2 = self._person_seg(0.85, "")
+        rep2 = evaluate([seg2], _frames([(5.0, [])]), [], [], SRC_W, SRC_H, 10.0)
+        assert rep2["meta"]["subject_mismatch_segments"] == 0

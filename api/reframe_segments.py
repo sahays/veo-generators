@@ -176,9 +176,11 @@ def _attach_focal_points(seg, tracked_frames, track_times, person_frames, person
         if src in ("face", "speaker", "split_top", "split_bottom"):
             pts = _track_series(tf_win, crop["track_id"])
         elif src == "person":
+            # Follow the person the plan CHOSE (x_target picks their group), not
+            # per-frame whoever-is-biggest — that flickered between people.
             pts = [
                 {"time_sec": p["time_sec"], "x": p["x"], "y": p["y"]}
-                for p in _segment_persons(pf_win)
+                for p in _segment_persons(pf_win, tf_win, hint_x=crop.get("x_target"))
             ]
         else:
             pts = []
@@ -206,7 +208,9 @@ def _decision_trace(d, scene, chosen, ideal, src_w, src_h) -> dict:
     cm = d["c_meas"]
     tmeas = d.get("text_meas", 0.0)
     src, layout = d["source"], d["layout"]
-    if layout == "keep_both":
+    if src == "semantic_graphic":
+        why = "semantic: full-frame graphic/slide/title"
+    elif layout == "keep_both":
         why = f"two faces span {cm:.2f}"
     elif src == "speaker":
         why = "active speaker (mouth movement)"
@@ -216,6 +220,9 @@ def _decision_trace(d, scene, chosen, ideal, src_w, src_h) -> dict:
         why = "no detection"
     else:
         why = f"face w={cm:.2f}"
+    if d.get("text_keep"):
+        tk = d["text_keep"]
+        why += f"; semantic: keep text band [{tk[0]:.2f}, {tk[1]:.2f}]"
     trig = f"{chosen[0]}:{chosen[1]} ({cov:.2f}) — {why}"
     if chosen != ideal:
         trig += f"; widened from {ideal[0]}:{ideal[1]} (rung DP: bar stability)"
@@ -230,6 +237,9 @@ def _decision_trace(d, scene, chosen, ideal, src_w, src_h) -> dict:
         "hysteresis": chosen != ideal,
         "source": src,
         "layout": layout,
+        # Semantic two-key letterbox evidence: the measured band this rung was
+        # granted for (eval's _must_keep_width uses it to justify the bars).
+        "text_keep": d.get("text_keep"),
         "n_faces": d["n_faces"],
         "n_persons": d["n_persons"],
         "scene": {

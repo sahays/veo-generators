@@ -115,6 +115,9 @@ class ReframeRecord(BaseModel):
     sports_mode: bool = False
     diagnostic_mode: bool = False  # render detector overlays instead of reframing
     deterministic_only: bool = False  # skip Gemini; plan from CPU detections only
+    # Per-record override for the whole-video semantic pass (None = follow the
+    # REFRAME_SEMANTIC_PASS env flag) — the A/B lever during rollout.
+    semantic_pass: Optional[bool] = None
     output_aspect_ratio: str = "9:16"  # "9:16" (adaptive) or "3:4"
     model_id: Optional[str] = None
     region: Optional[str] = None

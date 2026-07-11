@@ -358,3 +358,114 @@ keep-both). Not planned; revisit only if real usage shows a concrete need.
   entries (`OUTPUT_CANVAS` + `RUNGS_BY_CANVAS`) plus a selector option.
 - **CPU model footprint:** ASD/DBNet/YOLO add worker CPU + cold-start cost; confirm
   the worker image and per-job latency budget before committing to phase 2.
+
+---
+
+## Addendum — 2026-07-10 durable-fix overhaul (Phases 0–5)
+
+Supersedes parts of the pipeline above. The dense Gemini scene pass shown in the
+original Stage-2 diagram was retired (commit 0d57d70); this addendum documents
+what replaced it and the perception/decision fixes shipped together, all
+env-flag-gated with rollback via Cloud Run env flip.
+
+**Root causes fixed** (all verified at file:line before the change):
+1. Perception starvation — 1 fps detection, selfie-range BlazeFace, no-gap
+   greedy tracker → 6% track coverage on a 93-cut trailer → blind center crops.
+2. Prominence = `max(frac)` — face size never entered the subject pick.
+3. Text policy — "letterbox for ANY readable text" + coverage-default-1.0 +
+   forced one-rung widening + broad harmonize; eval exempted gemini_text
+   letterbox from `over_letterbox_rate`, hiding the failure.
+4. MAR speaker path unreachable (needed ≥2 faces in one 1 fps sample, then
+   4 samples + 2.5× dominance inside a ≤5 s segment).
+5. No regression harness — fixes oscillated (crop↔letterbox flipped ≥7×).
+
+**What changed:**
+- **Truth layer**: every job dumps `reframes/{id}/detections.json.gz` (raw
+  pipeline inputs); `api/reframe_replay.py` replays a fixture deterministically;
+  `api/tests/test_reframe_regression.py` gates metric drift against committed
+  `baselines.json` (`api/scripts/build-reframe-fixture.py` builds/rebaselines).
+  Eval gained a `failing` block (which metric drove overall), plan-shape
+  counters, and a `perception` block that FAILS the report when detection
+  silently degrades (Haar fallback / zero frames — both shipped before).
+  Replay must stamp cluster keys (`cluster_escalations(collect_escalation_points(...))`)
+  before `apply_verdicts` — recorded verdicts carry `<key>#t<start>` cluster keys,
+  so without it every verdict silently drops and the replayed plan is
+  verdict-free (caught 2026-07-10 by the legacy-vs-new A/B faithfulness check;
+  baselines rebaselined once for the fix).
+- **Perception** (`REFRAME_DETECT_FPS=4`, `REFRAME_FACE_MODEL=both`,
+  `REFRAME_TRACKER=v2`): short+full-range BlazeFace NMS-merged; tracker with
+  scene-cut reset, ~1 s gap tolerance, IoU+center+appearance cost; MAR on every
+  detected face (unlocks the single-face speaker pin).
+- **Fused prominence** (`REFRAME_PROMINENCE=fused`):
+  `(0.5+0.5·conf)·√frac·(w/max_w)·center_prior·speak_mult` replaces `max(frac)`
+  at every pick site. Equal-group needs prom ratio ≥ 0.75; the 0.6–0.75 band
+  escalates `subject_choice`; below 0.6 one face simply dominates.
+- **Per-line text regions**: `text_detect.persistent_text_regions` clusters
+  lines across frames and classifies corner/persistent/small regions as
+  watermark `bug`s that can never drive letterbox; conflict + required coverage
+  computed from the offending regions only (union-band inflation is dead).
+- **Whole-video semantic pass** (`REFRAME_SEMANTIC_PASS`, default off;
+  `REFRAME_SEMANTIC_MODEL` default gemini-3.1-flash-lite): one video+audio call
+  (`api/reframe_semantic.py` + `analyze_video_semantics`) returns per-shot
+  CATEGORICAL judgments — content kind, text importance
+  (essential/contextual/incidental), speaker screen positions. No coordinates,
+  no coverage floats (the 0d57d70 lesson is structural: the schema has no
+  numeric spatial field). **Two-key letterbox lock**: semantic importance AND a
+  CPU-measured band, folded into C *before* the rung DP. `content_kind`
+  branches replace the text/no-subject/weak-subject escalations; the legacy
+  escalation path survives untouched as the fallback ladder (a failed pass =
+  `scenes=[]` = today's exact behavior), and `subject_choice` remains as a thin
+  image-mode escalation.
+- **Speaker join**: Chirp decides WHO/WHEN, the semantic pass says WHERE that
+  speaker appears (`offscreen` suppresses speaker-centering — the
+  voiceover-poster hijack class), MAR (4 fps, speech-gated) validates or
+  overrides. Vision-only MAR pinning now happens ONLY when no diarization
+  exists at all — mouth motion in a diarized-silent window is chewing, not
+  speech.
+
+**Threshold recalibration still owed** (on fixtures, not by hand): FACE_CONF_MIN
+(was tuned on short-range scores), SPEAKER_MIN_ACTIVITY/SPEAKER_DOMINANCE (MAR
+distributions at 4 fps), STABLE_FRAC (on healthy tracks). Light-ASD remains the
+deliberate escape hatch if framed_speaker_active_rate stays <0.4 on podcast
+fixtures after the MAR fixes.
+
+## Addendum — 2026-07-11 active picture area + subject-aware person pick
+
+Diagnosed from production rf-yw9w9uk5 (Spider-Man: Brand New Day 4K trailer,
+old pipeline), scene 2:20–2:30: (a) the source is a 2.39:1 scope picture inside
+the 16:9 container — ~26% of every frame is baked black bars nothing detected,
+so every crop kept them (output picture filled only ~74% of the canvas, and all
+rung/width math reasoned about padding); (b) with no detectable face, the
+person fallback picked the LARGEST box per frame — an out-of-focus foreground
+guard's back — cropping Spider-Man (left, story subject) fully out of frame.
+
+- **Active picture area** (`api/reframe_active_area.py`): per-frame max-luma
+  row/col profiles over ~24 sampled frames → a bar row is dark in ≥85% of
+  samples (not ALL: this very trailer is scope for 95% of its runtime with a
+  full-bleed end slate — those minority samples come back as `outlier_times`,
+  and segments in those shots render untrimmed via `src_full_frame`; >15%
+  disagreement = mixed-format source → no trim). Per-side guards (≥2%, ≤35%,
+  keep ≥50% area; any bright pixel in a row keeps it — baked subtitles/billing
+  blocks stop the trim). The WHOLE pipeline then runs in
+  active-picture coordinates: detection/text scans slice frames before
+  inference, planner/eval get active dims as src_w/src_h, Pass-2 thumbnails are
+  sliced, and the renderer prepends one `crop=` (`crop_prefilter`) per filter
+  chain. Fixtures persist `active_area`; replay honors it (absent = full frame,
+  so the existing corpus is byte-identical). Observability:
+  `reframe_summary.active_area` + eval `perception.active_area`.
+- **Subject-aware person pick** (`reframe_signals._person_groups` /
+  `_pick_person_group`): person detections (no track ids) cluster by
+  x-interval IoU ≥ 0.3; the subject group is chosen lexicographically —
+  mostly-inside the semantic subject's third (when the scene carries
+  `active_subject`), ever-shows-a-face (frontality: backs of heads don't carry
+  scenes), then size. The chosen group's OWN series feeds the crop and the
+  focal points (`x_target` re-picks the group at focal time), killing the
+  per-frame largest-box flicker. `REFRAME_PROMINENCE=frac` restores legacy.
+  One-time rebaseline: rf-piemrxjm center_crop_segments 7→8 — a 5-frame crowd
+  window whose old "person" was two DIFFERENT people stitched together
+  (x=0.14→0.64); the new pick is honest (best subject too sparse → center),
+  and both render pixel-identical 16:9 full-width.
+- **Eval tripwire** `subject_mismatch_segments`: person/center segments whose
+  crop window entirely excludes the semantic subject's third (the class
+  containment can't see — it grades the box the picker chose). Advisory
+  (`failing` entry, not rolled into `overall`).

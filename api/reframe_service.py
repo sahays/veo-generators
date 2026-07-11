@@ -43,6 +43,8 @@ def render_plan(
     has_audio: bool = True,
     out_w: int = 1080,
     out_h: int = 1920,
+    src_crop: str = "",
+    full_src_wh=None,
 ) -> str:
     """Render an adaptive-letterbox plan: each segment to its own inner AR, concat.
 
@@ -53,6 +55,14 @@ def render_plan(
     The video timeline tiles [0, duration] exactly, so a single encode of the
     original track stays in sync by construction. `out_w`×`out_h` is the output
     canvas (default 9:16 1080×1920; pass 1080×1440 for 3:4).
+
+    `src_crop` (reframe_active_area.crop_prefilter) trims baked-in source bars
+    before every per-segment filter; when set, `src_w`/`src_h` and the plan's
+    keypoints are in active-picture coordinates. A segment stamped
+    ``src_full_frame`` (its shot genuinely fills the container — e.g. a
+    trailer's end slate) renders untrimmed from ``full_src_wh`` instead; with
+    horizontal bars the x fractions are identical either way, so the same
+    keypoints stay exact.
     """
     if not segments:
         raise ValueError("render_plan: empty plan")
@@ -75,6 +85,8 @@ def render_plan(
                     False,  # video-only; audio muxed once below
                     out_w,
                     out_h,
+                    src_crop,
+                    full_src_wh,
                 ): i
                 for i, seg in enumerate(segments)
             }
@@ -146,9 +158,20 @@ def _mux_source_audio(video_path: str, src_path: str, out_path: str) -> str:
 
 
 def _render_segment(
-    src_path, out_path, seg, src_w, src_h, has_audio, out_w=1080, out_h=1920
+    src_path,
+    out_path,
+    seg,
+    src_w,
+    src_h,
+    has_audio,
+    out_w=1080,
+    out_h=1920,
+    src_crop="",
+    full_src_wh=None,
 ) -> str:
     """Render one plan segment with the unified canvas filter (or vstack split)."""
+    if src_crop and seg.get("src_full_frame") and full_src_wh:
+        (src_w, src_h), src_crop = full_src_wh, ""
     ss = seg["start"]
     dur = seg["end"] - ss
 
@@ -159,11 +182,17 @@ def _render_segment(
     if seg["layout"] == "split" and len(seg["crops"]) == 2:
         top, bot = seg["crops"]
         filter_str = build_split_filter(
-            _local(top), _local(bot), src_w, src_h, out_w, out_h
+            _local(top), _local(bot), src_w, src_h, out_w, out_h, src_crop=src_crop
         )
     else:
         filter_str = build_canvas_filter(
-            _local(seg["crops"][0]), src_w, src_h, tuple(seg["inner_ar"]), out_w, out_h
+            _local(seg["crops"][0]),
+            src_w,
+            src_h,
+            tuple(seg["inner_ar"]),
+            out_w,
+            out_h,
+            src_crop=src_crop,
         )
     cmd = _build_canvas_cmd(src_path, out_path, ss, dur, has_audio)
     run_ffmpeg_with_filter(

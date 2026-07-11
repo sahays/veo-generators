@@ -9,16 +9,22 @@ import logging
 import os
 import tempfile
 import urllib.request
-from typing import List
+from typing import List, Optional
 
 import cv2
 
 logger = logging.getLogger(__name__)
 
-# Model URLs (Google's hosted models)
-_FACE_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite"
-_FACE_MODEL_PATH = None
-_face_detector = None
+# Model URLs (Google's hosted models). Short-range BlazeFace is a selfie-
+# distance model — it misses small/distant/profile faces in cinematic wide
+# shots — so the full-range variant runs alongside it by default and the two
+# detection sets are IoU-NMS merged (REFRAME_FACE_MODEL=both|short|full).
+_FACE_MODEL_URLS = {
+    "short": "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite",
+    "full": "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_full_range/float16/latest/blaze_face_full_range.tflite",
+}
+_face_detectors: dict = {}  # variant -> detector | False (cached init failure)
+_NMS_IOU = 0.5
 
 # Person detector (EfficientDet-Lite) — catches bodies when no frontal face is
 # visible (distant, profile, low-light, or walking away from camera).
@@ -27,39 +33,42 @@ _OBJECT_MODEL_PATH = None
 _object_detector = None  # None = not tried; False = init failed (cached)
 
 
-def _ensure_model():
-    """Download face detection model if not cached."""
-    global _FACE_MODEL_PATH
-    if _FACE_MODEL_PATH and os.path.exists(_FACE_MODEL_PATH):
-        return _FACE_MODEL_PATH
+def _face_variants() -> List[str]:
+    mode = os.getenv("REFRAME_FACE_MODEL", "both")
+    return ["short", "full"] if mode == "both" else [mode]
+
+
+def _ensure_model(variant: str = "short"):
+    """Download a face detection model variant if not cached."""
     cache_dir = os.path.join(tempfile.gettempdir(), "mediapipe_models")
     os.makedirs(cache_dir, exist_ok=True)
-    path = os.path.join(cache_dir, "blaze_face_short_range.tflite")
+    path = os.path.join(cache_dir, f"blaze_face_{variant}_range.tflite")
     if not os.path.exists(path):
-        logger.info(f"Downloading MediaPipe face model to {path}...")
-        urllib.request.urlretrieve(_FACE_MODEL_URL, path)
-    _FACE_MODEL_PATH = path
+        logger.info(f"Downloading MediaPipe face model ({variant}) to {path}...")
+        urllib.request.urlretrieve(_FACE_MODEL_URLS[variant], path)
     return path
 
 
-def _get_face_detector():
-    """Lazy-init MediaPipe FaceDetector."""
-    global _face_detector
-    if _face_detector is not None:
-        return _face_detector
+def _get_face_detector(variant: str = "short"):
+    """Lazy-init one MediaPipe FaceDetector variant (cached, incl. failures)."""
+    cached = _face_detectors.get(variant)
+    if cached is not None:
+        return cached or None  # False (cached failure) → None
     try:
         import mediapipe as mp
 
-        model_path = _ensure_model()
+        model_path = _ensure_model(variant)
         options = mp.tasks.vision.FaceDetectorOptions(
             base_options=mp.tasks.BaseOptions(model_asset_path=model_path),
             min_detection_confidence=0.3,
         )
-        _face_detector = mp.tasks.vision.FaceDetector.create_from_options(options)
-        logger.info("MediaPipe FaceDetector initialized")
-        return _face_detector
+        detector = mp.tasks.vision.FaceDetector.create_from_options(options)
+        _face_detectors[variant] = detector
+        logger.info(f"MediaPipe FaceDetector ({variant}) initialized")
+        return detector
     except Exception as e:
-        logger.warning(f"MediaPipe init failed, will use Haar cascade: {e}")
+        logger.warning(f"MediaPipe init failed ({variant}), Haar fallback: {e}")
+        _face_detectors[variant] = False
         return None
 
 
@@ -68,12 +77,47 @@ def _get_face_detector():
 # ---------------------------------------------------------------------------
 
 
+def _iou(a: dict, b: dict) -> float:
+    ax0, ax1 = a["x"] - a["w"] / 2, a["x"] + a["w"] / 2
+    ay0, ay1 = a["y"] - a["h"] / 2, a["y"] + a["h"] / 2
+    bx0, bx1 = b["x"] - b["w"] / 2, b["x"] + b["w"] / 2
+    by0, by1 = b["y"] - b["h"] / 2, b["y"] + b["h"] / 2
+    iw = max(0.0, min(ax1, bx1) - max(ax0, bx0))
+    ih = max(0.0, min(ay1, by1) - max(ay0, by0))
+    inter = iw * ih
+    union = a["w"] * a["h"] + b["w"] * b["h"] - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _merge_nms(faces: List[dict], iou_thr: float = _NMS_IOU) -> List[dict]:
+    """Greedy NMS across detector variants: keep the higher-confidence box of
+    any overlapping pair (the same face seen by both models is one face)."""
+    kept: List[dict] = []
+    for f in sorted(faces, key=lambda f: -f.get("confidence", 0)):
+        if all(_iou(f, k) < iou_thr for k in kept):
+            kept.append(f)
+    return kept
+
+
 def detect_faces(frame, video_w: int, video_h: int) -> List[dict]:
-    """Detect all faces in a BGR frame. Returns list of {x, y, w, h, confidence}."""
-    detector = _get_face_detector()
-    if detector:
-        return _detect_faces_mediapipe(detector, frame, video_w, video_h)
-    return _detect_faces_haar(frame, video_w, video_h)
+    """Detect all faces in a BGR frame. Returns list of {x, y, w, h, confidence}.
+
+    Runs every configured BlazeFace variant (short + full range by default) and
+    NMS-merges; falls back to Haar only when no variant initialized.
+    """
+    faces: List[dict] = []
+    any_detector = False
+    for variant in _face_variants():
+        detector = _get_face_detector(variant)
+        if not detector:
+            continue
+        any_detector = True
+        for f in _detect_faces_mediapipe(detector, frame, video_w, video_h):
+            f["det_src"] = variant
+            faces.append(f)
+    if not any_detector:
+        return _detect_faces_haar(frame, video_w, video_h)
+    return _merge_nms(faces)
 
 
 def _detect_faces_mediapipe(detector, frame, video_w, video_h) -> List[dict]:
@@ -159,6 +203,22 @@ def _get_object_detector():
         return None
 
 
+def detection_backend() -> dict:
+    """Which detector backends actually initialized on this host.
+
+    MediaPipe silently degrading to Haar (missing GL libs) and AV1 sources
+    decoding zero frames have both shipped garbage while jobs "completed" —
+    the eval's perception block turns either into a visible fail instead of
+    leaving downstream layers to be blamed.
+    """
+    variants = [v for v in _face_variants() if _get_face_detector(v)]
+    return {
+        "face_backend": "mediapipe" if variants else "haar",
+        "face_variants": variants,
+        "person_backend": "efficientdet" if _get_object_detector() else "none",
+    }
+
+
 def detect_persons(frame, video_w: int, video_h: int) -> List[dict]:
     """Detect people (bodies) in a BGR frame. Returns list of {x, y, w, h, confidence}.
 
@@ -224,20 +284,27 @@ def scan_video_faces(video_path: str, sample_fps: float = 1.0) -> List[dict]:
     return frames_data
 
 
-def scan_video_detections(video_path: str, sample_fps: float = 4.0) -> List[dict]:
+def scan_video_detections(
+    video_path: str, sample_fps: float = 4.0, active_area: Optional[dict] = None
+) -> List[dict]:
     """Scan once, running BOTH face and person detection per sampled frame.
 
     Returns list of {"time_sec", "faces": [...], "persons": [...]}. Single decode
     pass so adding persons doesn't double the video read.
+
+    `active_area` (reframe_active_area fractions) trims baked-in letterbox bars
+    off each frame BEFORE inference — every returned coordinate is then
+    normalized to the real picture, and detectors see proportionally larger
+    subjects. ``None`` = full frame (today's behavior).
     """
+    from reframe_active_area import slice_frame
+
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         logger.warning(f"MediaPipe: failed to open {video_path}")
         return []
 
     video_fps = cap.get(cv2.CAP_PROP_FPS) or 30
-    video_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    video_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     step = max(1, int(video_fps / sample_fps))
 
     frames_data = []
@@ -248,14 +315,18 @@ def scan_video_detections(video_path: str, sample_fps: float = 4.0) -> List[dict
             if not ret:
                 break
             if idx % step == 0:
+                frame = slice_frame(frame, active_area)
+                video_h, video_w = frame.shape[:2]
                 faces = detect_faces(frame, video_w, video_h)
-                # Mouth-aspect-ratio only matters when ≥2 faces compete (ASD) —
-                # skip the landmarker cost on single-face frames.
-                if len(faces) >= 2:
+                # Mouth-aspect-ratio on EVERY detected face: single-face shots
+                # need MAR too (talking-head vs static-poster evidence, and the
+                # single-face speaker pin), not just ≥2-face ASD comparisons.
+                if faces:
                     from active_speaker import mouth_aspect_ratio
 
                     for f in faces:
                         f["mouth"] = mouth_aspect_ratio(frame, f)
+                        f["hist"] = _face_hist(frame, f, video_w, video_h)
                 frames_data.append(
                     {
                         "time_sec": idx / video_fps,
@@ -274,15 +345,157 @@ def scan_video_detections(video_path: str, sample_fps: float = 4.0) -> List[dict
 
 
 # ---------------------------------------------------------------------------
-# Simple position-based tracker
+# Face tracker
 # ---------------------------------------------------------------------------
+# v2 (default): gap-tolerant global-greedy matching on IoU + size-normalized
+# center distance (+ appearance-histogram tiebreak), with a hard reset at scene
+# cuts. Fixes the v1 failure that fragmented every subject into sub-threshold
+# track shards: v1 matched only against the immediately previous sample, so a
+# single missed detection minted a new track_id, and identities silently leaked
+# across cuts onto different people.
+_GAP_SEC = 1.0  # how long an unmatched track survives on its last box
+_COST_MAX = 0.7  # (track, detection) pairs above this never link
+_HIST_WEIGHT = 0.2  # appearance term (Bhattacharyya) when both sides have one
 
 
-def track_faces(frames_data: List[dict], max_distance: float = 0.15) -> List[dict]:
-    """Assign persistent track IDs across frames by position proximity.
+def _face_hist(frame, f: dict, video_w: int, video_h: int):
+    """L1-normalized HSV histogram (8x4x4) of the face crop — a cheap appearance
+    signature for tracker re-ID (survives JSON round-trip into replay fixtures)."""
+    x0 = int(max(0.0, f["x"] - f["w"] / 2) * video_w)
+    x1 = int(min(1.0, f["x"] + f["w"] / 2) * video_w)
+    y0 = int(max(0.0, f["y"] - f["h"] / 2) * video_h)
+    y1 = int(min(1.0, f["y"] + f["h"] / 2) * video_h)
+    if x1 - x0 < 4 or y1 - y0 < 4:
+        return None
+    hsv = cv2.cvtColor(frame[y0:y1, x0:x1], cv2.COLOR_BGR2HSV)
+    hist = cv2.calcHist([hsv], [0, 1, 2], None, [8, 4, 4], [0, 180, 0, 256, 0, 256])
+    total = float(hist.sum()) or 1.0
+    return [round(float(v) / total, 5) for v in hist.flatten()]
 
-    Returns list of {"time_sec", "tracks": [{"track_id", "x", "y", "confidence"}]}.
+
+def _hist_dist(a, b) -> float:
+    """Bhattacharyya distance between two L1-normalized histograms (0=same)."""
+    bc = sum((pa * pb) ** 0.5 for pa, pb in zip(a, b))
+    return max(0.0, 1.0 - bc) ** 0.5
+
+
+def track_faces(
+    frames_data: List[dict],
+    max_distance: float = 0.15,
+    cuts: Optional[List[float]] = None,
+) -> List[dict]:
+    """Assign persistent track IDs across frames.
+
+    Returns list of {"time_sec", "tracks": [{"track_id", x, y, w, h,
+    "confidence", "mouth"}]}. ``cuts`` (scene-cut timestamps) hard-reset track
+    identity — matching across a cut is where v1 invented garbage.
+    ``REFRAME_TRACKER=v1`` restores the legacy single-frame matcher.
     """
+    if os.getenv("REFRAME_TRACKER", "v2") == "v1":
+        return _track_faces_v1(frames_data, max_distance)
+    return _track_faces_v2(frames_data, cuts or [])
+
+
+def _track_faces_v2(frames_data: List[dict], cuts: List[float]) -> List[dict]:
+    # Sampling interval from the data itself (fps-independent; tolerates gaps).
+    times = [fd["time_sec"] for fd in frames_data]
+    deltas = sorted(b - a for a, b in zip(times, times[1:]) if b > a)
+    dt = deltas[len(deltas) // 2] if deltas else 1.0
+    max_misses = max(1, round(_GAP_SEC / dt))
+    # A subject/camera faster than half a frame-width per second reads as a
+    # different subject; per-sample ceiling scales with the sampling interval.
+    max_step = 0.5 * dt
+
+    next_id = 0
+    live: List[dict] = []  # {tid, x, y, w, h, hist, misses}
+    cut_i = 0
+    prev_t = None
+    result = []
+
+    for fd in frames_data:
+        t = fd["time_sec"]
+        # Hard reset at scene cuts: identity never crosses a cut.
+        while cut_i < len(cuts) and cuts[cut_i] <= t:
+            if prev_t is None or cuts[cut_i] > prev_t:
+                live = []
+            cut_i += 1
+        prev_t = t
+
+        faces = fd["faces"]
+        # Global greedy assignment over all (track, detection) pairs by cost.
+        pairs = []
+        for ti, tr in enumerate(live):
+            for fi, f in enumerate(faces):
+                dist = ((f["x"] - tr["x"]) ** 2 + (f["y"] - tr["y"]) ** 2) ** 0.5
+                if dist > max_step * (tr["misses"] + 1):
+                    continue
+                size = 2.0 * max(f.get("w", 0.0), tr["w"]) or 1.0
+                cost = 0.6 * (1.0 - _iou(f, tr)) + 0.4 * min(1.0, dist / size)
+                if f.get("hist") and tr.get("hist"):
+                    cost += _HIST_WEIGHT * _hist_dist(f["hist"], tr["hist"])
+                if cost < _COST_MAX:
+                    pairs.append((cost, ti, fi))
+        pairs.sort()
+        used_t, used_f = set(), set()
+        assign = {}
+        for cost, ti, fi in pairs:
+            if ti in used_t or fi in used_f:
+                continue
+            used_t.add(ti)
+            used_f.add(fi)
+            assign[fi] = ti
+
+        frame_tracks = []
+        new_live = []
+        for fi, f in enumerate(faces):
+            if fi in assign:
+                tr = live[assign[fi]]
+                tid = tr["tid"]
+            else:
+                tid = next_id
+                next_id += 1
+            frame_tracks.append(
+                {
+                    "track_id": tid,
+                    "x": f["x"],
+                    "y": f["y"],
+                    "w": f.get("w", 0.0),
+                    "h": f.get("h", 0.0),
+                    "confidence": f.get("confidence", 0.5),
+                    "mouth": f.get("mouth"),  # MAR for ASD (None if unknown)
+                }
+            )
+            new_live.append(
+                {
+                    "tid": tid,
+                    "x": f["x"],
+                    "y": f["y"],
+                    "w": f.get("w", 0.0),
+                    "h": f.get("h", 0.0),
+                    "hist": f.get("hist"),
+                    "misses": 0,
+                }
+            )
+        # Unmatched tracks survive on their last box for _GAP_SEC — one missed
+        # detection no longer mints a new identity. Gap frames are NOT emitted
+        # (frac stays honest); only the id is preserved for re-linking.
+        for ti, tr in enumerate(live):
+            if ti not in used_t:
+                tr["misses"] += 1
+                if tr["misses"] <= max_misses:
+                    new_live.append(tr)
+        live = new_live
+        result.append({"time_sec": t, "tracks": frame_tracks})
+
+    logger.info(
+        f"Tracker(v2): {next_id} unique tracks across {len(result)} frames "
+        f"(dt={dt:.2f}s, gap={max_misses} misses)"
+    )
+    return result
+
+
+def _track_faces_v1(frames_data: List[dict], max_distance: float) -> List[dict]:
+    """Legacy tracker: greedy nearest-neighbor vs the previous sample only."""
     next_id = 0
     prev_tracks = []
     result = []
@@ -314,7 +527,7 @@ def track_faces(frames_data: List[dict], max_distance: float = 0.15) -> List[dic
 
 
 def _match_tracks(prev: List[dict], faces: List[dict], max_dist: float) -> List[tuple]:
-    """Match faces to previous tracks by nearest position."""
+    """Match faces to previous tracks by nearest position (v1)."""
     if not prev:
         return [(f, None) for f in faces]
     used = set()

@@ -72,6 +72,8 @@ from reframe_segments import (  # noqa: F401  (re-exported)
     _seg_has_face,
     _split_decision_trace,
 )
+from reframe_semantic import GRAPHIC_KINDS as SEMANTIC_GRAPHIC_KINDS
+from text_detect import persistent_text_regions
 from reframe_signals import (  # noqa: F401  (re-exported)
     DIALOGUE_MIN_SPEAK,
     SPEAKER_DOMINANCE,
@@ -90,7 +92,10 @@ from reframe_signals import (  # noqa: F401  (re-exported)
     _match_track,
     _scene_for,
     _segment_persons,
-    _segment_text_band,
+    _segment_text_band,  # noqa: F401 — re-exported for legacy callers/tests
+    _segment_text_regions,
+    _semantic_speaker_position,
+    PROM_SPEAK_MULT,
     _segment_track_mouth,
     _speaker_turn_cuts,
     _speech_intervals,
@@ -99,6 +104,7 @@ from reframe_signals import (  # noqa: F401  (re-exported)
     _track_x_spread,
     _window,
     pick_active_speaker,
+    prominence,
 )
 
 COVERAGE_MARGIN = 0.04  # safety margin added to measured detection width
@@ -127,9 +133,15 @@ FACE_CONF_MIN = 0.75
 # gates pass, else one wide keep-both crop that letterboxes as needed — never a
 # single-person crop that pushes an equally-important person out of frame.
 # This outranks speaker-centering: on rf-udcpl2hd a speaker-centered two-shot
-# left the second (equally large) person fully off-frame for 7s. The size gate
-# keeps a persistent small background face from counting.
-EQUAL_W_RATIO = 0.6
+# left the second (equally large) person fully off-frame for 7s. Membership is
+# a fused-prominence ratio (size × presence × confidence — the old separate
+# frac and w ratios are folded into it); the absolute floor keeps tiny
+# background faces out of groups regardless of ratios. Framing people TOGETHER
+# demands prominence closer than merely-ambiguous (SUBJECT_AMBIG_RATIO, 0.6):
+# the band between the two ratios escalates "which subject?" to Gemini instead.
+EQUAL_PROM_RATIO = 0.75
+EQUAL_W_RATIO = 0.6  # retained for REFRAME_PROMINENCE=frac legacy comparisons
+EQUAL_MIN_W = 0.05
 
 # Vertical-split layout (Phase 3): when two speakers sit too far apart for even a
 # 1:1 rung to hold both at a decent size, stack them as two full-canvas panels so
@@ -162,22 +174,24 @@ def _group_crop(group: List[dict]) -> Tuple[dict, float]:
 
 
 def _equal_group(stable: List[dict]) -> Optional[List[dict]]:
-    """All faces comparably present AND comparably sized to the most-visible one.
+    """All faces comparably PROMINENT to the leading one (fused score: size ×
+    presence × confidence × center prior — see reframe_signals._prom).
 
-    Returns the group (most-visible first, ≥2 members) or None. These people are
-    framed TOGETHER (split/keep-both) — see EQUAL_W_RATIO.
+    Returns the group (most-prominent first, ≥2 members) or None. These people
+    are framed TOGETHER (split/keep-both). The prominence ratio subsumes the old
+    frac∧w double gate; EQUAL_MIN_W keeps tiny background faces out of groups.
     """
     if len(stable) < 2:
         return None
-    by_vis = sorted(stable, key=lambda s: -s["frac"])
-    top = by_vis[0]
-    if top["frac"] <= 0 or top["w"] <= 0:
+    ranked = sorted(stable, key=prominence, reverse=True)
+    top = ranked[0]
+    top_prom = prominence(top)
+    if top_prom <= 0 or top["w"] <= 0:
         return None
     group = [top] + [
         s
-        for s in by_vis[1:]
-        if s["frac"] / top["frac"] >= SUBJECT_AMBIG_RATIO
-        and min(s["w"], top["w"]) / max(s["w"], top["w"]) >= EQUAL_W_RATIO
+        for s in ranked[1:]
+        if prominence(s) / top_prom >= EQUAL_PROM_RATIO and s["w"] >= EQUAL_MIN_W
     ]
     return group if len(group) >= 2 else None
 
@@ -187,7 +201,7 @@ def _keep_both_pair(stable: List[dict], scene: dict):
     if len(stable) < 2:
         return None
     layout = (scene.get("layout") or "").lower()
-    by_vis = sorted(stable, key=lambda s: -s["frac"])[:2]
+    by_vis = sorted(stable, key=prominence, reverse=True)[:2]
     sep = abs(by_vis[0]["x"] - by_vis[1]["x"])
     wants_both = layout == "side_by_side" or scene.get("scene_type") == "dialogue"
     if sep >= KEEP_BOTH_SEPARATION and (wants_both or sep >= 0.45):
@@ -249,6 +263,8 @@ def _decide_segment(
     rungs,
     speech_intervals=None,
     speaker_label=None,
+    text_regions=None,
+    has_diarization=False,
 ):
     """Decide layout, focal target and required coverage for one segment.
 
@@ -266,7 +282,19 @@ def _decide_segment(
     # requires_full_width fields and over-letterboxed plain shots (the original bug);
     # that floor is gone. A persistent wide TEXT band the crop would clip is escalated
     # to gemini-3.5-flash (decision point #1) — Pass 2 decides text, never Pass 1.
-    text_meas, text_span = _segment_text_band(tx_win)
+    # Per-region measurement (Phase 3): candidate regions only — a corner
+    # watermark/bug can no longer inflate the band to frame width.
+    text_meas, text_span, seg_regions = _segment_text_regions(tx_win, text_regions)
+
+    # Semantic pass (Phase 4): a scene carrying `content_kind` supplies the
+    # judgments the text/no-subject/weak-subject escalations used to ask for —
+    # those thumbnail questions are replaced wholesale (subject/speaker
+    # escalations survive as the thin image-mode path). A segment with no
+    # semantic scene ({} — pass off, failed, or this shot dropped in
+    # validation) keeps the full legacy behavior.
+    semantic = bool(scene.get("content_kind"))
+    sem_kind = scene.get("content_kind")
+    text_keep = scene.get("text_keep") if semantic else None
 
     # A single-rung ladder (only the full-bleed rung) can never letterbox, so the
     # letterbox-only escalation kinds (text/no-subject/graphic) would be
@@ -277,24 +305,33 @@ def _decide_segment(
 
     # Subject we'd crop to (face → body → spatial hint); escalate only when a wide
     # band pokes past that subject's tight crop window.
+    subj_hint = _hint_x(scene) if scene.get("active_subject") else None
     if stable:
-        subj_x = max(stable, key=lambda s: (s["frac"], -abs(s["x"] - 0.5)))["x"]
+        subj_x = max(stable, key=lambda s: (prominence(s), -abs(s["x"] - 0.5)))["x"]
     else:
-        _persons = _segment_persons(pf_win)
+        _persons = _segment_persons(pf_win, tf_win, hint_x=subj_hint)
         if _persons and len(_persons) / max(1, len(pf_win)) >= STABLE_FRAC:
             subj_x = sum(p["x"] for p in _persons) / len(_persons)
         else:
             subj_x = _hint_x(scene)
     escalate = (
         _maybe_text_escalation(
-            (text_meas, text_span), subj_x, len(stable), src_w, src_h, rungs, start, end
+            (text_meas, text_span),
+            subj_x,
+            len(stable),
+            src_w,
+            src_h,
+            rungs,
+            start,
+            end,
+            regions=seg_regions,
         )
-        if can_letterbox
+        if can_letterbox and not semantic
         else None
     )
 
     def out(layout, crop, c, c_meas, faces=None, n_persons=0):
-        return {
+        d = {
             "layout": layout,
             "crops": [crop],
             "C": min(1.0, c),
@@ -306,6 +343,33 @@ def _decide_segment(
             "faces": faces or [],
             "escalate": escalate,
         }
+        # Two-key letterbox lock (Phase 4): text Gemini judged worth keeping AND
+        # a band the CPU measured (or a coarse prior when the detector is blind
+        # — flagged). Folded into C BEFORE the rung DP, sized center-relative to
+        # THIS crop so an off-center band is fully kept — never a post-hoc rung
+        # edit, never a forced widening, never a 1.0 default.
+        if text_keep and layout != "split":
+            b0, b1 = text_keep["band"]
+            cx = crop.get("x_target") or 0.5
+            req = 2.0 * max(cx - b0, b1 - cx) + COVERAGE_MARGIN
+            if req > d["C"]:
+                d["C"] = min(1.0, req)
+                d["text_keep"] = [round(b0, 3), round(b1, 3)]
+                d["text_low_confidence"] = bool(text_keep.get("low_confidence"))
+        return d
+
+    # Semantic graphic kinds: a slide / title card / static poster is a designed
+    # full-frame composition — letterbox to the essential band when one was
+    # measured, else keep full width. This overrides even a detected "face"
+    # (poster key-art faces are part of the artwork — the SonyLIV title-card
+    # class that once took four commits to stop cropping).
+    if semantic and sem_kind in SEMANTIC_GRAPHIC_KINDS:
+        c = 1.0
+        if text_keep:
+            b0, b1 = text_keep["band"]
+            c = min(1.0, 2.0 * max(0.5 - b0, b1 - 0.5) + COVERAGE_MARGIN)
+        crop = {"track_id": None, "x_target": 0.5, "source": "semantic_graphic"}
+        return out("single", crop, c, c)
 
     # Margin pads the DETECTION-measured width (for tracker slop), not Gemini's
     # stated coverage (which is already a minimum) — avoids double-padding.
@@ -332,6 +396,37 @@ def _decide_segment(
                 "escalate": escalate,
             }
 
+        # Speaker join (Phase 5): audio decides WHO (the window's dominant Chirp
+        # turn), the semantic pass says WHERE that speaker appears on screen,
+        # and MAR — frame-accurate mouth motion measured only during diarized
+        # speech — validates or overrides. Resolved BEFORE the equal-group rule
+        # so the pin can boost prominence for the picks below, but the boost is
+        # applied AFTER the group check: an equal two-shot still outranks
+        # speaker-centering (the rf-udcpl2hd product rule).
+        sem_pos = _semantic_speaker_position(scene, speaker_label) if semantic else None
+        if sem_pos == "offscreen":
+            # Narration/voiceover: nobody on screen is talking, so speaker-
+            # centering must not hijack the framing — the static-poster class
+            # (dcf95e6 / 02c97e4) settled deterministically instead of by
+            # thumbnail guesswork.
+            speaker_tid = None
+        elif has_speech:
+            speaker_tid = _associate_speaker_face(stable, tf_win, speech_intervals)
+            if speaker_tid is None and sem_pos in ("left", "center", "right"):
+                # Shot-level semantic position → snap to the stable track in
+                # that bucket (MAR, when it pins, took precedence above).
+                speaker_tid = _match_track(
+                    stable, {"active_subject": sem_pos}, label_map
+                )["track_id"]
+        elif not has_diarization:
+            # No diarization at all (no audio): vision-only mouth motion is the
+            # only speaker signal available.
+            speaker_tid = pick_active_speaker(mouth)
+        else:
+            # Diarization ran and says NOBODY speaks in this window — mouth
+            # motion here is chewing/laughing/landmark noise, never a speaker.
+            speaker_tid = None
+
         # PRODUCT RULE (outranks speaker-centering): two or more equally
         # prominent people are framed TOGETHER — a stacked split when its gates
         # pass, else one wide keep-both crop that letterboxes as needed. A
@@ -347,15 +442,16 @@ def _decide_segment(
             crop, span = _group_crop(group)
             return out("keep_both", crop, span + COVERAGE_MARGIN, span, faces)
 
-        # Speaker-centering for NON-equal shots: in a shot with speech only one
-        # person talks at a time and we center them. Pin the speaking FACE by
-        # measuring mouth motion over the diarized speech (audio↔face); with no
-        # audio, fall back to vision-only mouth motion. A confident speaker →
-        # tight centered crop.
-        if has_speech:
-            speaker_tid = _associate_speaker_face(stable, tf_win, speech_intervals)
-        else:
-            speaker_tid = pick_active_speaker(mouth)
+        # A pinned speaker outranks a merely-larger silent face in every pick
+        # below (fallback targets, pair ordering, subject-ambiguity ranking).
+        if speaker_tid is not None:
+            for s in stable:
+                if s["track_id"] == speaker_tid:
+                    s["speak_mult"] = PROM_SPEAK_MULT
+                    s["prom"] = round(s.get("prom", s["frac"]) * PROM_SPEAK_MULT, 4)
+
+        # Speaker-centering for NON-equal shots: a confident speaker → tight
+        # centered crop.
         if speaker_tid is not None:
             tgt = next(s for s in stable if s["track_id"] == speaker_tid)
             cm = min(tgt["w"], FACE_W_CAP)
@@ -371,7 +467,8 @@ def _decide_segment(
         # geometry would support keep-both/split, those are OFFERED as verdict
         # options (a shot with speech is exactly when dialogue happens; without
         # this, keep-both/split would be unreachable for real conversations).
-        if has_speech and len(stable) >= 2:
+        # An offscreen semantic verdict (narration) suppresses the question too.
+        if has_speech and len(stable) >= 2 and sem_pos != "offscreen":
             pair = _keep_both_pair(stable, scene)
             if pair is None:
                 # For the OFFER the intent gate (dialogue label / sep ≥ 0.45) is
@@ -380,7 +477,7 @@ def _decide_segment(
                 # that a tight single crop would lose one entirely (observed on
                 # rf-udcpl2hd: sep ≈ 0.32 left the second person fully out of
                 # frame with keep_both never offered).
-                by_vis = sorted(stable, key=lambda s: -s["frac"])[:2]
+                by_vis = sorted(stable, key=prominence, reverse=True)[:2]
                 if abs(by_vis[0]["x"] - by_vis[1]["x"]) >= KEEP_BOTH_SEPARATION:
                     pair = by_vis
             can_split = bool(pair and _split_crops(pair, tf_win, start, end, scene))
@@ -396,7 +493,7 @@ def _decide_segment(
                 )
                 or escalate
             )
-            tgt = max(stable, key=lambda s: s["frac"])
+            tgt = max(stable, key=prominence)
             cm = min(tgt["w"], FACE_W_CAP)
             crop = {"track_id": tgt["track_id"], "x_target": tgt["x"], "source": "face"}
             return out("single", crop, cm + COVERAGE_MARGIN, cm, faces)
@@ -437,6 +534,7 @@ def _decide_segment(
             if (
                 escalate is None
                 and can_letterbox
+                and not semantic  # content_kind already settled person-vs-graphic
                 and tgt.get("conf", 0.5) < FACE_CONF_MIN
                 and not scene.get("active_subject")
             ):
@@ -450,7 +548,10 @@ def _decide_segment(
     # No stable face → try person/body detection. The body's measured width drives
     # the rung directly (unlike a single face, which is capped) — so a wide body
     # already letterboxes to 4:5 / 1:1 / 16:9 as its width grows, no escalation needed.
-    persons = _segment_persons(pf_win)
+    # Subject-aware pick: the semantic position bucket + face evidence choose WHICH
+    # person, so a huge out-of-focus foreground back can't hijack the crop from
+    # the actual story subject (Spider-Man-vs-guard's-back class).
+    persons = _segment_persons(pf_win, tf_win, hint_x=subj_hint)
     if persons and len(persons) / max(1, len(pf_win)) >= STABLE_FRAC:
         mean_x = sum(p["x"] for p in persons) / len(persons)
         mean_w = min(sum(p["w"] for p in persons) / len(persons), PERSON_W_CAP)
@@ -462,7 +563,10 @@ def _decide_segment(
     # Nothing detected (#7): no face, no person, no text band to follow. The CPU
     # can't tell a full-frame graphic (chart/map/UI/slide — keep full width) from
     # plain scenery (center crop is fine) — escalate. Fallback: center crop.
-    if escalate is None and can_letterbox:
+    # With semantics, content_kind already answered: graphic kinds returned
+    # above, so what remains is b-roll/action/scenery — a CONFIDENT center crop
+    # (biased by the subject-position hint), no thumbnail question needed.
+    if escalate is None and can_letterbox and not semantic:
         escalate = _no_subject_escalation(scene, src_w, src_h, rungs, start, end)
     crop = {"track_id": None, "x_target": _hint_x(scene), "source": "center"}
     return out("single", crop, 0.0, 0.0)
@@ -514,6 +618,9 @@ def reconcile(
     track_times = [f["time_sec"] for f in tracked_frames]
     person_times = [f["time_sec"] for f in persons]
     text_times = [f["time_sec"] for f in texts]
+    # Video-level text regions ONCE (watermark/bug classification needs whole-
+    # video presence); None (legacy captures) → per-segment union-band fallback.
+    text_regions = persistent_text_regions(texts)
 
     # Pass 1: per-cell content decisions (layout, subject, required coverage).
     decided: List[dict] = []
@@ -541,6 +648,8 @@ def reconcile(
             rungs,
             _speech_intervals(speaker_segments, start, end),
             _dominant_speaker(speaker_segments, start, end),
+            text_regions=text_regions,
+            has_diarization=bool(speaker_segments),
         )
         decided.append(
             {

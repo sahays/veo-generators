@@ -78,7 +78,7 @@ def _make_processor(monkeypatch, decide_impl):
 
     monkeypatch.setattr(deps, "firestore_svc", MagicMock())
 
-    async def _decide(batches, src_path, region=None, canvas="9:16"):
+    async def _decide(batches, src_path, region=None, canvas="9:16", active_area=None):
         return await decide_impl(batches, src_path, region)
 
     monkeypatch.setattr(deps, "ai_svc", SimpleNamespace(decide_escalations=_decide))
