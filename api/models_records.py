@@ -217,15 +217,40 @@ class AdaptRecord(BaseModel):
 
 # ── Dubbing ──────────────────────────────────────────────────────────
 
-# BCP-47 code → display name. The allowlist the router validates against, so a
-# language code can never reach a GCS path or the Live API unvalidated. The
-# active subset is chosen by the DUBBING_LANGUAGES env var (see dubbing_config).
-DUB_LANGUAGES = {
-    "es": "Spanish",
-    "pt": "Portuguese",
-    "de": "German",
-    "hi": "Hindi",
-}
+# The dubbing language table: (BCP-47 code, display name, region group).
+#
+# Codes are taken verbatim from the Live Translate supported-languages table —
+# they are the model's contract, not ours, so they are defined in code rather
+# than in an env var that a deploy could silently get wrong. Two consequences
+# worth knowing, both from that table:
+#
+#   * English has no regional variants. The model accepts "en" only; there is no
+#     en-US / en-GB / en-IN, so accent choice is not ours to offer.
+#   * Portuguese has no bare "pt" — only pt-BR and pt-PT — so both are listed.
+#
+# Order here is display order. Regions group the picker; they are presentation,
+# never validation.
+_DUB_LANGUAGE_TABLE = (
+    ("en", "English", "English"),
+    ("es", "Spanish", "European"),
+    ("pt-BR", "Portuguese (Brazil)", "European"),
+    ("pt-PT", "Portuguese (Portugal)", "European"),
+    ("de", "German", "European"),
+    ("fr", "French", "European"),
+    ("hi", "Hindi", "Indian"),
+    ("bn", "Bengali", "Indian"),
+    ("ta", "Tamil", "Indian"),
+    ("te", "Telugu", "Indian"),
+    ("kn", "Kannada", "Indian"),
+    ("ml", "Malayalam", "Indian"),
+)
+
+# code → display name. The allowlist the router validates against, so a language
+# code can never reach a GCS path or the Live API unvalidated.
+DUB_LANGUAGES = {code: name for code, name, _ in _DUB_LANGUAGE_TABLE}
+
+# code → region group, derived from the same table so the two cannot drift.
+DUB_LANGUAGE_REGIONS = {code: region for code, _, region in _DUB_LANGUAGE_TABLE}
 
 
 class DubVariant(BaseModel):

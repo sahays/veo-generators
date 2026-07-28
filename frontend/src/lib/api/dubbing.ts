@@ -6,6 +6,9 @@ const dubbingCrud = createCrudClient<any>(`${API_BASE_URL}/dubbing`, 'dub')
 export interface DubLanguage {
   code: string
   name: string
+  // Group label for the picker ("English" | "European" | "Indian"). Presentation
+  // only — the backend allowlist is what actually validates a code.
+  region: string
 }
 
 export interface DubLanguagesResponse {

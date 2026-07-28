@@ -377,11 +377,20 @@ class TestCreateDubValidation:
         assert res.status_code == 400
         assert "limit is 10 min" in res.json()["detail"]
 
-    def test_languages_endpoint_reports_the_allowlist(self, client, monkeypatch):
-        monkeypatch.setenv("DUBBING_LANGUAGES", "es,hi")
+    def test_languages_endpoint_reports_the_allowlist(self, client):
         res = client.get("/api/v1/dubbing/languages", headers=HEADERS)
         assert res.status_code == 200
-        assert {lang["code"] for lang in res.json()["languages"]} == {"es", "hi"}
+        body = res.json()
+        assert {lang["code"] for lang in body["languages"]} == set(
+            dubbing_config.supported_languages()
+        )
+        # The picker groups on this, so every entry must carry it.
+        assert all(lang["region"] for lang in body["languages"])
+
+    def test_languages_endpoint_keeps_table_order(self, client):
+        res = client.get("/api/v1/dubbing/languages", headers=HEADERS)
+        codes = [lang["code"] for lang in res.json()["languages"]]
+        assert codes == list(dubbing_config.supported_languages())
 
 
 class TestDubRetryUpdates:
@@ -411,19 +420,48 @@ class TestDubRetryUpdates:
         assert retry["error_message"] is None
 
 
-class TestConfigGuards:
-    def test_env_selects_a_subset_of_the_allowlist(self, monkeypatch):
-        monkeypatch.setenv("DUBBING_LANGUAGES", "es,de")
-        assert sorted(dubbing_config.supported_languages()) == ["de", "es"]
+class TestLanguageTable:
+    """The allowlist is code, not config — these guard the model's contract."""
 
-    def test_env_cannot_widen_the_allowlist(self, monkeypatch):
-        # An unknown code in config must never become a valid target.
-        monkeypatch.setenv("DUBBING_LANGUAGES", "es,klingon")
-        assert sorted(dubbing_config.supported_languages()) == ["es"]
+    def test_env_cannot_change_the_allowlist(self, monkeypatch):
+        # The list used to be env-driven. Setting the old key must be inert,
+        # not silently narrow the offering on a deployed revision.
+        before = dubbing_config.supported_languages()
+        monkeypatch.setenv("DUBBING_LANGUAGES", "es")
+        assert dubbing_config.supported_languages() == before
 
-    def test_empty_env_falls_back_to_the_full_allowlist(self, monkeypatch):
-        monkeypatch.setenv("DUBBING_LANGUAGES", "")
-        assert sorted(dubbing_config.supported_languages()) == ["de", "es", "hi", "pt"]
+    def test_codes_match_the_live_translate_contract(self):
+        codes = dubbing_config.supported_languages()
+        # Verbatim from the Live Translate supported-languages table.
+        assert set(codes) == {
+            "en",
+            "es",
+            "pt-BR",
+            "pt-PT",
+            "de",
+            "fr",
+            "hi",
+            "bn",
+            "ta",
+            "te",
+            "kn",
+            "ml",
+        }
+        # The model publishes no bare "pt" and no regional English variants;
+        # offering either would fail at the socket, not at validation.
+        assert "pt" not in codes
+        assert not [c for c in codes if c.startswith("en-")]
+
+    def test_every_language_has_a_region(self):
+        # The picker groups on region; a missing one would fall into "Other".
+        regions = dubbing_config.language_regions()
+        assert set(regions) == set(dubbing_config.supported_languages())
+        assert set(regions.values()) == {"English", "European", "Indian"}
+
+    def test_display_order_is_preserved(self):
+        # dicts keep insertion order, and the table's order IS the display
+        # order — the router must not need to sort.
+        assert list(dubbing_config.supported_languages())[0] == "en"
 
     def test_missing_api_key_raises(self, monkeypatch):
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)

@@ -11,7 +11,12 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 import deps
-from dubbing_config import max_languages, max_source_minutes, supported_languages
+from dubbing_config import (
+    language_regions,
+    max_languages,
+    max_source_minutes,
+    supported_languages,
+)
 from helpers import (
     list_completed_production_sources,
     list_video_upload_sources,
@@ -69,14 +74,17 @@ def _dub_retry_updates(record: DubRecord) -> dict:
 # (The `/sources/*` routes below are two segments, so they never collide.)
 @router.get("/languages")
 async def list_languages():
-    """Target languages the UI may offer — served from config so the picker is
-    never a second hardcoded list that can drift from the allowlist."""
+    """Target languages the UI may offer — served from the allowlist so the
+    picker is never a second hardcoded list that can drift from it.
+
+    Emitted in table order rather than sorted here: the table's order *is* the
+    display order, and re-sorting would scatter the region groups.
+    """
+    regions = language_regions()
     return {
         "languages": [
-            {"code": code, "name": name}
-            for code, name in sorted(
-                supported_languages().items(), key=lambda kv: kv[1]
-            )
+            {"code": code, "name": name, "region": regions.get(code, "Other")}
+            for code, name in supported_languages().items()
         ],
         "max_languages": max_languages(),
         "max_source_minutes": max_source_minutes(),

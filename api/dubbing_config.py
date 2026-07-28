@@ -11,7 +11,7 @@ changes to take effect.
 
 import os
 
-from models_records import DUB_LANGUAGES
+from models_records import DUB_LANGUAGE_REGIONS, DUB_LANGUAGES
 
 # Wire constants — fixed by the Live API contract, not configurable.
 # Verified against gemini-3.5-live-translate-preview: input must be 16 kHz mono
@@ -51,13 +51,21 @@ def api_key() -> str:
 
 
 def supported_languages() -> dict[str, str]:
-    """Active target languages: the DUBBING_LANGUAGES env subset of the
-    DUB_LANGUAGES allowlist. An unknown code in the env var is ignored rather
-    than trusted, so the env can never widen the allowlist."""
-    raw = os.getenv("DUBBING_LANGUAGES", "")
-    codes = [c.strip() for c in raw.split(",") if c.strip()]
-    active = {c: DUB_LANGUAGES[c] for c in codes if c in DUB_LANGUAGES}
-    return active or dict(DUB_LANGUAGES)
+    """The target-language allowlist, in display order.
+
+    Deliberately not configurable. The codes are the Live Translate model's
+    contract — an env var could only ever narrow this correctly or break it, and
+    a typo'd code would surface as a failed job rather than a startup error.
+    `models_records.DUB_LANGUAGES` is the single source of truth; this is the
+    accessor the router and worker share.
+    """
+    return dict(DUB_LANGUAGES)
+
+
+def language_regions() -> dict[str, str]:
+    """Region group per code, for grouping the picker. Presentation only —
+    validation always goes through `supported_languages`."""
+    return dict(DUB_LANGUAGE_REGIONS)
 
 
 def window_sec() -> int:

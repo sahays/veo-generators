@@ -1,6 +1,6 @@
 # VeoGen — Architecture Overview
 
-> AI-powered video production platform built on Google **Veo**, **Gemini**, **Imagen**, and supporting GCP media services. VeoGen turns a one-line concept into a scripted, storyboarded, rendered, and stitched video — and offers a suite of derivative tools (reframing, promos, aspect-ratio adapts, thumbnails, key-moments, and live avatars).
+> AI-powered video production platform built on Google **Veo**, **Gemini**, **Imagen**, and supporting GCP media services. VeoGen turns a one-line concept into a scripted, storyboarded, rendered, and stitched video — and offers a suite of derivative tools (reframing, multi-language dubbing, promos, aspect-ratio adapts, thumbnails, key-moments, and live avatars).
 
 This document describes the system at a high level: its components, how they communicate, and the principal data and control flows. For deeper detail on the job model, data schema, pricing, and failure handling, see [system-design.md](./system-design.md). For the end-user feature walkthrough, see [README.md](./README.md).
 
@@ -41,12 +41,14 @@ VeoGen is a **three-tier, two-service** application deployed on Google Cloud Run
                      ▼                    ▼
               ┌─────────────────────────────────────────────────────────────┐
               │                   WORKER SERVICE (Cloud Run)                  │
-              │  unified_worker  →  JobProcessor (reframe/promo/adapts/avatar)│
+              │  unified_worker  →  JobProcessor                              │
+              │      (reframe/promo/adapts/avatar/dubbing)                     │
               │  FFmpeg • MediaPipe • Gemini • Veo • Transcoder • Speech V2   │
               └─────────────────────────────────────────────────────────────┘
                      │
                      ▼  (all heavy GCP/AI calls)
         Vertex AI (Gemini, Imagen, Veo) • Transcoder API • Speech-to-Text V2 (Chirp 3)
+        Gemini Developer API (Live Translate — dubbing only, not on Vertex)
 ```
 
 **The defining architectural choice:** the API never blocks on a long render. It writes a `pending` record to Firestore and returns immediately. A **separate worker service polls Firestore** and runs the pipeline. The frontend **polls the API** for status. This decouples request latency from render time and lets the two services scale independently.
@@ -70,7 +72,7 @@ A single-page React application. Key choices:
 FastAPI app (`main.py`) composed of:
 
 - **Middleware stack** — a bot-protection middleware (blocks `curl`/`requests`/etc. by User-Agent, allowlisting the internal `veoagent`) and an **invite-code middleware** that validates the `X-Invite-Code` header against the master code + Firestore, sets `request.state.is_master`, and enforces that mutating methods (and `/api/v1/avatars/*` entirely) are master-only.
-- **Routers** (`routers/`) — one module per feature: `productions`, `scenes`, `render`, `uploads`, `key_moments`, `thumbnails`, `reframe`, `promo`, `adapts`, `system`, `diagnostics`, `auth`, `chat`, `models`, `pricing`, `avatars`, `avatars_live`. They share a generic CRUD helper (`_crud.py`).
+- **Routers** (`routers/`) — one module per feature: `productions`, `scenes`, `render`, `uploads`, `key_moments`, `thumbnails`, `reframe`, `promo`, `adapts`, `dubbing`, `system`, `diagnostics`, `auth`, `chat`, `models`, `pricing`, `avatars`, `avatars_live`. They share a generic CRUD helper (`_crud.py`).
 - **Services** (`*_service.py`) — the integration layer wrapping each external dependency (see §3).
 - **Agents** (`agents/`) — a Google ADK orchestrator + specialists for the conversational "Ask Aanya" co-pilot (see §4).
 - **Dependency wiring** (`deps.py`) — services are module-level singletons created once in the FastAPI `startup` hook and shared by both routers and (via import) the worker.
@@ -80,7 +82,7 @@ FastAPI app (`main.py`) composed of:
 
 A headless Python process (`unified_worker.py`) with no web server. It imports the same `api/` service singletons and runs a poll loop:
 
-- A registry of `JobProcessor` subclasses (`reframe`, `promo`, `adapts`, `avatar`), each defining `get_pending_records()` and `process(record)`.
+- A registry of `JobProcessor` subclasses (`reframe`, `promo`, `adapts`, `avatar`, `dubbing`), each defining `get_pending_records()` and `process(record)`.
 - Every `WORKER_POLL_INTERVAL` (~5 s) the dispatcher asks each processor for `pending` records and runs them, bounded by `MAX_CONCURRENT`.
 - `base_processor.py` provides shared machinery: atomic status/progress updates, failure marking, a sync↔async bridge (`_run_async`) since processors are synchronous but services are async, and a `TempFileManager` for scratch files.
 - On startup it **reclaims orphans** (e.g. avatar turns left mid-render by a crashed worker) by resetting them to `pending`.
@@ -97,6 +99,7 @@ Each service encapsulates one external dependency, keeping GCP/AI SDK details ou
 | `video_service.py` | Vertex AI — **Veo** | Scene clip generation (text+image→video, 4/6/8 s) with enriched prompts and per-project deterministic seeds. |
 | `avatar_service.py` | Vertex AI — Gemini Flash Lite | Generates short (<25-word) avatar replies shaped by persona/tone; feeds the lip-sync render. |
 | `reframe_service.py` | FFmpeg (local) | Smart crop/pan reframing along a focal path; vertical-split mode; chunked + parallel processing. |
+| `dubbing_*.py` | Gemini **Developer API** — Live Translate | Speech-to-speech dubbing over a raw WebSocket: `_live` (socket), `_timeline` (lag/alignment maths), `_audio` (ffmpeg), `_service` (one language end to end). The only path that authenticates with an API key rather than ADC. See [dubbing.md](./dubbing.md). |
 | `diarization_service.py` | Speech-to-Text V2 (Chirp 3) | Batch transcription with speaker diarization; auto-chunks long audio with boundary merging. |
 | `transcoder_service.py` | Cloud Video Transcoder API | Stitches clips per a GCS manifest into a single 720p H.264/AAC output. |
 | `storage_service.py` | Google Cloud Storage | Upload/download blobs; cached-credential **signed URL** generation (48 h, auto-refresh). |

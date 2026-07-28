@@ -100,7 +100,7 @@ All follow the canonical pattern: `POST` creates a `pending` record and returns 
 - **Reframe** — download → (diarization + MediaPipe → Gemini focal points → smoothed path → FFmpeg crop/pan) *or* vertical-split → Transcoder stitch.
 - **Promo** — Gemini segment analysis → FFmpeg cuts → optional title card (Imagen) + text overlays → codec normalize → Transcoder stitch.
 - **Adapts** — per aspect-ratio variant: Imagen generate → write variant URI; roll usage up to the record.
-- **Dubbing** — extract 16 kHz mono PCM once → stream it through Gemini Live Translate concurrently, one WebSocket per target language → shift each returned stream left by the measured interpreter lag and lay it on a fixed-length timeline → FFmpeg mux over the stream-copied video → per-language MP4 + SRT. The only Gemini call in the project that uses the **Developer API key** rather than Vertex: `gemini-3.5-live-translate-preview` is not available on Vertex. See §4.5.
+- **Dubbing** — extract 16 kHz mono PCM once → stream it through Gemini Live Translate, one WebSocket per target language, languages in sequence → shift each returned stream left by the measured interpreter lag and lay it on a fixed-length timeline → FFmpeg mux over the stream-copied video → per-language MP4 + SRT. The only Gemini call in the project that uses the **Developer API key** rather than Vertex: `gemini-3.5-live-translate-preview` is not available on Vertex. See §4.5 and [dubbing.md](./dubbing.md).
 - **Key-moments / Thumbnails** — Gemini video analysis → timeline/screenshots → optional collage.
 
 ### 4.3 Live avatar (real-time, WebSocket)
@@ -123,10 +123,12 @@ This is the only path that bypasses the poll model: it needs sub-second bidirect
 POST /dubbing  → pending DubRecord with one variant per language
 worker         → download → extract 16kHz mono PCM (once, shared)
                  → silencedetect for first-speech onset (the lag anchor)
-                 → asyncio.gather: one Live Translate WS per language
+                 → for each language IN SEQUENCE: one Live Translate WS
                  → assemble_track (lag shift, fixed length) → FFmpeg mux
-                 → upload dubs/{id}/{lang}.mp4 + .srt
+                 → upload dubs/{id}/{lang}.mp4 + .srt, persist variant
 ```
+
+Full walkthrough with sequence diagrams: [dubbing.md](./dubbing.md).
 
 Three properties of `gemini-3.5-live-translate-preview` shape this pipeline, all
 measured rather than assumed:

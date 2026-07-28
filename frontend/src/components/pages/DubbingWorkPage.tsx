@@ -76,6 +76,18 @@ export const DubbingWorkPage = () => {
 
   const languageNames = Object.fromEntries(languages.map((l) => [l.code, l.name]))
 
+  // Group for display, preserving the order the backend sent — that order is
+  // the language table's own, so groups stay contiguous without sorting here.
+  const languageGroups = languages.reduce<{ region: string; items: DubLanguage[] }[]>(
+    (groups, lang) => {
+      const open = groups[groups.length - 1]
+      if (open && open.region === lang.region) open.items.push(lang)
+      else groups.push({ region: lang.region, items: [lang] })
+      return groups
+    },
+    [],
+  )
+
   const toggleLanguage = (code: string) =>
     setSelected((prev) =>
       prev.includes(code)
@@ -234,32 +246,42 @@ export const DubbingWorkPage = () => {
               {selected.length}/{maxLanguages} selected
             </span>
           </div>
-          <div className="flex flex-wrap gap-3">
-            {languages.map((lang) => {
-              const isOn = selected.includes(lang.code)
-              const atLimit = !isOn && selected.length >= maxLanguages
-              return (
-                <button
-                  key={lang.code}
-                  type="button"
-                  onClick={() => toggleLanguage(lang.code)}
-                  disabled={atLimit}
-                  className={cn(
-                    'flex flex-col items-center gap-1 px-4 py-3 rounded-xl border transition-all text-center min-w-[100px]',
-                    isOn
-                      ? 'bg-accent/10 border-accent text-accent-dark'
-                      : 'border-border text-muted-foreground hover:border-accent/30',
-                    atLimit && 'opacity-40 cursor-not-allowed',
-                  )}
-                >
-                  <span className="text-[11px] font-bold uppercase tracking-widest">{lang.name}</span>
-                  <span className="text-[10px] text-muted-foreground">{lang.code}</span>
-                </button>
-              )
-            })}
+          <div className="space-y-4">
+            {languageGroups.map((group) => (
+              <div key={group.region} className="space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  {group.region}
+                </span>
+                <div className="flex flex-wrap gap-3">
+                  {group.items.map((lang) => {
+                    const isOn = selected.includes(lang.code)
+                    const atLimit = !isOn && selected.length >= maxLanguages
+                    return (
+                      <button
+                        key={lang.code}
+                        type="button"
+                        onClick={() => toggleLanguage(lang.code)}
+                        disabled={atLimit}
+                        className={cn(
+                          'flex flex-col items-center gap-1 px-4 py-3 rounded-xl border transition-all text-center min-w-[100px]',
+                          isOn
+                            ? 'bg-accent/10 border-accent text-accent-dark'
+                            : 'border-border text-muted-foreground hover:border-accent/30',
+                          atLimit && 'opacity-40 cursor-not-allowed',
+                        )}
+                      >
+                        <span className="text-[11px] font-bold uppercase tracking-widest">{lang.name}</span>
+                        <span className="text-[10px] text-muted-foreground">{lang.code}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
           <p className="text-xs text-muted-foreground">
             The original audio is replaced by the dubbed speech, so background music and effects are not preserved.
+            Live Translate offers a single English voice — it has no regional English variants.
           </p>
         </div>
       )}
