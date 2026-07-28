@@ -217,6 +217,7 @@ On success the script prints the Cloud Run URL for your instance.
 |---|---|
 | `scripts/pre-deploy.sh` | Full local gate: frontend build, ruff, system-lib check, backend tests |
 | `scripts/deploy.sh [all\|api\|worker]` | Build, push, and deploy to Cloud Run |
+| `scripts/git-push.sh` | Push the current branch without writing a token to disk or the remote URL |
 | `scripts/deploy-local.sh` | Set up a local dev environment: venv, frontend build, static sync |
 | `scripts/fetch-logs.sh` | Fetch Cloud Logging entries via the attached service account |
 | `scripts/unit-tests.sh` | Backend tests on their own |
