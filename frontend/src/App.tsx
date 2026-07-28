@@ -18,6 +18,8 @@ import { ReframeWorkPage } from './components/pages/ReframeWorkPage'
 import { ReframeOutputPage } from './components/pages/ReframeOutputPage'
 import { PromoLandingPage } from './components/pages/PromoLandingPage'
 import { PromoWorkPage } from './components/pages/PromoWorkPage'
+import { DubbingLandingPage } from './components/pages/DubbingLandingPage'
+import { DubbingWorkPage } from './components/pages/DubbingWorkPage'
 import { AdaptsLandingPage } from './components/pages/AdaptsLandingPage'
 import { AdaptsWorkPage } from './components/pages/AdaptsWorkPage'
 import { AdaptsOutputPage } from './components/pages/AdaptsOutputPage'
@@ -150,6 +152,11 @@ function App() {
               <Route path="/avatars" element={canWrite ? <AvatarLandingPage /> : <Navigate to="/productions" replace />} />
               <Route path="/avatars/create" element={canWrite ? <AvatarCreatePage /> : <Navigate to="/productions" replace />} />
               <Route path="/avatars/:id" element={canWrite ? <AvatarWorkPage /> : <Navigate to="/productions" replace />} />
+
+              {/* Dubbing */}
+              <Route path="/dubbing" element={<DubbingLandingPage />} />
+              <Route path="/dubbing/create" element={canWrite ? <DubbingWorkPage /> : <Navigate to="/dubbing" replace />} />
+              <Route path="/dubbing/:id" element={<DubbingWorkPage />} />
 
               {/* Adapts */}
               <Route path="/adapts" element={<AdaptsLandingPage />} />

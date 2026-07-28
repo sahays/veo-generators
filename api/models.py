@@ -28,8 +28,11 @@ from models_projects import (
     SceneMetadata,
 )
 from models_records import (
+    DUB_LANGUAGES,
     AdaptRecord,
     AdaptVariant,
+    DubRecord,
+    DubVariant,
     FocalPoint,
     KeyMomentModel,
     KeyMomentsRecord,
@@ -69,6 +72,7 @@ __all__ = [
     "AIModel",
     "AIResponseWrapper",
     "AVAILABLE_REGIONS",
+    "DUB_LANGUAGES",
     "AdaptRecord",
     "AdaptVariant",
     "AskAvatarRequest",
@@ -83,6 +87,8 @@ __all__ = [
     "Continuity",
     "CreateAIModelRequest",
     "CreateInviteCodeRequest",
+    "DubRecord",
+    "DubVariant",
     "FeaturePricing",
     "FocalPoint",
     "GlobalStyle",

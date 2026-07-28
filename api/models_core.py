@@ -69,6 +69,8 @@ class UsageMetrics(BaseModel):
     transcoder_minutes: float = 0.0
     transcoder_tier: str = ""  # "sd" | "hd" | "4k"
     diarization_minutes: float = 0.0
+    # Source minutes streamed through Live Translate, summed over languages.
+    dub_minutes: float = 0.0
 
     # --- provenance ---
     pricing_confidence: str = "high"  # "high" | "medium" | "low"
@@ -81,6 +83,7 @@ class UsageMetrics(BaseModel):
     veo_cost_usd: float = 0.0
     transcoder_cost_usd: float = 0.0
     diarization_cost_usd: float = 0.0
+    dub_cost_usd: float = 0.0
 
 
 class ServiceLineItem(BaseModel):

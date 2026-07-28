@@ -98,9 +98,16 @@ def main() -> None:
     from promo_processor import PromoProcessor
     from adapts_processor import AdaptsProcessor
     from avatar_processor import AvatarProcessor
+    from dubbing_processor import DubbingProcessor
 
     worker = UnifiedWorker(
-        [ReframeProcessor(), PromoProcessor(), AdaptsProcessor(), AvatarProcessor()]
+        [
+            ReframeProcessor(),
+            PromoProcessor(),
+            AdaptsProcessor(),
+            AvatarProcessor(),
+            DubbingProcessor(),
+        ]
     )
     worker.start()
 

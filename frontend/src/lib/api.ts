@@ -5,6 +5,7 @@ import { auth } from './api/auth'
 import { avatars } from './api/avatars'
 import { chat } from './api/chat'
 import { diagnostics } from './api/diagnostics'
+import { dubbing } from './api/dubbing'
 import { getInviteCode } from './api/_http'
 import { keyMoments } from './api/keyMoments'
 import { models } from './api/models'
@@ -46,6 +47,7 @@ export const api = {
   reframe,
   promo,
   adapts,
+  dubbing,
   diagnostics,
   chat,
   models,

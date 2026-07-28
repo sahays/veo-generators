@@ -32,7 +32,7 @@ Long renders cannot run inside the API request. The system uses a **database-as-
 on startup:
     reclaim orphans  (reset records stuck in an in-flight status → pending)
 loop forever:
-    for processor in [reframe, promo, adapts, avatar]:
+    for processor in [reframe, promo, adapts, avatar, dubbing]:
         records = processor.get_pending_records()       # Firestore query: status == "pending"
         for record in records[:MAX_CONCURRENT]:
             try:    processor.process(record)            # runs the full pipeline
@@ -63,6 +63,7 @@ All records live in Firestore Native-mode collections, namespaced with the servi
 | `_reframes` | Reframe job: source, options, focal path, outputs | `pending → analyzing → processing → encoding → completed / failed` |
 | `_promos` | Promo job: source, analyzed segments, overlays, final | `pending → … → completed / failed` |
 | `_adapts` | Adapt job with a **variants[]** array (one per aspect ratio) | per-variant `pending`, plus record-level rollup |
+| `_dubs` | Dubbing job with a **variants[]** array (one per target language): dubbed MP4, SRT, translated transcript | `pending → generating → completed / partial / failed` |
 | `_key_moments` | Extracted high-interest clips/timeline | `pending → analyzing → completed / failed` |
 | `_thumbnails` | Screenshot analysis + generated collage | `pending → analyzing → completed / failed` |
 | `_uploads` | User-uploaded media metadata | — |
@@ -99,6 +100,7 @@ All follow the canonical pattern: `POST` creates a `pending` record and returns 
 - **Reframe** — download → (diarization + MediaPipe → Gemini focal points → smoothed path → FFmpeg crop/pan) *or* vertical-split → Transcoder stitch.
 - **Promo** — Gemini segment analysis → FFmpeg cuts → optional title card (Imagen) + text overlays → codec normalize → Transcoder stitch.
 - **Adapts** — per aspect-ratio variant: Imagen generate → write variant URI; roll usage up to the record.
+- **Dubbing** — extract 16 kHz mono PCM once → stream it through Gemini Live Translate concurrently, one WebSocket per target language → shift each returned stream left by the measured interpreter lag and lay it on a fixed-length timeline → FFmpeg mux over the stream-copied video → per-language MP4 + SRT. The only Gemini call in the project that uses the **Developer API key** rather than Vertex: `gemini-3.5-live-translate-preview` is not available on Vertex. See §4.5.
 - **Key-moments / Thumbnails** — Gemini video analysis → timeline/screenshots → optional collage.
 
 ### 4.3 Live avatar (real-time, WebSocket)
@@ -114,6 +116,47 @@ This is the only path that bypasses the poll model: it needs sub-second bidirect
 ### 4.4 Chat ("Ask Aanya")
 
 `POST /chat` builds a fresh ADK orchestrator, runs the user turn through orchestrator → specialist, and returns the final text plus an `agent_context` payload (confirmation cards, source pickers). Specialists call API routers **in-process** (ASGI transport) and never execute billable jobs directly — they emit `propose_*` cards the UI confirms.
+
+### 4.5 Dubbing (async, WebSocket per language)
+
+```
+POST /dubbing  → pending DubRecord with one variant per language
+worker         → download → extract 16kHz mono PCM (once, shared)
+                 → silencedetect for first-speech onset (the lag anchor)
+                 → asyncio.gather: one Live Translate WS per language
+                 → assemble_track (lag shift, fixed length) → FFmpeg mux
+                 → upload dubs/{id}/{lang}.mp4 + .srt
+```
+
+Three properties of `gemini-3.5-live-translate-preview` shape this pipeline, all
+measured rather than assumed:
+
+- **It is Developer-API-only.** Not on Vertex, so `api/dubbing_live.py` connects
+  to `generativelanguage.googleapis.com` with `GEMINI_API_KEY`. It uses a raw
+  WebSocket rather than the google-genai SDK because `types.TranslationConfig`
+  needs google-genai ≥ 2.8 while `google-adk` pins `< 2`.
+- **It is a simultaneous interpreter**, so output trails input by ~3.4 s at 1x
+  pacing. Every chunk is stamped with the source position consumed when it
+  arrived, and the constant offset is removed at assembly time. Output duration
+  tracks input closely (~0.87 voiced ratio), so no time-stretching is needed.
+- **It never signals completion.** After translating it streams silent
+  keep-alive audio indefinitely; an unbounded read returned 87 s of audio for a
+  30 s clip. A sustained silent run (`DUBBING_SILENCE_STOP_SEC`) is the only
+  end-of-content signal, so the receive loop watches for it.
+
+Sessions cap at 15 minutes audio-only, so longer sources are split into
+`DUBBING_WINDOW_SEC` windows run in sequence, with the window offset folded into
+each stamp.
+
+**Languages run sequentially, deliberately.** Concurrent sockets were ~4x faster
+in wall clock, but every language finished within a second of the others at the
+very end: the record sat untouched for the whole job, nothing was watchable
+until everything was, and the UI looked hung. One language at a time costs N
+passes over the source (the send paces at ~1x realtime) and buys incremental
+delivery — each dub is uploaded and playable as soon as it is done. Progress
+maps (language index + streaming position) onto a 15-95% band, reported from
+inside the send loop and throttled to one Firestore write every 5s so the
+round-trip cannot stall the socket it is describing.
 
 ---
 

@@ -13,6 +13,7 @@ from models import (
     ReframeRecord,
     PromoRecord,
     AdaptRecord,
+    DubRecord,
     AIModel,
     Avatar,
     AvatarTurn,
@@ -34,6 +35,7 @@ class FirestoreService:
         self.reframe_collection = self.db.collection(f"{prefix}_reframes")
         self.promo_collection = self.db.collection(f"{prefix}_promos")
         self.adapts_collection = self.db.collection(f"{prefix}_adapts")
+        self.dubs_collection = self.db.collection(f"{prefix}_dubs")
         self.models_collection = self.db.collection(f"{prefix}_models")
         self.avatars_collection = self.db.collection(f"{prefix}_avatars")
         self.avatar_turns_collection = self.db.collection(f"{prefix}_avatar_turns")
@@ -248,6 +250,23 @@ class FirestoreService:
 
     def delete_adapt_record(self, record_id: str):
         self._delete_record(self.adapts_collection, record_id)
+
+    # --- Dubs ---
+
+    def get_dub_records(self, include_archived: bool = False) -> List[DubRecord]:
+        return self._get_records(self.dubs_collection, DubRecord, include_archived)
+
+    def get_dub_record(self, record_id: str) -> Optional[DubRecord]:
+        return self._get_record(self.dubs_collection, DubRecord, record_id)
+
+    def create_dub_record(self, record: DubRecord):
+        self._create_record(self.dubs_collection, record)
+
+    def update_dub_record(self, record_id: str, updates: dict):
+        self._update_record(self.dubs_collection, record_id, updates)
+
+    def delete_dub_record(self, record_id: str):
+        self._delete_record(self.dubs_collection, record_id)
 
     # --- Uploads ---
 

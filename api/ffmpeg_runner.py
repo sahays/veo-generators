@@ -25,6 +25,26 @@ def run_ffmpeg(cmd: list, timeout: int = 1200, label: str = "FFmpeg") -> str:
     return result.stdout
 
 
+def run_ffmpeg_probe(cmd: list, timeout: int = 300, label: str = "FFmpeg") -> str:
+    """Run an FFmpeg command for its *stderr* and return it.
+
+    Analysis filters (silencedetect, volumedetect, blackdetect) report their
+    findings on stderr and write no output file. `run_ffmpeg` discards stderr on
+    success, so those callers need this instead — rather than each reaching for
+    subprocess directly and re-inventing timeout and argv handling. Returns ""
+    on failure: a probe that cannot run is missing information, not an error the
+    caller should crash on.
+    """
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (subprocess.SubprocessError, OSError) as e:
+        logger.warning(f"{label} probe failed to run: {e}")
+        return ""
+    if result.returncode != 0:
+        logger.warning(f"{label} probe exited {result.returncode}")
+    return result.stderr or ""
+
+
 _FILTER_PLACEHOLDER = "__FILTER_PATH__"
 
 

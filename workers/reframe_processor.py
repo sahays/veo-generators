@@ -580,9 +580,7 @@ class ReframeProcessor(JobProcessor):
             # Baked-in source bars trimmed for this job (None = full frame).
             "active_area": active_area,
             # Segments rendered untrimmed (their shots genuinely fill the container).
-            "full_frame_segments": sum(
-                1 for s in segments if s.get("src_full_frame")
-            ),
+            "full_frame_segments": sum(1 for s in segments if s.get("src_full_frame")),
         }
         # Record the (post-verdict) escalation call plan for observability.
         from reframe_escalation import plan_batches

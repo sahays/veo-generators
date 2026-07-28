@@ -89,6 +89,16 @@ def _adapt_retry_updates(record: AdaptRecord) -> dict:
     }
 
 
+# Registered BEFORE the CRUD routes on purpose: FastAPI matches in registration
+# order, and `register_crud_routes` adds a `GET /{record_id}` that otherwise
+# swallows this single-segment path and treats "presets" as a record id —
+# returning an empty body, which the UI silently rendered as "no presets".
+# (`/sources/*` below is two segments, so it never collides.)
+@router.get("/presets")
+async def list_preset_bundles():
+    return {"presets": PRESET_BUNDLES, "all_ratios": ALL_RATIOS}
+
+
 register_crud_routes(
     router,
     resource_label="Adapt record",
@@ -107,11 +117,6 @@ register_crud_routes(
 @router.get("/sources/uploads")
 async def list_adapt_upload_sources():
     return list_image_upload_sources()
-
-
-@router.get("/presets")
-async def list_preset_bundles():
-    return {"presets": PRESET_BUNDLES, "all_ratios": ALL_RATIOS}
 
 
 @router.post("")

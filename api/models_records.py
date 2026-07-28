@@ -213,3 +213,48 @@ class AdaptRecord(BaseModel):
     invite_code: Optional[str] = None
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     completedAt: Optional[datetime] = None
+
+
+# ── Dubbing ──────────────────────────────────────────────────────────
+
+# BCP-47 code → display name. The allowlist the router validates against, so a
+# language code can never reach a GCS path or the Live API unvalidated. The
+# active subset is chosen by the DUBBING_LANGUAGES env var (see dubbing_config).
+DUB_LANGUAGES = {
+    "es": "Spanish",
+    "pt": "Portuguese",
+    "de": "German",
+    "hi": "Hindi",
+}
+
+
+class DubVariant(BaseModel):
+    language_code: str  # BCP-47, always a key of DUB_LANGUAGES
+    status: str = "pending"  # pending | generating | completed | failed
+    output_gcs_uri: Optional[str] = None  # dubbed MP4
+    srt_gcs_uri: Optional[str] = None
+    translated_transcript: str = ""
+    # Interpreter lag measured for this language and compensated for in the
+    # assembled track — surfaced so a bad dub can be diagnosed from the record.
+    lag_sec: float = 0.0
+    error_message: Optional[str] = None
+
+
+class DubRecord(BaseModel):
+    id: str = Field(default_factory=lambda: generate_id("dub-"))
+    source_gcs_uri: str
+    source_filename: str = ""
+    display_name: str = ""
+    source_transcript: str = ""  # original-language transcript from the session
+    duration_sec: float = 0.0
+    model_id: Optional[str] = None
+    variants: List[DubVariant] = []
+    status: str = "pending"  # pending|generating|completed|partial|failed
+    error_message: Optional[str] = None
+    progress_pct: int = 0
+    usage: UsageMetrics = Field(default_factory=UsageMetrics)
+    signed_urls: dict = Field(default_factory=dict)
+    archived: bool = False
+    invite_code: Optional[str] = None
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    completedAt: Optional[datetime] = None

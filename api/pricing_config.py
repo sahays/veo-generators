@@ -169,6 +169,12 @@ TRANSCODER_AUDIO = FlatRate(
 
 DIARIZATION = FlatRate("diarization", "Speech V2 (Chirp 3)", "minute", 0.016)
 
+# Live Translate is in preview and Google has not published a rate. Priced at
+# zero so a made-up number never reads as authoritative; dubbing records carry
+# pricing_confidence="low" to say so. `dub_minutes` is still recorded as a fact,
+# so setting a real rate here reprices every past job with no backfill.
+DUBBING = FlatRate("dubbing", "Gemini Live Translate (preview)", "minute", 0.0)
+
 
 # ---------------------------------------------------------------------------
 # Catalogs
@@ -200,6 +206,7 @@ FLAT_SERVICES: dict[str, FlatRate] = {
         TRANSCODER_4K,
         TRANSCODER_AUDIO,
         DIARIZATION,
+        DUBBING,
     )
 }
 

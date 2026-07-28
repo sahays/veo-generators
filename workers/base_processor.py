@@ -6,10 +6,29 @@ import pathlib
 import tempfile
 from abc import ABC, abstractmethod
 from datetime import datetime
+from typing import Sequence
 
 import deps
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_variant_status(variants: Sequence[dict]) -> str:
+    """Roll per-variant outcomes up to a record-level status.
+
+    Shared by every fan-out job (adapts, dubbing) so the features can't disagree
+    about what a half-failed job is called. Anything still `pending` counts as
+    partial, never completed — a job that stopped early must not look finished.
+    """
+    if not variants:
+        return "completed"
+    completed = sum(1 for v in variants if v.get("status") == "completed")
+    failed = sum(1 for v in variants if v.get("status") == "failed")
+    if completed == len(variants):
+        return "completed"
+    if failed == len(variants):
+        return "failed"
+    return "partial"
 
 
 class TempFileManager:
@@ -22,6 +41,11 @@ class TempFileManager:
         tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
         path = tmp.name
         tmp.close()
+        self.files.append(path)
+        return path
+
+    def track(self, path: str) -> str:
+        """Adopt a temp file created elsewhere so it is cleaned up with the rest."""
         self.files.append(path)
         return path
 

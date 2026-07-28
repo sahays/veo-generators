@@ -3,7 +3,7 @@
 import logging
 
 import deps
-from base_processor import JobProcessor
+from base_processor import JobProcessor, resolve_variant_status
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class AdaptsProcessor(JobProcessor):
         usage_acc = self._generate_variants(
             record, record_id, variants, pending_indices
         )
-        status = self._resolve_status(variants)
+        status = resolve_variant_status(variants)
         usage = self._merge_usage(record, usage_acc)
 
         updates = {
@@ -117,18 +117,6 @@ class AdaptsProcessor(JobProcessor):
         deps.firestore_svc.update_adapt_record(
             record_id, {"variants": variants, "progress_pct": pct}
         )
-
-    @staticmethod
-    def _resolve_status(variants) -> str:
-        """Determine aggregate status from individual variant statuses."""
-        total = len(variants)
-        total_completed = sum(1 for v in variants if v["status"] == "completed")
-        total_failed = sum(1 for v in variants if v["status"] == "failed")
-        if total_completed == total:
-            return "completed"
-        if total_failed == total:
-            return "failed"
-        return "partial"
 
     @staticmethod
     def _merge_usage(record, acc: dict) -> dict:

@@ -42,6 +42,35 @@ OPTIMIZE_PROMPT_MODEL=${OPTIMIZE_PROMPT_MODEL:-gemini-3-pro-preview}
 STORYBOARD_MODEL=${STORYBOARD_MODEL:-gemini-3.1-flash-image-preview}
 VIDEO_GEN_MODEL=${VIDEO_GEN_MODEL:-veo-3.1-generate-001}
 
+# Dubbing (Gemini Live Translate). Developer-API only — this is the one feature
+# that authenticates with an API key rather than the runtime service account.
+DUBBING_LIVE_MODEL=${DUBBING_LIVE_MODEL:-gemini-3.5-live-translate-preview}
+DUBBING_LIVE_SURFACE=${DUBBING_LIVE_SURFACE:-developer}
+DUBBING_LIVE_LOCATION=${DUBBING_LIVE_LOCATION:-global}
+DUBBING_LANGUAGES=${DUBBING_LANGUAGES:-es,pt,de,hi}
+DUBBING_WINDOW_SEC=${DUBBING_WINDOW_SEC:-600}
+DUBBING_PACE=${DUBBING_PACE:-1.0}
+DUBBING_SILENCE_STOP_SEC=${DUBBING_SILENCE_STOP_SEC:-4.0}
+DUBBING_MAX_SOURCE_MINUTES=${DUBBING_MAX_SOURCE_MINUTES:-30}
+DUBBING_MAX_LANGUAGES=${DUBBING_MAX_LANGUAGES:-4}
+
+# gcloud splits --set-env-vars on commas by default, so any value containing one
+# (DUBBING_LANGUAGES=es,pt,de,hi) is parsed as extra malformed pairs and the
+# deploy dies at argument parsing. The "^DELIM^" prefix switches the separator
+# for the whole string; "@" is safe for every value we pass (ids, regions, model
+# names, API keys, invite codes).
+ENV_DELIM='^@^'
+
+# The worker cannot dub without this key. Fail here rather than shipping a
+# revision whose dubbing jobs all fail at the first Live session.
+# TODO: move to Secret Manager (--set-secrets) once the deploying identity has
+# secretmanager access; it is passed as a plain env var on a private
+# (--no-allow-unauthenticated) service in the meantime.
+if [[ "$TARGET" == "all" || "$TARGET" == "worker" ]] && [ -z "${GEMINI_API_KEY}" ]; then
+    echo "❌ GEMINI_API_KEY is not set in .env — required for the dubbing worker."
+    exit 1
+fi
+
 # Note: run ./scripts/pre-deploy.sh first for the full gate (frontend build,
 # ruff lint/format, system-lib check, backend tests). Deploy runs the backend
 # tests below on its own so it stays safe even if invoked directly, without
@@ -130,7 +159,7 @@ if [[ "$TARGET" == "all" || "$TARGET" == "api" ]]; then
     --allow-unauthenticated \
     --cpu 8 \
     --memory 16Gi \
-    --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCS_BUCKET=$GCS_BUCKET,GEMINI_REGION=$GEMINI_REGION,VEO_REGION=$VEO_REGION,SERVICE_NAME=$SERVICE_NAME,OPTIMIZE_PROMPT_MODEL=$OPTIMIZE_PROMPT_MODEL,STORYBOARD_MODEL=$STORYBOARD_MODEL,VIDEO_GEN_MODEL=$VIDEO_GEN_MODEL,MASTER_INVITE_CODE=$MASTER_INVITE_CODE,AVATAR_LIVE_LOCATION=${AVATAR_LIVE_LOCATION:-us-central1},AVATAR_LIVE_PROJECT=${AVATAR_LIVE_PROJECT:-ffeldhaus-avatar-demo},AVATAR_LIVE_PRESET_NAME=${AVATAR_LIVE_PRESET_NAME:-Kira}" \
+    --set-env-vars "${ENV_DELIM}GOOGLE_CLOUD_PROJECT=$PROJECT_ID@GCS_BUCKET=$GCS_BUCKET@GEMINI_REGION=$GEMINI_REGION@VEO_REGION=$VEO_REGION@SERVICE_NAME=$SERVICE_NAME@OPTIMIZE_PROMPT_MODEL=$OPTIMIZE_PROMPT_MODEL@STORYBOARD_MODEL=$STORYBOARD_MODEL@VIDEO_GEN_MODEL=$VIDEO_GEN_MODEL@MASTER_INVITE_CODE=$MASTER_INVITE_CODE@AVATAR_LIVE_LOCATION=${AVATAR_LIVE_LOCATION:-us-central1}@AVATAR_LIVE_PROJECT=${AVATAR_LIVE_PROJECT:-ffeldhaus-avatar-demo}@AVATAR_LIVE_PRESET_NAME=${AVATAR_LIVE_PRESET_NAME:-Kira}@DUBBING_LANGUAGES=$DUBBING_LANGUAGES@DUBBING_MAX_LANGUAGES=$DUBBING_MAX_LANGUAGES@DUBBING_MAX_SOURCE_MINUTES=$DUBBING_MAX_SOURCE_MINUTES" \
     --port 8080
 
   prune_revisions "$SERVICE_NAME"
@@ -159,7 +188,7 @@ if [[ "$TARGET" == "all" || "$TARGET" == "worker" ]]; then
     --timeout 3600 \
     --min-instances 1 \
     --max-instances 1 \
-    --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCS_BUCKET=$GCS_BUCKET,GEMINI_REGION=$GEMINI_REGION,GOOGLE_CLOUD_LOCATION=$REGION,SERVICE_NAME=$SERVICE_NAME,OPTIMIZE_PROMPT_MODEL=$OPTIMIZE_PROMPT_MODEL,WORKER_POLL_INTERVAL=5,WORKER_MAX_CONCURRENT=1"
+    --set-env-vars "${ENV_DELIM}GOOGLE_CLOUD_PROJECT=$PROJECT_ID@GCS_BUCKET=$GCS_BUCKET@GEMINI_REGION=$GEMINI_REGION@GOOGLE_CLOUD_LOCATION=$REGION@SERVICE_NAME=$SERVICE_NAME@OPTIMIZE_PROMPT_MODEL=$OPTIMIZE_PROMPT_MODEL@WORKER_POLL_INTERVAL=5@WORKER_MAX_CONCURRENT=1@GEMINI_API_KEY=$GEMINI_API_KEY@DUBBING_LIVE_MODEL=$DUBBING_LIVE_MODEL@DUBBING_LIVE_SURFACE=$DUBBING_LIVE_SURFACE@DUBBING_LIVE_LOCATION=$DUBBING_LIVE_LOCATION@DUBBING_LANGUAGES=$DUBBING_LANGUAGES@DUBBING_WINDOW_SEC=$DUBBING_WINDOW_SEC@DUBBING_PACE=$DUBBING_PACE@DUBBING_SILENCE_STOP_SEC=$DUBBING_SILENCE_STOP_SEC@DUBBING_MAX_SOURCE_MINUTES=$DUBBING_MAX_SOURCE_MINUTES@DUBBING_MAX_LANGUAGES=$DUBBING_MAX_LANGUAGES"
 
   prune_revisions "$WORKER_SERVICE_NAME"
   echo "✅ Worker deployment complete!"

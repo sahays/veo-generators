@@ -2,7 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Menu, X, Clapperboard, Zap, Image as ImageIcon, Smartphone, Scissors, LayoutGrid,
   ChevronLeft, ChevronRight, Terminal, Bot, Settings, Cpu,
-  FileText, Sun, Moon, Activity, Upload, Shield, LogOut, User
+  FileText, Sun, Moon, Activity, Upload, Shield, LogOut, User, Languages
 } from 'lucide-react'
 import { useLayoutStore } from '@/store/useLayoutStore'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -41,6 +41,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/promos/create': 'New Promo',
   '/adapts': 'Adapts',
   '/adapts/create': 'New Adapt',
+  '/dubbing': 'Dubbing',
+  '/dubbing/create': 'New Dub',
   '/invite-codes': 'Invite Codes',
   '/models': 'AI Models',
   '/chat': 'Ask Aanya',
@@ -61,6 +63,7 @@ function getPageTitle(pathname: string): string {
   if (pathname.match(/^\/promos\/[^/]+$/)) return 'Promo Details'
   if (pathname.match(/^\/adapts\/[^/]+\/prompt/)) return 'Adapt Prompt'
   if (pathname.match(/^\/adapts\/[^/]+$/)) return 'Adapt Details'
+  if (pathname.match(/^\/dubbing\/[^/]+$/)) return 'Dub Details'
   if (pathname.match(/^\/uploads\/[^/]+$/)) return 'File Details'
   if (pathname.match(/^\/prompts\/[^/]+$/)) return 'Prompt Details'
   if (pathname.match(/^\/avatars\/[^/]+$/)) return 'Avatar'
@@ -101,6 +104,7 @@ export const Sidebar = () => {
     { name: 'Orientations', icon: Smartphone, path: '/orientations' },
     { name: 'Promos', icon: Scissors, path: '/promos' },
     { name: 'Adapts', icon: LayoutGrid, path: '/adapts' },
+    { name: 'Dubbing', icon: Languages, path: '/dubbing' },
   ]
 
   const settingsItems: NavItem[] = [
