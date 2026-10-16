@@ -1,4 +1,5 @@
 import { Loader2, AlertCircle, Play, Mic, Clock } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { VOICE_TURN_MARKER, type AvatarTurn } from '@/types/avatar'
 
@@ -65,12 +66,14 @@ export const AvatarTurnBubble = ({ turn, onPlay }: AvatarTurnBubbleProps) => {
                 <span>{turn.error_message || 'Render failed'}</span>
               </>
             ) : turn.video_signed_url ? (
-              <button
+              <Button
+                variant="link"
+                size="xs"
                 onClick={onPlay}
-                className="flex items-center gap-1 text-accent-dark hover:underline cursor-pointer"
+                className="flex items-center gap-1 px-0 h-auto text-[10px] text-accent-dark"
               >
                 <Play size={10} /> Watch reply
-              </button>
+              </Button>
             ) : null}
             {duration && (turn.status === 'completed' || turn.status === 'failed') && (
               <span className="flex items-center gap-1 opacity-70">

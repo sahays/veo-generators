@@ -390,3 +390,11 @@ class TestLiveConfig:
             headers={"X-Invite-Code": MASTER_CODE},
         )
         assert res.status_code == 400
+
+    def test_live_host_resolution(self):
+        from routers.avatars_live import _live_host
+
+        assert _live_host("us") == "aiplatform.us.rep.googleapis.com"
+        assert _live_host("eu") == "aiplatform.eu.rep.googleapis.com"
+        assert _live_host("us-central1") == "us-central1-aiplatform.googleapis.com"
+        assert _live_host("global") == "aiplatform.googleapis.com"

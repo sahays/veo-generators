@@ -4,6 +4,8 @@ import { motion } from 'framer-motion'
 import { ArrowLeft, Sparkles, FileText, ImageIcon, Monitor, Smartphone, Clock, Clapperboard, Megaphone, Share2, Play, Settings, Loader2, X, Upload, FolderOpen, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button, Card } from '@/components/Common'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { useProjectStore } from '@/store/useProjectStore'
 import { projectSchema, type ProjectFormData, VIDEO_LENGTH_OPTIONS, type SystemResource, type Scene, type UploadRecord } from '@/types/project'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -196,9 +198,9 @@ export const ProjectForm = () => {
       className="space-y-6 max-w-3xl mx-auto"
     >
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/productions')} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
+        <Button variant="ghost" size="icon" onClick={() => navigate('/productions')}>
           <ArrowLeft size={18} />
-        </button>
+        </Button>
         <div>
           <h2 className="text-xl font-heading text-foreground tracking-tight">
             {existingProject ? 'Edit Production' : 'New Production'}
@@ -218,20 +220,21 @@ export const ProjectForm = () => {
                 { id: 'advertizement', label: 'Ad', icon: Megaphone, desc: 'Brand promotion' },
                 { id: 'social', label: 'Social', icon: Share2, desc: 'Viral short content' }
               ].map((opt) => (
-                <button
+                <Button
+                  variant="unstyled"
                   key={opt.id}
                   type="button"
                   onClick={() => setValue('type', opt.id as any)}
                   className={cn(
-                    "flex-1 flex items-center gap-3 p-3 rounded-xl border transition-all text-left",
+                    "flex-1 flex items-center gap-3 p-3 rounded-[6px] border transition-all text-left",
                     projectType === opt.id 
                       ? "bg-accent/10 border-accent text-accent-dark shadow-sm" 
                       : "border-border text-muted-foreground hover:border-accent/30"
                   )}
                 >
                   <div className={cn(
-                    "p-2 rounded-lg",
-                    projectType === opt.id ? "bg-accent text-slate-900" : "bg-muted"
+                    "p-2 rounded-[5px]",
+                    projectType === opt.id ? "btn-primary text-white" : "bg-muted"
                   )}>
                     <opt.icon size={18} />
                   </div>
@@ -239,7 +242,7 @@ export const ProjectForm = () => {
                     <p className="text-[11px] font-bold uppercase tracking-wider">{opt.label}</p>
                     <p className="text-[10px] opacity-70">{opt.desc}</p>
                   </div>
-                </button>
+                </Button>
               ))}
             </div>
           </Card>
@@ -249,10 +252,10 @@ export const ProjectForm = () => {
           <div className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Project Name</label>
-              <input
+              <Input
                 {...register('name')}
                 placeholder="Summer Campaign 2026"
-                className="w-full px-3 py-2 rounded-lg text-sm glass bg-card border border-border focus:ring-2 focus:ring-accent/30 outline-none"
+                className="w-full px-3 py-2 rounded-lg text-sm glass bg-card border border-border"
               />
               {errors.name && <p className="text-[10px] text-red-500">{errors.name.message}</p>}
             </div>
@@ -262,11 +265,11 @@ export const ProjectForm = () => {
                 <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Base Concept</label>
                 <span className="text-[10px] font-mono text-muted-foreground">{concept.length}/2000</span>
               </div>
-              <textarea
+              <Textarea
                 {...register('base_concept')}
                 rows={5}
                 placeholder="Describe the overall story, vibe, and key message..."
-                className="w-full px-3 py-2 rounded-lg text-sm glass bg-card border border-border focus:ring-2 focus:ring-accent/30 outline-none resize-none"
+                className="w-full px-3 py-2 rounded-lg text-sm glass bg-card border border-border resize-none"
               />
               {errors.base_concept && <p className="text-[10px] text-red-500">{errors.base_concept.message}</p>}
             </div>
@@ -318,9 +321,9 @@ export const ProjectForm = () => {
                     className="sr-only"
                   />
                   <div className={cn(
-                    "px-3 py-1.5 rounded-md border text-xs font-medium transition-all",
+                    "px-3 py-1.5 rounded-[5px] border text-xs font-medium transition-all",
                     watch('video_length') === len 
-                      ? "bg-accent text-slate-900 border-accent"
+                      ? "btn-primary text-white border-transparent"
                       : "border-border hover:border-accent/50 text-muted-foreground"
                   )}>
                     {len === 'custom' ? 'Custom' : `${len}s`}
@@ -336,12 +339,13 @@ export const ProjectForm = () => {
                 { id: '16:9', label: 'Landscape', icon: Monitor },
                 { id: '9:16', label: 'Vertical', icon: Smartphone }
               ].map((opt) => (
-                <button
+                <Button
+                  variant="unstyled"
                   key={opt.id}
                   type="button"
                   onClick={() => setValue('orientation', opt.id as any)}
                   className={cn(
-                    "flex-1 flex flex-col items-center gap-2 p-3 rounded-xl border transition-all",
+                    "flex-1 flex flex-col items-center gap-2 p-3 rounded-[6px] border transition-all",
                     orientation === opt.id 
                       ? "bg-accent/10 border-accent text-accent-dark" 
                       : "border-border text-muted-foreground hover:border-accent/30"
@@ -349,7 +353,7 @@ export const ProjectForm = () => {
                 >
                   <opt.icon size={20} />
                   <span className="text-[10px] font-bold uppercase tracking-widest">{opt.label}</span>
-                </button>
+                </Button>
               ))}
             </div>
           </Card>
@@ -375,13 +379,14 @@ export const ProjectForm = () => {
                 alt="Reference"
                 className="w-full max-h-48 object-contain rounded-lg border border-border"
               />
-              <button
+              <Button
+                variant="unstyled"
                 type="button"
                 onClick={() => setReferenceImage(null)}
                 className="absolute top-2 right-2 p-1 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80"
               >
                 <X size={14} />
-              </button>
+              </Button>
             </div>
           ) : isUploadingRef ? (
             <div className="border-2 border-dashed border-accent/40 rounded-xl p-8 flex flex-col items-center justify-center space-y-3">
@@ -399,29 +404,31 @@ export const ProjectForm = () => {
               {existingImages.length > 0 ? (
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-48 overflow-y-auto">
                   {existingImages.map((img) => (
-                    <button
+                    <Button
+                      variant="unstyled"
                       key={img.id}
                       type="button"
                       onClick={() => {
                         setReferenceImage({ gcs_uri: img.gcs_uri, signed_url: img.signed_url || '' })
                         setShowImagePicker(false)
                       }}
-                      className="aspect-square rounded-lg overflow-hidden border border-border hover:border-accent transition-colors"
+                      className="aspect-square rounded-[6px] overflow-hidden border border-border hover:border-accent transition-colors"
                     >
                       <img src={img.signed_url} alt={img.display_name || img.filename} className="w-full h-full object-cover" />
-                    </button>
+                    </Button>
                   ))}
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground text-center py-4">No images in Files yet.</p>
               )}
-              <button
+              <Button
+                variant="ghost"
+                size="xs"
                 type="button"
                 onClick={() => setShowImagePicker(false)}
-                className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
               >
                 Cancel
-              </button>
+              </Button>
             </div>
           ) : (
             <div className="border-2 border-dashed border-border rounded-xl p-8 flex flex-col items-center justify-center text-center space-y-3 hover:border-accent/50 transition-colors">
@@ -430,22 +437,26 @@ export const ProjectForm = () => {
               </div>
               <p className="text-[10px] text-muted-foreground">Provide a visual anchor for characters and style.</p>
               <div className="flex gap-2">
-                <button
+                <Button
+                  variant="outline"
+                  size="sm"
                   type="button"
+                  icon={Upload}
+                  iconSize={13}
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:border-accent/50 hover:text-accent-dark transition-colors"
                 >
-                  <Upload size={13} />
                   Upload New
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   type="button"
+                  icon={FolderOpen}
+                  iconSize={13}
                   onClick={() => setShowImagePicker(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:border-accent/50 hover:text-accent-dark transition-colors"
                 >
-                  <FolderOpen size={13} />
                   Choose from Files
-                </button>
+                </Button>
               </div>
             </div>
           )}

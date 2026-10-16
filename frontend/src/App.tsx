@@ -31,10 +31,12 @@ import { AvatarCreatePage } from './components/pages/AvatarCreatePage'
 import { AvatarWorkPage } from './components/pages/AvatarWorkPage'
 import { InviteCodeGate } from './components/InviteCodeGate'
 import { ChatWidget } from './components/chat/ChatWidget'
+import { PageTransition } from './components/shared/PageTransition'
+import { ToastViewport } from './components/shared/ToastViewport'
 import { useAuthStore } from './store/useAuthStore'
 import { api } from './lib/api'
 
-const GUEST_INVITE_CODE = (import.meta.env.VITE_GUEST_INVITE_CODE as string | undefined) || ''
+const GUEST_INVITE_CODE = process.env.NEXT_PUBLIC_GUEST_INVITE_CODE || ''
 
 function App() {
   const { isAuthenticated, isMaster, isPower, inviteCode, login, logout } = useAuthStore()
@@ -102,95 +104,103 @@ function App() {
         </div>
       )
     }
-    return <InviteCodeGate />
+    return (
+      <>
+        <InviteCodeGate />
+        <ToastViewport />
+      </>
+    )
   }
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen bg-background bg-accent-gradient">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-6 md:p-8">
           <div className="max-w-4xl mx-auto w-full">
-            <Routes>
-              <Route path="/" element={<Navigate to={canWrite ? '/chat' : '/productions'} replace />} />
+            <PageTransition>
+              <Routes>
+                <Route path="/" element={<Navigate to={canWrite ? '/chat' : '/productions'} replace />} />
 
-              {/* AI Co-Pilot / Ask Aanya — master & power users */}
-              <Route
-                path="/chat"
-                element={canWrite ? <ChatPage /> : <Navigate to="/productions" replace />}
-              />
+                {/* AI Co-Pilot / Ask Aanya — master & power users */}
+                <Route
+                  path="/chat"
+                  element={canWrite ? <ChatPage /> : <Navigate to="/productions" replace />}
+                />
 
-              {/* Productions Routes — :id pages readable; /new and /:id/edit are write flows */}
-              <Route path="/productions" element={<ProjectList />} />
-              <Route path="/productions/new" element={canWrite ? <ProjectForm /> : <Navigate to="/productions" replace />} />
-              <Route path="/productions/:id" element={<ProductionSummary />} />
-              <Route path="/productions/:id/edit" element={canWrite ? <ProjectForm /> : <Navigate to="/productions" replace />} />
-              <Route path="/productions/:id/script" element={<RefinePromptView />} />
+                {/* Productions Routes — :id pages readable; /new and /:id/edit are write flows */}
+                <Route path="/productions" element={<ProjectList />} />
+                <Route path="/productions/new" element={canWrite ? <ProjectForm /> : <Navigate to="/productions" replace />} />
+                <Route path="/productions/:id" element={<ProductionSummary />} />
+                <Route path="/productions/:id/edit" element={canWrite ? <ProjectForm /> : <Navigate to="/productions" replace />} />
+                <Route path="/productions/:id/script" element={<RefinePromptView />} />
 
-              {/* Key Moments */}
-              <Route path="/key-moments" element={<KeyMomentsLandingPage />} />
-              <Route path="/key-moments/analyze" element={canWrite ? <KeyMomentsAnalyzePage /> : <Navigate to="/key-moments" replace />} />
-              <Route path="/key-moments/:id" element={<KeyMomentsAnalyzePage />} />
+                {/* Key Moments */}
+                <Route path="/key-moments" element={<KeyMomentsLandingPage />} />
+                <Route path="/key-moments/analyze" element={canWrite ? <KeyMomentsAnalyzePage /> : <Navigate to="/key-moments" replace />} />
+                <Route path="/key-moments/:id" element={<KeyMomentsAnalyzePage />} />
 
-              {/* Thumbnails */}
-              <Route path="/thumbnails" element={<ThumbnailsLandingPage />} />
-              <Route path="/thumbnails/create" element={canWrite ? <ThumbnailsWorkPage /> : <Navigate to="/thumbnails" replace />} />
-              <Route path="/thumbnails/:id" element={<ThumbnailsWorkPage />} />
+                {/* Thumbnails */}
+                <Route path="/thumbnails" element={<ThumbnailsLandingPage />} />
+                <Route path="/thumbnails/create" element={canWrite ? <ThumbnailsWorkPage /> : <Navigate to="/thumbnails" replace />} />
+                <Route path="/thumbnails/:id" element={<ThumbnailsWorkPage />} />
 
-              {/* Orientations / Reframe */}
-              <Route path="/orientations" element={<ReframeLandingPage />} />
-              <Route path="/orientations/create" element={canWrite ? <ReframeWorkPage /> : <Navigate to="/orientations" replace />} />
-              <Route path="/orientations/:id" element={<ReframeWorkPage />} />
-              <Route path="/orientations/:id/:section" element={<ReframeOutputPage />} />
+                {/* Orientations / Reframe */}
+                <Route path="/orientations" element={<ReframeLandingPage />} />
+                <Route path="/orientations/create" element={canWrite ? <ReframeWorkPage /> : <Navigate to="/orientations" replace />} />
+                <Route path="/orientations/:id" element={<ReframeWorkPage />} />
+                <Route path="/orientations/:id/:section" element={<ReframeOutputPage />} />
 
-              {/* Promos */}
-              <Route path="/promos" element={<PromoLandingPage />} />
-              <Route path="/promos/create" element={canWrite ? <PromoWorkPage /> : <Navigate to="/promos" replace />} />
-              <Route path="/promos/:id" element={<PromoWorkPage />} />
+                {/* Promos */}
+                <Route path="/promos" element={<PromoLandingPage />} />
+                <Route path="/promos/create" element={canWrite ? <PromoWorkPage /> : <Navigate to="/promos" replace />} />
+                <Route path="/promos/:id" element={<PromoWorkPage />} />
 
-              {/* Avatars — master & power users (Vertex Live allowlist-pending) */}
-              <Route path="/avatars" element={canWrite ? <AvatarLandingPage /> : <Navigate to="/productions" replace />} />
-              <Route path="/avatars/create" element={canWrite ? <AvatarCreatePage /> : <Navigate to="/productions" replace />} />
-              <Route path="/avatars/:id" element={canWrite ? <AvatarWorkPage /> : <Navigate to="/productions" replace />} />
+                {/* Avatars — master & power users (Vertex Live allowlist-pending) */}
+                <Route path="/avatars" element={canWrite ? <AvatarLandingPage /> : <Navigate to="/productions" replace />} />
+                <Route path="/avatars/create" element={canWrite ? <AvatarCreatePage /> : <Navigate to="/productions" replace />} />
+                <Route path="/avatars/:id" element={canWrite ? <AvatarWorkPage /> : <Navigate to="/productions" replace />} />
 
-              {/* Dubbing */}
-              <Route path="/dubbing" element={<DubbingLandingPage />} />
-              <Route path="/dubbing/create" element={canWrite ? <DubbingWorkPage /> : <Navigate to="/dubbing" replace />} />
-              <Route path="/dubbing/:id" element={<DubbingWorkPage />} />
+                {/* Dubbing */}
+                <Route path="/dubbing" element={<DubbingLandingPage />} />
+                <Route path="/dubbing/create" element={canWrite ? <DubbingWorkPage /> : <Navigate to="/dubbing" replace />} />
+                <Route path="/dubbing/:id" element={<DubbingWorkPage />} />
 
-              {/* Adapts */}
-              <Route path="/adapts" element={<AdaptsLandingPage />} />
-              <Route path="/adapts/create" element={canWrite ? <AdaptsWorkPage /> : <Navigate to="/adapts" replace />} />
-              <Route path="/adapts/:id" element={<AdaptsWorkPage />} />
-              <Route path="/adapts/:id/prompt" element={<AdaptsOutputPage />} />
-              <Route path="/adapts/:id/prompt/:variantIndex" element={<AdaptsOutputPage />} />
+                {/* Adapts */}
+                <Route path="/adapts" element={<AdaptsLandingPage />} />
+                <Route path="/adapts/create" element={canWrite ? <AdaptsWorkPage /> : <Navigate to="/adapts" replace />} />
+                <Route path="/adapts/:id" element={<AdaptsWorkPage />} />
+                <Route path="/adapts/:id/prompt" element={<AdaptsOutputPage />} />
+                <Route path="/adapts/:id/prompt/:variantIndex" element={<AdaptsOutputPage />} />
 
-              {/* Settings — Files & Prompts readable by all */}
-              <Route path="/uploads" element={<UploadsPage />} />
-              <Route path="/uploads/:id" element={<UploadsPage />} />
-              <Route path="/prompts" element={<PromptsPage />} />
-              <Route path="/prompts/:id" element={<PromptDetailPage />} />
+                {/* Settings — Files & Prompts readable by all */}
+                <Route path="/uploads" element={<UploadsPage />} />
+                <Route path="/uploads/:id" element={<UploadsPage />} />
+                <Route path="/prompts" element={<PromptsPage />} />
+                <Route path="/prompts/:id" element={<PromptDetailPage />} />
 
-              {/* Settings — master & power users */}
-              {canWrite && (
-                <>
-                  <Route path="/models" element={<ModelsPage />} />
-                  <Route path="/diagnostics" element={<DiagnosticsPage />} />
-                </>
-              )}
+                {/* Settings — master & power users */}
+                {canWrite && (
+                  <>
+                    <Route path="/models" element={<ModelsPage />} />
+                    <Route path="/diagnostics" element={<DiagnosticsPage />} />
+                  </>
+                )}
 
-              {/* Invite codes — master only */}
-              {isMaster && (
-                <Route path="/invite-codes" element={<InviteCodesPage />} />
-              )}
+                {/* Invite codes — master only */}
+                {isMaster && (
+                  <Route path="/invite-codes" element={<InviteCodesPage />} />
+                )}
 
-              {/* Fallback */}
-              <Route path="*" element={<Navigate to="/productions" replace />} />
-            </Routes>
+                {/* Fallback */}
+                <Route path="*" element={<Navigate to="/productions" replace />} />
+              </Routes>
+            </PageTransition>
           </div>
         </main>
       </div>
       {canWrite && <ChatWidget />}
+      <ToastViewport />
     </div>
   )
 }

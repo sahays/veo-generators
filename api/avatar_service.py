@@ -63,7 +63,7 @@ def _resolve_text_model(model_id: Optional[str]) -> str:
         deps.firestore_svc,
         "text",
         "GEMINI_AGENT_ORCHESTRATOR",
-        "gemini-3.1-flash-lite-preview",
+        "gemini-3.5-flash-lite",
         model_id,
     )
 

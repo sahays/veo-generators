@@ -86,6 +86,9 @@ class ModelCapability(str, Enum):
 
 AVAILABLE_REGIONS = [
     "global",
+    # Multi-region
+    "us",
+    "eu",
     # US
     "us-central1",
     "us-east1",

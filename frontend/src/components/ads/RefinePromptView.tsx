@@ -190,12 +190,13 @@ export const RefinePromptView = () => {
     >
       <div className="flex items-center justify-between py-4 border-b border-border">
         <div className="flex items-center gap-4">
-          <button 
+          <Button 
+            variant="ghost"
+            size="icon"
             onClick={() => navigate(isReadOnly ? `/productions/${id}` : (id ? `/productions/${id}/edit` : '/productions/new'))} 
-            className="p-2 hover:bg-muted rounded-xl transition-colors"
           >
             <ArrowLeft size={20} />
-          </button>
+          </Button>
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-heading text-foreground tracking-tight">Script Editor</h2>
@@ -210,25 +211,23 @@ export const RefinePromptView = () => {
         </div>
         
         <div className="flex items-center gap-4">
-          <div className="flex items-center bg-muted/50 p-1 rounded-lg border border-border mr-2">
-            <button 
+          <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-[6px] border border-border mr-2">
+            <Button 
+              variant={layout === 'list' ? 'primary' : 'ghost'}
+              size="icon"
               onClick={() => setLayout('list')}
-              className={cn(
-                "p-1.5 rounded-md transition-all",
-                layout === 'list' ? "bg-accent text-slate-900 shadow-sm" : "text-muted-foreground hover:text-foreground"
-              )}
+              className="h-7 w-7"
             >
-              <List size={16} />
-            </button>
-            <button 
+              <List size={15} />
+            </Button>
+            <Button 
+              variant={layout === 'grid' ? 'primary' : 'ghost'}
+              size="icon"
               onClick={() => setLayout('grid')}
-              className={cn(
-                "p-1.5 rounded-md transition-all",
-                layout === 'grid' ? "bg-accent text-slate-900 shadow-sm" : "text-muted-foreground hover:text-foreground"
-              )}
+              className="h-7 w-7"
             >
-              <LayoutGrid size={16} />
-            </button>
+              <LayoutGrid size={15} />
+            </Button>
           </div>
 
           <div className="hidden md:flex items-center px-4 border-r border-border">

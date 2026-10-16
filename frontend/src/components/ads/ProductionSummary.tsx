@@ -81,12 +81,13 @@ export const ProductionSummary = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => navigate('/productions')}
-            className="p-2 hover:bg-muted rounded-xl transition-colors"
           >
             <ArrowLeft size={20} />
-          </button>
+          </Button>
           <div>
             <h2 className="text-2xl font-heading text-foreground tracking-tight">{tempProjectData.name}</h2>
             <div className="flex items-center gap-2 mt-1">
@@ -97,8 +98,8 @@ export const ProductionSummary = () => {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <ModelRegionPicker capability="text" value={modelConfig} onChange={setModelConfig} className="mt-2" />
+        <div className="flex items-end gap-3">
+          <ModelRegionPicker capability="text" value={modelConfig} onChange={setModelConfig} />
           <Button variant="ghost" icon={FileText} onClick={() => navigate(`/productions/${id}/script`)}>View Technical Script</Button>
           {canWrite && <Button icon={Plus} onClick={handleStartFresh}>New Production</Button>}
         </div>
@@ -147,13 +148,14 @@ export const ProductionSummary = () => {
             </div>
             {project.analysis_prompt && (
               <div className="mt-6 pt-6 border-t border-border/50">
-                <button
+                <Button
+                  variant="unstyled"
                   onClick={() => setShowAnalysisPrompt(!showAnalysisPrompt)}
                   className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <ChevronDown size={14} className={`transition-transform ${showAnalysisPrompt ? 'rotate-180' : ''}`} />
                   Analysis Prompt
-                </button>
+                </Button>
                 {showAnalysisPrompt && (
                   <pre className="mt-3 text-xs leading-relaxed text-foreground bg-muted/30 rounded-xl p-4 whitespace-pre-wrap break-words max-h-48 overflow-y-auto border border-border">
                     {project.analysis_prompt}
@@ -238,13 +240,14 @@ export const ProductionSummary = () => {
                     {scene.timestamp_start}
                   </div>
                   {(scene.image_prompt || scene.video_prompt) && (
-                    <button
+                    <Button
+                      variant="unstyled"
                       onClick={() => setSelectedScene(scene)}
                       className="absolute top-2 right-2 p-1 bg-black/60 backdrop-blur-sm rounded text-white/70 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
                       title="View Prompts"
                     >
                       <Eye size={12} />
-                    </button>
+                    </Button>
                   )}
                 </div>
                 <div className="p-2.5">

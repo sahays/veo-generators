@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react'
 import { Play, FileVideo, CheckCircle2, Clock, ChevronRight, Film, Upload, Sparkles, Loader2, AlertCircle, X, RefreshCw, Clapperboard, Smartphone, Image, Search, LayoutGrid } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { cn, getTimeAgo, formatFileSize } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { NativeSelect } from '@/components/ui/select'
+import { cn, formatFileSize } from '@/lib/utils'
 import { api } from '@/lib/api'
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -79,20 +83,21 @@ const DisplayField: React.FC<{ label: string; value: string }> = ({ label, value
 const ToggleField: React.FC<{ label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }> = ({ label, checked, onChange, disabled }) => (
   <label className={cn("flex items-center justify-between gap-2 py-1 cursor-pointer", disabled && "opacity-50 pointer-events-none")}>
     <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">{label}</span>
-    <button
+    <Button
       type="button"
+      variant="unstyled"
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
         "relative h-4 w-7 rounded-full transition-colors",
-        checked ? "bg-indigo-500" : "bg-slate-300 dark:bg-slate-600"
+        checked ? "bg-orange-500" : "bg-slate-300 dark:bg-slate-600"
       )}
     >
       <span className={cn(
         "absolute top-0.5 left-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform",
         checked && "translate-x-3"
       )} />
-    </button>
+    </Button>
   </label>
 )
 
@@ -103,20 +108,21 @@ const PromoFields: React.FC<{ params: Record<string, any>; resolved: Record<stri
       <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Duration</span>
       <div className="flex gap-1 mt-1">
         {DURATION_OPTIONS.map(opt => (
-          <button
+          <Button
             key={opt.value}
+            variant="unstyled"
             disabled={disabled}
             onClick={() => onChange({ ...params, target_duration: opt.value })}
             className={cn(
-              "flex-1 py-1 rounded-md text-[10px] font-bold transition-all",
+              "flex-1 py-1 rounded-[4px] text-[10px] font-bold transition-all",
               params.target_duration === opt.value
-                ? "bg-indigo-500 text-white shadow-sm"
+                ? "bg-orange-500 text-white shadow-sm"
                 : "bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600",
               disabled && "pointer-events-none"
             )}
           >
             {opt.label}
-          </button>
+          </Button>
         ))}
       </div>
     </div>
@@ -130,16 +136,16 @@ const ReframeFields: React.FC<{ params: Record<string, any>; resolved: Record<st
     <DisplayField label="Source" value={resolved.source_name} />
     <div className="flex items-center justify-between gap-2 py-1">
       <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Content type</span>
-      <select
+      <NativeSelect
         value={params.content_type}
         onChange={e => onChange({ ...params, content_type: e.target.value })}
         disabled={disabled}
-        className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+        className="h-7 w-36 px-2 py-0.5 text-[11px]"
       >
         {CONTENT_TYPE_OPTIONS.map(opt => (
           <option key={opt.value} value={opt.value}>{opt.label}</option>
         ))}
-      </select>
+      </NativeSelect>
     </div>
     <ToggleField label="Blurred background" checked={params.blurred_bg} onChange={v => onChange({ ...params, blurred_bg: v })} disabled={disabled} />
   </div>
@@ -149,22 +155,22 @@ const ProductionFields: React.FC<{ params: Record<string, any>; resolved: Record
   <div className="space-y-1.5">
     <div>
       <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Name</span>
-      <input
+      <Input
         type="text"
         value={params.name}
         onChange={e => onChange({ ...params, name: e.target.value })}
         disabled={disabled}
-        className="mt-0.5 w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700 focus:border-indigo-400 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+        className="mt-0.5 h-7 px-2 py-1 text-[11px]"
       />
     </div>
     <div>
       <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Concept</span>
-      <textarea
+      <Textarea
         value={params.base_concept}
         onChange={e => onChange({ ...params, base_concept: e.target.value })}
         disabled={disabled}
         rows={2}
-        className="mt-0.5 w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700 focus:border-indigo-400 focus:outline-none resize-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+        className="mt-0.5 min-h-[48px] px-2 py-1 text-[11px]"
       />
     </div>
     {resolved.prompt_name && <DisplayField label="Prompt" value={resolved.prompt_name} />}
@@ -192,20 +198,21 @@ const AdaptsFields: React.FC<{ params: Record<string, any>; resolved: Record<str
         <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Aspect ratios</span>
         <div className="flex flex-wrap gap-1 mt-1">
           {allRatios.map(r => (
-            <button
+            <Button
               key={r}
+              variant="unstyled"
               disabled={disabled}
               onClick={() => toggle(r)}
               className={cn(
-                "px-2 py-0.5 rounded-md text-[10px] font-bold transition-all",
+                "px-2 py-0.5 rounded-[4px] text-[10px] font-bold transition-all",
                 ratios.includes(r)
-                  ? "bg-indigo-500 text-white"
+                  ? "bg-orange-500 text-white"
                   : "bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-400",
                 disabled && "pointer-events-none"
               )}
             >
               {r}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
@@ -258,7 +265,7 @@ export const ConfirmationCard: React.FC<{
     <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/80">
-        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400">
+        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-400">
           {JOB_ICONS[job_type]}
         </div>
         <span className="text-[11px] font-semibold text-slate-900 dark:text-white flex-1 truncate">{title}</span>
@@ -276,7 +283,7 @@ export const ConfirmationCard: React.FC<{
             <span className="text-[11px] text-slate-600 dark:text-slate-300">Job created</span>
             <Link
               to={ROUTE_MAP[job_type](resultId)}
-              className="ml-auto text-[10px] font-bold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+              className="ml-auto text-[10px] font-bold text-orange-600 hover:text-orange-500 dark:text-orange-400"
             >
               View
             </Link>
@@ -303,32 +310,36 @@ export const ConfirmationCard: React.FC<{
       {(status === 'pending' || status === 'confirming' || status === 'failed') && (
         <div className="flex items-center gap-2 border-t border-slate-100 px-3 py-2 dark:border-slate-700">
           {status === 'failed' ? (
-            <button
+            <Button
+              variant="ghost"
+              size="xs"
+              icon={RefreshCw}
               onClick={handleRetry}
-              className="flex items-center gap-1 rounded-lg px-3 py-1 text-[10px] font-bold text-slate-500 transition-colors hover:bg-slate-100 dark:hover:bg-slate-700"
             >
-              <RefreshCw size={10} /> Retry
-            </button>
+              Retry
+            </Button>
           ) : (
-            <button
+            <Button
+              variant="ghost"
+              size="xs"
               onClick={handleCancel}
               disabled={status === 'confirming'}
-              className="rounded-lg px-3 py-1 text-[10px] font-bold text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 disabled:pointer-events-none dark:hover:bg-slate-700"
             >
               Cancel
-            </button>
+            </Button>
           )}
-          <button
+          <Button
+            size="xs"
             onClick={handleConfirm}
             disabled={status === 'confirming'}
-            className="ml-auto flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1 text-[10px] font-bold text-white shadow-sm transition-all hover:bg-indigo-500 disabled:opacity-60 disabled:pointer-events-none"
+            className="ml-auto"
           >
             {status === 'confirming' ? (
               <><Loader2 size={10} className="animate-spin" /> Confirming...</>
             ) : (
               <><CheckCircle2 size={10} /> Confirm</>
             )}
-          </button>
+          </Button>
         </div>
       )}
     </div>
@@ -351,7 +362,7 @@ export const VideoResultCard: React.FC<{
   return (
     <div className="mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
       <div className="flex items-center gap-3 p-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-400">
           <FileVideo size={20} />
         </div>
         <div className="flex-1 min-w-0">
@@ -367,7 +378,7 @@ export const VideoResultCard: React.FC<{
         </div>
         <Link 
           to={pathMap[type]}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-indigo-600 hover:text-white dark:bg-slate-700 dark:text-slate-300"
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-orange-600 hover:text-white dark:bg-slate-700 dark:text-slate-300"
         >
           <ChevronRight size={16} />
         </Link>
@@ -406,16 +417,17 @@ export const VideoSourcePicker: React.FC<{
     <div className="mt-3 space-y-2">
       <div className="flex gap-1 bg-slate-100 p-1 rounded-lg dark:bg-slate-800">
         {([['uploads', Upload, 'Uploads'], ['productions', Film, 'Productions']] as const).map(([key, Icon, label]) => (
-          <button
+          <Button
             key={key}
+            variant="unstyled"
             onClick={() => setTab(key)}
             className={cn(
-              "flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all",
-              tab === key ? "bg-white text-indigo-600 shadow-sm dark:bg-slate-700 dark:text-indigo-400" : "text-slate-500"
+              "flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-[5px] text-[10px] font-bold uppercase tracking-wider transition-all",
+              tab === key ? "bg-white text-orange-600 shadow-sm dark:bg-slate-700 dark:text-orange-400" : "text-slate-500"
             )}
           >
             <Icon size={12} /> {label}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -424,31 +436,33 @@ export const VideoSourcePicker: React.FC<{
           <div className="py-8 flex justify-center"><Clock className="animate-spin text-slate-300" size={16} /></div>
         ) : tab === 'uploads' ? (
           uploads.map(u => (
-            <button
+            <Button
               key={u.id}
+              variant="unstyled"
               onClick={() => onSelect(u.gcs_uri, u.display_name || u.filename, 'upload')}
-              className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-left text-[11px] transition-all hover:border-indigo-500 hover:bg-indigo-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-indigo-900/20"
+              className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-left text-[11px] transition-all hover:border-orange-500 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-orange-900/20"
             >
               <FileVideo size={12} className="text-slate-400" />
               <div className="flex-1 min-w-0">
                 <p className="truncate font-medium text-slate-900 dark:text-white">{u.display_name || u.filename}</p>
                 <p className="text-[9px] text-slate-500">{formatFileSize(u.file_size_bytes)}</p>
               </div>
-            </button>
+            </Button>
           ))
         ) : (
           productions.map(p => (
-            <button
+            <Button
               key={p.id}
+              variant="unstyled"
               onClick={() => onSelect(p.final_video_url, p.name, 'production')}
-              className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-left text-[11px] transition-all hover:border-indigo-500 hover:bg-indigo-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-indigo-900/20"
+              className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-left text-[11px] transition-all hover:border-orange-500 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-orange-900/20"
             >
               <Film size={12} className="text-slate-400" />
               <div className="flex-1 min-w-0">
                 <p className="truncate font-medium text-slate-900 dark:text-white">{p.name}</p>
                 <p className="text-[9px] text-slate-500">{p.orientation}</p>
               </div>
-            </button>
+            </Button>
           ))
         )}
       </div>
@@ -483,17 +497,18 @@ export const ImageSourcePicker: React.FC<{
           <p className="px-1 text-[10px] italic text-slate-400">No uploaded images found. Upload one on the Adapts page first.</p>
         ) : (
           images.map((img) => (
-            <button
+            <Button
               key={img.id}
+              variant="unstyled"
               onClick={() => onSelect(img.gcs_uri, img.display_name || img.filename)}
-              className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-left text-[11px] transition-all hover:border-indigo-500 hover:bg-indigo-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-indigo-900/20"
+              className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-left text-[11px] transition-all hover:border-orange-500 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-orange-900/20"
             >
               <img src={img.image_signed_url} alt="" className="h-8 w-8 flex-shrink-0 rounded object-cover" />
               <div className="flex-1 min-w-0">
                 <p className="truncate font-medium text-slate-900 dark:text-white">{img.display_name || img.filename}</p>
                 <p className="text-[9px] text-slate-500">{img.mime_type}</p>
               </div>
-            </button>
+            </Button>
           ))
         )}
       </div>
@@ -526,11 +541,12 @@ export const PromptPicker: React.FC<{
           <div className="py-4 flex justify-center"><Clock className="animate-spin text-slate-300" size={16} /></div>
         ) : (
           prompts.map(p => (
-            <button
+            <Button
               key={p.id}
+              variant="unstyled"
               onClick={() => onSelect(p.id, p.name)}
               className={cn(
-                "flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-left text-[11px] transition-all hover:border-indigo-500 hover:bg-indigo-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-indigo-900/20",
+                "flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-left text-[11px] transition-all hover:border-orange-500 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-orange-900/20",
                 p.is_active && "border-amber-200 bg-amber-50/30 dark:border-amber-900/50 dark:bg-amber-900/10"
               )}
             >
@@ -539,7 +555,7 @@ export const PromptPicker: React.FC<{
                 <p className="text-[9px] text-slate-500 truncate">{p.description}</p>
               </div>
               {p.is_active && <span className="text-[8px] font-bold bg-amber-100 text-amber-700 px-1 rounded dark:bg-amber-900/40 dark:text-amber-400">ACTIVE</span>}
-            </button>
+            </Button>
           ))
         )}
       </div>

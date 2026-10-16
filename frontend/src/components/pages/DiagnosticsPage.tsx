@@ -1,9 +1,8 @@
 import { useState } from 'react'
-import { motion } from 'framer-motion'
 import { Upload, Sparkles, ImageIcon, Video, Loader2, ExternalLink, Cpu, DollarSign } from 'lucide-react'
 import { Button, Card } from '@/components/Common'
+import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/lib/api'
-import { cn } from '@/lib/utils'
 
 export const DiagnosticsPage = () => {
   return (
@@ -98,14 +97,15 @@ const StorageTest = () => {
             </div>
 
             <div className="pt-2">
-              <a 
-                href={result.signed_url} 
-                target="_blank" 
+              <Button
+                href={result.signed_url}
+                target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-accent-foreground text-xs font-bold rounded-md hover:bg-accent/90 transition-colors"
+                size="sm"
+                icon={ExternalLink}
               >
-                <ExternalLink size={14} /> Download / View File
-              </a>
+                Download / View File
+              </Button>
             </div>
           </div>
         )}
@@ -142,10 +142,10 @@ const PromptOptimizationTest = () => {
       }
     >
       <div className="space-y-4">
-        <textarea 
+        <Textarea 
           value={concept}
           onChange={(e) => setConcept(e.target.value)}
-          className="w-full h-24 p-3 rounded-lg bg-muted/30 border border-border text-xs outline-none focus:ring-2 focus:ring-accent/30 transition-all"
+          className="h-24 text-xs"
         />
         {result && (
           <div className="space-y-3">
@@ -188,10 +188,10 @@ const ImageGenerationTest = () => {
       }
     >
       <div className="space-y-4">
-        <textarea 
+        <Textarea 
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          className="w-full h-20 p-3 rounded-lg bg-muted/30 border border-border text-xs outline-none focus:ring-2 focus:ring-accent/30 transition-all"
+          className="h-20 text-xs"
         />
         {result && (
           <div className="space-y-3">
@@ -215,10 +215,7 @@ const VideoGenerationTest = () => {
   const pollStatus = async (operationName: string) => {
     const interval = setInterval(async () => {
       try {
-        // Encoding the operation name is crucial as it contains slashes
-        const encodedName = encodeURIComponent(operationName)
-        const response = await fetch(`/api/v1/diagnostics/operations/${operationName}`)
-        const data = await response.json()
+        const data = await api.diagnostics.getOperation(operationName)
         
         if (data.status === 'completed') {
           setResult({ video_uri: data.video_uri, signed_url: data.signed_url })
@@ -273,10 +270,10 @@ const VideoGenerationTest = () => {
       }
     >
       <div className="space-y-4">
-        <textarea 
+        <Textarea 
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          className="w-full h-20 p-3 rounded-lg bg-muted/30 border border-border text-xs outline-none focus:ring-2 focus:ring-accent/30 transition-all"
+          className="h-20 text-xs"
         />
         
         {status === 'processing' && (
@@ -296,14 +293,16 @@ const VideoGenerationTest = () => {
               />
             )}
             <p className="text-[10px] font-mono break-all mb-2 opacity-70">{result.video_uri}</p>
-            <a 
-              href={result.signed_url} 
-              target="_blank" 
+            <Button
+              variant="link"
+              size="xs"
+              href={result.signed_url}
+              target="_blank"
               rel="noreferrer"
-              className="text-accent-dark text-[10px] font-bold flex items-center gap-1 hover:underline"
+              className="text-accent-dark text-[10px] font-bold flex items-center gap-1 hover:underline px-0 h-auto"
             >
               Download Scene <ExternalLink size={10} />
-            </a>
+            </Button>
           </div>
         )}
 

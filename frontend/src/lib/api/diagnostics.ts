@@ -1,4 +1,4 @@
-import { API_BASE_URL, postJson } from './_http'
+import { API_BASE_URL, postJson, request } from './_http'
 
 export const diagnostics = {
   optimizePrompt: (data: any) =>
@@ -7,4 +7,10 @@ export const diagnostics = {
     postJson<any>(`${API_BASE_URL}/diagnostics/generate-image`, data, 'Diagnostics failed'),
   generateVideo: (data: any) =>
     postJson<any>(`${API_BASE_URL}/diagnostics/generate-video`, data, 'Diagnostics failed'),
+  getOperation: (operationName: string) =>
+    request<any>(
+      `${API_BASE_URL}/diagnostics/operations/${operationName}`,
+      'Operation check failed',
+    ),
 }
+

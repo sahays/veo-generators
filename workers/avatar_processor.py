@@ -1,6 +1,7 @@
 """Avatar turn processor — renders the lip-synced video for a pending AvatarTurn."""
 
 import asyncio
+import base64
 import logging
 import os
 import zlib
@@ -17,11 +18,11 @@ logger = logging.getLogger(__name__)
 
 
 VEO_AVATAR_MODEL_ENV = "AVATAR_VIDEO_MODEL"
-VEO_AVATAR_MODEL_DEFAULT = "veo-3.1-fast-generate-001"
+VEO_AVATAR_MODEL_DEFAULT = "gemini-omni-1.1-flash-preview"
 
 
 class AvatarProcessor(JobProcessor):
-    """Renders a Veo Fast image-to-video for each pending AvatarTurn."""
+    """Renders an image-to-video clip for each pending AvatarTurn."""
 
     @property
     def name(self) -> str:
@@ -52,18 +53,18 @@ class AvatarProcessor(JobProcessor):
             return
 
         self.update_status(turn_id, "generating", 10)
-        logger.info(f"[avatar:{turn_id}] Rendering Veo Fast video")
+        logger.info(f"[avatar:{turn_id}] Rendering avatar video")
 
         try:
             video_uri, used_model = self._render(turn, avatar)
         except Exception as e:
-            logger.error(f"[avatar:{turn_id}] Veo render failed: {e}")
+            logger.error(f"[avatar:{turn_id}] Video render failed: {e}")
             self.mark_failed(turn_id, str(e))
             return
 
         if not video_uri:
-            logger.error(f"[avatar:{turn_id}] Marking failed: Veo returned no video")
-            self.mark_failed(turn_id, "Veo returned no video")
+            logger.error(f"[avatar:{turn_id}] Marking failed: returned no video")
+            self.mark_failed(turn_id, "Video model returned no video")
             return
 
         self.update_status(
@@ -76,7 +77,7 @@ class AvatarProcessor(JobProcessor):
         logger.info(f"[avatar:{turn_id}] Completed: {video_uri}")
 
     # ------------------------------------------------------------------
-    # Veo invocation
+    # Video invocation (Gemini Omni 1.1 Flash & Veo)
     # ------------------------------------------------------------------
 
     def _render(self, turn, avatar) -> tuple[Optional[str], str]:
@@ -90,8 +91,13 @@ class AvatarProcessor(JobProcessor):
             VEO_AVATAR_MODEL_DEFAULT,
             None,
         )
-        client = deps.video_svc._get_client(turn.region)
+        is_omni = model_id.startswith("gemini-omni")
+        client = deps.video_svc._get_client("global" if is_omni else turn.region)
         prompt = build_render_prompt(avatar, turn.answer_text)
+
+        if is_omni:
+            video_uri = self._render_omni(client, model_id, turn, avatar, prompt)
+            return video_uri, model_id
 
         # Deterministic seed derived from the avatar id so every turn for the
         # same avatar uses the same seed — keeps the rendered character's look
@@ -123,6 +129,84 @@ class AvatarProcessor(JobProcessor):
         result = asyncio.run(self._await_operation(client, operation))
         video_uri = self._extract_video_uri(turn.id, result)
         return video_uri, model_id
+
+    def _render_omni(
+        self, client, model_id: str, turn, avatar, prompt: str
+    ) -> Optional[str]:
+        input_blocks: list[dict] = [{"type": "text", "text": prompt}]
+        video_task = "text_to_video"
+        if avatar.image_gcs_uri.startswith("gs://"):
+            input_blocks.append(
+                {
+                    "type": "image",
+                    "uri": avatar.image_gcs_uri,
+                    "mime_type": "image/png",
+                }
+            )
+            video_task = "image_to_video"
+
+        response_format_block: dict = {
+            "type": "video",
+            "aspect_ratio": "9:16",
+            "resolution": "720p",
+            "duration": "8s",
+        }
+        bucket = os.getenv("GCS_BUCKET")
+        if bucket:
+            response_format_block["delivery"] = "uri"
+            response_format_block["gcs_uri"] = f"gs://{bucket}/avatars/turns/"
+
+        interaction = client.interactions.create(
+            model=model_id,
+            background=True,
+            input=input_blocks,
+            response_format=[response_format_block],
+            generation_config={"video_config": {"task": video_task}},
+        )
+        interaction = asyncio.run(self._await_interaction(client, interaction))
+        output_video = getattr(interaction, "output_video", None)
+        if output_video is not None:
+            uri = getattr(output_video, "uri", None) or (
+                output_video.get("uri") if isinstance(output_video, dict) else None
+            )
+            if uri:
+                return uri
+            data = getattr(output_video, "data", None) or (
+                output_video.get("data") if isinstance(output_video, dict) else None
+            )
+            if data and deps.storage_svc:
+                raw_bytes = (
+                    base64.b64decode(data) if isinstance(data, str) else bytes(data)
+                )
+                dest = f"avatars/turns/{turn.id}.mp4"
+                return deps.storage_svc.upload_bytes(
+                    raw_bytes, dest, content_type="video/mp4"
+                )
+        return None
+
+    async def _await_interaction(self, client, interaction):
+        max_wait_s = 600
+        elapsed = 0
+        interaction_id = getattr(interaction, "id", None)
+        while (
+            getattr(interaction, "status", None) in ("in_progress", "queued")
+            and elapsed < max_wait_s
+        ):
+            await asyncio.sleep(10)
+            elapsed += 10
+            try:
+                interaction = client.interactions.get(interaction_id)
+            except Exception as e:
+                logger.warning(f"interactions.get failed mid-poll: {e}")
+        status = getattr(interaction, "status", None)
+        if status in ("in_progress", "queued"):
+            raise RuntimeError(
+                f"Gemini Omni render did not complete within {max_wait_s}s"
+            )
+        if status in ("failed", "cancelled", "incomplete", "budget_exceeded"):
+            errors = getattr(interaction, "errors", None)
+            raise RuntimeError(f"Gemini Omni operation failed: {errors or status}")
+        return interaction
 
     def _extract_video_uri(self, turn_id: str, result) -> Optional[str]:
         """Pull a usable gs:// URI out of the Veo result, uploading inline

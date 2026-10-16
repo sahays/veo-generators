@@ -33,10 +33,67 @@ def turn_and_avatar():
     return turn, avatar
 
 
-def test_processor_calls_veo_fast_with_image_and_audio(turn_and_avatar, monkeypatch):
+def test_processor_calls_omni_with_image_and_audio(turn_and_avatar, monkeypatch):
     import deps
     from avatar_processor import AvatarProcessor, VEO_AVATAR_MODEL_DEFAULT
 
+    turn, avatar = turn_and_avatar
+
+    fake_firestore = MagicMock()
+    fake_firestore.get_avatar = MagicMock(return_value=avatar)
+    fake_firestore.update_avatar_turn = MagicMock()
+    fake_firestore.get_default_model = MagicMock(return_value=None)
+    monkeypatch.setattr(deps, "firestore_svc", fake_firestore)
+
+    captured = {}
+
+    class FakeInteraction:
+        id = "int-123"
+        status = "completed"
+        output_video = {"type": "video", "uri": "gs://bucket/avatars/output.mp4"}
+
+    def fake_create(**kwargs):
+        captured["kwargs"] = kwargs
+        return FakeInteraction()
+
+    fake_interactions = MagicMock()
+    fake_interactions.create = fake_create
+    fake_client = MagicMock()
+    fake_client.interactions = fake_interactions
+    fake_video_svc = MagicMock()
+    fake_video_svc._get_client = lambda region=None: fake_client
+    monkeypatch.setattr(deps, "video_svc", fake_video_svc)
+
+    AvatarProcessor().process(turn)
+
+    kwargs = captured["kwargs"]
+    assert kwargs["model"] == VEO_AVATAR_MODEL_DEFAULT
+    assert kwargs["background"] is True
+    assert kwargs["generation_config"]["video_config"]["task"] == "image_to_video"
+    assert any(
+        b.get("type") == "text" and "Hello there." in b.get("text", "")
+        for b in kwargs["input"]
+    )
+    assert any(
+        b.get("type") == "image" and b.get("uri") == avatar.image_gcs_uri
+        for b in kwargs["input"]
+    )
+    assert kwargs["response_format"][0]["aspect_ratio"] == "9:16"
+    assert kwargs["response_format"][0]["duration"] == "8s"
+
+    final_call = fake_firestore.update_avatar_turn.call_args_list[-1]
+    args, _ = final_call
+    turn_id_arg, updates = args
+    assert turn_id_arg == turn.id
+    assert updates["status"] == "completed"
+    assert updates["video_gcs_uri"] == "gs://bucket/avatars/output.mp4"
+
+
+def test_processor_calls_veo_fast_when_configured(turn_and_avatar, monkeypatch):
+    import deps
+    from avatar_processor import AvatarProcessor, VEO_AVATAR_MODEL_ENV
+
+    monkeypatch.setenv(VEO_AVATAR_MODEL_ENV, "veo-3.1-fast-generate-001")
     turn, avatar = turn_and_avatar
 
     fake_firestore = MagicMock()
@@ -76,7 +133,7 @@ def test_processor_calls_veo_fast_with_image_and_audio(turn_and_avatar, monkeypa
     AvatarProcessor().process(turn)
 
     kwargs = captured["kwargs"]
-    assert kwargs["model"] == VEO_AVATAR_MODEL_DEFAULT
+    assert kwargs["model"] == "veo-3.1-fast-generate-001"
     assert "Hello there." in kwargs["prompt"]
     config = kwargs["config"]
     assert config.duration_seconds == 8

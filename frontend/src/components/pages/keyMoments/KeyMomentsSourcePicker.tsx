@@ -1,5 +1,5 @@
 import { ChevronRight, FileVideo, Film, Loader2 } from 'lucide-react'
-import { Card } from '@/components/Common'
+import { Button, Card } from '@/components/Common'
 import { cn, formatFileSize, getTimeAgo } from '@/lib/utils'
 import type { VideoSourceTab } from '@/hooks/useVideoSourceState'
 import type { CompletedProductionSource, UploadRecord } from '@/types/project'
@@ -34,11 +34,12 @@ export const KeyMomentsSourcePicker = ({
     <div className="px-5 pt-5 pb-3">
       <div className="flex gap-1 bg-muted/50 rounded-lg p-1">
         {TABS.map((tab) => (
-          <button
+          <Button
             key={tab.key}
+            variant="unstyled"
             onClick={() => setSourceTab(tab.key)}
             className={cn(
-              'flex items-center gap-1.5 flex-1 justify-center px-3 py-2 rounded-md text-xs font-medium transition-all cursor-pointer',
+              'flex items-center gap-1.5 flex-1 justify-center px-3 py-2 rounded-[5px] text-xs font-medium transition-all cursor-pointer',
               sourceTab === tab.key
                 ? 'bg-background text-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground',
@@ -46,7 +47,7 @@ export const KeyMomentsSourcePicker = ({
           >
             <tab.icon size={14} />
             {tab.label}
-          </button>
+          </Button>
         ))}
       </div>
     </div>
@@ -64,8 +65,9 @@ export const KeyMomentsSourcePicker = ({
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {productions.map((prod) => (
-              <button
+              <Button
                 key={prod.id}
+                variant="unstyled"
                 onClick={() => onSelectProduction(prod)}
                 className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card hover:border-accent/50 hover:bg-accent/5 transition-all text-left cursor-pointer group"
               >
@@ -79,25 +81,28 @@ export const KeyMomentsSourcePicker = ({
                   <p className="text-[10px] text-muted-foreground">{prod.type}</p>
                 </div>
                 <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-              </button>
+              </Button>
             ))}
           </div>
         )
       ) : uploads.length === 0 ? (
         <div className="text-center py-8">
           <p className="text-xs text-muted-foreground mb-2">No video files found.</p>
-          <button
+          <Button
+            variant="link"
+            size="xs"
             onClick={onNavigateUploads}
-            className="text-xs text-accent hover:text-accent-dark transition-colors"
+            className="text-xs text-accent hover:text-accent-dark"
           >
             Go to Files to add videos
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="space-y-2">
           {uploads.map((record) => (
-            <button
+            <Button
               key={record.id}
+              variant="unstyled"
               onClick={() => onSelectUpload(record)}
               className="flex items-center gap-3 w-full p-3 rounded-lg border border-border bg-card hover:border-accent/50 hover:bg-accent/5 transition-all text-left cursor-pointer group"
             >
@@ -115,7 +120,7 @@ export const KeyMomentsSourcePicker = ({
                 </p>
               </div>
               <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-            </button>
+            </Button>
           ))}
         </div>
       )}

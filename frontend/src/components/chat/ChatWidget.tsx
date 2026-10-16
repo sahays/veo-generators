@@ -1,6 +1,7 @@
 import React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MessageCircle, X, Bot } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { useChatStore } from '@/store/useChatStore'
 import { ChatWindow } from './ChatWindow'
 import { clsx } from 'clsx'
@@ -21,7 +22,7 @@ export const ChatWidget: React.FC = () => {
             {/* Header */}
             <div className="flex items-center justify-between bg-slate-900 px-4 py-3 text-white">
               <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-600">
                   <Bot size={20} />
                 </div>
                 <div>
@@ -32,12 +33,13 @@ export const ChatWidget: React.FC = () => {
                   </div>
                 </div>
               </div>
-              <button
+              <Button
+                variant="unstyled"
                 onClick={() => setIsOpen(false)}
-                className="rounded-lg p-1 transition-colors hover:bg-slate-800"
+                className="rounded-[5px] p-1 transition-colors hover:bg-slate-800 text-white"
               >
                 <X size={20} />
-              </button>
+              </Button>
             </div>
 
             {/* Chat Body */}
@@ -48,15 +50,16 @@ export const ChatWidget: React.FC = () => {
         )}
       </AnimatePresence>
 
-      <button
+      <Button
+        variant="unstyled"
         onClick={() => setIsOpen(!isOpen)}
         className={clsx(
           "flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all active:scale-90 hover:scale-105",
-          isOpen ? "bg-slate-200 text-slate-900 dark:bg-slate-800 dark:text-white" : "bg-indigo-600 text-white"
+          isOpen ? "bg-slate-200 text-slate-900 dark:bg-slate-800 dark:text-white" : "bg-gradient-brand text-white"
         )}
       >
         {isOpen ? <X size={28} /> : <MessageCircle size={28} />}
-      </button>
+      </Button>
     </div>
   )
 }

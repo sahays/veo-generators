@@ -1,6 +1,5 @@
-import { motion } from 'framer-motion'
 import { Clock, Loader2, Play, Tag } from 'lucide-react'
-import { AnchorHeading } from '@/components/Common'
+import { AnchorHeading, Button } from '@/components/Common'
 import { cn, parseTimestamp } from '@/lib/utils'
 import type { KeyMoment } from '@/types/project'
 
@@ -32,14 +31,15 @@ export const KeyMomentsTimeline = ({ moments, activeMomentIndex, onSeek, capturi
 
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {moments.map((moment, i) => (
-        <motion.button
+        <Button
           key={i}
+          variant="unstyled"
           onClick={() => onSeek(i)}
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.03 }}
           className={cn(
-            'text-left p-4 rounded-xl border transition-all cursor-pointer',
+            'text-left p-4 rounded-xl border transition-all cursor-pointer block',
             'hover:border-accent/50 hover:bg-accent/5',
             activeMomentIndex === i
               ? 'border-accent bg-accent/10 shadow-md ring-2 ring-accent/20'
@@ -92,7 +92,7 @@ export const KeyMomentsTimeline = ({ moments, activeMomentIndex, onSeek, capturi
               ))}
             </div>
           )}
-        </motion.button>
+        </Button>
       ))}
     </div>
   </div>

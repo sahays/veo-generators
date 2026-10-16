@@ -1,5 +1,5 @@
 import { Download, Image } from 'lucide-react'
-import { AnchorHeading } from '@/components/Common'
+import { AnchorHeading, Button } from '@/components/Common'
 
 export const ThumbnailsResult = ({ thumbnailUrl }: { thumbnailUrl: string }) => (
   <div className="space-y-4">
@@ -25,14 +25,13 @@ export const ThumbnailsResult = ({ thumbnailUrl }: { thumbnailUrl: string }) => 
     </div>
 
     <div className="flex justify-end">
-      <a
+      <Button
         href={thumbnailUrl}
         download="thumbnail.png"
-        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors"
+        icon={Download}
       >
-        <Download size={16} />
         Download Thumbnail
-      </a>
+      </Button>
     </div>
   </div>
 )

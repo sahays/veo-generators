@@ -8,9 +8,12 @@ RUN npm install --registry=https://registry.npmjs.org/
 COPY frontend/ ./
 RUN npm run build
 
-# --- Stage 2: Build Backend & Bundle ---
+# --- Stage 2: Build Backend & Bundle Next.js SSR Standalone ---
 FROM python:3.12-slim
 WORKDIR /app
+
+# Copy Node.js runtime from Stage 1 for Next.js SSR server
+COPY --from=frontend-build /usr/local/bin/node /usr/local/bin/node
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -24,19 +27,29 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend code
 COPY api/ ./api
-WORKDIR /app/api
 
-# Copy frontend build from Stage 1 into the 'static' folder
-COPY --from=frontend-build /app/frontend/dist ./static
+# Copy Next.js standalone SSR build and static assets
+COPY --from=frontend-build /app/frontend/.next/standalone ./frontend-standalone
+COPY --from=frontend-build /app/frontend/.next/static ./frontend-standalone/.next/static
+COPY frontend/start-standalone.cjs ./frontend-standalone/start-standalone.cjs
+COPY scripts/start-api-ssr.sh /app/start-api-ssr.sh
+RUN chmod +x /app/start-api-ssr.sh
+
+WORKDIR /app/api
 
 # Expose port (Cloud Run sets $PORT environment variable)
 ENV PORT=8080
-ENV OPTIMIZE_PROMPT_MODEL=gemini-3.1-pro-preview
-ENV STORYBOARD_MODEL=gemini-3.1-flash-image-preview
-ENV VIDEO_GEN_MODEL=veo-3.1-generate-001
-ENV GEMINI_AGENT_ORCHESTRATOR=gemini-3.1-flash-lite-preview
+ENV FASTAPI_INTERNAL_ORIGIN=http://127.0.0.1:8000
+ENV OPTIMIZE_PROMPT_MODEL=gemini-3.8-flash
+ENV STORYBOARD_MODEL=gemini-nano-banana-2.1
+ENV ADAPTS_MODEL=gemini-nano-banana-2.1
+ENV VIDEO_GEN_MODEL=gemini-omni-1.1-flash-preview
+ENV GEMINI_AGENT_ORCHESTRATOR=gemini-3.5-flash-lite
+ENV AVATAR_LIVE_MODEL=gemini-3.8-live
+ENV AVATAR_LIVE_LOCATION=us
 ENV GOOGLE_GENAI_USE_VERTEXAI=true
 EXPOSE 8080
 
-# Run the application
-CMD ["python", "main.py"]
+# Run FastAPI (127.0.0.1:8000) + Next.js SSR Server (0.0.0.0:$PORT)
+CMD ["/app/start-api-ssr.sh"]
+

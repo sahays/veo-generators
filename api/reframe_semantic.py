@@ -28,7 +28,7 @@ from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
-SEMANTIC_MODEL = os.getenv("REFRAME_SEMANTIC_MODEL", "gemini-3.1-flash-lite")
+SEMANTIC_MODEL = os.getenv("REFRAME_SEMANTIC_MODEL", "gemini-3.5-flash-lite")
 
 # Shot binding: Gemini echoes the cut list it was given; timestamps within this
 # tolerance of a CPU shot boundary bind to it. Beyond it the shot is dropped

@@ -98,12 +98,17 @@ app.add_middleware(
 async def validate_invite_code(request: Request, call_next):
     # Skip validation for health check, docs, and static files
     path = request.url.path
-    if path in [
-        "/health",
-        "/docs",
-        "/openapi.json",
-        "/api/v1/auth/validate",
-    ] or path.startswith("/static"):
+    if (
+        path
+        in [
+            "/health",
+            "/docs",
+            "/openapi.json",
+            "/api/v1/auth/validate",
+        ]
+        or path.startswith("/static")
+        or path.startswith("/_next")
+    ):
         return await call_next(request)
 
     # Skip for direct asset access

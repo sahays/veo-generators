@@ -33,12 +33,13 @@ const ProjectCard = ({ project, onClick, onArchive, showArchive }: { project: Pr
   }
 
   return (
-    <motion.button
+    <Button
+      variant="unstyled"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2 }}
       onClick={onClick}
-      className="glass bg-card p-5 rounded-xl text-left transition-all duration-200 hover:border-accent/40 group w-full"
+      className="glass bg-card p-5 rounded-xl text-left transition-all duration-200 hover:border-accent/40 group w-full block"
     >
       <div className="flex items-start justify-between mb-2">
         <div className="space-y-1">
@@ -113,17 +114,18 @@ const ProjectCard = ({ project, onClick, onArchive, showArchive }: { project: Pr
           )}
         </div>
         {showArchive && (
-          <button
+          <Button
+            variant="unstyled"
             onClick={onArchive}
             className="p-1 -m-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
             title="Archive"
           >
             <Archive size={12} />
-          </button>
+          </Button>
         )}
         <span>{timeAgo}</span>
       </div>
-    </motion.button>
+    </Button>
   )
 }
 

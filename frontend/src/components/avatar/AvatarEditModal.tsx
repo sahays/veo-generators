@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Loader2, Save } from 'lucide-react'
 import { Button } from '@/components/Common'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/UI'
 import { api } from '@/lib/api'
 import type { Avatar, AvatarStyle } from '@/types/avatar'
@@ -64,12 +66,14 @@ export const AvatarEditModal = ({ avatar, onClose, onSaved }: AvatarEditModalPro
         >
           <div className="flex items-center justify-between mb-5">
             <h3 className="text-lg font-heading font-bold text-foreground">Edit avatar</h3>
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={onClose}
-              className="p-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
             >
               <X size={18} />
-            </button>
+            </Button>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -77,11 +81,10 @@ export const AvatarEditModal = ({ avatar, onClose, onSaved }: AvatarEditModalPro
               <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">
                 Name
               </label>
-              <input
+              <Input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:ring-2 focus:ring-accent/30 text-sm"
                 required
               />
             </div>
@@ -97,12 +100,11 @@ export const AvatarEditModal = ({ avatar, onClose, onSaved }: AvatarEditModalPro
               <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">
                 Persona
               </label>
-              <textarea
+              <Textarea
                 value={persona}
                 onChange={(e) => setPersona(e.target.value)}
                 rows={4}
                 placeholder="Describe how this avatar should respond. e.g. A senior product manager at a tech startup answering questions about AI."
-                className="w-full px-3 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:ring-2 focus:ring-accent/30 text-sm resize-y"
               />
               <p className="text-[10px] text-muted-foreground mt-1">
                 Injected into Gemini's system prompt on every turn. Leave empty for generic behavior.
@@ -116,13 +118,13 @@ export const AvatarEditModal = ({ avatar, onClose, onSaved }: AvatarEditModalPro
             )}
 
             <div className="flex justify-end gap-2 pt-2">
-              <button
+              <Button
                 type="button"
+                variant="secondary"
                 onClick={onClose}
-                className="px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
               >
                 Cancel
-              </button>
+              </Button>
               <Button type="submit" icon={saving ? Loader2 : Save} disabled={saving || !name.trim()}>
                 {saving ? 'Saving…' : 'Save'}
               </Button>

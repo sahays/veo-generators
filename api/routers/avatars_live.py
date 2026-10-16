@@ -20,15 +20,13 @@ from helpers import get_or_404, require_firestore
 from models import Avatar
 from routers.avatars import _sign_avatar  # CRUD lives in avatars.py
 
-# The Gemini Live Avatar preview is reachable via the "global" surface, which
-# routes to the autopush sandbox host. The preview model is allowlisted on a
-# specific GCP project (ffeldhaus-avatar-demo by default — change with
-# AVATAR_LIVE_PROJECT). The model path *and* the x-goog-user-project header
-# both need to point at that project so the autopush API check passes.
-LIVE_MODEL = os.getenv("AVATAR_LIVE_MODEL", "gemini-3.1-flash-live-preview-04-2026")
-LIVE_LOCATION_DEFAULT = "global"
-LIVE_HOST_GLOBAL = "autopush-aiplatform.sandbox.googleapis.com"
-LIVE_PROJECT_DEFAULT = "ffeldhaus-avatar-demo"
+# Gemini Live Avatar is GA on Vertex AI (gemini-3.8-live) in multi-region
+# ("us", "eu") and regional ("us-central1") endpoints.
+LIVE_MODEL = os.getenv("AVATAR_LIVE_MODEL", "gemini-3.8-live")
+LIVE_LOCATION_DEFAULT = "us"
+LIVE_HOST_GLOBAL = "aiplatform.googleapis.com"
+LIVE_MULTI_REGIONAL_LOCATIONS = {"us", "eu"}
+LIVE_PROJECT_DEFAULT = "aug18-25-3"
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +40,18 @@ def _live_location() -> str:
 def _live_host(location: str) -> str:
     if location == "global":
         return LIVE_HOST_GLOBAL
+    if location in LIVE_MULTI_REGIONAL_LOCATIONS:
+        return f"aiplatform.{location}.rep.googleapis.com"
     return f"{location}-aiplatform.googleapis.com"
 
 
 def _live_project() -> str:
-    """The GCP project where the Live preview model is allowlisted; distinct
-    from GOOGLE_CLOUD_PROJECT (where this Cloud Run service runs)."""
-    return os.getenv("AVATAR_LIVE_PROJECT") or LIVE_PROJECT_DEFAULT
+    """The GCP project where the Live model runs."""
+    return (
+        os.getenv("AVATAR_LIVE_PROJECT")
+        or os.getenv("GOOGLE_CLOUD_PROJECT")
+        or LIVE_PROJECT_DEFAULT
+    )
 
 
 def _load_avatar_image_b64(avatar: Avatar) -> tuple[str, str]:
@@ -383,7 +386,10 @@ async def _open_upstream(avatar_id: str, token: str):
     return await websockets.connect(
         f"{url_logged}?access_token={token}",
         max_size=None,
-        additional_headers={"x-goog-user-project": live_project},
+        additional_headers={
+            "Authorization": f"Bearer {token}",
+            "x-goog-user-project": live_project,
+        },
     )
 
 

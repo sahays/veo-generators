@@ -87,6 +87,11 @@ class TestVeoDispatch:
     def test_lite_rate(self):
         assert cost_for_veo("veo-3.1-lite-generate-001", 8) == pytest.approx(8 * 0.05)
 
+    def test_omni_11_flash_rate(self):
+        assert cost_for_veo("gemini-omni-1.1-flash-preview", 8) == pytest.approx(
+            8 * 0.15
+        )
+
     def test_unknown_model_falls_back_to_standard(self):
         assert veo_rate_for("not-a-real-model") == VEO_STANDARD
 

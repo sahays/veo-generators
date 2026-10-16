@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button'
 import { PRESET_CATALOG, type Gender } from '@/types/avatar'
 
 type GenderFilter = 'all' | Gender
@@ -26,11 +27,12 @@ export const AvatarPresetGrid = ({
     </div>
     <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
       {filteredPresets.map((p) => (
-        <button
+        <Button
           key={p.id}
           type="button"
+          variant="unstyled"
           onClick={() => setPresetName(p.id)}
-          className={`relative aspect-[3/4] rounded-lg overflow-hidden border-2 transition-colors text-left ${
+          className={`relative aspect-[3/4] rounded-[6px] overflow-hidden border-2 transition-colors text-left block ${
             presetName === p.id
               ? 'border-accent shadow-lg'
               : 'border-transparent hover:border-accent/40'
@@ -45,7 +47,7 @@ export const AvatarPresetGrid = ({
           <div className="absolute inset-x-0 bottom-0 px-2 py-1 bg-gradient-to-t from-black/80 to-transparent">
             <div className="text-xs font-medium text-white">{p.displayName}</div>
           </div>
-        </button>
+        </Button>
       ))}
     </div>
   </div>
@@ -66,18 +68,16 @@ const GenderChips = ({
   return (
     <div className="flex items-center gap-1">
       {options.map((o) => (
-        <button
+        <Button
           key={o.id}
           type="button"
+          variant={value === o.id ? 'primary' : 'secondary'}
+          size="xs"
           onClick={() => onChange(o.id)}
-          className={`px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wider transition-colors ${
-            value === o.id
-              ? 'bg-accent text-accent-foreground'
-              : 'bg-muted text-muted-foreground hover:bg-muted/70'
-          }`}
+          className="h-6 px-2 text-[10px] uppercase tracking-wider"
         >
           {o.label}
-        </button>
+        </Button>
       ))}
     </div>
   )

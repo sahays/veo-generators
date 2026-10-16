@@ -36,17 +36,18 @@ echo "🏗️ Building Frontend..."
 npm run build
 cd "$PROJECT_ROOT"
 
-# 3. Prepare static directory for API
-echo "📁 Syncing frontend build to API static folder..."
-rm -rf api/static
-mkdir -p api/static
-cp -r frontend/dist/* api/static/
+# 3. Prepare standalone SSR directory for Frontend
+echo "📁 Preparing Next.js standalone SSR bundle..."
+cp -r frontend/.next/static frontend/.next/standalone/.next/static
+cp frontend/start-standalone.cjs frontend/.next/standalone/start-standalone.cjs
 
 echo ""
 echo "✨ Local setup complete!"
 echo ""
 echo "To run the application:"
 echo "1. Ensure your .env file is configured (copy .env.example if needed)"
-echo "2. Backend API: source api/venv/bin/activate && cd api && uvicorn main:app --reload --port 8080"
-echo "3. Worker: source api/venv/bin/activate && export PYTHONPATH=\$PYTHONPATH:\$(pwd)/api && python workers/unified_worker.py"
-echo "4. Access the app at: http://localhost:8080"
+echo "2. Backend API (internal): source api/venv/bin/activate && cd api && uvicorn main:app --reload --host 127.0.0.1 --port 8000"
+echo "3. Frontend SSR Server: cd frontend/.next/standalone && PORT=8080 FASTAPI_INTERNAL_ORIGIN=http://127.0.0.1:8000 node start-standalone.cjs"
+echo "4. Worker: source api/venv/bin/activate && export PYTHONPATH=\$PYTHONPATH:\$(pwd)/api && python workers/unified_worker.py"
+echo "5. Access the app at: http://localhost:8080"
+

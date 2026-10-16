@@ -6,6 +6,7 @@ import {
   Upload, Loader2, ArrowLeft, Camera, Sparkles, Pencil, Check,
 } from 'lucide-react'
 import { Button, Card } from '@/components/Common'
+import { Input } from '@/components/ui/input'
 import { ModelPill } from '@/components/ModelPill'
 import { Select } from '@/components/UI'
 import { ModelRegionPicker } from '@/components/ModelRegionPicker'
@@ -322,16 +323,18 @@ export const ThumbnailsWorkPage = () => {
                   setVideoFilename(editName)
                   setIsEditingName(false)
                 }}>
-                  <input autoFocus value={editName} onChange={(e) => setEditName(e.target.value)}
-                    className="text-2xl font-heading font-bold text-foreground bg-muted px-2 py-0.5 rounded border border-border focus:outline-none focus:ring-1 focus:ring-accent" />
-                  <button type="submit" className="text-accent hover:text-accent-dark"><Check size={16} /></button>
+                  <Input autoFocus value={editName} onChange={(e) => setEditName(e.target.value)}
+                    className="h-9 text-2xl font-heading font-bold text-foreground bg-muted px-2 py-0.5" />
+                  <Button type="submit" variant="ghost" size="icon" className="h-7 w-7 text-accent hover:text-accent-dark"><Check size={16} /></Button>
                 </form>
               ) : canWrite ? (
-                <button className="flex items-center gap-2 text-2xl font-heading text-foreground tracking-tight hover:text-accent-dark transition-colors"
+                <Button
+                  variant="unstyled"
+                  className="flex items-center gap-2 text-2xl font-heading text-foreground tracking-tight hover:text-accent-dark transition-colors"
                   onClick={() => { setEditName(videoFilename || ''); setIsEditingName(true) }}>
                   {videoFilename || 'Untitled'}
                   <Pencil size={12} className="text-muted-foreground" />
-                </button>
+                </Button>
               ) : (
                 <h2 className="text-2xl font-heading text-foreground tracking-tight">{videoFilename || 'Untitled'}</h2>
               )}
@@ -348,13 +351,14 @@ export const ThumbnailsWorkPage = () => {
           )}
         </div>
         {!isViewMode && !videoUrl && (
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={Upload}
             onClick={() => navigate('/uploads')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted hover:bg-accent/10 text-xs font-medium text-muted-foreground hover:text-foreground transition-all"
           >
-            <Upload size={14} />
             Add Files
-          </button>
+          </Button>
         )}
       </div>
 
@@ -375,12 +379,14 @@ export const ThumbnailsWorkPage = () => {
       {videoUrl && (
         <div className="space-y-2">
           {!isViewMode && !hasScreenshots && (
-            <button
+            <Button
+              variant="link"
+              size="xs"
               onClick={handleChangeVideo}
-              className="text-xs text-accent-dark hover:underline cursor-pointer"
+              className="px-0 h-auto text-xs text-accent-dark"
             >
               Change Video
-            </button>
+            </Button>
           )}
           <div className="aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/5">
             <video
@@ -397,27 +403,22 @@ export const ThumbnailsWorkPage = () => {
 
       {/* Analyze controls (fresh mode, video selected, no analysis yet) */}
       {videoUrl && !hasScreenshots && !isViewMode && (
-        <div className="flex items-end gap-4">
-          <div className="flex-1 min-w-0">
-            <Select
-              label="Thumbnail Analysis Prompt"
-              value={analysisPromptId}
-              onChange={setAnalysisPromptId}
-              options={analysisPrompts.map(p => ({
-                value: p.id,
-                label: p.name,
-                description: `Version ${p.version}`
-              }))}
-              placeholder="Select a prompt..."
-            />
-            {analysisPrompts.length === 0 && (
-              <p className="text-xs text-muted-foreground mt-1">
-                No thumbnail prompts found. Create one in System Prompts with category "thumbnails".
-              </p>
-            )}
-          </div>
-          <div className="flex flex-col items-end gap-2">
-            <ModelRegionPicker capability="text" value={modelConfig} onChange={setModelConfig} className="mt-2" />
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="flex-1 min-w-[220px]">
+              <Select
+                label="Thumbnail Analysis Prompt"
+                value={analysisPromptId}
+                onChange={setAnalysisPromptId}
+                options={analysisPrompts.map(p => ({
+                  value: p.id,
+                  label: p.name,
+                  description: `Version ${p.version}`
+                }))}
+                placeholder="Select a prompt..."
+              />
+            </div>
+            <ModelRegionPicker capability="text" value={modelConfig} onChange={setModelConfig} />
             <Button
               icon={analyzing ? Loader2 : Camera}
               onClick={handleAnalyze}
@@ -427,6 +428,11 @@ export const ThumbnailsWorkPage = () => {
               {analyzing ? 'Identifying...' : 'Identify Moments'}
             </Button>
           </div>
+          {analysisPrompts.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              No thumbnail prompts found. Create one in System Prompts with category "thumbnails".
+            </p>
+          )}
         </div>
       )}
 

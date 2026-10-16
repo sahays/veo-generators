@@ -1,22 +1,16 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import {
-  LayoutGrid, Loader2, ArrowLeft, Download, RotateCcw,
-  AlertCircle, CheckCircle2, ExternalLink,
-} from 'lucide-react'
+import { LayoutGrid, AlertCircle, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/Common'
 import { ModelRegionPicker } from '@/components/ModelRegionPicker'
 import { api } from '@/lib/api'
-import { cn } from '@/lib/utils'
-import { useAuthStore } from '@/store/useAuthStore'
 import { usePolling } from '@/hooks/usePolling'
 import { buildStatusConfig } from '@/hooks/jobStatus'
+import { adaptCreateSchema } from '@/types/schemas'
 import { ImageSourceSelector } from '@/components/shared/ImageSourceSelector'
 import { AdaptVariantGrid } from '@/components/pages/adapts/AdaptVariantGrid'
 import { AspectRatioSelector } from '@/components/shared/AspectRatioSelector'
-import { ProgressBar } from '@/components/shared/ProgressBar'
-import { ErrorDisplay } from '@/components/shared/ErrorDisplay'
-import { WorkPageHeader } from '@/components/shared/WorkPageHeader'
+import { WorkViewShell, WorkCreateShell } from '@/components/shared/WorkPageShell'
 import type { ImageUploadItem } from '@/components/shared/ImageSourceSelector'
 import type { AdaptRecord, PresetBundle } from '@/types/project'
 
@@ -37,63 +31,60 @@ const STATUS_CONFIG = buildStatusConfig(
 export const AdaptsWorkPage = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
   const isViewMode = !!id
 
-  // Image source state
   const [images, setImages] = useState<ImageUploadItem[]>([])
   const [loadingSources, setLoadingSources] = useState(false)
   const [selectedImage, setSelectedImage] = useState<ImageUploadItem | null>(null)
 
-  // Template state
   const [templateImage, setTemplateImage] = useState<ImageUploadItem | null>(null)
   const [showTemplateSelector, setShowTemplateSelector] = useState(false)
 
-  // Model/region config
   const [modelConfig, setModelConfig] = useState<{ modelId?: string; region?: string }>({})
-
-  // Aspect ratio state
   const [selectedRatios, setSelectedRatios] = useState<string[]>([])
   const [presets, setPresets] = useState<Record<string, PresetBundle>>({})
 
-  // Processing state
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // View mode polling
   const { record, loading: recordLoading, error: pollError } = usePolling<AdaptRecord>(
     id,
     api.adapts.get,
     ACTIVE_STATUSES,
   )
 
-  // Load sources and presets for create mode
   useEffect(() => {
     if (isViewMode) return
     setLoadingSources(true)
     Promise.all([
       api.adapts.listUploadSources().catch(() => []),
       api.adapts.listPresets().catch(() => ({ presets: {}, all_ratios: [] })),
-    ]).then(([imgs, presetsData]) => {
-      setImages(imgs)
-      setPresets(presetsData.presets || {})
-    }).finally(() => setLoadingSources(false))
+    ])
+      .then(([imgs, presetsData]) => {
+        setImages(imgs)
+        setPresets(presetsData.presets || {})
+      })
+      .finally(() => setLoadingSources(false))
   }, [isViewMode])
 
   const handleGenerate = async () => {
-    if (!selectedImage || selectedRatios.length === 0) return
+    const parsed = adaptCreateSchema.safeParse({
+      gcs_uri: selectedImage?.gcs_uri || '',
+      source_filename: selectedImage?.display_name || selectedImage?.filename || '',
+      source_mime_type: selectedImage?.mime_type || '',
+      template_gcs_uri: templateImage?.gcs_uri || undefined,
+      aspect_ratios: selectedRatios,
+      model_id: modelConfig.modelId,
+      region: modelConfig.region,
+    })
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message || 'Invalid adapt parameters')
+      return
+    }
     setSubmitting(true)
     setError(null)
     try {
-      const result = await api.adapts.create({
-        gcs_uri: selectedImage.gcs_uri,
-        source_filename: selectedImage.display_name || selectedImage.filename,
-        source_mime_type: selectedImage.mime_type,
-        template_gcs_uri: templateImage?.gcs_uri || undefined,
-        aspect_ratios: selectedRatios,
-        model_id: modelConfig.modelId,
-        region: modelConfig.region,
-      })
+      const result = await api.adapts.create(parsed.data)
       navigate(`/adapts/${result.id}`, { replace: true })
     } catch (err: any) {
       setError(err.message)
@@ -102,144 +93,105 @@ export const AdaptsWorkPage = () => {
     }
   }
 
-  const [retrying, setRetrying] = useState(false)
-
-  const handleRetry = async () => {
-    if (!id) return
-    setRetrying(true)
-    try {
-      await api.adapts.retry(id)
-    } catch (err: any) {
-      console.error('Failed to retry adapt', err)
-    } finally {
-      setRetrying(false)
-    }
-  }
-
-  // --- View Mode ---
   if (isViewMode) {
-    if (recordLoading) {
-      return (
-        <div className="flex flex-col items-center justify-center py-32 space-y-4">
-          <Loader2 className="animate-spin text-accent" size={32} />
-          <p className="text-sm text-muted-foreground">Loading adapt...</p>
-        </div>
-      )
-    }
-
-    if (pollError && !record) {
-      return (
-        <div className="space-y-4">
-          <button onClick={() => navigate('/adapts')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-            <ArrowLeft size={16} /> Back to Adapts
-          </button>
-          <ErrorDisplay error={pollError} size="md" />
-        </div>
-      )
-    }
-
-    if (!record) return null
-
-    const isProcessing = ACTIVE_STATUSES.includes(record.status)
-    const completedVariants = record.variants.filter(v => v.status === 'completed')
-    const failedVariants = record.variants.filter(v => v.status === 'failed')
+    const completedVariants =
+      record?.variants.filter((v) => v.status === 'completed') || []
+    const failedVariants =
+      record?.variants.filter((v) => v.status === 'failed') || []
 
     return (
-      <div className="space-y-6">
-        <WorkPageHeader
-          backPath="/adapts"
-          backLabel="Back to Adapts"
-          record={record}
-          defaultName="Adapt"
-          onSaveName={(name) => api.adapts.update(record.id, { display_name: name })}
-          statusConfig={STATUS_CONFIG}
-          activeStatuses={ACTIVE_STATUSES}
-        >
-          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-slate-500/10 text-slate-600 border border-slate-500/20">
-            {record.variants.length} variant{record.variants.length !== 1 ? 's' : ''}
-          </span>
-          {record.preset_bundle && (
-            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-600 border border-amber-500/20 capitalize">
-              {record.preset_bundle}
-            </span>
-          )}
-          {completedVariants.some(v => v.prompt_text_used) && (
-            <Link
-              to={`/adapts/${record.id}/prompt`}
-              target="_blank"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
-            >
-              Prompt <ExternalLink size={12} />
-            </Link>
-          )}
-        </WorkPageHeader>
-
-        {isProcessing && <ProgressBar progress={record.progress_pct} />}
-
-        {record.status === 'failed' && (
-          <div className="space-y-3">
-            {record.error_message && <ErrorDisplay error={record.error_message} size="md" />}
-            {canWrite && (
-              <Button icon={retrying ? Loader2 : RotateCcw} onClick={handleRetry} disabled={retrying}>
-                {retrying ? 'Retrying...' : 'Retry'}
-              </Button>
+      <WorkViewShell
+        backPath="/adapts"
+        backLabel="Back to Adapts"
+        defaultName="Adapt"
+        loadingLabel="Loading adapt..."
+        record={record}
+        loading={recordLoading}
+        pollError={pollError}
+        statusConfig={STATUS_CONFIG}
+        activeStatuses={ACTIVE_STATUSES}
+        onSaveName={(name) => api.adapts.update(record!.id, { display_name: name })}
+        onRetry={id ? () => api.adapts.retry(id) : undefined}
+        retryLabel={record?.status === 'partial' ? 'Retry Failed' : 'Retry'}
+        retryStatuses={['failed', 'partial']}
+        headerBadges={
+          record ? (
+            <>
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-slate-500/10 text-slate-600 border border-slate-500/20">
+                {record.variants.length} variant{record.variants.length !== 1 ? 's' : ''}
+              </span>
+              {record.preset_bundle && (
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-600 border border-amber-500/20 capitalize">
+                  {record.preset_bundle}
+                </span>
+              )}
+              {completedVariants.some((v) => v.prompt_text_used) && (
+                <Button asChild variant="outline" size="xs">
+                  <Link to={`/adapts/${record.id}/prompt`} target="_blank">
+                    Prompt <ExternalLink size={12} />
+                  </Link>
+                </Button>
+              )}
+            </>
+          ) : undefined
+        }
+      >
+        {(rec) => (
+          <>
+            {rec.status === 'partial' && (
+              <div className="flex items-center gap-2 text-sm text-orange-600">
+                <AlertCircle size={16} />
+                {failedVariants.length} variant{failedVariants.length !== 1 ? 's' : ''} failed
+              </div>
             )}
-          </div>
-        )}
 
-        {record.status === 'partial' && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm text-orange-600">
-              <AlertCircle size={16} />
-              {failedVariants.length} variant{failedVariants.length !== 1 ? 's' : ''} failed
-            </div>
-            {canWrite && (
-              <Button icon={retrying ? Loader2 : RotateCcw} onClick={handleRetry} disabled={retrying}>
-                {retrying ? 'Retrying...' : 'Retry Failed'}
-              </Button>
+            {rec.source_signed_url && (
+              <div className="space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Source Image
+                </h3>
+                <img
+                  src={rec.source_signed_url}
+                  alt="Source"
+                  className="rounded-xl border border-border max-w-sm"
+                />
+              </div>
             )}
-          </div>
-        )}
 
-        {/* Source image preview */}
-        {record.source_signed_url && (
-          <div className="space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Source Image</h3>
-            <img
-              src={record.source_signed_url}
-              alt="Source"
-              className="rounded-xl border border-border max-w-sm"
-            />
-          </div>
-        )}
+            <AdaptVariantGrid recordId={rec.id} variants={rec.variants} />
 
-        <AdaptVariantGrid recordId={record.id} variants={record.variants} />
-
-        {record.usage && record.usage.cost_usd > 0 && (
-          <div className="text-xs text-muted-foreground">
-            AI cost: ${record.usage.cost_usd.toFixed(4)} ({record.usage.image_generations} image{record.usage.image_generations !== 1 ? 's' : ''})
-          </div>
+            {rec.usage && rec.usage.cost_usd > 0 && (
+              <div className="text-xs text-muted-foreground">
+                AI cost: ${rec.usage.cost_usd.toFixed(4)} ({rec.usage.image_generations}{' '}
+                image{rec.usage.image_generations !== 1 ? 's' : ''})
+              </div>
+            )}
+          </>
         )}
-      </div>
+      </WorkViewShell>
     )
   }
 
-  // --- Create Mode ---
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <button onClick={() => navigate('/adapts')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-          <ArrowLeft size={16} /> Back to Adapts
-        </button>
-      </div>
-
-      <div className="space-y-1">
-        <h2 className="text-lg font-heading font-bold text-foreground">New Adapt</h2>
-        <p className="text-sm text-muted-foreground">Select an image and choose aspect ratios to generate adapted versions</p>
-      </div>
-
+    <WorkCreateShell
+      backPath="/adapts"
+      backLabel="Back to Adapts"
+      title="New Adapt"
+      subtitle="Select an image and choose aspect ratios to generate adapted versions"
+      error={error}
+      actionIcon={LayoutGrid}
+      actionLabel={`Generate ${selectedRatios.length} Variant${selectedRatios.length !== 1 ? 's' : ''}`}
+      submitting={submitting}
+      disabled={!selectedImage || selectedRatios.length === 0}
+      onSubmit={handleGenerate}
+      actionLeft={
+        <ModelRegionPicker capability="image" value={modelConfig} onChange={setModelConfig} />
+      }
+    >
       <div className="space-y-2">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Source Image</h3>
+        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          Source Image
+        </h3>
         <ImageSourceSelector
           images={images}
           loading={loadingSources}
@@ -250,7 +202,9 @@ export const AdaptsWorkPage = () => {
 
       {selectedImage && (
         <div className="space-y-3">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Selected</h3>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            Selected
+          </h3>
           <div className="flex items-start gap-4">
             <img
               src={selectedImage.image_signed_url}
@@ -258,7 +212,9 @@ export const AdaptsWorkPage = () => {
               className="w-32 h-32 object-cover rounded-lg border border-border"
             />
             <div>
-              <p className="text-sm font-medium text-foreground">{selectedImage.display_name || selectedImage.filename}</p>
+              <p className="text-sm font-medium text-foreground">
+                {selectedImage.display_name || selectedImage.filename}
+              </p>
               <p className="text-xs text-muted-foreground">{selectedImage.mime_type}</p>
             </div>
           </div>
@@ -271,35 +227,42 @@ export const AdaptsWorkPage = () => {
             <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
               Layout Template (Optional)
             </h3>
-            <button
+            <Button
+              variant="link"
               onClick={() => setShowTemplateSelector(!showTemplateSelector)}
-              className="text-xs text-accent hover:text-accent-dark transition-colors"
+              className="text-xs text-accent hover:text-accent-dark"
             >
               {showTemplateSelector ? 'Hide' : templateImage ? 'Change' : 'Add template'}
-            </button>
+            </Button>
           </div>
           {templateImage && !showTemplateSelector && (
-            <div className="flex items-center gap-3 p-2 rounded-lg border border-border bg-card">
+            <div className="flex items-center gap-3 p-2 rounded-[6px] border border-border bg-card">
               <img
                 src={templateImage.image_signed_url}
                 alt="Template"
                 className="w-12 h-12 object-cover rounded"
               />
-              <span className="text-sm text-foreground truncate">{templateImage.display_name || templateImage.filename}</span>
-              <button
+              <span className="text-sm text-foreground truncate">
+                {templateImage.display_name || templateImage.filename}
+              </span>
+              <Button
+                variant="link"
                 onClick={() => setTemplateImage(null)}
-                className="ml-auto text-xs text-muted-foreground hover:text-red-500 transition-colors"
+                className="ml-auto text-xs text-muted-foreground hover:text-red-500"
               >
                 Remove
-              </button>
+              </Button>
             </div>
           )}
           {showTemplateSelector && (
             <ImageSourceSelector
-              images={images.filter(img => img.gcs_uri !== selectedImage.gcs_uri)}
+              images={images.filter((img) => img.gcs_uri !== selectedImage.gcs_uri)}
               loading={false}
               selectedUri={templateImage?.gcs_uri ?? null}
-              onSelect={(img) => { setTemplateImage(img); setShowTemplateSelector(false) }}
+              onSelect={(img) => {
+                setTemplateImage(img)
+                setShowTemplateSelector(false)
+              }}
               emptyMessage="No other images available for template."
             />
           )}
@@ -308,7 +271,9 @@ export const AdaptsWorkPage = () => {
 
       {selectedImage && (
         <div className="space-y-2">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Aspect Ratios</h3>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            Aspect Ratios
+          </h3>
           <AspectRatioSelector
             selected={selectedRatios}
             onChange={setSelectedRatios}
@@ -316,20 +281,6 @@ export const AdaptsWorkPage = () => {
           />
         </div>
       )}
-
-      <ErrorDisplay error={error} />
-
-      <div className="flex items-center justify-end gap-4">
-        <ModelRegionPicker capability="image" value={modelConfig} onChange={setModelConfig} className="mt-2" />
-        <Button
-          icon={LayoutGrid}
-          onClick={handleGenerate}
-          disabled={!selectedImage || selectedRatios.length === 0 || submitting}
-          className={cn(submitting && "[&_svg]:animate-spin")}
-        >
-          {submitting ? 'Starting...' : `Generate ${selectedRatios.length} Variant${selectedRatios.length !== 1 ? 's' : ''}`}
-        </Button>
-      </div>
-    </div>
+    </WorkCreateShell>
   )
 }

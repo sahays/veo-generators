@@ -3,6 +3,8 @@ import { motion } from 'framer-motion'
 import { Plus, Shield, Trash2, Ban, CheckCircle, Shuffle, Pencil, Check, X, CalendarClock, Zap, ZapOff } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Button } from '@/components/Common'
+import { Input } from '@/components/ui/input'
+import { NativeSelect } from '@/components/ui/select'
 import { Modal } from '@/components/Modal'
 import { cn } from '@/lib/utils'
 
@@ -230,7 +232,7 @@ export const InviteCodesPage = () => {
                     )}
                     {isEditingLimit ? (
                       <span className="inline-flex items-center gap-1">
-                        <input
+                        <Input
                           type="number"
                           min="1"
                           value={editingLimitValue}
@@ -240,23 +242,24 @@ export const InviteCodesPage = () => {
                             if (e.key === 'Escape') setEditingLimitId(null)
                           }}
                           autoFocus
-                          className="w-20 px-1.5 py-0.5 rounded bg-muted border border-border text-foreground text-xs text-center focus:outline-none focus:ring-1 focus:ring-accent/50"
+                          className="h-6 w-20 px-1.5 py-0.5 text-xs text-center"
                         />
-                        <button onClick={() => handleSaveDailyCredits(code.id)} className="text-green-500 hover:text-green-600">
+                        <Button variant="ghost" size="icon" onClick={() => handleSaveDailyCredits(code.id)} className="h-6 w-6 text-green-500 hover:text-green-600">
                           <Check size={14} />
-                        </button>
-                        <button onClick={() => setEditingLimitId(null)} className="text-muted-foreground hover:text-foreground">
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => setEditingLimitId(null)} className="h-6 w-6 text-muted-foreground hover:text-foreground">
                           <X size={14} />
-                        </button>
+                        </Button>
                       </span>
                     ) : (
-                      <button
+                      <Button
+                        variant="unstyled"
                         onClick={() => { setEditingLimitId(code.id); setEditingLimitValue(String(code.daily_credits ?? 250)) }}
                         className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-blue-500/15 text-blue-600 dark:text-blue-400 hover:bg-blue-500/25 transition-colors"
                       >
                         {code.daily_credits ?? 250} credits/day
                         <Pencil size={10} />
-                      </button>
+                      </Button>
                     )}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
@@ -274,33 +277,36 @@ export const InviteCodesPage = () => {
                   {/* Inline extend UI */}
                   {isExtendingThis && (
                     <div className="flex items-center gap-2 mt-2">
-                      <select
+                      <NativeSelect
                         value={extendDuration}
                         onChange={(e) => setExtendDuration(e.target.value)}
-                        className="px-2 py-1 rounded-lg bg-muted border border-border text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-accent/50"
+                        className="h-7 w-32 px-2 py-0.5 text-xs"
                       >
                         {EXPIRY_OPTIONS.filter(o => o.value).map(o => (
                           <option key={o.value} value={o.value}>{o.label}</option>
                         ))}
-                      </select>
+                      </NativeSelect>
                       <span className="text-[10px] text-muted-foreground">
                         from {code.expires_at && new Date(code.expires_at) > new Date()
                           ? new Date(code.expires_at).toLocaleDateString()
                           : 'now'}
                       </span>
-                      <button
+                      <Button
+                        variant="secondary"
+                        size="xs"
                         onClick={() => handleExtend(code.id)}
                         disabled={isExtending}
-                        className="text-xs px-2 py-1 rounded-lg bg-accent/10 text-accent-dark hover:bg-accent/20 transition-colors font-medium disabled:opacity-50"
                       >
                         {isExtending ? 'Saving...' : 'Apply'}
-                      </button>
-                      <button
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={() => setExtendingId(null)}
-                        className="text-muted-foreground hover:text-foreground"
+                        className="h-6 w-6 text-muted-foreground hover:text-foreground"
                       >
                         <X size={14} />
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -386,13 +392,13 @@ export const InviteCodesPage = () => {
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Code *</label>
             <div className="flex gap-2">
-              <input
+              <Input
                 type="text"
                 value={newCode}
                 onChange={(e) => { setNewCode(e.target.value); setCreateError('') }}
                 placeholder="e.g. team-alpha-2024"
                 autoFocus
-                className="flex-1 px-3 py-2 rounded-lg bg-muted border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/50 text-sm"
+                className="flex-1"
               />
               <Button type="button" variant="secondary" icon={Shuffle} onClick={generateRandomCode} className="shrink-0">
                 Generate
@@ -401,36 +407,33 @@ export const InviteCodesPage = () => {
           </div>
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Label</label>
-            <input
+            <Input
               type="text"
               value={newLabel}
               onChange={(e) => setNewLabel(e.target.value)}
               placeholder="e.g. Alpha team access"
-              className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/50 text-sm"
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Daily Credits</label>
-            <input
+            <Input
               type="number"
               min="1"
               value={newDailyCredits}
               onChange={(e) => setNewDailyCredits(e.target.value)}
               placeholder="250"
-              className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/50 text-sm"
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">Expiry</label>
-            <select
+            <NativeSelect
               value={newExpiryDuration}
               onChange={(e) => setNewExpiryDuration(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-accent/50 text-sm"
             >
               {EXPIRY_OPTIONS.map(o => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
-            </select>
+            </NativeSelect>
             {newExpiryDuration && (
               <p className="text-xs text-muted-foreground mt-1">
                 Expires on {new Date(computeExpiryDate(newExpiryDuration)!).toLocaleDateString()}

@@ -11,10 +11,12 @@ echo "🔍 Running Pre-Deployment Checks..."
 # --- Frontend Checks ---
 echo "🎨 Checking Frontend..."
 cd frontend
-if [ -f "package-lock.json" ]; then
-    npm ci
-else
-    npm install
+if [ ! -d "node_modules" ]; then
+    if [ -f "package-lock.json" ]; then
+        npm ci --registry=https://registry.npmjs.org/
+    else
+        npm install --registry=https://registry.npmjs.org/
+    fi
 fi
 
 echo "   Running TypeScript checks and build..."
@@ -33,16 +35,17 @@ echo "⚙️ Checking Backend..."
 # full dependency set, and repeat runs are fast.
 if [ ! -d "api/venv" ]; then
     echo "📦 Creating virtual environment at api/venv..."
-    python3 -m venv api/venv || { echo "❌ Failed to create virtual environment. Ensure python3-venv is installed."; exit 1; }
+    python3 -m venv api/venv || uv venv api/venv --default-index https://pypi.org/simple --seed || { echo "❌ Failed to create virtual environment."; exit 1; }
+    source api/venv/bin/activate
+    echo "📦 Installing backend dependencies (ruff, pytest, requirements)..."
+    pip install -q --index-url https://pypi.org/simple --upgrade pip
+    pip install -q --index-url https://pypi.org/simple ruff pytest -r api/requirements.txt
+else
+    source api/venv/bin/activate
 fi
-source api/venv/bin/activate
-
-echo "📦 Installing backend dependencies (ruff, pytest, requirements)..."
-pip install -q --upgrade pip
-pip install -q ruff pytest -r api/requirements.txt
 
 echo "   Running Ruff linting..."
-if ruff check api workers; then
+if ruff check --isolated --select E4,E7,E9,F --exclude api/venv api workers; then
     echo "   ✅ Ruff lint passed."
 else
     echo "   ❌ Ruff lint failed. Please fix issues."
@@ -50,7 +53,7 @@ else
 fi
 
 echo "   Running Ruff format..."
-ruff format api workers
+ruff format --isolated --exclude api/venv api workers
 echo "   ✅ Ruff format applied."
 
 # Ensure system shared libraries that some Python deps load at import time
@@ -95,6 +98,22 @@ if (cd api && python3 -m pytest tests/ -q); then
     echo "   ✅ Backend tests passed."
 else
     echo "   ❌ Backend tests failed. Please fix before deploying."
+    exit 1
+fi
+
+echo "   Running AST static checker (duplicate code & tier-breakers)..."
+if python3 scripts/check_architecture.py; then
+    echo "   ✅ AST static checker passed."
+else
+    echo "   ❌ AST static checker failed."
+    exit 1
+fi
+
+echo "   Running UI component usage checker..."
+if python3 scripts/check_components.py; then
+    echo "   ✅ UI component usage checker passed."
+else
+    echo "   ❌ UI component usage checker failed."
     exit 1
 fi
 

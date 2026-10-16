@@ -11,93 +11,128 @@ router = APIRouter(prefix="/api/v1/models", tags=["models"])
 SEED_MODELS = [
     # Text Analysis
     {
+        "name": "Gemini 3.8 Flash",
+        "code": "gemini-3.8-flash",
+        "provider": "gemini",
+        "capability": "text",
+        "regions": ["global", "us"],
+        "is_default": True,
+    },
+    {
+        "name": "Gemini 3.7 Flash",
+        "code": "gemini-3.7-flash",
+        "provider": "gemini",
+        "capability": "text",
+        "regions": ["global", "us"],
+    },
+    {
+        "name": "Gemini 3.5 Flash",
+        "code": "gemini-3.5-flash",
+        "provider": "gemini",
+        "capability": "text",
+        "regions": ["global", "us"],
+    },
+    {
+        "name": "Gemini 3.5 Flash-Lite",
+        "code": "gemini-3.5-flash-lite",
+        "provider": "gemini",
+        "capability": "text",
+        "regions": ["global", "us"],
+    },
+    {
         "name": "Gemini 3.1 Pro",
         "code": "gemini-3.1-pro-preview",
         "provider": "gemini",
         "capability": "text",
-        "is_default": True,
+        "regions": ["global"],
     },
     {
         "name": "Gemini 3 Flash",
         "code": "gemini-3-flash-preview",
         "provider": "gemini",
         "capability": "text",
+        "regions": ["global"],
     },
     {
         "name": "Gemini 3.1 Flash-Lite",
-        "code": "gemini-3.1-flash-lite-preview",
+        "code": "gemini-3.1-flash-lite",
         "provider": "gemini",
         "capability": "text",
-    },
-    {
-        "name": "Gemini 2.5 Pro",
-        "code": "gemini-2.5-pro",
-        "provider": "gemini",
-        "capability": "text",
-    },
-    {
-        "name": "Gemini 2.5 Flash",
-        "code": "gemini-2.5-flash",
-        "provider": "gemini",
-        "capability": "text",
-    },
-    {
-        "name": "Gemini 2.5 Flash-Lite",
-        "code": "gemini-2.5-flash-lite",
-        "provider": "gemini",
-        "capability": "text",
+        "regions": ["global"],
     },
     # Image Generation
     {
-        "name": "Gemini 3.1 Flash Image",
-        "code": "gemini-3.1-flash-image-preview",
+        "name": "Gemini Nano Banana 2.1",
+        "code": "gemini-nano-banana-2.1",
         "provider": "gemini",
         "capability": "image",
+        "regions": ["global"],
         "is_default": True,
     },
     {
-        "name": "Gemini 3 Pro Image",
-        "code": "gemini-3-pro-image-preview",
+        "name": "Gemini 3.1 Flash Image (Nano Banana 2)",
+        "code": "gemini-3.1-flash-image",
         "provider": "gemini",
         "capability": "image",
+        "regions": ["global"],
     },
     {
-        "name": "Gemini 2.5 Flash Image",
-        "code": "gemini-2.5-flash-image",
+        "name": "Gemini 3.1 Flash-Lite Image",
+        "code": "gemini-3.1-flash-lite-image",
         "provider": "gemini",
         "capability": "image",
+        "regions": ["global"],
+    },
+    {
+        "name": "Gemini 3 Pro Image (Nano Banana Pro)",
+        "code": "gemini-3-pro-image",
+        "provider": "gemini",
+        "capability": "image",
+        "regions": ["global"],
+    },
+    {
+        "name": "Gemini 3.1 Flash Image (Preview)",
+        "code": "gemini-3.1-flash-image-preview",
+        "provider": "gemini",
+        "capability": "image",
+        "regions": ["global"],
     },
     # Video Generation
+    {
+        "name": "Gemini Omni 1.1 Flash",
+        "code": "gemini-omni-1.1-flash-preview",
+        "provider": "gemini",
+        "capability": "video",
+        "regions": ["global"],
+        "is_default": True,
+    },
+    {
+        "name": "Gemini Omni Flash (Alias)",
+        "code": "gemini-omni-flash-preview",
+        "provider": "gemini",
+        "capability": "video",
+        "regions": ["global"],
+    },
     {
         "name": "Veo 3.1 Generate",
         "code": "veo-3.1-generate-001",
         "provider": "veo",
         "capability": "video",
-        "is_default": True,
+        "regions": ["global"],
     },
     {
         "name": "Veo 3.1 Fast",
         "code": "veo-3.1-fast-generate-001",
         "provider": "veo",
         "capability": "video",
+        "regions": ["global"],
     },
     {
         "name": "Veo 3.1 Lite",
         "code": "veo-3.1-lite-generate-001",
         "provider": "veo",
         "capability": "video",
-    },
-    {
-        "name": "Veo 3 Generate",
-        "code": "veo-3.0-generate-001",
-        "provider": "veo",
-        "capability": "video",
-    },
-    {
-        "name": "Veo 3 Fast",
-        "code": "veo-3.0-fast-generate-001",
-        "provider": "veo",
-        "capability": "video",
+        "regions": ["global"],
     },
 ]
 
@@ -116,7 +151,35 @@ async def get_model_defaults():
     result = {}
     for cap in ("text", "image", "video"):
         m = deps.firestore_svc.get_default_model(cap)
-        result[cap] = {"id": m.id, "name": m.name, "code": m.code} if m else None
+        if m:
+            regions = m.regions or ["global"]
+            result[cap] = {
+                "id": m.id,
+                "name": m.name,
+                "code": m.code,
+                "regions": regions,
+                "region": regions[0],
+            }
+        else:
+            seed = next(
+                (
+                    s
+                    for s in SEED_MODELS
+                    if s["capability"] == cap and s.get("is_default")
+                ),
+                None,
+            )
+            if seed:
+                regions = seed.get("regions") or ["global"]
+                result[cap] = {
+                    "id": "",
+                    "name": seed["name"],
+                    "code": seed["code"],
+                    "regions": regions,
+                    "region": regions[0],
+                }
+            else:
+                result[cap] = None
     return result
 
 

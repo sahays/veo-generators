@@ -1,4 +1,5 @@
 import { Download, Languages, Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { ErrorDisplay } from '@/components/shared/ErrorDisplay'
 
@@ -70,24 +71,30 @@ const VariantBlock = ({ variant, name }: { variant: DubVariant; name: string }) 
       </details>
     )}
 
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2">
       {variant.output_signed_url && (
-        <a
+        <Button
+          variant="outline"
+          size="xs"
           href={variant.output_signed_url}
           download
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-accent-dark transition-colors"
+          icon={Download}
+          iconSize={12}
         >
-          <Download size={12} /> Video
-        </a>
+          Video
+        </Button>
       )}
       {variant.srt_signed_url && (
-        <a
+        <Button
+          variant="outline"
+          size="xs"
           href={variant.srt_signed_url}
           download
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-accent-dark transition-colors"
+          icon={Download}
+          iconSize={12}
         >
-          <Download size={12} /> Subtitles (.srt)
-        </a>
+          Subtitles (.srt)
+        </Button>
       )}
     </div>
   </div>

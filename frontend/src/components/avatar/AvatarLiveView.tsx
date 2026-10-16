@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Loader2, Mic, MicOff, Pencil, Power, Send } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { useAuthStore } from '@/store/useAuthStore'
 import { AvatarEditModal } from '@/components/avatar/AvatarEditModal'
 import {
@@ -76,12 +78,15 @@ export const AvatarLiveView = ({ avatar }: Props) => {
       animate={{ opacity: 1, y: 0 }}
       className="max-w-3xl mx-auto space-y-6"
     >
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
+        icon={ArrowLeft}
         onClick={() => navigate('/avatars')}
-        className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        className="text-muted-foreground hover:text-foreground -ml-2"
       >
-        <ArrowLeft size={14} /> Back to Avatars
-      </button>
+        Back to Avatars
+      </Button>
 
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
@@ -96,12 +101,15 @@ export const AvatarLiveView = ({ avatar }: Props) => {
           </p>
         </div>
         {canWrite && (
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={Pencil}
             onClick={() => setEditing(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors shrink-0"
+            className="shrink-0"
           >
-            <Pencil size={12} /> Edit
-          </button>
+            Edit
+          </Button>
         )}
       </div>
 
@@ -121,8 +129,9 @@ export const AvatarLiveView = ({ avatar }: Props) => {
         <div className="absolute top-3 left-3">
           <StatusPill status={live.status} />
         </div>
-        <button
+        <Button
           type="button"
+          variant="unstyled"
           onClick={disconnected ? handleReconnect : handleDisconnect}
           className={`absolute top-3 right-3 flex items-center justify-center w-8 h-8 rounded-full backdrop-blur-md border transition-colors ${
             disconnected
@@ -133,7 +142,7 @@ export const AvatarLiveView = ({ avatar }: Props) => {
           title={disconnected ? 'Reconnect' : 'Disconnect'}
         >
           <Power size={14} />
-        </button>
+        </Button>
       </div>
 
       {live.error && (
@@ -147,11 +156,12 @@ export const AvatarLiveView = ({ avatar }: Props) => {
           onSubmit={handleSendText}
           className="flex items-center gap-2 p-2 rounded-2xl bg-card border border-border shadow-xl"
         >
-          <button
+          <Button
             type="button"
+            variant="unstyled"
             onClick={toggleMute}
             disabled={live.status !== 'connected'}
-            className={`flex items-center justify-center w-10 h-10 rounded-xl transition-colors disabled:opacity-40 ${
+            className={`flex items-center justify-center w-10 h-10 rounded-[6px] transition-colors disabled:opacity-40 ${
               muted
                 ? 'bg-red-500/20 text-red-500'
                 : 'bg-accent/20 text-accent hover:bg-accent/30'
@@ -159,8 +169,8 @@ export const AvatarLiveView = ({ avatar }: Props) => {
             aria-label={muted ? 'Unmute mic' : 'Mute mic'}
           >
             {muted ? <MicOff size={16} /> : <Mic size={16} />}
-          </button>
-          <input
+          </Button>
+          <Input
             type="text"
             value={textInput}
             onChange={(e) => setTextInput(e.target.value)}
@@ -170,16 +180,17 @@ export const AvatarLiveView = ({ avatar }: Props) => {
                 : 'Connecting…'
             }
             disabled={live.status !== 'connected'}
-            className="flex-1 bg-transparent border-none focus:outline-none text-sm placeholder:text-muted-foreground disabled:cursor-wait"
+            className="flex-1 bg-transparent border-none shadow-none focus-visible:ring-0 text-sm placeholder:text-muted-foreground disabled:cursor-wait"
           />
-          <button
+          <Button
             type="submit"
+            size="icon"
             disabled={live.status !== 'connected' || !textInput.trim()}
-            className="flex items-center justify-center w-10 h-10 rounded-xl bg-accent text-accent-foreground disabled:opacity-40 hover:opacity-90 transition-opacity"
+            className="w-10 h-10"
             aria-label="Send"
           >
             <Send size={16} />
-          </button>
+          </Button>
         </form>
       </div>
     </motion.div>

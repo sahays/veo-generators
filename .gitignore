@@ -122,6 +122,8 @@ api/venv/
 # Node / Frontend
 node_modules/
 dist/
+.next/
+*.tsbuildinfo
 .eslintcache
 .stylelintcache
 

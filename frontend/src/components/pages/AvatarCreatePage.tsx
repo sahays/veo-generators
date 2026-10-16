@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowLeft, ImagePlus, Loader2, User, Zap, Film } from 'lucide-react'
 import { Button, Card } from '@/components/Common'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/UI'
 import { api } from '@/lib/api'
 import { AvatarPresetGrid } from '@/components/pages/avatar/AvatarPresetGrid'
@@ -145,12 +147,15 @@ export const AvatarCreatePage = () => {
       animate={{ opacity: 1, y: 0 }}
       className="max-w-2xl mx-auto space-y-6"
     >
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
+        icon={ArrowLeft}
         onClick={() => navigate('/avatars')}
-        className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        className="text-muted-foreground hover:text-foreground -ml-2"
       >
-        <ArrowLeft size={14} /> Back to Avatars
-      </button>
+        Back to Avatars
+      </Button>
 
       <div>
         <h2 className="text-2xl font-heading text-foreground tracking-tight">New Avatar</h2>
@@ -197,8 +202,9 @@ export const AvatarCreatePage = () => {
                 onChange={handleFile}
                 className="hidden"
               />
-              <button
+              <Button
                 type="button"
+                variant="unstyled"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
                 className="w-full aspect-[3/4] max-w-[240px] rounded-lg border-2 border-dashed border-border hover:border-accent/50 transition-colors bg-muted/20 flex items-center justify-center overflow-hidden cursor-pointer disabled:cursor-wait"
@@ -211,7 +217,7 @@ export const AvatarCreatePage = () => {
                     <span className="text-xs">Click to upload</span>
                   </div>
                 )}
-              </button>
+              </Button>
               {uploading && (
                 <div className="mt-2 h-1 bg-muted rounded-full overflow-hidden max-w-[240px]">
                   <div
@@ -227,12 +233,11 @@ export const AvatarCreatePage = () => {
             <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">
               Name
             </label>
-            <input
+            <Input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Aanya"
-              className="w-full px-3 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:ring-2 focus:ring-accent/30 text-sm"
               required
             />
           </div>
@@ -277,12 +282,11 @@ export const AvatarCreatePage = () => {
                 <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">
                   Default greeting (optional)
                 </label>
-                <input
+                <Input
                   type="text"
                   value={defaultGreeting}
                   onChange={(e) => setDefaultGreeting(e.target.value)}
                   placeholder="e.g. Hi! I'm ready to help — what's on your mind?"
-                  className="w-full px-3 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:ring-2 focus:ring-accent/30 text-sm"
                 />
                 <p className="text-[11px] text-muted-foreground mt-1">
                   Spoken first thing on connect, before any user input.
@@ -322,12 +326,11 @@ export const AvatarCreatePage = () => {
             <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 block">
               Persona note (optional)
             </label>
-            <textarea
+            <Textarea
               value={persona}
               onChange={(e) => setPersona(e.target.value)}
               rows={3}
               placeholder="e.g. A senior product manager at a tech startup who answers questions about AI."
-              className="w-full px-3 py-2 rounded-lg bg-muted border border-border focus:outline-none focus:ring-2 focus:ring-accent/30 text-sm resize-y"
             />
           </div>
         </Card>
@@ -363,10 +366,11 @@ interface MethodTileProps {
 }
 
 const MethodTile = ({ active, icon: Icon, title, subtitle, onClick }: MethodTileProps) => (
-  <button
+  <Button
     type="button"
+    variant="unstyled"
     onClick={onClick}
-    className={`text-left p-3 rounded-lg border transition-colors ${
+    className={`text-left p-3 rounded-[6px] border transition-colors block ${
       active
         ? 'border-accent/60 bg-accent/10'
         : 'border-border bg-muted/20 hover:border-accent/30'
@@ -377,6 +381,6 @@ const MethodTile = ({ active, icon: Icon, title, subtitle, onClick }: MethodTile
       <span className="text-sm font-medium">{title}</span>
     </div>
     <div className="text-xs text-muted-foreground leading-snug">{subtitle}</div>
-  </button>
+  </Button>
 )
 

@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion'
 import {
   Archive,
   CheckCircle2,
@@ -6,6 +5,7 @@ import {
   Loader2,
   Shrink,
 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { cn, formatFileSize, getTimeAgo } from '@/lib/utils'
 import {
   FILE_TYPE_ICONS,
@@ -36,12 +36,13 @@ export const UploadCard = ({
     record.resolution_label || (record.file_type === 'video' && !isChild ? 'original' : null)
 
   return (
-    <motion.button
+    <Button
+      variant="unstyled"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2 }}
       onClick={onClick}
-      className="glass bg-card p-4 rounded-xl text-left transition-all duration-200 hover:border-accent/40 group w-full"
+      className="glass bg-card p-4 rounded-xl text-left transition-all duration-200 hover:border-accent/40 group w-full block"
     >
       <div className="flex items-center gap-1.5 mb-2">
         <span
@@ -88,8 +89,9 @@ export const UploadCard = ({
             const isCompressingThis = compressingResolution === res
 
             return (
-              <button
+              <Button
                 key={res}
+                variant="unstyled"
                 onClick={(e) => {
                   e.stopPropagation()
                   if (!isProcessing && !isSucceeded && !isCompressingThis && onCompress) {
@@ -98,7 +100,7 @@ export const UploadCard = ({
                 }}
                 disabled={isProcessing || isSucceeded || isCompressingThis}
                 className={cn(
-                  'flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium transition-all',
+                  'flex items-center gap-1.5 px-2.5 py-1 rounded-[4px] text-[10px] font-medium transition-all',
                   isSucceeded
                     ? 'bg-emerald-500/10 text-emerald-600 cursor-default'
                     : isProcessing || isCompressingThis
@@ -114,7 +116,7 @@ export const UploadCard = ({
                   <Shrink size={10} />
                 )}
                 {res}
-              </button>
+              </Button>
             )
           })}
         </div>
@@ -122,15 +124,17 @@ export const UploadCard = ({
 
       {canEdit && (
         <div className="flex items-center justify-end">
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={onArchive}
-            className="p-1 -m-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+            className="h-6 w-6 p-1 -m-1 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100"
             title="Archive"
           >
             <Archive size={12} />
-          </button>
+          </Button>
         </div>
       )}
-    </motion.button>
+    </Button>
   )
 }

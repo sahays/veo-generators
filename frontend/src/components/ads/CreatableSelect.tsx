@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown, Plus, Check, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import type { SelectCategory } from '@/types/project'
 import { useProjectStore } from '@/store/useProjectStore'
@@ -55,7 +58,8 @@ export const CreatableSelect = ({
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-muted-foreground">{label}</label>
         <div ref={containerRef} className="relative">
-          <button
+          <Button
+            variant="unstyled"
             type="button"
             onClick={() => setIsOpen(!isOpen)}
             className={cn(
@@ -74,7 +78,7 @@ export const CreatableSelect = ({
                 isOpen && "rotate-180"
               )}
             />
-          </button>
+          </Button>
 
           <AnimatePresence>
             {isOpen && (
@@ -87,7 +91,8 @@ export const CreatableSelect = ({
               >
                 <div className="max-h-52 overflow-y-auto py-1">
                   {options.map((option: string) => (
-                    <button
+                    <Button
+                      variant="unstyled"
                       key={option}
                       type="button"
                       onClick={() => {
@@ -104,12 +109,13 @@ export const CreatableSelect = ({
                     >
                       <span>{option}</span>
                       {value === option && <Check size={14} className="text-accent-dark" />}
-                    </button>
+                    </Button>
                   ))}
                 </div>
 
                 <div className="border-t border-border">
-                  <button
+                  <Button
+                    variant="unstyled"
                     type="button"
                     onClick={() => {
                       setIsModalOpen(true)
@@ -119,7 +125,7 @@ export const CreatableSelect = ({
                   >
                     <Plus size={14} />
                     <span>Create New</span>
-                  </button>
+                  </Button>
                 </div>
               </motion.div>
             )}
@@ -205,20 +211,22 @@ const CreateOptionModal = ({ label, onConfirm, onClose }: CreateOptionModalProps
               This will be saved and available in future projects.
             </p>
           </div>
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             type="button"
             onClick={onClose}
-            className="p-1 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
           >
             <X size={16} />
-          </button>
+          </Button>
         </div>
 
         {/* Body */}
         <div className="px-5 pb-2 space-y-4">
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">Name</label>
-            <input
+            <Input
               ref={nameRef}
               type="text"
               value={name}
@@ -230,11 +238,7 @@ const CreateOptionModal = ({ label, onConfirm, onClose }: CreateOptionModalProps
                 }
               }}
               placeholder={`e.g. My custom ${label.toLowerCase()}`}
-              className={cn(
-                "w-full px-3 py-2 rounded-lg text-sm transition-all duration-200 text-foreground",
-                "bg-muted border border-border placeholder:text-muted-foreground",
-                "focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50"
-              )}
+              className="w-full px-3 py-2 rounded-lg text-sm bg-muted border border-border"
             />
           </div>
 
@@ -242,41 +246,32 @@ const CreateOptionModal = ({ label, onConfirm, onClose }: CreateOptionModalProps
             <label className="text-xs font-medium text-muted-foreground">
               Prompt / Description
             </label>
-            <textarea
+            <Textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={3}
               placeholder="Describe the style, behavior, or details for this option..."
-              className={cn(
-                "w-full px-3 py-2 rounded-lg text-sm transition-all duration-200 resize-none text-foreground",
-                "bg-muted border border-border placeholder:text-muted-foreground",
-                "focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50"
-              )}
+              className="w-full px-3 py-2 rounded-lg text-sm resize-none bg-muted border border-border"
             />
           </div>
         </div>
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border mt-2">
-          <button
+          <Button
+            variant="ghost"
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={handleSubmit}
             disabled={!name.trim()}
-            className={cn(
-              "px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
-              "bg-accent text-slate-900 hover:bg-accent-dark shadow-sm",
-              "disabled:opacity-40 disabled:cursor-not-allowed"
-            )}
           >
             Create
-          </button>
+          </Button>
         </div>
       </motion.div>
     </motion.div>

@@ -1,4 +1,5 @@
 import { useAuthStore } from '@/store/useAuthStore'
+import { serverApiRequest } from './serverAction'
 
 export const API_BASE_URL = '/api/v1'
 
@@ -14,6 +15,37 @@ function handleAuthError(res: Response) {
   }
 }
 
+export async function serverFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const headers = new Headers(init?.headers)
+  const headersRecord: Record<string, string> = {}
+  headers.forEach((value, key) => {
+    headersRecord[key] = value
+  })
+
+  const method = init?.method || 'GET'
+  const rawBody = init?.body
+  const body =
+    rawBody instanceof FormData || typeof rawBody === 'string'
+      ? rawBody
+      : rawBody != null
+        ? String(rawBody)
+        : undefined
+
+  const sres = await serverApiRequest(String(input), method, headersRecord, body)
+  const responseHeaders = new Headers({ 'Content-Type': 'application/json' })
+  if (sres.retryAfter) {
+    responseHeaders.set('Retry-After', sres.retryAfter)
+  }
+
+  return new Response(sres.text, {
+    status: sres.status,
+    headers: responseHeaders,
+  })
+}
+
 export async function authFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -21,7 +53,7 @@ export async function authFetch(
   const code = getInviteCode()
   const headers = new Headers(init?.headers)
   if (code) headers.set('X-Invite-Code', code)
-  const res = await fetch(input, { ...init, headers })
+  const res = await serverFetch(input, { ...init, headers })
   handleAuthError(res)
   if (res.status === 429) {
     const retryAfter = res.headers.get('Retry-After')

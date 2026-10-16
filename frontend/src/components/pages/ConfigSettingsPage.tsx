@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Trash2, GripVertical } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button, Card } from '@/components/Common'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { useProjectStore } from '@/store/useProjectStore'
 import { DEFAULT_OPTIONS, SELECT_LABELS } from '@/types/project'
 import type { SelectCategory, CustomOption } from '@/types/project'
@@ -120,12 +122,14 @@ const CustomOptionRow = ({
           </p>
         )}
       </div>
-      <button
+      <Button
+        variant="ghost"
+        size="icon"
         onClick={() => removeCustomOption(category, option.id)}
-        className="p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 transition-all text-muted-foreground shrink-0"
+        className="h-7 w-7 opacity-0 group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 text-muted-foreground shrink-0"
       >
         <Trash2 size={14} />
-      </button>
+      </Button>
     </motion.div>
   )
 }
@@ -178,7 +182,7 @@ const AddOptionModal = ({ label, existingNames, onConfirm, onClose }: AddOptionM
         <div className="px-5 pb-2 space-y-4">
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">Name</label>
-            <input
+            <Input
               autoFocus
               type="text"
               value={name}
@@ -192,10 +196,7 @@ const AddOptionModal = ({ label, existingNames, onConfirm, onClose }: AddOptionM
               }}
               placeholder={`e.g. My custom ${label.toLowerCase()}`}
               className={cn(
-                "w-full px-3 py-2 rounded-lg text-sm transition-all duration-200 text-foreground",
-                "bg-muted border border-border placeholder:text-muted-foreground",
-                "focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50",
-                duplicate && "border-red-500/50 focus:ring-red-500/30"
+                duplicate && "border-red-500/50 focus-visible:ring-red-500/30"
               )}
             />
             {duplicate && (
@@ -207,7 +208,7 @@ const AddOptionModal = ({ label, existingNames, onConfirm, onClose }: AddOptionM
             <label className="text-xs font-medium text-muted-foreground">
               Prompt / Description
             </label>
-            <textarea
+            <Textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={(e) => {
@@ -215,35 +216,25 @@ const AddOptionModal = ({ label, existingNames, onConfirm, onClose }: AddOptionM
               }}
               rows={3}
               placeholder="Describe the style, behavior, or details..."
-              className={cn(
-                "w-full px-3 py-2 rounded-lg text-sm transition-all duration-200 resize-none text-foreground",
-                "bg-muted border border-border placeholder:text-muted-foreground",
-                "focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50"
-              )}
             />
           </div>
         </div>
 
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border mt-2">
-          <button
+          <Button
             type="button"
+            variant="secondary"
             onClick={onClose}
-            className="px-4 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={() => onConfirm(name.trim(), prompt.trim())}
             disabled={!name.trim() || duplicate}
-            className={cn(
-              "px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
-              "bg-accent text-slate-900 hover:bg-accent-dark shadow-sm",
-              "disabled:opacity-40 disabled:cursor-not-allowed"
-            )}
           >
             Create
-          </button>
+          </Button>
         </div>
       </motion.div>
     </motion.div>

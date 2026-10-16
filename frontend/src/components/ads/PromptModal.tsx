@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { ImageIcon, Video, Loader2 } from 'lucide-react'
 import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Common'
+import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/lib/api'
 import type { Scene } from '@/types/project'
 
@@ -130,11 +131,11 @@ export const PromptModal = ({
       ) : (
         <div className="space-y-3">
           {error && <p className="text-xs text-red-500">{error}</p>}
-          <textarea
+          <Textarea
             value={promptJson}
             onChange={(e) => { setPromptJson(e.target.value); setError(null) }}
             readOnly={isReadOnly}
-            className="w-full min-h-[400px] p-4 rounded-xl text-xs font-mono leading-relaxed bg-muted/30 border border-border focus:ring-2 focus:ring-accent/30 outline-none resize-y"
+            className="w-full min-h-[400px] p-4 rounded-xl text-xs font-mono leading-relaxed bg-muted/30 border border-border resize-y"
             spellCheck={false}
           />
         </div>

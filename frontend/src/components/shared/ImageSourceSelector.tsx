@@ -1,4 +1,5 @@
-import { Loader2, ImageIcon, ChevronRight } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { cn, getTimeAgo, formatFileSize } from '@/lib/utils'
 
 export interface ImageUploadItem {
@@ -42,14 +43,15 @@ export function ImageSourceSelector({
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
       {images.map((img) => (
-        <button
+        <Button
           key={img.id}
+          variant="unstyled"
           onClick={() => onSelect(img)}
           className={cn(
-            "flex flex-col rounded-lg border transition-all text-left cursor-pointer overflow-hidden",
+            'flex flex-col rounded-[6px] border transition-all text-left overflow-hidden',
             selectedUri === img.gcs_uri
-              ? "border-accent bg-accent/5 ring-1 ring-accent/30"
-              : "border-border hover:border-accent/40 bg-card"
+              ? 'border-accent bg-accent/5 ring-1 ring-accent/30'
+              : 'border-border hover:border-accent/40 bg-card',
           )}
         >
           <div className="aspect-square bg-muted/50 overflow-hidden">
@@ -67,7 +69,7 @@ export function ImageSourceSelector({
               {formatFileSize(img.file_size_bytes)} &middot; {getTimeAgo(img.createdAt)}
             </p>
           </div>
-        </button>
+        </Button>
       ))}
     </div>
   )

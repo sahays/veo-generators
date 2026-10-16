@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AlertCircle, Check, Copy } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 export const ErrorBadge = ({ message }: { message: string }) => {
   const [copied, setCopied] = useState(false)
@@ -14,7 +15,8 @@ export const ErrorBadge = ({ message }: { message: string }) => {
 
   return (
     <div className="relative">
-      <button
+      <Button
+        variant="unstyled"
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
         onClick={() => setShowTooltip(!showTooltip)}
@@ -22,7 +24,7 @@ export const ErrorBadge = ({ message }: { message: string }) => {
       >
         <AlertCircle size={12} />
         Error!
-      </button>
+      </Button>
       {showTooltip && (
         <div className="absolute bottom-full left-0 mb-2 z-50 w-80 max-w-[90vw]">
           <div className="bg-popover border border-border rounded-lg shadow-lg p-3">
@@ -30,9 +32,11 @@ export const ErrorBadge = ({ message }: { message: string }) => {
               <p className="text-[11px] text-foreground break-all leading-relaxed flex-1">
                 {message}
               </p>
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={handleCopy}
-                className="shrink-0 p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
                 title="Copy error"
               >
                 {copied ? (
@@ -40,7 +44,7 @@ export const ErrorBadge = ({ message }: { message: string }) => {
                 ) : (
                   <Copy size={12} />
                 )}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

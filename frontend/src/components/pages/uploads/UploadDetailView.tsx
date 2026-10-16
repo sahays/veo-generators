@@ -11,6 +11,8 @@ import {
   Pencil,
   XCircle,
 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/useAuthStore'
 import { cn, formatFileSize, getTimeAgo } from '@/lib/utils'
@@ -54,12 +56,14 @@ export const UploadDetailView = ({ id }: { id: string }) => {
     return (
       <div className="text-center py-16">
         <p className="text-sm text-muted-foreground">File not found</p>
-        <button
+        <Button
+          variant="link"
+          size="sm"
           onClick={() => navigate('/uploads')}
-          className="text-accent text-sm mt-2 hover:underline"
+          className="mt-2"
         >
           Back to files
-        </button>
+        </Button>
       </div>
     )
   }
@@ -69,13 +73,15 @@ export const UploadDetailView = ({ id }: { id: string }) => {
 
   return (
     <div className="space-y-6">
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
+        icon={ArrowLeft}
         onClick={() => navigate('/uploads')}
-        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        className="text-muted-foreground hover:text-foreground -ml-2"
       >
-        <ArrowLeft size={14} />
         Back to files
-      </button>
+      </Button>
 
       {record.signed_url && (
         <div className="glass bg-card rounded-xl overflow-hidden border border-border">
@@ -124,18 +130,19 @@ export const UploadDetailView = ({ id }: { id: string }) => {
                 setIsEditingName(false)
               }}
             >
-              <input
+              <Input
                 autoFocus
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
-                className="text-base font-heading font-bold text-foreground bg-muted px-2 py-0.5 rounded border border-border focus:outline-none focus:ring-1 focus:ring-accent"
+                className="h-8 text-base font-heading font-bold text-foreground bg-muted px-2 py-0.5"
               />
-              <button type="submit" className="text-accent hover:text-accent-dark">
+              <Button type="submit" variant="ghost" size="icon" className="h-7 w-7 text-accent hover:text-accent-dark">
                 <Check size={16} />
-              </button>
+              </Button>
             </form>
           ) : canWrite ? (
-            <button
+            <Button
+              variant="unstyled"
               className="flex items-center gap-2 text-base font-heading font-bold text-foreground hover:text-accent-dark transition-colors"
               onClick={() => {
                 setEditName(record.display_name || record.filename)
@@ -144,7 +151,7 @@ export const UploadDetailView = ({ id }: { id: string }) => {
             >
               {record.display_name || record.filename}
               <Pencil size={12} className="text-muted-foreground" />
-            </button>
+            </Button>
           ) : (
             <span className="text-base font-heading font-bold text-foreground">
               {record.display_name || record.filename}
@@ -169,13 +176,15 @@ export const UploadDetailView = ({ id }: { id: string }) => {
           {isChild && (
             <div>
               <span className="text-muted-foreground">Source</span>
-              <button
+              <Button
+                variant="link"
+                size="xs"
                 onClick={() => navigate(`/uploads/${record.parent_upload_id}`)}
-                className="flex items-center gap-1 font-medium text-accent hover:text-accent-dark transition-colors"
+                className="flex items-center gap-1 px-0 h-auto font-medium text-accent hover:text-accent-dark"
               >
                 View original
                 <ExternalLink size={10} />
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -209,24 +218,29 @@ export const UploadDetailView = ({ id }: { id: string }) => {
                 </div>
                 <div className="flex items-center gap-3">
                   {v.child_upload_id && (
-                    <button
+                    <Button
+                      variant="link"
+                      size="xs"
                       onClick={() => navigate(`/uploads/${v.child_upload_id}`)}
-                      className="flex items-center gap-1 text-xs text-accent hover:text-accent-dark transition-colors"
+                      className="flex items-center gap-1 px-0 h-auto text-xs text-accent hover:text-accent-dark"
                     >
                       <ExternalLink size={12} />
                       View record
-                    </button>
+                    </Button>
                   )}
                   {v.status === 'succeeded' && v.signed_url && (
-                    <a
+                    <Button
+                      variant="link"
+                      size="xs"
                       href={v.signed_url}
                       download
-                      className="flex items-center gap-1 text-xs text-accent hover:text-accent-dark transition-colors"
+                      icon={Download}
+                      iconSize={12}
+                      className="text-xs text-accent hover:text-accent-dark px-0 h-auto"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <Download size={12} />
                       Download
-                    </a>
+                    </Button>
                   )}
                 </div>
               </div>

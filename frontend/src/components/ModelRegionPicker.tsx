@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Cpu, Globe } from 'lucide-react'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -21,77 +22,110 @@ interface ModelRegionPickerProps {
   className?: string
 }
 
+const FALLBACK_DEFAULTS: Record<
+  'text' | 'image' | 'video',
+  { name: string; code: string; region: string }
+> = {
+  text: { name: 'Gemini 3.8 Flash', code: 'gemini-3.8-flash', region: 'global' },
+  image: { name: 'Gemini Nano Banana 2.1', code: 'gemini-nano-banana-2.1', region: 'global' },
+  video: { name: 'Gemini Omni 1.1 Flash', code: 'gemini-omni-1.1-flash-preview', region: 'global' },
+}
+
 // Shared cache so multiple pickers don't re-fetch
 let _modelsCache: AIModel[] | null = null
-let _regionsCache: string[] | null = null
 let _defaultsCache: Record<string, any> | null = null
 
 export const ModelRegionPicker = ({ capability, value, onChange, label, className }: ModelRegionPickerProps) => {
-  const [models, setModels] = useState<AIModel[]>([])
-  const [regions, setRegions] = useState<string[]>([])
-  const [loaded, setLoaded] = useState(false)
+  const fallback = FALLBACK_DEFAULTS[capability]
+  const [modelName, setModelName] = useState<string>(fallback.name)
+  const [region, setRegion] = useState<string>(fallback.region)
 
   useEffect(() => {
+    let cancelled = false
     const load = async () => {
       try {
-        if (!_modelsCache || !_regionsCache || !_defaultsCache) {
-          const [m, r, d] = await Promise.all([
+        if (!_modelsCache || !_defaultsCache) {
+          const [m, d] = await Promise.all([
             api.models.list(),
-            api.models.regions(),
             api.models.defaults(),
           ])
           _modelsCache = m
-          _regionsCache = r
           _defaultsCache = d
         }
-        setModels(_modelsCache!.filter(m => m.capability === capability && m.is_active))
-        setRegions(_regionsCache!)
+        if (cancelled) return
 
-        // Pre-select defaults if no value set
-        if (!value.modelId && _defaultsCache![capability]) {
+        const activeModels = (_modelsCache || []).filter(
+          m => m.capability === capability && m.is_active
+        )
+        const defaultEntry = _defaultsCache?.[capability]
+        const matchedModel =
+          activeModels.find(m => m.code === defaultEntry?.code) ||
+          activeModels.find(m => m.is_default) ||
+          activeModels[0]
+
+        const resolvedCode = defaultEntry?.code || matchedModel?.code || fallback.code
+        const resolvedName = defaultEntry?.name || matchedModel?.name || fallback.name
+        const resolvedRegion =
+          defaultEntry?.region ||
+          matchedModel?.regions?.[0] ||
+          fallback.region
+
+        setModelName(resolvedName)
+        setRegion(resolvedRegion)
+
+        if (value.modelId !== resolvedCode || value.region !== resolvedRegion) {
           onChange({
-            modelId: _defaultsCache![capability].code,
-            region: value.region || 'global',
+            modelId: resolvedCode,
+            region: resolvedRegion,
           })
         }
       } catch (e) {
-        console.error('Failed to load models:', e)
-      } finally {
-        setLoaded(true)
+        console.error('Failed to load model defaults:', e)
+        if (!cancelled && (!value.modelId || !value.region)) {
+          onChange({
+            modelId: fallback.code,
+            region: fallback.region,
+          })
+        }
       }
     }
     load()
+    return () => {
+      cancelled = true
+    }
   }, [capability]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!loaded || models.length === 0) return null
-
   return (
-    <div className={cn("flex items-center gap-2", className)}>
+    <div className={cn("flex items-end gap-3", className)}>
       {label && (
-        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider shrink-0">
+        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider shrink-0 pb-2.5">
           {label}
         </span>
       )}
-      <select
-        value={value.modelId || ''}
-        onChange={e => onChange({ ...value, modelId: e.target.value })}
-        className="px-2 py-1 rounded-md bg-muted border border-border text-xs focus:outline-none focus:ring-1 focus:ring-accent min-w-0"
-      >
-        {models.map(m => (
-          <option key={m.id} value={m.code}>
-            {m.name}{m.is_default ? ' *' : ''}
-          </option>
-        ))}
-      </select>
-      <select
-        value={value.region || 'global'}
-        onChange={e => onChange({ ...value, region: e.target.value })}
-        className="px-2 py-1 rounded-md bg-muted border border-border text-xs focus:outline-none focus:ring-1 focus:ring-accent min-w-0"
-      >
-        {regions.map(r => (
-          <option key={r} value={r}>{r}</option>
-        ))}
-      </select>
+      <div className="space-y-1.5">
+        <span className="block text-[11px] font-medium uppercase tracking-wider text-muted-foreground ml-1">
+          Model
+        </span>
+        <div
+          className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg bg-muted/50 border border-border text-xs font-medium text-foreground whitespace-nowrap"
+          title={`Default ${capability} model (${value.modelId || fallback.code})`}
+        >
+          <Cpu size={13} className="text-accent-dark shrink-0" />
+          <span>{modelName}</span>
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <span className="block text-[11px] font-medium uppercase tracking-wider text-muted-foreground ml-1">
+          Region
+        </span>
+        <div
+          className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-lg bg-muted/50 border border-border text-xs font-mono font-medium text-foreground whitespace-nowrap"
+          title="Default Gemini / Vertex AI region"
+        >
+          <Globe size={13} className="text-accent-dark shrink-0" />
+          <span>{region}</span>
+        </div>
+      </div>
     </div>
   )
 }
@@ -99,6 +133,5 @@ export const ModelRegionPicker = ({ capability, value, onChange, label, classNam
 /** Invalidate the shared cache (e.g., after editing models) */
 export const invalidateModelCache = () => {
   _modelsCache = null
-  _regionsCache = null
   _defaultsCache = null
 }

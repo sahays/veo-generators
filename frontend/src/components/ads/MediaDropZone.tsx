@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, X, Film, Image as ImageIcon } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { MediaFile } from '@/types/project'
 
@@ -141,7 +142,8 @@ export const MediaDropZone = ({ files, onChange }: MediaDropZoneProps) => {
                 </div>
 
                 {/* Remove button */}
-                <button
+                <Button
+                  variant="unstyled"
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation()
@@ -150,7 +152,7 @@ export const MediaDropZone = ({ files, onChange }: MediaDropZoneProps) => {
                   className="absolute top-1.5 right-1.5 p-1 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-red-500 transition-all"
                 >
                   <X size={12} />
-                </button>
+                </Button>
               </motion.div>
             ))}
           </motion.div>

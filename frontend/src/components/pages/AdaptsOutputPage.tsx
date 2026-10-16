@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Loader2 } from 'lucide-react'
+import { Button } from '@/components/Common'
 import { api } from '@/lib/api'
 import { ModelPill } from '@/components/ModelPill'
 import { ServicesUsedPanel } from '@/components/pricing/ServicesUsedPanel'
@@ -33,9 +34,9 @@ export const AdaptsOutputPage = () => {
   if (error || !record) {
     return (
       <div className="space-y-4 max-w-3xl mx-auto py-12 px-6">
-        <button onClick={() => navigate(`/adapts/${id}`)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-          <ArrowLeft size={16} /> Back to Adapt
-        </button>
+        <Button variant="link" icon={ArrowLeft} onClick={() => navigate(`/adapts/${id}`)} className="text-sm">
+          Back to Adapt
+        </Button>
         <p className="text-sm text-red-500">{error || 'Record not found'}</p>
       </div>
     )
@@ -48,9 +49,9 @@ export const AdaptsOutputPage = () => {
   if (!variant) {
     return (
       <div className="space-y-4 max-w-3xl mx-auto py-12 px-6">
-        <button onClick={() => navigate(`/adapts/${id}`)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-          <ArrowLeft size={16} /> Back to Adapt
-        </button>
+        <Button variant="link" icon={ArrowLeft} onClick={() => navigate(`/adapts/${id}`)} className="text-sm">
+          Back to Adapt
+        </Button>
         <p className="text-sm text-red-500">Variant not found</p>
       </div>
     )
@@ -60,9 +61,9 @@ export const AdaptsOutputPage = () => {
 
   return (
     <div className="max-w-3xl mx-auto py-8 px-6 space-y-6">
-      <button onClick={() => navigate(`/adapts/${id}`)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-        <ArrowLeft size={16} /> Back to Adapt
-      </button>
+      <Button variant="link" icon={ArrowLeft} onClick={() => navigate(`/adapts/${id}`)} className="text-sm">
+        Back to Adapt
+      </Button>
 
       <div className="space-y-1">
         <div className="flex items-center gap-2">
@@ -78,17 +79,19 @@ export const AdaptsOutputPage = () => {
       {record.variants.length > 1 && (
         <div className="flex flex-wrap gap-1.5">
           {record.variants.map((v, i) => (
-            <button
+            <Button
               key={i}
+              variant={i === idx ? 'outline' : 'secondary'}
+              size="xs"
               onClick={() => navigate(`/adapts/${id}/prompt/${i}`, { replace: true })}
-              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+              className={
                 i === idx
-                  ? 'bg-accent/10 text-accent-dark border border-accent/30'
-                  : 'bg-muted text-muted-foreground hover:text-foreground border border-transparent'
-              }`}
+                  ? 'bg-accent/10 text-accent-dark border-accent/30'
+                  : ''
+              }
             >
               {v.aspect_ratio}
-            </button>
+            </Button>
           ))}
         </div>
       )}

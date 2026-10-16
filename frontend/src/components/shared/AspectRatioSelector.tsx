@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { PresetBundle } from '@/types/project'
 
@@ -45,7 +46,6 @@ export function AspectRatioSelector({
   const applyPreset = (presetId: string) => {
     const preset = presets[presetId]
     if (!preset) return
-    // Toggle: if all preset ratios are already selected, deselect them
     const allSelected = preset.ratios.every((r) => selected.includes(r))
     if (allSelected) {
       onChange(selected.filter((r) => !preset.ratios.includes(r)))
@@ -62,7 +62,6 @@ export function AspectRatioSelector({
 
   return (
     <div className="space-y-4">
-      {/* Preset bundles */}
       {Object.keys(presets).length > 0 && (
         <div className="space-y-2">
           <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -70,27 +69,26 @@ export function AspectRatioSelector({
           </h4>
           <div className="flex gap-2 flex-wrap">
             {Object.entries(presets).map(([id, preset]) => (
-              <button
+              <Button
                 key={id}
+                variant={isPresetActive(id) ? 'outline' : 'secondary'}
+                size="sm"
                 onClick={() => applyPreset(id)}
                 className={cn(
-                  "px-3 py-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer",
-                  isPresetActive(id)
-                    ? "border-accent bg-accent/10 text-accent-dark"
-                    : "border-border bg-card text-muted-foreground hover:border-accent/40 hover:text-foreground"
+                  isPresetActive(id) &&
+                    'border-accent bg-accent/10 text-accent-dark',
                 )}
               >
                 {preset.name}
-                <span className="ml-1.5 text-[10px] opacity-60">
+                <span className="ml-1 text-[10px] opacity-60">
                   ({preset.ratios.length})
                 </span>
-              </button>
+              </Button>
             ))}
           </div>
         </div>
       )}
 
-      {/* Individual ratios */}
       <div className="space-y-2">
         <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
           Aspect Ratios {selected.length > 0 && `(${selected.length} selected)`}
@@ -99,31 +97,31 @@ export function AspectRatioSelector({
           {ALL_RATIOS.map((ratio) => {
             const dims = RATIO_DIMENSIONS[ratio]
             const isSelected = selected.includes(ratio)
-            // Scale preview to fit in a 40x40 box
             const scale = 36 / Math.max(dims.w, dims.h)
             const pw = Math.round(dims.w * scale)
             const ph = Math.round(dims.h * scale)
 
             return (
-              <button
+              <Button
                 key={ratio}
+                variant="unstyled"
                 onClick={() => toggleRatio(ratio)}
                 className={cn(
-                  "flex flex-col items-center gap-2 p-3 rounded-lg border transition-all cursor-pointer",
+                  'flex flex-col items-center gap-2 p-3 rounded-[6px] border transition-all',
                   isSelected
-                    ? "border-accent bg-accent/10 text-accent-dark"
-                    : "border-border bg-card text-muted-foreground hover:border-accent/40 hover:text-foreground"
+                    ? 'border-accent bg-accent/10 text-accent-dark'
+                    : 'border-border bg-card text-muted-foreground hover:border-accent/40 hover:text-foreground',
                 )}
               >
                 <div
                   className={cn(
-                    "rounded-sm border transition-colors",
-                    isSelected ? "border-accent bg-accent/20" : "border-muted-foreground/30 bg-muted/50"
+                    'rounded-xs border transition-colors',
+                    isSelected ? 'border-accent bg-accent/20' : 'border-muted-foreground/30 bg-muted/50',
                   )}
                   style={{ width: pw, height: ph }}
                 />
                 <span className="text-xs font-medium">{ratio}</span>
-              </button>
+              </Button>
             )
           })}
         </div>

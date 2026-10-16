@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ImageIcon, Loader2, Video } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -140,7 +141,8 @@ const _SlideButton = ({
   label: string
   onClick: () => void
 }) => (
-  <button
+  <Button
+    variant="unstyled"
     onClick={onClick}
     className={cn(
       'flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider backdrop-blur-md border transition-all',
@@ -150,5 +152,5 @@ const _SlideButton = ({
     )}
   >
     {icon} {label}
-  </button>
+  </Button>
 )

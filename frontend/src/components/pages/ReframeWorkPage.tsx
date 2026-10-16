@@ -1,21 +1,23 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Smartphone, Loader2, ArrowLeft, RotateCcw, RectangleVertical } from 'lucide-react'
+import { Smartphone, RectangleVertical } from 'lucide-react'
 import { Button } from '@/components/Common'
 import { ModelRegionPicker } from '@/components/ModelRegionPicker'
 import { api } from '@/lib/api'
-import { useAuthStore } from '@/store/useAuthStore'
 import { cn } from '@/lib/utils'
 import { usePolling } from '@/hooks/usePolling'
 import { useVideoSourceState } from '@/hooks/useVideoSourceState'
 import { buildStatusConfig } from '@/hooks/jobStatus'
+import { reframeCreateSchema } from '@/types/schemas'
 import { VideoSourceSelector } from '@/components/shared/VideoSourceSelector'
 import { ReframeCompleted } from '@/components/pages/reframe/ReframeCompleted'
 import { ReframePipelineLinks } from '@/components/pages/reframe/ReframePipelineLinks'
-
-import { ProgressBar } from '@/components/shared/ProgressBar'
-import { ErrorDisplay } from '@/components/shared/ErrorDisplay'
-import { WorkPageHeader } from '@/components/shared/WorkPageHeader'
+import {
+  WorkViewShell,
+  WorkCreateShell,
+  SelectedVideoPreview,
+  CheckboxOption,
+} from '@/components/shared/WorkPageShell'
 import type { UploadItem, ProductionItem } from '@/components/shared/VideoSourceSelector'
 
 const ACTIVE_STATUSES = ['pending', 'analyzing', 'processing', 'encoding']
@@ -36,13 +38,17 @@ const STATUS_CONFIG = buildStatusConfig(
 export const ReframeWorkPage = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
   const isViewMode = !!id
 
   const {
-    sourceTab, setSourceTab,
-    videoUrl, gcsUri, videoFilename,
-    productions, uploads, loading: loadingSources,
+    sourceTab,
+    setSourceTab,
+    videoUrl,
+    gcsUri,
+    videoFilename,
+    productions,
+    uploads,
+    loading: loadingSources,
     select,
   } = useVideoSourceState<UploadItem, ProductionItem>(
     {
@@ -67,25 +73,23 @@ export const ReframeWorkPage = () => {
     ACTIVE_STATUSES,
   )
 
-  const handleSelectUpload = (upload: UploadItem) =>
-    select(upload.video_signed_url, upload.gcs_uri, upload.display_name || upload.filename)
-
-  const handleSelectProduction = (prod: ProductionItem) =>
-    select(prod.video_signed_url, prod.final_video_url, prod.name)
-
   const handleStartReframe = async () => {
-    if (!gcsUri) return
+    const parsed = reframeCreateSchema.safeParse({
+      gcs_uri: gcsUri || '',
+      source_filename: videoFilename || 'Untitled',
+      diagnostic_mode: diagnosticMode,
+      output_aspect_ratio: outputAspectRatio,
+      model_id: modelConfig.modelId,
+      region: modelConfig.region,
+    })
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message || 'Invalid reframe parameters')
+      return
+    }
     setSubmitting(true)
     setError(null)
     try {
-      const result = await api.reframe.create({
-        gcs_uri: gcsUri,
-        source_filename: videoFilename,
-        diagnostic_mode: diagnosticMode,
-        output_aspect_ratio: outputAspectRatio,
-        model_id: modelConfig.modelId,
-        region: modelConfig.region,
-      })
+      const result = await api.reframe.create(parsed.data)
       navigate(`/orientations/${result.id}`, { replace: true })
     } catch (err: any) {
       setError(err.message)
@@ -94,99 +98,58 @@ export const ReframeWorkPage = () => {
     }
   }
 
-  const [retrying, setRetrying] = useState(false)
-
-  const handleRetry = async () => {
-    if (!id) return
-    setRetrying(true)
-    try {
-      await api.reframe.retry(id)
-    } catch (err: any) {
-      console.error('Failed to retry reframe', err)
-    } finally {
-      setRetrying(false)
-    }
-  }
-
-  // --- View Mode ---
   if (isViewMode) {
-    if (recordLoading) {
-      return (
-        <div className="flex flex-col items-center justify-center py-32 space-y-4">
-          <Loader2 className="animate-spin text-accent" size={32} />
-          <p className="text-sm text-muted-foreground">Loading reframe...</p>
-        </div>
-      )
-    }
-
-    if (pollError && !record) {
-      return (
-        <div className="space-y-4">
-          <button onClick={() => navigate('/orientations')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-            <ArrowLeft size={16} /> Back to Orientations
-          </button>
-          <ErrorDisplay error={pollError} size="md" />
-        </div>
-      )
-    }
-
-    if (!record) return null
-
-    const isProcessing = ACTIVE_STATUSES.includes(record.status)
-    const hasPlan = !!((record.segment_plan as unknown[] | undefined)?.length) || !!record.eval_report
-
     return (
-      <div className="space-y-6">
-        <WorkPageHeader
-          backPath="/orientations"
-          backLabel="Back to Orientations"
-          record={record}
-          defaultName="Reframe"
-          onSaveName={(name) => api.reframe.update(record.id, { display_name: name })}
-          statusConfig={STATUS_CONFIG}
-          activeStatuses={ACTIVE_STATUSES}
-        >
-          {record.blurred_bg && (
+      <WorkViewShell
+        backPath="/orientations"
+        backLabel="Back to Orientations"
+        defaultName="Reframe"
+        loadingLabel="Loading reframe..."
+        record={record}
+        loading={recordLoading}
+        pollError={pollError}
+        statusConfig={STATUS_CONFIG}
+        activeStatuses={ACTIVE_STATUSES}
+        onSaveName={(name) => api.reframe.update(record!.id, { display_name: name })}
+        onRetry={id ? () => api.reframe.retry(id) : undefined}
+        headerBadges={
+          record?.blurred_bg ? (
             <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-600 border border-purple-500/20">
               Blurred BG
             </span>
-          )}
-        </WorkPageHeader>
-
-        {isProcessing && <ProgressBar progress={record.progress_pct} />}
-
-        {record.status === 'failed' && (
-          <div className="space-y-3">
-            {record.error_message && <ErrorDisplay error={record.error_message} size="md" />}
-            {canWrite && (
-              <Button icon={retrying ? Loader2 : RotateCcw} onClick={handleRetry} disabled={retrying}>
-                {retrying ? 'Retrying...' : 'Retry'}
-              </Button>
-            )}
-          </div>
-        )}
-
-        <ReframePipelineLinks recordId={record.id} hasPlan={hasPlan} />
-
-        {record.status === 'completed' && <ReframeCompleted record={record} />}
-      </div>
+          ) : undefined
+        }
+      >
+        {(rec) => {
+          const hasPlan =
+            !!((rec.segment_plan as unknown[] | undefined)?.length) || !!rec.eval_report
+          return (
+            <>
+              <ReframePipelineLinks recordId={rec.id} hasPlan={hasPlan} />
+              {rec.status === 'completed' && <ReframeCompleted record={rec} />}
+            </>
+          )
+        }}
+      </WorkViewShell>
     )
   }
 
-  // --- Create Mode ---
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <button onClick={() => navigate('/orientations')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-          <ArrowLeft size={16} /> Back to Orientations
-        </button>
-      </div>
-
-      <div className="space-y-1">
-        <h2 className="text-lg font-heading font-bold text-foreground">New Reframe</h2>
-        <p className="text-sm text-muted-foreground">Select a landscape (16:9) video to reframe to portrait (9:16 or 3:4)</p>
-      </div>
-
+    <WorkCreateShell
+      backPath="/orientations"
+      backLabel="Back to Orientations"
+      title="New Reframe"
+      subtitle="Select a landscape (16:9) video to reframe to portrait (9:16 or 3:4)"
+      error={error}
+      actionIcon={Smartphone}
+      actionLabel="Start Reframe"
+      submitting={submitting}
+      disabled={!gcsUri}
+      onSubmit={handleStartReframe}
+      actionLeft={
+        <ModelRegionPicker capability="text" value={modelConfig} onChange={setModelConfig} />
+      }
+    >
       <VideoSourceSelector
         uploads={uploads}
         productions={productions}
@@ -194,25 +157,16 @@ export const ReframeWorkPage = () => {
         sourceTab={sourceTab}
         onTabChange={setSourceTab}
         selectedUri={gcsUri}
-        onSelectUpload={handleSelectUpload}
-        onSelectProduction={handleSelectProduction}
+        onSelectUpload={(u) =>
+          select(u.video_signed_url, u.gcs_uri, u.display_name || u.filename)
+        }
+        onSelectProduction={(p) =>
+          select(p.video_signed_url, p.final_video_url, p.name)
+        }
         emptyProductionsMessage="No completed 16:9 productions found."
       />
 
-      {videoUrl && (
-        <div className="space-y-3">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Selected Video</h3>
-          <div className="aspect-video bg-black rounded-xl overflow-hidden border border-border max-w-lg">
-            <video
-              src={videoUrl}
-              controls
-              className="w-full h-full object-contain"
-            />
-          </div>
-          <p className="text-sm text-foreground font-medium">{videoFilename}</p>
-        </div>
-      )}
-
+      <SelectedVideoPreview videoUrl={videoUrl} videoFilename={videoFilename} />
 
       {videoUrl && (
         <div className="space-y-3">
@@ -220,59 +174,49 @@ export const ReframeWorkPage = () => {
             <span className="text-sm font-medium text-foreground">Output format</span>
             <div className="flex gap-3">
               {[
-                { id: '9:16' as const, label: 'Adaptive 9:16', icon: Smartphone, desc: 'Each scene picks its own aspect ratio on a 9:16 canvas' },
-                { id: '3:4' as const, label: 'Adaptive 3:4', icon: RectangleVertical, desc: 'Each scene picks its own aspect ratio on a 3:4 canvas' },
+                {
+                  id: '9:16' as const,
+                  label: 'Adaptive 9:16',
+                  icon: Smartphone,
+                  desc: 'Each scene picks its own aspect ratio on a 9:16 canvas',
+                },
+                {
+                  id: '3:4' as const,
+                  label: 'Adaptive 3:4',
+                  icon: RectangleVertical,
+                  desc: 'Each scene picks its own aspect ratio on a 3:4 canvas',
+                },
               ].map((opt) => (
-                <button
+                <Button
                   key={opt.id}
-                  type="button"
+                  variant="unstyled"
                   onClick={() => setOutputAspectRatio(opt.id)}
                   className={cn(
-                    'flex-1 flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all text-center',
+                    'flex-1 flex flex-col items-center gap-1.5 p-3 rounded-[6px] border transition-all text-center',
                     outputAspectRatio === opt.id
                       ? 'bg-accent/10 border-accent text-accent-dark'
                       : 'border-border text-muted-foreground hover:border-accent/30',
                   )}
                 >
                   <opt.icon size={20} />
-                  <span className="text-[11px] font-bold uppercase tracking-widest">{opt.label}</span>
-                  <span className="text-[10px] text-muted-foreground leading-tight">{opt.desc}</span>
-                </button>
+                  <span className="text-[11px] font-bold uppercase tracking-widest">
+                    {opt.label}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground leading-tight">
+                    {opt.desc}
+                  </span>
+                </Button>
               ))}
             </div>
           </div>
-          <label className="flex items-center gap-3 cursor-pointer group">
-            <input
-              type="checkbox"
-              checked={diagnosticMode}
-              onChange={(e) => setDiagnosticMode(e.target.checked)}
-              className="w-4 h-4 rounded border-border text-accent focus:ring-accent/30 cursor-pointer"
-            />
-            <div>
-              <span className="text-sm font-medium text-foreground group-hover:text-accent-dark transition-colors">
-                Diagnostic preview
-              </span>
-              <p className="text-xs text-muted-foreground">
-                Skip cropping — render the full frame letterboxed in {outputAspectRatio} with detected faces and scene labels drawn on top, to see what the models see
-              </p>
-            </div>
-          </label>
+          <CheckboxOption
+            checked={diagnosticMode}
+            onChange={setDiagnosticMode}
+            label="Diagnostic preview"
+            description={`Skip cropping — render the full frame letterboxed in ${outputAspectRatio} with detected faces and scene labels drawn on top, to see what the models see`}
+          />
         </div>
       )}
-
-      <ErrorDisplay error={error} />
-
-      <div className="flex items-center justify-end gap-4">
-        <ModelRegionPicker capability="text" value={modelConfig} onChange={setModelConfig} className="mt-2" />
-        <Button
-          icon={Smartphone}
-          onClick={handleStartReframe}
-          disabled={!gcsUri || submitting}
-          className={cn(submitting && "[&_svg]:animate-spin")}
-        >
-          {submitting ? 'Starting...' : 'Start Reframe'}
-        </Button>
-      </div>
-    </div>
+    </WorkCreateShell>
   )
 }

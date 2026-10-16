@@ -1,5 +1,6 @@
 import os
 import zlib
+import base64
 import asyncio
 from typing import Optional
 from google import genai
@@ -7,6 +8,10 @@ from google.genai import types
 from ai_helpers import resolve_model
 from models import Scene, Project
 from prompt_templates import PHYSICAL_REALISM_DIRECTIVE, VEO_NEGATIVE_PROMPT
+
+
+def _is_omni_model(model_id: str) -> bool:
+    return model_id.startswith("gemini-omni")
 
 
 class VideoService:
@@ -106,6 +111,69 @@ class VideoService:
 
         return " ".join(parts)
 
+    def _extract_omni_video_uri(self, interaction, name_hint: str) -> Optional[str]:
+        """Extract a gs:// URI from a completed Gemini Omni interaction,
+        uploading inline base64 bytes if needed."""
+        output_video = getattr(interaction, "output_video", None)
+        if output_video is None and isinstance(interaction, dict):
+            output_video = interaction.get("output_video")
+
+        if output_video is None:
+            steps = getattr(interaction, "steps", None)
+            if steps is None and isinstance(interaction, dict):
+                steps = interaction.get("steps")
+            for step in reversed(steps or []):
+                step_type = (
+                    step.get("type")
+                    if isinstance(step, dict)
+                    else getattr(step, "type", None)
+                )
+                if step_type != "model_output":
+                    continue
+                content = (
+                    step.get("content")
+                    if isinstance(step, dict)
+                    else getattr(step, "content", None)
+                )
+                for item in reversed(content or []):
+                    item_type = (
+                        item.get("type")
+                        if isinstance(item, dict)
+                        else getattr(item, "type", None)
+                    )
+                    if item_type == "video":
+                        output_video = item
+                        break
+                if output_video is not None:
+                    break
+
+        if output_video is None:
+            return None
+
+        uri = (
+            output_video.get("uri")
+            if isinstance(output_video, dict)
+            else getattr(output_video, "uri", None)
+        )
+        if uri:
+            return uri
+
+        data = (
+            output_video.get("data")
+            if isinstance(output_video, dict)
+            else getattr(output_video, "data", None)
+        )
+        if data and self.storage_svc:
+            video_bytes = (
+                base64.b64decode(data) if isinstance(data, str) else bytes(data)
+            )
+            safe_name = name_hint.replace("/", "_").replace(":", "_")
+            filename = f"videos/{safe_name}.mp4"
+            return self.storage_svc.upload_bytes(
+                video_bytes, filename, content_type="video/mp4"
+            )
+        return None
+
     async def generate_scene_video(
         self,
         project_id: str,
@@ -120,24 +188,88 @@ class VideoService:
             self.firestore_svc,
             "video",
             "VIDEO_GEN_MODEL",
-            "veo-3.1-generate-001",
+            "gemini-omni-1.1-flash-preview",
             model_id,
         )
-        client = self._get_client(region)
+        is_omni = _is_omni_model(model_id)
+        # Gemini Omni 1.1 Flash is only available on the global endpoint.
+        client = self._get_client("global" if is_omni else region)
         seed = self._get_project_seed(project_id)
 
-        SUPPORTED_DURATIONS = [4, 6, 8]
+        supported_durations = list(range(3, 11)) if is_omni else [4, 6, 8]
         try:
             start = self._parse_timestamp(scene.timestamp_start)
             end = self._parse_timestamp(scene.timestamp_end)
             raw = int(end - start)
-            duration = min(SUPPORTED_DURATIONS, key=lambda d: abs(d - raw))
+            duration = min(supported_durations, key=lambda d: abs(d - raw))
         except (ValueError, IndexError):
             duration = 8
 
         enriched_prompt = prompt_override or self._build_video_prompt(
             scene, project, duration
         )
+
+        ref_url = None
+        if scene.thumbnail_url and scene.thumbnail_url.startswith("gs://"):
+            ref_url = scene.thumbnail_url
+        elif project and project.reference_image_url:
+            ref_url = project.reference_image_url
+
+        if is_omni:
+            input_blocks: list[dict] = [{"type": "text", "text": enriched_prompt}]
+            video_task = "text_to_video"
+            if ref_url and ref_url.startswith("gs://"):
+                input_blocks.append(
+                    {"type": "image", "uri": ref_url, "mime_type": "image/png"}
+                )
+                video_task = "image_to_video"
+
+            response_format_block: dict = {
+                "type": "video",
+                "aspect_ratio": project.orientation
+                if project and project.orientation
+                else "16:9",
+                "resolution": "720p",
+                "duration": f"{duration}s",
+            }
+            bucket = os.getenv("GCS_BUCKET")
+            if bucket:
+                response_format_block["delivery"] = "uri"
+                response_format_block["gcs_uri"] = f"gs://{bucket}/videos/{project_id}/"
+
+            interaction = client.interactions.create(
+                model=model_id,
+                background=not blocking,
+                input=input_blocks,
+                response_format=[response_format_block],
+                generation_config={"video_config": {"task": video_task}},
+            )
+            interaction_id = getattr(interaction, "id", None) or (
+                interaction.get("id") if isinstance(interaction, dict) else ""
+            )
+
+            if not blocking:
+                return {
+                    "operation_name": f"interaction:{interaction_id}",
+                    "status": "processing",
+                    "generated_prompt": enriched_prompt,
+                    "model_id": model_id,
+                    "duration_seconds": duration,
+                }
+
+            while getattr(interaction, "status", None) in ("in_progress", "queued"):
+                await asyncio.sleep(10)
+                interaction = client.interactions.get(interaction_id)
+
+            uri = self._extract_omni_video_uri(
+                interaction, interaction_id or project_id
+            )
+            return {
+                "video_uri": uri or "",
+                "generated_prompt": enriched_prompt,
+                "model_id": model_id,
+                "duration_seconds": duration,
+            }
 
         generate_kwargs = {
             "model": model_id,
@@ -153,12 +285,6 @@ class VideoService:
                 negative_prompt=VEO_NEGATIVE_PROMPT,
             ),
         }
-
-        ref_url = None
-        if scene.thumbnail_url and scene.thumbnail_url.startswith("gs://"):
-            ref_url = scene.thumbnail_url
-        elif project and project.reference_image_url:
-            ref_url = project.reference_image_url
         if ref_url and ref_url.startswith("gs://"):
             generate_kwargs["image"] = types.Image(
                 gcs_uri=ref_url, mime_type="image/png"
@@ -196,6 +322,36 @@ class VideoService:
     async def get_video_generation_status(self, operation_name: str):
         try:
             print(f"Checking operation: {operation_name}")
+
+            if operation_name.startswith("interaction:"):
+                interaction_id = operation_name.split("interaction:", 1)[1]
+                client = self._get_client("global")
+                interaction = client.interactions.get(interaction_id)
+                status = getattr(interaction, "status", None) or (
+                    interaction.get("status") if isinstance(interaction, dict) else None
+                )
+                if status in ("in_progress", "queued", None):
+                    return {"status": "processing"}
+                if status in (
+                    "failed",
+                    "cancelled",
+                    "incomplete",
+                    "budget_exceeded",
+                ):
+                    errors = getattr(interaction, "errors", None) or (
+                        interaction.get("errors")
+                        if isinstance(interaction, dict)
+                        else None
+                    )
+                    return {"status": "failed", "error": str(errors or status)}
+                if status == "completed":
+                    uri = self._extract_omni_video_uri(interaction, interaction_id)
+                    if uri:
+                        print(f"Video generated (Gemini Omni): {uri}")
+                        return {"status": "completed", "video_uri": uri}
+                    print("Interaction complete but no video found in result.")
+                    return {"status": "completed", "video_uri": None}
+                return {"status": "processing"}
 
             operation_wrapper = types.GenerateVideosOperation(name=operation_name)
             operation = self.video_client.operations.get(operation_wrapper)

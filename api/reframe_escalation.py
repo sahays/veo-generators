@@ -31,7 +31,7 @@ from typing import List, Optional
 # metrics, 88% cheaper Pass-2 ($0.62 → $0.08 across the three). Overridable per
 # environment so models can be re-A/B'd without a deploy (the local harness in
 # the project memory sets REFRAME_DECISION_MODEL on the worker container).
-DECISION_MODEL = os.getenv("REFRAME_DECISION_MODEL", "gemini-3.1-flash-lite")
+DECISION_MODEL = os.getenv("REFRAME_DECISION_MODEL", "gemini-3.5-flash-lite")
 
 # Batching guard. Calls run SEQUENTIALLY (one at a time, with backoff) — multiple
 # calls per video are fine, parallel fan-out is what trips 429s. Each request

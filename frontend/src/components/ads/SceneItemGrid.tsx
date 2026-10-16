@@ -1,5 +1,6 @@
 import { ImageIcon, Loader2, Mic, Music, Pencil, Video } from 'lucide-react'
-import { Card } from '@/components/Common'
+import { Button, Card } from '@/components/Common'
+import { Textarea } from '@/components/ui/textarea'
 import { SceneMediaCarousel } from '@/components/ads/SceneMediaCarousel'
 import { AudioToggle, StatusIcon } from '@/components/ads/SceneItemShared'
 import { cn } from '@/lib/utils'
@@ -59,12 +60,12 @@ export const SceneItemGrid = ({
     </div>
 
     <div className="p-4 space-y-3 bg-card/50">
-      <textarea
+      <Textarea
         value={scene.visual_description}
         onChange={(e) => handleTextChange({ visual_description: e.target.value })}
         readOnly={isReadOnly}
         className={cn(
-          'w-full text-xs leading-relaxed bg-transparent border-none focus:ring-0 outline-none resize-none p-0 min-h-[60px]',
+          'w-full text-xs leading-relaxed bg-transparent border-none shadow-none focus-visible:ring-0 outline-none resize-none p-0 min-h-[60px]',
           isReadOnly && 'cursor-default',
         )}
         placeholder="Scene description..."
@@ -103,32 +104,38 @@ export const SceneItemGrid = ({
           Scene {index + 1}
           <StatusIcon status={scene.status} />
         </span>
-        <div className="flex gap-2">
-          <button
+        <div className="flex gap-1.5">
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={onShowPromptModal}
-            className="p-1.5 hover:bg-accent/10 rounded-md text-muted-foreground hover:text-accent-dark transition-colors"
+            className="h-7 w-7 text-muted-foreground hover:text-accent-dark"
             title="Edit Prompt"
           >
             <Pencil size={14} />
-          </button>
+          </Button>
           {!isReadOnly && (
             <>
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={handleGenerateFrame}
                 disabled={isBusy}
-                className="p-1.5 hover:bg-accent/10 rounded-md text-accent-dark transition-colors disabled:opacity-40"
+                className="h-7 w-7 text-accent-dark"
                 title="Generate Frame (2 credits)"
               >
                 {isGeneratingFrame ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />}
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={handleGenerateVideo}
                 disabled={isBusy}
-                className="p-1.5 hover:bg-accent/10 rounded-md text-accent-dark transition-colors disabled:opacity-40"
+                className="h-7 w-7 text-accent-dark"
                 title="Generate Video (5 credits)"
               >
                 {isGeneratingVideo ? <Loader2 size={14} className="animate-spin" /> : <Video size={14} />}
-              </button>
+              </Button>
             </>
           )}
         </div>

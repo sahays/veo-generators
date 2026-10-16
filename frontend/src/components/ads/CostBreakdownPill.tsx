@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Cpu } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 /**
@@ -54,7 +55,8 @@ export const CostBreakdownPill = ({
 
   return (
     <div ref={ref} className={cn('relative inline-flex', className)}>
-      <button
+      <Button
+        variant="unstyled"
         onClick={(e) => {
           e.stopPropagation()
           setOpen(!open)
@@ -71,7 +73,7 @@ export const CostBreakdownPill = ({
           </>
         )}
         <span>{fmt(totalCost)}</span>
-      </button>
+      </Button>
 
       {open && (
         <div

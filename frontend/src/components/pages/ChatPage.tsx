@@ -8,7 +8,7 @@ export const ChatPage: React.FC = () => {
       {/* Page Header */}
       <div className="flex items-center justify-between border-b border-border bg-muted/30 px-6 py-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-white shadow-lg shadow-accent/20">
+          <div className="flex h-10 w-10 items-center justify-center rounded-[6px] btn-primary text-white shadow-lg shadow-accent/20">
             <Bot size={24} />
           </div>
           <div>

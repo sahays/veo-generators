@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Send, Mic, Square } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
 interface AvatarChatInputProps {
@@ -121,13 +123,14 @@ export const AvatarChatInput = ({
       className="glass bg-card/95 rounded-2xl shadow-2xl border border-border p-2 flex items-center gap-2"
     >
       {supported && (
-        <button
+        <Button
           type="button"
+          variant="unstyled"
           onClick={handleMicClick}
           disabled={disabled}
           title={recording ? `Stop (${secondsLeft}s left)` : 'Tap to record up to 10s'}
           className={cn(
-            'p-2.5 rounded-xl transition-all flex items-center gap-1.5',
+            'p-2.5 rounded-[6px] transition-all flex items-center gap-1.5',
             recording
               ? 'bg-red-500/15 text-red-500'
               : 'hover:bg-muted text-muted-foreground hover:text-foreground',
@@ -142,9 +145,9 @@ export const AvatarChatInput = ({
           ) : (
             <Mic size={18} />
           )}
-        </button>
+        </Button>
       )}
-      <input
+      <Input
         type="text"
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -156,16 +159,17 @@ export const AvatarChatInput = ({
               : 'Ask the avatar…'
         }
         disabled={disabled || recording}
-        className="flex-1 bg-transparent border-none outline-none text-sm placeholder:text-muted-foreground disabled:cursor-not-allowed"
+        className="flex-1 bg-transparent border-none shadow-none focus-visible:ring-0 text-sm placeholder:text-muted-foreground disabled:cursor-not-allowed"
       />
-      <button
+      <Button
         type="submit"
+        size="icon"
         disabled={disabled || recording || !text.trim()}
-        className="p-2.5 rounded-xl bg-accent text-slate-900 hover:bg-accent-dark transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+        className="h-10 w-10"
         title="Send"
       >
         <Send size={18} />
-      </button>
+      </Button>
     </form>
   )
 }

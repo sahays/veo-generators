@@ -19,7 +19,7 @@ from .tools._client import api_call
 
 logger = logging.getLogger(__name__)
 
-AGENT_MODEL_ID = os.getenv("GEMINI_AGENT_ORCHESTRATOR", "gemini-3.1-flash-lite-preview")
+AGENT_MODEL_ID = os.getenv("GEMINI_AGENT_ORCHESTRATOR", "gemini-3.5-flash-lite")
 
 # Request-scoped context so concurrent requests don't clobber each other.
 _request_context: contextvars.ContextVar[dict] = contextvars.ContextVar(

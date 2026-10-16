@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Pencil, Check } from 'lucide-react'
 import { useAuthStore } from '@/store/useAuthStore'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 interface EditableNameFieldProps {
   value: string
@@ -23,31 +25,38 @@ export const EditableNameField = ({ value, onSave, defaultText = 'Untitled' }: E
 
   if (isEditing) {
     return (
-      <form className="flex items-center gap-2" onSubmit={async (e) => {
-        e.preventDefault()
-        await onSave(editName)
-        setIsEditing(false)
-      }}>
-        <input
+      <form
+        className="flex items-center gap-2"
+        onSubmit={async (e) => {
+          e.preventDefault()
+          await onSave(editName)
+          setIsEditing(false)
+        }}
+      >
+        <Input
           autoFocus
           value={editName}
           onChange={(e) => setEditName(e.target.value)}
-          className="text-lg font-heading font-bold text-foreground bg-muted px-2 py-0.5 rounded border border-border focus:outline-none focus:ring-1 focus:ring-accent"
+          className="text-lg font-heading font-bold bg-muted px-2.5 py-1 w-auto"
         />
-        <button type="submit" className="text-accent hover:text-accent-dark">
+        <Button type="submit" variant="ghost" size="icon" className="text-accent hover:text-accent-dark">
           <Check size={16} />
-        </button>
+        </Button>
       </form>
     )
   }
 
   return (
-    <button
-      className="flex items-center gap-2 text-lg font-heading font-bold text-foreground hover:text-accent-dark transition-colors"
-      onClick={() => { setEditName(displayValue); setIsEditing(true) }}
+    <Button
+      variant="link"
+      className="flex items-center gap-2 text-lg font-heading font-bold text-foreground hover:text-accent-dark"
+      onClick={() => {
+        setEditName(displayValue)
+        setIsEditing(true)
+      }}
     >
       {displayValue}
       <Pencil size={12} className="text-muted-foreground" />
-    </button>
+    </Button>
   )
 }

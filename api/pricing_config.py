@@ -47,6 +47,44 @@ class FlatRate:
 # Gemini text models (source: cloud.google.com/vertex-ai/generative-ai/pricing)
 # ---------------------------------------------------------------------------
 
+GEMINI_FLASH_38 = TextModelRate(
+    model_id="gemini-3.8-flash",
+    label="Gemini 3.8 Flash",
+    tiers=(
+        TokenTier(
+            threshold_tokens=None, input_per_token=0.75e-6, output_per_token=3.75e-6
+        ),
+    ),
+)
+
+GEMINI_FLASH_37 = TextModelRate(
+    model_id="gemini-3.7-flash",
+    label="Gemini 3.7 Flash",
+    tiers=(
+        TokenTier(
+            threshold_tokens=None, input_per_token=0.75e-6, output_per_token=3.75e-6
+        ),
+    ),
+)
+
+GEMINI_FLASH_35 = TextModelRate(
+    model_id="gemini-3.5-flash",
+    label="Gemini 3.5 Flash",
+    tiers=(
+        TokenTier(threshold_tokens=None, input_per_token=0.5e-6, output_per_token=3e-6),
+    ),
+)
+
+GEMINI_FLASH_LITE_35 = TextModelRate(
+    model_id="gemini-3.5-flash-lite",
+    label="Gemini 3.5 Flash-Lite",
+    tiers=(
+        TokenTier(
+            threshold_tokens=None, input_per_token=0.25e-6, output_per_token=1.5e-6
+        ),
+    ),
+)
+
 GEMINI_PRO_31 = TextModelRate(
     model_id="gemini-3.1-pro-preview",
     label="Gemini 3.1 Pro",
@@ -128,8 +166,29 @@ GEMINI_25_FLASH_LITE = TextModelRate(
 
 
 # ---------------------------------------------------------------------------
-# Gemini image model (token-based — $60 per 1M image-output tokens)
+# Gemini image models (token-based — $60 per 1M image-output tokens)
 # ---------------------------------------------------------------------------
+
+GEMINI_NANO_BANANA_21 = ImageModelRate(
+    model_id="gemini-nano-banana-2.1",
+    label="Gemini Nano Banana 2.1",
+    input_per_token=0.5e-6,
+    output_per_token=60e-6,
+)
+
+GEMINI_FLASH_IMAGE_31_GA = ImageModelRate(
+    model_id="gemini-3.1-flash-image",
+    label="Gemini 3.1 Flash Image (Nano Banana 2)",
+    input_per_token=0.5e-6,
+    output_per_token=60e-6,
+)
+
+GEMINI_FLASH_LITE_IMAGE_31 = ImageModelRate(
+    model_id="gemini-3.1-flash-lite-image",
+    label="Gemini 3.1 Flash-Lite Image",
+    input_per_token=0.25e-6,
+    output_per_token=30e-6,
+)
 
 GEMINI_FLASH_IMAGE_31 = ImageModelRate(
     model_id="gemini-3.1-flash-image-preview",
@@ -138,16 +197,33 @@ GEMINI_FLASH_IMAGE_31 = ImageModelRate(
     output_per_token=60e-6,
 )
 
+GEMINI_PRO_IMAGE_3 = ImageModelRate(
+    model_id="gemini-3-pro-image",
+    label="Gemini 3 Pro Image (Nano Banana Pro)",
+    input_per_token=2e-6,
+    output_per_token=120e-6,
+)
+
+GEMINI_PRO_IMAGE_3_PREVIEW = replace(
+    GEMINI_PRO_IMAGE_3, model_id="gemini-3-pro-image-preview"
+)
+
 
 # ---------------------------------------------------------------------------
-# Veo video models
+# Video generation models (Gemini Omni 1.1 & Veo)
 # ---------------------------------------------------------------------------
 
+GEMINI_OMNI_11_FLASH = FlatRate(
+    "gemini_omni_11_flash", "Gemini Omni 1.1 Flash", "second", 0.15
+)
 VEO_STANDARD = FlatRate("veo_standard", "Veo 3.1 Standard", "second", 0.40)
 VEO_FAST = FlatRate("veo_fast", "Veo 3.1 Fast", "second", 0.15)
 VEO_LITE = FlatRate("veo_lite", "Veo 3.1 Lite", "second", 0.05)
 
 VEO_BY_MODEL: dict[str, FlatRate] = {
+    "gemini-omni-1.1-flash-preview": GEMINI_OMNI_11_FLASH,
+    "gemini-omni-flash-preview": GEMINI_OMNI_11_FLASH,
+    "gemini-omni-1.1-flash": GEMINI_OMNI_11_FLASH,
     "veo-3.1-generate-001": VEO_STANDARD,
     "veo-3.1-fast-generate-001": VEO_FAST,
     "veo-3.1-lite-generate-001": VEO_LITE,
@@ -183,6 +259,10 @@ DUBBING = FlatRate("dubbing", "Gemini Live Translate (preview)", "minute", 0.0)
 TEXT_MODELS: dict[str, TextModelRate] = {
     m.model_id: m
     for m in (
+        GEMINI_FLASH_38,
+        GEMINI_FLASH_37,
+        GEMINI_FLASH_35,
+        GEMINI_FLASH_LITE_35,
         GEMINI_PRO_31,
         GEMINI_PRO_3,
         GEMINI_FLASH_3,
@@ -195,7 +275,15 @@ TEXT_MODELS: dict[str, TextModelRate] = {
 }
 
 IMAGE_MODELS: dict[str, ImageModelRate] = {
-    m.model_id: m for m in (GEMINI_FLASH_IMAGE_31,)
+    m.model_id: m
+    for m in (
+        GEMINI_NANO_BANANA_21,
+        GEMINI_FLASH_IMAGE_31_GA,
+        GEMINI_FLASH_LITE_IMAGE_31,
+        GEMINI_FLASH_IMAGE_31,
+        GEMINI_PRO_IMAGE_3,
+        GEMINI_PRO_IMAGE_3_PREVIEW,
+    )
 }
 
 FLAT_SERVICES: dict[str, FlatRate] = {
@@ -261,9 +349,9 @@ HINTS = EstimatorHints()
 # Kept in sync with Dockerfile / .env.example defaults.
 # ---------------------------------------------------------------------------
 
-DEFAULT_TEXT_MODEL = "gemini-3.1-pro-preview"
-DEFAULT_IMAGE_MODEL = "gemini-3.1-flash-image-preview"
-DEFAULT_VIDEO_MODEL = "veo-3.1-generate-001"
+DEFAULT_TEXT_MODEL = "gemini-3.8-flash"
+DEFAULT_IMAGE_MODEL = "gemini-nano-banana-2.1"
+DEFAULT_VIDEO_MODEL = "gemini-omni-1.1-flash-preview"
 DEFAULT_TRANSCODER_TIER = TRANSCODER_HD
 
 

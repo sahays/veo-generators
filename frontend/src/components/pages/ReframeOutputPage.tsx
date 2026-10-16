@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ChevronDown, ChevronRight, Download, Loader2 } from 'lucide-react'
+import { Button } from '@/components/Common'
 import { api } from '@/lib/api'
 import { downloadJson } from '@/lib/utils'
 import { ModelPill } from '@/components/ModelPill'
@@ -26,7 +27,8 @@ const CollapsibleCard = ({
   const [open, setOpen] = useState(defaultOpen)
   return (
     <div className="border border-border rounded-xl bg-card overflow-hidden">
-      <button
+      <Button
+        variant="unstyled"
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center justify-between gap-2 px-5 py-3 text-left hover:bg-muted/30 transition-colors"
       >
@@ -36,7 +38,7 @@ const CollapsibleCard = ({
         ) : (
           <ChevronRight size={16} className="text-muted-foreground" />
         )}
-      </button>
+      </Button>
       {open && <div className="px-5 pb-5 pt-1 border-t border-border">{children}</div>}
     </div>
   )
@@ -69,9 +71,9 @@ export const ReframeOutputPage = () => {
   if (error || !record) {
     return (
       <div className="space-y-4 max-w-3xl mx-auto py-12 px-6">
-        <button onClick={() => navigate(`/orientations/${id}`)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-          <ArrowLeft size={16} /> Back to Reframe
-        </button>
+        <Button variant="link" icon={ArrowLeft} onClick={() => navigate(`/orientations/${id}`)} className="text-sm">
+          Back to Reframe
+        </Button>
         <p className="text-sm text-red-500">{error || 'Record not found'}</p>
       </div>
     )
@@ -262,12 +264,15 @@ export const ReframeOutputPage = () => {
             <span className="text-muted-foreground text-xs">Overall</span>
             <Pill flag={rep.overall} label={rep.overall?.toUpperCase() || 'NA'} />
           </div>
-          <button
+          <Button
+            variant="outline"
+            size="xs"
+            icon={Download}
+            iconSize={12}
             onClick={handleDownload}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
           >
-            <Download size={12} /> Download JSON
-          </button>
+            Download JSON
+          </Button>
         </div>
 
         <div className="space-y-2">
@@ -415,9 +420,9 @@ export const ReframeOutputPage = () => {
 
   return (
     <div className="max-w-3xl mx-auto py-8 px-6 space-y-6">
-      <button onClick={() => navigate(`/orientations/${id}`)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-        <ArrowLeft size={16} /> Back to Reframe
-      </button>
+      <Button variant="link" icon={ArrowLeft} onClick={() => navigate(`/orientations/${id}`)} className="text-sm">
+        Back to Reframe
+      </Button>
 
       <div className="space-y-1">
         <div className="flex items-center gap-2">

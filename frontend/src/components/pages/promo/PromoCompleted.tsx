@@ -1,5 +1,5 @@
 import { Download } from 'lucide-react'
-import { AnchorHeading } from '@/components/Common'
+import { AnchorHeading, Button } from '@/components/Common'
 
 interface PromoSegment {
   title: string
@@ -33,15 +33,15 @@ export const PromoCompleted = ({ record }: Props) => (
 
     {record.output_signed_url && (
       <div className="flex gap-3">
-        <a
+        <Button
           href={record.output_signed_url}
           download
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-dark transition-colors"
+          icon={Download}
         >
-          <Download size={16} /> Download Promo
-        </a>
+          Download Promo
+        </Button>
       </div>
     )}
 

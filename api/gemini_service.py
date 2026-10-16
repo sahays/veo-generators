@@ -68,7 +68,7 @@ class GeminiService:
             self.firestore_svc,
             "text",
             "OPTIMIZE_PROMPT_MODEL",
-            "gemini-3.1-pro-preview",
+            "gemini-3.8-flash",
             model_id,
         )
         client = self._get_client(region)
@@ -116,7 +116,7 @@ class GeminiService:
             self.firestore_svc,
             "image",
             "STORYBOARD_MODEL",
-            "gemini-3.1-flash-image-preview",
+            "gemini-nano-banana-2.1",
             model_id,
         )
         client = self._get_client(region)
@@ -157,7 +157,7 @@ class GeminiService:
             self.firestore_svc,
             "image",
             "ADAPTS_MODEL",
-            "gemini-3.1-flash-image-preview",
+            "gemini-nano-banana-2.1",
             model_id,
         )
         prompt_text = None
@@ -209,7 +209,7 @@ class GeminiService:
             self.firestore_svc,
             "text",
             "OPTIMIZE_PROMPT_MODEL",
-            "gemini-3.1-pro-preview",
+            "gemini-3.8-flash",
             model_id,
         )
         client = self._get_client(region)
@@ -233,7 +233,7 @@ class GeminiService:
             self.firestore_svc,
             "text",
             "OPTIMIZE_PROMPT_MODEL",
-            "gemini-3.1-pro-preview",
+            "gemini-3.8-flash",
             model_id,
         )
         client = self._get_client(region)
@@ -259,7 +259,7 @@ class GeminiService:
             self.firestore_svc,
             "text",
             "OPTIMIZE_PROMPT_MODEL",
-            "gemini-3.1-pro-preview",
+            "gemini-3.8-flash",
             model_id,
         )
         client = self._get_client(region)
@@ -312,7 +312,7 @@ class GeminiService:
             self.firestore_svc,
             "text",
             "OPTIMIZE_PROMPT_MODEL",
-            "gemini-3.1-pro-preview",
+            "gemini-3.8-flash",
             model_id,
         )
         client = self._get_client(region)
@@ -483,7 +483,7 @@ class GeminiService:
             self.firestore_svc,
             "text",
             "OPTIMIZE_PROMPT_MODEL",
-            "gemini-3.1-pro-preview",
+            "gemini-3.8-flash",
             model_id,
         )
         client = self._get_client(region)
@@ -508,7 +508,7 @@ class GeminiService:
             self.firestore_svc,
             "image",
             "STORYBOARD_MODEL",
-            "gemini-3.1-flash-image-preview",
+            "gemini-nano-banana-2.1",
             model_id,
         )
         client = self._get_client(region)
@@ -534,7 +534,7 @@ class GeminiService:
             self.firestore_svc,
             "image",
             "STORYBOARD_MODEL",
-            "gemini-3.1-flash-image-preview",
+            "gemini-nano-banana-2.1",
             model_id,
         )
         client = self._get_client(region)
@@ -559,7 +559,7 @@ class GeminiService:
             self.firestore_svc,
             "image",
             "STORYBOARD_MODEL",
-            "gemini-3.1-flash-image-preview",
+            "gemini-nano-banana-2.1",
             model_id,
         )
         client = self._get_client(region)

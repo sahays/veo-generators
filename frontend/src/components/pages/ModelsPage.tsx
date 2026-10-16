@@ -3,6 +3,8 @@ import { motion } from 'framer-motion'
 import { Plus, Cpu, Trash2, Star, Check, X, Loader2, Sprout } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Button } from '@/components/Common'
+import { Input } from '@/components/ui/input'
+import { NativeSelect } from '@/components/ui/select'
 import { Modal } from '@/components/Modal'
 import { cn } from '@/lib/utils'
 
@@ -151,16 +153,18 @@ export const ModelsPage = () => {
                 )}
               >
                 {/* Default star */}
-                <button
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={() => handleSetDefault(model.id)}
                   className={cn(
-                    "shrink-0 cursor-pointer transition-colors",
+                    "h-7 w-7 shrink-0 cursor-pointer transition-colors",
                     model.is_default ? "text-amber-500" : "text-muted-foreground/30 hover:text-amber-500/50"
                   )}
                   title={model.is_default ? "Default model" : "Set as default"}
                 >
                   <Star size={16} fill={model.is_default ? "currentColor" : "none"} />
-                </button>
+                </Button>
 
                 {/* Name + code */}
                 <div className="flex-1 min-w-0">
@@ -190,20 +194,24 @@ export const ModelsPage = () => {
 
                 {/* Actions */}
                 <div className="flex items-center gap-1 shrink-0">
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={() => handleToggleActive(model)}
-                    className="p-1.5 rounded-lg hover:bg-muted transition-colors cursor-pointer"
+                    className="h-7 w-7 cursor-pointer"
                     title={model.is_active ? "Deactivate" : "Activate"}
                   >
                     {model.is_active ? <X size={14} className="text-muted-foreground" /> : <Check size={14} className="text-green-500" />}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={() => handleDelete(model.id)}
-                    className="p-1.5 rounded-lg hover:bg-red-500/10 transition-colors cursor-pointer"
+                    className="h-7 w-7 hover:bg-red-500/10 cursor-pointer"
                     title="Delete"
                   >
                     <Trash2 size={14} className="text-red-500" />
-                  </button>
+                  </Button>
                 </div>
               </motion.div>
             ))}
@@ -226,53 +234,49 @@ export const ModelsPage = () => {
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">Name</label>
-            <input
+            <Input
               value={form.name}
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-              placeholder="Gemini 3.1 Pro"
-              className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              placeholder="Gemini 3.8 Flash"
             />
           </div>
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">Model Code</label>
-            <input
+            <Input
               value={form.code}
               onChange={e => setForm(f => ({ ...f, code: e.target.value }))}
-              placeholder="gemini-3.1-pro-preview"
-              className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent"
+              placeholder="gemini-3.8-flash"
+              className="font-mono"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Provider</label>
-              <select
+              <NativeSelect
                 value={form.provider}
                 onChange={e => setForm(f => ({ ...f, provider: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-sm focus:outline-none focus:ring-2 focus:ring-accent"
               >
                 {PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-              </select>
+              </NativeSelect>
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Capability</label>
-              <select
+              <NativeSelect
                 value={form.capability}
                 onChange={e => setForm(f => ({ ...f, capability: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-sm focus:outline-none focus:ring-2 focus:ring-accent"
               >
                 {CAPABILITIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
+              </NativeSelect>
             </div>
           </div>
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">Region</label>
-            <select
+            <NativeSelect
               value={form.regions[0] || 'global'}
               onChange={e => setForm(f => ({ ...f, regions: [e.target.value] }))}
-              className="w-full px-3 py-2 rounded-lg bg-muted border border-border text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             >
               {regions.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
+            </NativeSelect>
           </div>
           <label className="flex items-center gap-2 cursor-pointer">
             <input

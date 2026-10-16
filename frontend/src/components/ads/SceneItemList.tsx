@@ -1,5 +1,7 @@
 import { ImageIcon, Loader2, Mic, Music, Pencil, Video } from 'lucide-react'
 import { Button, Card } from '@/components/Common'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { SceneMediaCarousel } from '@/components/ads/SceneMediaCarousel'
 import { AudioToggle, StatusBadge } from '@/components/ads/SceneItemShared'
 import { cn } from '@/lib/utils'
@@ -45,12 +47,12 @@ export const SceneItemList = ({
     </div>
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
       <div className="space-y-4 lg:col-span-8">
-        <textarea
+        <Textarea
           value={scene.visual_description}
           onChange={(e) => handleTextChange({ visual_description: e.target.value })}
           readOnly={isReadOnly}
           className={cn(
-            'w-full min-h-[100px] p-3 rounded-xl text-sm leading-relaxed bg-muted/30 border border-border focus:ring-2 focus:ring-accent/30 outline-none resize-none transition-all',
+            'w-full min-h-[100px] p-3 rounded-xl text-sm leading-relaxed bg-muted/30 border border-border resize-none',
             isReadOnly && 'cursor-default bg-transparent',
           )}
           placeholder="Scene visual description..."
@@ -74,25 +76,25 @@ export const SceneItemList = ({
             />
           </div>
           {scene.narration_enabled && (
-            <textarea
+            <Textarea
               value={scene.narration || ''}
               onChange={(e) => handleTextChange({ narration: e.target.value })}
               readOnly={isReadOnly}
               className={cn(
-                'w-full min-h-[60px] p-3 rounded-xl text-sm leading-relaxed italic bg-muted/20 border border-border/50 focus:ring-2 focus:ring-accent/30 outline-none resize-none transition-all',
+                'w-full min-h-[60px] p-3 rounded-xl text-sm leading-relaxed italic bg-muted/20 border border-border/50 resize-none',
                 isReadOnly && 'cursor-default bg-transparent',
               )}
               placeholder="Voice-over narration text..."
             />
           )}
           {scene.music_enabled && (
-            <input
+            <Input
               type="text"
               value={scene.music_description || ''}
               onChange={(e) => handleTextChange({ music_description: e.target.value })}
               readOnly={isReadOnly}
               className={cn(
-                'w-full p-2.5 rounded-xl text-sm bg-muted/20 border border-border/50 focus:ring-2 focus:ring-accent/30 outline-none transition-all',
+                'w-full p-2.5 rounded-xl text-sm bg-muted/20 border border-border/50',
                 isReadOnly && 'cursor-default bg-transparent',
               )}
               placeholder="Background music: genre, tempo, instruments, mood..."
@@ -134,13 +136,17 @@ export const SceneItemList = ({
               </Button>
             </>
           )}
-          <button
+          <Button
+            variant="ghost"
+            size="xs"
+            icon={Pencil}
+            iconSize={12}
             onClick={onShowPromptModal}
-            className="h-7 px-2 flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground hover:text-accent-dark hover:bg-accent/10 rounded-md transition-colors"
+            className="h-7 px-2 text-[10px] text-muted-foreground hover:text-accent-dark"
             title="Edit Prompt"
           >
-            <Pencil size={12} /> Edit Prompt
-          </button>
+            Edit Prompt
+          </Button>
         </div>
       </div>
 

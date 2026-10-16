@@ -5,14 +5,15 @@ import {
   postJson,
   request,
   requestVoid,
+  serverFetch,
 } from './_http'
 
 export const auth = {
   validate: async (
     code: string,
   ): Promise<{ valid: boolean; is_master: boolean; is_power: boolean }> => {
-    // Doesn't go through authFetch — login is open and uses raw fetch.
-    const res = await fetch(
+    // Doesn't go through authFetch — login is open and uses unauthenticated serverFetch.
+    const res = await serverFetch(
       `${API_BASE_URL}/auth/validate`,
       jsonInit('POST', { code }),
     )

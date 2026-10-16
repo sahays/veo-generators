@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Loader2, Upload } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/useAuthStore'
 import { cn } from '@/lib/utils'
@@ -169,18 +170,14 @@ const UploadsLandingView = () => {
 
       <div className="flex items-center gap-2">
         {FILTERS.map((f) => (
-          <button
+          <Button
             key={f.value}
+            variant={filter === f.value ? 'primary' : 'secondary'}
+            size="sm"
             onClick={() => setFilter(f.value)}
-            className={cn(
-              'px-3 py-1.5 rounded-full text-xs font-medium transition-all',
-              filter === f.value
-                ? 'bg-accent text-slate-900'
-                : 'bg-muted text-muted-foreground hover:bg-accent/10 hover:text-foreground',
-            )}
           >
             {f.label}
-          </button>
+          </Button>
         ))}
       </div>
 

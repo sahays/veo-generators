@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Loader2, Pencil } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/useAuthStore'
 import { AvatarPlayer } from '@/components/avatar/AvatarPlayer'
@@ -166,12 +167,15 @@ export const AvatarWorkPage = () => {
       animate={{ opacity: 1, y: 0 }}
       className="max-w-3xl mx-auto space-y-6 pb-32"
     >
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
+        icon={ArrowLeft}
         onClick={() => navigate('/avatars')}
-        className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        className="text-muted-foreground hover:text-foreground -ml-2"
       >
-        <ArrowLeft size={14} /> Back to Avatars
-      </button>
+        Back to Avatars
+      </Button>
 
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
@@ -184,12 +188,15 @@ export const AvatarWorkPage = () => {
           </p>
         </div>
         {canWrite && (
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={Pencil}
             onClick={() => setEditing(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors shrink-0"
+            className="shrink-0"
           >
-            <Pencil size={12} /> Edit
-          </button>
+            Edit
+          </Button>
         )}
       </div>
 

@@ -1,5 +1,6 @@
 import { ArrowLeft } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { Button } from '@/components/ui/button'
 import { cn, getTimeAgo } from '@/lib/utils'
 import { EditableNameField } from '@/components/shared/EditableNameField'
 
@@ -33,12 +34,14 @@ export const WorkPageHeader = ({
   return (
     <>
       <div className="flex items-center justify-between">
-        <button
+        <Button
+          variant="link"
+          icon={ArrowLeft}
           onClick={() => navigate(backPath)}
-          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          className="text-sm"
         >
-          <ArrowLeft size={16} /> {backLabel}
-        </button>
+          {backLabel}
+        </Button>
         {record.createdAt && (
           <span className="text-xs text-muted-foreground">{getTimeAgo(record.createdAt)}</span>
         )}

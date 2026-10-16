@@ -164,12 +164,13 @@ export const PromptsPage = () => {
                       className="border-b border-border/50 last:border-b-0 hover:bg-muted/20 transition-colors"
                     >
                       <td className="px-4 py-3">
-                        <button
+                        <Button
+                          variant="link"
                           onClick={() => navigate(`/prompts/${res.id}`)}
-                          className="font-medium text-foreground hover:text-accent-dark transition-colors text-left"
+                          className="font-medium text-foreground hover:text-accent-dark text-left"
                         >
                           {res.name}
-                        </button>
+                        </Button>
                       </td>
                       <td className="px-4 py-3">
                         <span className="bg-muted px-2 py-0.5 rounded text-[10px] font-mono text-muted-foreground capitalize">
@@ -186,28 +187,34 @@ export const PromptsPage = () => {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-1">
-                          <button
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={() => navigate(`/prompts/${res.id}`)}
-                            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
                             title="Open page"
                           >
                             <ExternalLink size={15} />
-                          </button>
-                          <button
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={() => handleView(res)}
-                            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
                             title="Quick view"
                           >
                             <Eye size={15} />
-                          </button>
+                          </Button>
                           {canWrite && (
-                            <button
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               onClick={() => handleIterate(res)}
-                              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
                               title="Iterate"
                             >
                               <Copy size={15} />
-                            </button>
+                            </Button>
                           )}
                         </div>
                       </td>
@@ -255,14 +262,15 @@ export const PromptsPage = () => {
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 const TabButton = ({ active, onClick, icon: Icon, label }: any) => (
-  <button
+  <Button
+    variant="unstyled"
     onClick={onClick}
     className={cn(
-      "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer",
-      active ? "bg-card text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-foreground"
+      'flex items-center gap-2 px-4 py-2 rounded-[5px] text-xs font-bold transition-all duration-200',
+      active ? 'bg-card text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:text-foreground',
     )}
   >
-    <Icon size={14} className={active ? "text-accent-dark" : ""} />
+    <Icon size={14} className={active ? 'text-accent-dark' : ''} />
     {label}
-  </button>
+  </Button>
 )

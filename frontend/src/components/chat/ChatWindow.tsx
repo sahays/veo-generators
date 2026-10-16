@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Send, Bot, User, Loader2, Sparkles, Trash2 } from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { useChatStore } from '@/store/useChatStore'
 import { VideoResultCard, VideoSourcePicker, ImageSourcePicker, PromptPicker, ConfirmationCard } from './ChatWidgets'
 import { clsx } from 'clsx'
@@ -39,7 +41,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ showClearHistory = true 
       >
         {messages.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <div className="mb-3 rounded-full bg-indigo-100 p-4 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
+            <div className="mb-3 rounded-full bg-orange-100 p-4 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
               <Sparkles size={32} />
             </div>
             <h4 className="mb-1 text-sm font-medium text-slate-900 dark:text-white">Hi, I'm Aanya!</h4>
@@ -59,7 +61,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ showClearHistory = true 
           >
             <div className="flex max-w-[90%] items-end gap-2 md:max-w-[80%]">
               {msg.role === 'model' && (
-                <div className="mb-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md bg-indigo-600 text-white shadow-sm">
+                <div className="mb-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md bg-orange-600 text-white shadow-sm">
                   <Bot size={14} />
                 </div>
               )}
@@ -67,7 +69,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ showClearHistory = true 
                 className={clsx(
                   "rounded-2xl px-4 py-2 text-sm shadow-sm",
                   msg.role === 'user'
-                    ? "bg-indigo-600 text-white rounded-br-none"
+                    ? "bg-orange-600 text-white rounded-br-none"
                     : "bg-white text-slate-900 border border-slate-200 rounded-bl-none dark:bg-slate-800 dark:text-white dark:border-slate-700"
                 )}
               >
@@ -143,11 +145,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ showClearHistory = true 
         ))}
         {isTyping && (
           <div className="flex items-start gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-600 text-white">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-orange-600 text-white">
               <Bot size={14} />
             </div>
             <div className="flex items-center gap-1 rounded-2xl bg-white px-4 py-3 border border-slate-200 shadow-sm dark:bg-slate-800 dark:border-slate-700">
-              <Loader2 size={16} className="animate-spin text-indigo-500" />
+              <Loader2 size={16} className="animate-spin text-orange-500" />
               <span className="text-xs text-slate-500">Thinking...</span>
             </div>
           </div>
@@ -158,30 +160,33 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ showClearHistory = true 
       <div className="border-t border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <form onSubmit={handleSend} className="max-w-4xl mx-auto flex gap-2">
           {showClearHistory && (
-             <button
+            <Button
               type="button"
+              variant="secondary"
+              size="icon"
               onClick={clearHistory}
               title="Clear history"
-              className="flex items-center justify-center p-2 rounded-xl border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-200 transition-colors dark:border-slate-700"
+              className="h-10 w-10 text-slate-400 hover:text-red-500 hover:border-red-200"
             >
-              <Trash2 size={20} />
-            </button>
+              <Trash2 size={18} />
+            </Button>
           )}
           <div className="relative flex-1">
-            <input
+            <Input
               type="text"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               placeholder="Ask a question or request a task..."
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-4 pr-12 text-sm transition-all focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:focus:border-indigo-400 dark:focus:bg-slate-900"
+              className="pr-12"
             />
-            <button
+            <Button
               type="submit"
+              size="icon"
               disabled={!inputValue.trim() || isTyping}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white transition-all hover:bg-indigo-500 disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-700 dark:disabled:text-slate-500"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 h-7 w-7"
             >
-              <Send size={16} />
-            </button>
+              <Send size={14} />
+            </Button>
           </div>
         </form>
       </div>

@@ -66,13 +66,15 @@ export const PromptDetailPage = () => {
   return (
     <div className="space-y-6">
       {/* Back nav */}
-      <button
+      <Button
+        variant="link"
+        icon={ArrowLeft}
+        iconSize={14}
         onClick={() => navigate('/prompts')}
-        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        className="text-xs"
       >
-        <ArrowLeft size={14} />
         All Prompts
-      </button>
+      </Button>
 
       {/* Header */}
       <motion.div

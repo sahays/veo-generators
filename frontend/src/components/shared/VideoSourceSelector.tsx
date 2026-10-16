@@ -1,6 +1,7 @@
 import {
   Loader2, Film, FileVideo, ChevronRight, Upload,
 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { cn, getTimeAgo, formatFileSize } from '@/lib/utils'
 
 type VideoSourceTab = 'productions' | 'past-uploads'
@@ -57,21 +58,22 @@ export function VideoSourceSelector({
   return (
     <>
       {/* Tab bar */}
-      <div className="flex gap-1 bg-muted/50 rounded-lg p-1">
+      <div className="flex gap-1 bg-muted/50 rounded-[6px] p-1">
         {tabs.map((tab) => (
-          <button
+          <Button
             key={tab.key}
+            variant="unstyled"
             onClick={() => onTabChange(tab.key)}
             className={cn(
-              "flex items-center gap-1.5 flex-1 justify-center px-3 py-2 rounded-md text-xs font-medium transition-all cursor-pointer",
+              'flex items-center gap-1.5 flex-1 justify-center px-3 py-2 rounded-[5px] text-xs font-medium transition-all',
               sourceTab === tab.key
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground',
             )}
           >
             <tab.icon size={14} />
             {tab.label}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -87,14 +89,15 @@ export function VideoSourceSelector({
               <p className="text-sm text-muted-foreground text-center py-8">{emptyUploadsMessage}</p>
             ) : (
               uploads.map((u) => (
-                <button
+                <Button
                   key={u.id}
+                  variant="unstyled"
                   onClick={() => onSelectUpload(u)}
                   className={cn(
-                    "w-full flex items-center gap-3 p-3 rounded-lg border transition-all text-left cursor-pointer",
+                    'w-full flex items-center gap-3 p-3 rounded-[6px] border transition-all text-left',
                     selectedUri === u.gcs_uri
-                      ? "border-accent bg-accent/5"
-                      : "border-border hover:border-accent/40 bg-card"
+                      ? 'border-accent bg-accent/5'
+                      : 'border-border hover:border-accent/40 bg-card',
                   )}
                 >
                   <FileVideo size={18} className="text-muted-foreground shrink-0" />
@@ -103,7 +106,7 @@ export function VideoSourceSelector({
                     <p className="text-[10px] text-muted-foreground">{formatFileSize(u.file_size_bytes)} &middot; {getTimeAgo(u.createdAt)}</p>
                   </div>
                   <ChevronRight size={16} className="text-muted-foreground shrink-0" />
-                </button>
+                </Button>
               ))
             )
           ) : (
@@ -111,14 +114,15 @@ export function VideoSourceSelector({
               <p className="text-sm text-muted-foreground text-center py-8">{emptyProductionsMessage}</p>
             ) : (
               productions.map((p) => (
-                <button
+                <Button
                   key={p.id}
+                  variant="unstyled"
                   onClick={() => onSelectProduction(p)}
                   className={cn(
-                    "w-full flex items-center gap-3 p-3 rounded-lg border transition-all text-left cursor-pointer",
+                    'w-full flex items-center gap-3 p-3 rounded-[6px] border transition-all text-left',
                     selectedUri === p.final_video_url
-                      ? "border-accent bg-accent/5"
-                      : "border-border hover:border-accent/40 bg-card"
+                      ? 'border-accent bg-accent/5'
+                      : 'border-border hover:border-accent/40 bg-card',
                   )}
                 >
                   <Film size={18} className="text-muted-foreground shrink-0" />
@@ -127,7 +131,7 @@ export function VideoSourceSelector({
                     <p className="text-[10px] text-muted-foreground">{p.orientation} &middot; {getTimeAgo(p.createdAt)}</p>
                   </div>
                   <ChevronRight size={16} className="text-muted-foreground shrink-0" />
-                </button>
+                </Button>
               ))
             )
           )}

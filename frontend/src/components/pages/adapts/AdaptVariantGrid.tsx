@@ -6,6 +6,7 @@ import {
   ExternalLink,
   Loader2,
 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 interface Variant {
   aspect_ratio: string
@@ -76,26 +77,34 @@ const VariantCard = ({
       </div>
       <div className="flex items-center gap-1">
         {variant.status === 'completed' && variant.prompt_text_used && (
-          <Link
-            to={`/adapts/${recordId}/prompt/${index}`}
-            target="_blank"
-            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-            title="View prompt"
+          <Button
+            asChild
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
           >
-            <ExternalLink size={14} />
-          </Link>
+            <Link
+              to={`/adapts/${recordId}/prompt/${index}`}
+              target="_blank"
+              title="View prompt"
+            >
+              <ExternalLink size={14} />
+            </Link>
+          </Button>
         )}
         {variant.status === 'completed' && variant.output_signed_url && (
-          <a
+          <Button
+            variant="ghost"
+            size="icon"
             href={variant.output_signed_url}
             download
             target="_blank"
             rel="noopener noreferrer"
-            className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
             title="Download"
           >
             <Download size={14} />
-          </a>
+          </Button>
         )}
       </div>
     </div>
