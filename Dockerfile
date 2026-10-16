@@ -28,9 +28,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy backend code
 COPY api/ ./api
 
-# Copy Next.js standalone SSR build and static assets
+# Copy Next.js standalone SSR build, static assets, and public folder
 COPY --from=frontend-build /app/frontend/.next/standalone ./frontend-standalone
 COPY --from=frontend-build /app/frontend/.next/static ./frontend-standalone/.next/static
+COPY --from=frontend-build /app/frontend/public ./frontend-standalone/public
 COPY frontend/start-standalone.cjs ./frontend-standalone/start-standalone.cjs
 COPY scripts/start-api-ssr.sh /app/start-api-ssr.sh
 RUN chmod +x /app/start-api-ssr.sh

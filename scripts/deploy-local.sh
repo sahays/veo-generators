@@ -39,6 +39,7 @@ cd "$PROJECT_ROOT"
 # 3. Prepare standalone SSR directory for Frontend
 echo "📁 Preparing Next.js standalone SSR bundle..."
 cp -r frontend/.next/static frontend/.next/standalone/.next/static
+cp -r frontend/public frontend/.next/standalone/public
 cp frontend/start-standalone.cjs frontend/.next/standalone/start-standalone.cjs
 
 echo ""

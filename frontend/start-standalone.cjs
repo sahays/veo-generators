@@ -9,9 +9,23 @@ const origCreateServer = http.createServer
 http.createServer = function patchedCreateServer(...args) {
   const nextListener = typeof args[args.length - 1] === 'function' ? args.pop() : null
   const server = origCreateServer.apply(this, args)
+  const origOn = server.on.bind(server)
+
+  // Prevent Next.js's internal upgrade handler from closing /api/v1/* WebSocket sockets
+  server.on = function patchedOn(event, listener) {
+    if (event === 'upgrade') {
+      return origOn('upgrade', (req, socket, head) => {
+        if (req.url?.startsWith('/api/v1/')) {
+          return
+        }
+        return listener(req, socket, head)
+      })
+    }
+    return origOn(event, listener)
+  }
 
   if (nextListener) {
-    server.on('request', (req, res) => {
+    origOn('request', (req, res) => {
       if (req.url === '/health' || req.url?.startsWith('/health?')) {
         const proxyReq = http.get(
           {
@@ -37,14 +51,23 @@ http.createServer = function patchedCreateServer(...args) {
     })
   }
 
-  server.on('upgrade', (req, socket, head) => {
+  origOn('upgrade', (req, socket, head) => {
     if (!req.url?.startsWith('/api/v1/')) {
       return
     }
+    socket.on('error', (err) => {
+      console.error('WebSocket client socket error:', err.message)
+    })
     const upstream = net.connect(FASTAPI_PORT, FASTAPI_HOST, () => {
       const headerLines = [`${req.method} ${req.url} HTTP/${req.httpVersion}`]
       for (let i = 0; i < req.rawHeaders.length; i += 2) {
-        headerLines.push(`${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}`)
+        const k = req.rawHeaders[i]
+        const v = req.rawHeaders[i + 1]
+        if (k.toLowerCase() === 'host') {
+          headerLines.push(`Host: ${FASTAPI_HOST}:${FASTAPI_PORT}`)
+        } else {
+          headerLines.push(`${k}: ${v}`)
+        }
       }
       headerLines.push('', '')
       upstream.write(headerLines.join('\r\n'))
@@ -54,12 +77,16 @@ http.createServer = function patchedCreateServer(...args) {
       socket.pipe(upstream).pipe(socket)
     })
 
-    const closeBoth = () => {
+    upstream.on('error', (err) => {
+      console.error('WebSocket upstream socket error:', err.message)
       socket.destroy()
+    })
+    socket.on('close', () => {
       upstream.destroy()
-    }
-    upstream.on('error', closeBoth)
-    socket.on('error', closeBoth)
+    })
+    upstream.on('close', () => {
+      socket.destroy()
+    })
   })
 
   return server
