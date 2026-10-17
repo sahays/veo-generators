@@ -1,7 +1,5 @@
 """Productions & Prompts specialist (`productions_agent`) — manages video productions, lifecycle steps, and system prompts."""
 
-from typing import Optional
-
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
 
@@ -61,7 +59,7 @@ def _make_director_tools(invite_code: str) -> list:
     async def propose_production(
         name: str,
         base_concept: str,
-        prompt_id: Optional[str] = None,
+        prompt_id: str | None = None,
         video_length: str = "16",
         orientation: str = "16:9",
         project_type: str = "movie",
@@ -85,12 +83,27 @@ def _make_director_tools(invite_code: str) -> list:
         return propose_job("production", f"Create production: {name}", params, resolved)
 
     async def advance_production_stage(production_id: str, stage: str):
-        """Trigger a lifecycle stage on an existing production. `stage` must be one of:
-        'analyze' (generate script), 'review' (storyboard continuity review),
-        'render', 'render-draft' (360p draft pipeline), 'upgrade-final' (720p HD upgrade),
-        'evaluate' (multimodal video evaluation), 'regenerate-flagged',
-        'generate-storyboard', 'generate-videos', or 'stitch'."""
+        """Trigger a lifecycle stage or StoryGraph gate approval on an existing production.
+        `stage` can be: 'run' (advance StoryGraph until next gate), 'approve-G1', 'approve-G2', 'approve-G3',
+        'S1_EXTRACT', 'S2_SCREENPLAY', 'S3_DESIGN', 'S4_SHOTS', 'S5_MUSIC', 'S6_VALIDATE',
+        'S7_COMPILE', 'S8_RENDER', 'S9_QA', 'S10_ASSEMBLE', or legacy stages ('analyze', 'review',
+        'render', 'render-draft', 'upgrade-final', 'evaluate', 'regenerate-flagged',
+        'generate-storyboard', 'generate-videos', 'stitch')."""
         allowed = {
+            "run",
+            "approve-G1",
+            "approve-G2",
+            "approve-G3",
+            "S1_EXTRACT",
+            "S2_SCREENPLAY",
+            "S3_DESIGN",
+            "S4_SHOTS",
+            "S5_MUSIC",
+            "S6_VALIDATE",
+            "S7_COMPILE",
+            "S8_RENDER",
+            "S9_QA",
+            "S10_ASSEMBLE",
             "analyze",
             "review",
             "render",
@@ -120,9 +133,7 @@ def _make_director_tools(invite_code: str) -> list:
     ]
 
 
-def create_productions_agent(
-    invite_code: str, model: Optional[Gemini] = None
-) -> LlmAgent:
+def create_productions_agent(invite_code: str, model: Gemini | None = None) -> LlmAgent:
     return build_specialist(
         "productions_agent",
         _PRODUCTIONS_ROLE,
@@ -132,5 +143,5 @@ def create_productions_agent(
     )
 
 
-def create_director_agent(invite_code: str, model: Optional[Gemini] = None) -> LlmAgent:
+def create_director_agent(invite_code: str, model: Gemini | None = None) -> LlmAgent:
     return create_productions_agent(invite_code, model)

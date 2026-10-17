@@ -16,3 +16,7 @@ google-adk
 google-cloud-aiplatform
 httpx
 websockets
+pyyaml
+Jinja2
+rapidfuzz
+pillow

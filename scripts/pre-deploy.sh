@@ -45,7 +45,7 @@ else
 fi
 
 echo "   Running Ruff linting..."
-if ruff check --isolated --select E4,E7,E9,F --exclude api/venv api workers; then
+if ruff check --isolated --select E4,E7,E9,F --exclude api/venv api workers productions_service; then
     echo "   ✅ Ruff lint passed."
 else
     echo "   ❌ Ruff lint failed. Please fix issues."
@@ -53,7 +53,7 @@ else
 fi
 
 echo "   Running Ruff format..."
-ruff format --isolated --exclude api/venv api workers
+ruff format --isolated --exclude api/venv api workers productions_service
 echo "   ✅ Ruff format applied."
 
 # Ensure system shared libraries that some Python deps load at import time
@@ -94,8 +94,8 @@ ensure_system_lib "libgthread-2.0.so.0" "glib2" "libglib2.0-0"
 echo "   ✅ System libraries present."
 
 echo "   Running backend tests (pytest)..."
-if (cd api && python3 -m pytest tests/ -q); then
-    echo "   ✅ Backend tests passed."
+if (cd api && python3 -m pytest tests/ -q) && (cd productions_service && python3 -m pytest tests/ -q); then
+    echo "   ✅ Backend & StoryGraph tests passed."
 else
     echo "   ❌ Backend tests failed. Please fix before deploying."
     exit 1

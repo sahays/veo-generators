@@ -23,6 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 API_DIR = REPO_ROOT / "api"
 WORKERS_DIR = REPO_ROOT / "workers"
 AGENTS_SERVICE_DIR = REPO_ROOT / "agents_service"
+PRODUCTIONS_SERVICE_DIR = REPO_ROOT / "productions_service"
 FRONTEND_SRC_DIR = REPO_ROOT / "frontend" / "src"
 
 _FORBIDDEN_AGENT_IMPORT_PREFIXES = (
@@ -62,22 +63,48 @@ BACKEND_TIER_NAMES = {
 def classify_backend_module(rel_path: str) -> int | None:
     """Return the architectural tier (1..5) for a Python file relative to REPO_ROOT."""
     rel = rel_path.replace("\\", "/")
-    if rel.startswith("api/venv/") or rel.startswith("api/tests/"):
+    if (
+        rel.startswith("api/venv/")
+        or rel.startswith("api/tests/")
+        or rel.startswith("productions_service/tests/")
+    ):
         return None
     if "/__pycache__/" in rel or rel.endswith("__init__.py"):
         return None
 
-    if rel.startswith("api/models") or rel == "api/pricing_config.py":
+    if (
+        rel.startswith("api/models")
+        or rel == "api/pricing_config.py"
+        or rel in (
+            "productions_service/storygraph/errors.py",
+            "productions_service/storygraph/config.py",
+            "productions_service/storygraph/schema.py",
+        )
+    ):
         return 1
     if (
-        rel in ("api/main.py", "agents_service/main.py")
+        rel in ("api/main.py", "agents_service/main.py", "productions_service/main.py")
         or rel.startswith("workers/")
         or rel.startswith("api/scripts/")
+        or rel.startswith("productions_service/storygraph/pipeline/")
     ):
         return 5
-    if rel in ("api/routers/_crud.py", "api/routers/render_helpers.py"):
+    if (
+        rel in ("api/routers/_crud.py", "api/routers/render_helpers.py")
+        or rel.startswith("productions_service/storygraph/tools/")
+        or rel.startswith("productions_service/storygraph/adapters/")
+        or rel in (
+            "productions_service/storygraph/budget.py",
+            "productions_service/storygraph/compile.py",
+            "productions_service/storygraph/assemble.py",
+        )
+    ):
         return 3
-    if rel.startswith("api/routers/") or rel.startswith("api/agents/"):
+    if (
+        rel.startswith("api/routers/")
+        or rel.startswith("api/agents/")
+        or rel.startswith("productions_service/storygraph/agents/")
+    ):
         return 4
     return 2
 
@@ -85,7 +112,7 @@ def classify_backend_module(rel_path: str) -> int | None:
 def resolve_backend_import(module_name: str) -> str | None:
     """Resolve an import target like `routers.adapts` or `deps` to a repo-relative path."""
     parts = module_name.split(".")
-    for base_prefix in ("api", "workers", "agents_service"):
+    for base_prefix in ("api", "workers", "agents_service", "productions_service"):
         candidate_py = REPO_ROOT / base_prefix / ("/".join(parts) + ".py")
         if candidate_py.is_file():
             return str(candidate_py.relative_to(REPO_ROOT)).replace("\\", "/")
@@ -162,7 +189,7 @@ def analyze_python_ast() -> list[Violation]:
     seen_hashes: dict[str, tuple[str, str, int]] = {}
 
     py_files: list[Path] = []
-    for folder in (API_DIR, WORKERS_DIR, AGENTS_SERVICE_DIR):
+    for folder in (API_DIR, WORKERS_DIR, AGENTS_SERVICE_DIR, PRODUCTIONS_SERVICE_DIR):
         if not folder.exists():
             continue
         for path in sorted(folder.rglob("*.py")):
@@ -230,7 +257,7 @@ def analyze_python_ast() -> list[Violation]:
                         )
 
         # 2. Check function/method ASTs for duplicate code (skip test files)
-        if rel.startswith("api/tests/"):
+        if rel.startswith("api/tests/") or rel.startswith("productions_service/tests/"):
             continue
 
         for node in ast.walk(tree):

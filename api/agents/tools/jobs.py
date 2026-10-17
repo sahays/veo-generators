@@ -1,7 +1,5 @@
 """Job CRUD + recent-list tools for every feature specialist."""
 
-from typing import List, Optional
-
 from ._client import api_call, create_job, list_recent
 
 # Feature → endpoint map. Used both by `get_job_status` (looks up a single
@@ -41,7 +39,7 @@ def normalize_feature(feature: str) -> str:
 # ── Production ──────────────────────────────────────────────────────────────
 
 
-async def list_recent_productions(invite_code: str, limit: int = 5) -> List[dict]:
+async def list_recent_productions(invite_code: str, limit: int = 5) -> list[dict]:
     """List the most recent video production projects."""
     return await list_recent("/api/v1/productions", invite_code, limit)
 
@@ -50,7 +48,7 @@ async def create_production(
     invite_code: str,
     name: str,
     base_concept: str,
-    prompt_id: Optional[str] = None,
+    prompt_id: str | None = None,
     video_length: str = "16",
     orientation: str = "16:9",
     project_type: str = "advertizement",
@@ -74,7 +72,7 @@ async def trigger_production_step(
     invite_code: str,
     production_id: str,
     step: str,
-    payload: Optional[dict] = None,
+    payload: dict | None = None,
 ) -> dict:
     """Trigger a lifecycle step ('analyze', 'review', 'render', 'render-draft', 'upgrade-final', 'evaluate', 'regenerate-flagged', 'generate-storyboard', 'generate-videos', 'stitch') on a production."""
     if step == "render-draft":
@@ -93,6 +91,21 @@ async def trigger_production_step(
             invite_code,
             json=body,
         )
+    if step in ("approve-G1", "approve-G2", "approve-G3"):
+        gate_id = step.split("-")[1]
+        return await api_call(
+            "POST",
+            f"/api/v1/productions/{production_id}/gates/{gate_id}/approve",
+            invite_code,
+            json=payload or {},
+        )
+    if step.startswith("S") and "_" in step:
+        return await api_call(
+            "POST",
+            f"/api/v1/productions/{production_id}/stages/{step}/run",
+            invite_code,
+            json=payload or {},
+        )
     return await api_call(
         "POST",
         f"/api/v1/productions/{production_id}/{step}",
@@ -104,7 +117,7 @@ async def trigger_production_step(
 # ── Promo ───────────────────────────────────────────────────────────────────
 
 
-async def list_recent_promos(invite_code: str, limit: int = 5) -> List[dict]:
+async def list_recent_promos(invite_code: str, limit: int = 5) -> list[dict]:
     """List the most recent promotional video jobs."""
     return await list_recent("/api/v1/promo", invite_code, limit)
 
@@ -129,7 +142,7 @@ async def create_promo(
     )
 
 
-async def list_uploaded_videos(invite_code: str) -> List[dict]:
+async def list_uploaded_videos(invite_code: str) -> list[dict]:
     """List all videos that have been uploaded and are ready for processing."""
     return await api_call("GET", "/api/v1/promo/sources/uploads", invite_code)
 
@@ -137,7 +150,7 @@ async def list_uploaded_videos(invite_code: str) -> List[dict]:
 # ── Reframe / Key Moments / Thumbnails / Adapts ─────────────────────────────
 
 
-async def list_recent_reframes(invite_code: str, limit: int = 5) -> List[dict]:
+async def list_recent_reframes(invite_code: str, limit: int = 5) -> list[dict]:
     """List the most recent video reframe (orientation) jobs."""
     return await list_recent("/api/v1/reframe", invite_code, limit)
 
@@ -153,7 +166,7 @@ async def create_reframe(
     )
 
 
-async def list_recent_key_moments(invite_code: str, limit: int = 5) -> List[dict]:
+async def list_recent_key_moments(invite_code: str, limit: int = 5) -> list[dict]:
     """List the most recent key moments analysis jobs."""
     return await list_recent("/api/v1/key-moments", invite_code, limit)
 
@@ -169,7 +182,7 @@ async def create_key_moments_analysis(
     )
 
 
-async def list_recent_thumbnails(invite_code: str, limit: int = 5) -> List[dict]:
+async def list_recent_thumbnails(invite_code: str, limit: int = 5) -> list[dict]:
     """List the most recent thumbnail jobs."""
     return await list_recent("/api/v1/thumbnails", invite_code, limit)
 
@@ -190,13 +203,13 @@ async def trigger_thumbnail_step(invite_code: str, record_id: str, step: str) ->
     )
 
 
-async def list_recent_adapts(invite_code: str, limit: int = 5) -> List[dict]:
+async def list_recent_adapts(invite_code: str, limit: int = 5) -> list[dict]:
     """List the most recent social media adaptation jobs."""
     return await list_recent("/api/v1/adapts", invite_code, limit)
 
 
 async def create_adapt(
-    invite_code: str, gcs_uri: str, aspect_ratios: List[str]
+    invite_code: str, gcs_uri: str, aspect_ratios: list[str]
 ) -> dict:
     """Trigger an Adapt job to resize an image for multiple platforms."""
     return await create_job(
@@ -209,12 +222,12 @@ async def create_adapt(
 # ── Dubbing ─────────────────────────────────────────────────────────────────
 
 
-async def list_dubbing_languages(invite_code: str) -> List[dict]:
+async def list_dubbing_languages(invite_code: str) -> list[dict]:
     """Return the allowlist of target languages supported by Dubbing."""
     return await api_call("GET", "/api/v1/dubbing/languages", invite_code)
 
 
-async def list_recent_dubbing(invite_code: str, limit: int = 5) -> List[dict]:
+async def list_recent_dubbing(invite_code: str, limit: int = 5) -> list[dict]:
     """List the most recent video dubbing jobs."""
     return await list_recent("/api/v1/dubbing", invite_code, limit)
 
@@ -222,7 +235,7 @@ async def list_recent_dubbing(invite_code: str, limit: int = 5) -> List[dict]:
 async def create_dubbing(
     invite_code: str,
     gcs_uri: str,
-    target_languages: List[str],
+    target_languages: list[str],
     source_filename: str = "",
 ) -> dict:
     """Create a multi-language video dubbing job."""
@@ -247,15 +260,15 @@ async def retry_dubbing(invite_code: str, record_id: str) -> dict:
 # ── FinOps / Models / Uploads ───────────────────────────────────────────────
 
 
-async def list_ai_models(invite_code: str) -> List[dict]:
+async def list_ai_models(invite_code: str) -> list[dict]:
     """List registered AI models and their active regions."""
     res = await api_call("GET", "/api/v1/models", invite_code)
     return res if isinstance(res, list) else []
 
 
 async def list_uploads(
-    invite_code: str, file_type: Optional[str] = None, limit: int = 10
-) -> List[dict]:
+    invite_code: str, file_type: str | None = None, limit: int = 10
+) -> list[dict]:
     """List uploaded media files."""
     params = {"file_type": file_type} if file_type else None
     res = await api_call("GET", "/api/v1/uploads", invite_code, params=params)
@@ -302,7 +315,7 @@ def _record_summary(record: dict) -> dict:
 
 async def list_recent_jobs(
     invite_code: str, feature: str, limit: int = 5
-) -> List[dict]:
+) -> list[dict]:
     """List the most recent records for any feature, sorted newest-first."""
     norm_feature = normalize_feature(feature)
     endpoint = _FEATURE_ENDPOINTS.get(norm_feature)

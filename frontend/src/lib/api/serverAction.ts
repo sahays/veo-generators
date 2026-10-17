@@ -13,10 +13,13 @@ const FASTAPI_INTERNAL_ORIGIN =
 const AGENTS_SERVICE_ORIGIN =
   process.env.AGENTS_SERVICE_ORIGIN || FASTAPI_INTERNAL_ORIGIN
 
+const PRODUCTIONS_SERVICE_ORIGIN =
+  process.env.PRODUCTIONS_SERVICE_ORIGIN || FASTAPI_INTERNAL_ORIGIN
+
 /**
  * Next.js Server Action that executes all API calls server-to-server
  * from the Next.js Node runtime to the FastAPI backend over internal loopback
- * (or to the dedicated ADK Agents Cloud Run service for `/api/v1/chat`).
+ * (or to the dedicated Cloud Run services for `/api/v1/chat` and `/api/v1/productions/*`).
  */
 export async function serverApiRequest(
   path: string,
@@ -24,11 +27,23 @@ export async function serverApiRequest(
   headersRecord: Record<string, string>,
   body?: string | FormData,
 ): Promise<ServerApiResponse> {
+  const fastapiOrigin =
+    process.env.FASTAPI_INTERNAL_ORIGIN || FASTAPI_INTERNAL_ORIGIN
+  const agentsOrigin = process.env.AGENTS_SERVICE_ORIGIN || fastapiOrigin
+  const productionsOrigin =
+    process.env.PRODUCTIONS_SERVICE_ORIGIN || fastapiOrigin
+
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  const isStoryGraphRoute =
+    /^\/api\/v1\/productions\/[^/]+\/(graph|run|stages\/|gates\/|appearances\/|shots\/)/.test(
+      normalizedPath,
+    )
   const targetOrigin =
     normalizedPath === '/api/v1/chat'
-      ? AGENTS_SERVICE_ORIGIN
-      : FASTAPI_INTERNAL_ORIGIN
+      ? agentsOrigin
+      : isStoryGraphRoute
+        ? productionsOrigin
+        : fastapiOrigin
   const url = path.startsWith('http')
     ? path
     : `${targetOrigin}${normalizedPath}`

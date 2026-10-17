@@ -69,6 +69,7 @@ export const projectSchema = z.object({
   video_length: z.string().min(1),
   orientation: z.enum(['16:9', '9:16']),
   language: z.enum(['en-IN', 'hi-IN', 'en-US']),
+  auto_approve_gates: z.boolean().optional(),
   reference_image_url: z.string().optional(),
   prompt_id: z.string().optional(),
   schema_id: z.string().optional(),
@@ -77,6 +78,7 @@ export const projectSchema = z.object({
 export type ProjectFormData = z.infer<typeof projectSchema> & {
   prompt_id?: string
   schema_id?: string
+  auto_approve_gates?: boolean
 }
 
 export type ProjectStatus =
@@ -88,6 +90,10 @@ export type ProjectStatus =
   | 'stitching'
   | 'evaluating'
   | 'regenerating'
+  | 'running'
+  | 'awaiting_g1'
+  | 'awaiting_g2'
+  | 'awaiting_g3'
   | 'completed'
   | 'failed'
 
@@ -270,6 +276,30 @@ export interface VideoEvalReport {
   evaluated_at?: string
 }
 
+export interface StoryGraphData {
+  style_guide?: any
+  entities: {
+    characters: any[]
+    locations: any[]
+    objects: any[]
+    all: any[]
+  }
+  events: any[]
+  state_facts: any[]
+  appearances: any[]
+  assets: any[]
+  scenes: any[]
+  dialogue_lines: any[]
+  music_cues: any[]
+  shots: any[]
+  generation_runs: any[]
+  gates: any[]
+  stage_runs: any[]
+  validation_issues: { code: string; severity: string; node_id: string; message: string }[]
+  change_requests: any[]
+  audit_log: any[]
+}
+
 export interface Project {
   id: string
   name: string
@@ -277,6 +307,11 @@ export interface Project {
   base_concept: string
   video_length: '16' | '24' | '32' | '48' | 'custom'
   orientation: '16:9' | '9:16'
+  language?: ProductionLanguage
+  auto_approve_gates?: boolean
+  current_stage?: string
+  blocked_gate?: string | null
+  story_graph?: StoryGraphData
   status: ProjectStatus
   render_quality?: RenderQuality
   video_resolution?: VideoResolution

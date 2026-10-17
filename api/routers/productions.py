@@ -1,10 +1,10 @@
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
-
 import deps
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from helpers import sign_production_urls
 from models import AIResponseWrapper, Project, ProjectStatus
+
 from routers._crud import register_crud_routes
 from routers.render_helpers import (
     run_standalone_regenerate_flagged,
@@ -182,3 +182,115 @@ def _build_analyze_updates(result, prompt_id, schema_id) -> dict:
                     "version": res.version,
                 }
     return updates
+
+
+def _load_storygraph_service():
+    """Lazy-load the StoryGraph service functions from `productions_service` without colliding with `api/main.py`."""
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    if "productions_service_main" in sys.modules:
+        return sys.modules["productions_service_main"]
+
+    prod_svc_dir = Path(__file__).resolve().parent.parent.parent / "productions_service"
+    if str(prod_svc_dir) not in sys.path:
+        sys.path.insert(0, str(prod_svc_dir))
+    main_path = prod_svc_dir / "main.py"
+    spec = importlib.util.spec_from_file_location("productions_service_main", main_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load StoryGraph service from {main_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["productions_service_main"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _ensure_storygraph_seeded(id: str):
+    prod_main = _load_storygraph_service()
+    cfg = prod_main._load_runtime_config()
+    repo = prod_main.get_repo(id, cfg=cfg)
+    if not repo.get_project_meta() and deps.firestore_svc:
+        p = deps.firestore_svc.get_production(id)
+        if p:
+            from storygraph.schema import ProjectMeta
+
+            meta = ProjectMeta(
+                id=p.id,
+                name=p.name,
+                type=p.type
+                if p.type in ("movie", "advertizement", "social")
+                else "movie",
+                base_concept=p.base_concept,
+                story_text=p.base_concept,
+                video_length=str(p.video_length),
+                orientation=p.orientation
+                if p.orientation in ("16:9", "9:16")
+                else "16:9",
+                language=getattr(p, "language", "en-IN") or "en-IN",
+            )
+            repo.put_project_meta(meta)
+            repo.put_source_text(p.base_concept)
+            prod_main.Pipeline(repo=repo, cfg=cfg).ingest_story(p.base_concept)
+            prod_main._MEMORY_PROJECT_INDEX.add(p.id)
+    return prod_main
+
+
+@router.get("/{id}/graph")
+async def get_production_story_graph(id: str):
+    prod_main = _ensure_storygraph_seeded(id)
+    return await prod_main.get_production(id)
+
+
+@router.post("/{id}/run")
+async def run_story_graph_pipeline(id: str, body: dict = {}):
+    prod_main = _ensure_storygraph_seeded(id)
+    payload = prod_main.RunPipelinePayload(
+        auto_approve_gates=body.get("auto_approve_gates"),
+        story_text=body.get("story_text"),
+    )
+    return await prod_main.run_production_pipeline(id, payload)
+
+
+@router.post("/{id}/stages/{stage_id}/run")
+async def run_story_graph_stage(id: str, stage_id: str, force: bool = True):
+    prod_main = _ensure_storygraph_seeded(id)
+    return await prod_main.run_single_stage(id, stage_id, force=force)
+
+
+@router.post("/{id}/gates/{gate_id}/approve")
+async def approve_story_graph_gate(id: str, gate_id: str, body: dict = {}):
+    prod_main = _ensure_storygraph_seeded(id)
+    payload = prod_main.GateDecisionPayload(
+        reviewer=body.get("reviewer", "studio_user"),
+        notes=body.get("notes"),
+    )
+    return await prod_main.approve_production_gate(id, gate_id, payload)
+
+
+@router.post("/{id}/gates/{gate_id}/reject")
+async def reject_story_graph_gate(id: str, gate_id: str, body: dict = {}):
+    prod_main = _ensure_storygraph_seeded(id)
+    payload = prod_main.GateDecisionPayload(
+        reviewer=body.get("reviewer", "studio_user"),
+        notes=body.get("notes", "Revision requested"),
+    )
+    return await prod_main.reject_production_gate(id, gate_id, payload)
+
+
+@router.post("/{id}/appearances/{appearance_id}/approve")
+async def approve_story_graph_appearance(id: str, appearance_id: str):
+    prod_main = _ensure_storygraph_seeded(id)
+    return await prod_main.approve_single_appearance(id, appearance_id)
+
+
+@router.post("/{id}/appearances/{appearance_id}/regenerate")
+async def regenerate_story_graph_appearance(id: str, appearance_id: str):
+    prod_main = _ensure_storygraph_seeded(id)
+    return await prod_main.regenerate_single_appearance(id, appearance_id)
+
+
+@router.post("/{id}/shots/{shot_id}/compile")
+async def compile_story_graph_shot(id: str, shot_id: str):
+    prod_main = _ensure_storygraph_seeded(id)
+    return await prod_main.compile_single_shot_preview(id, shot_id)

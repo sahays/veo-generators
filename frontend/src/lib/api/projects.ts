@@ -114,6 +114,56 @@ export const projects = {
       `${API_BASE_URL}/productions/${id}/stitch-status`,
       'Stitch status check failed',
     ),
+  getStoryGraph: (id: string) =>
+    request<any>(
+      `${API_BASE_URL}/productions/${id}/graph`,
+      'Failed to load story graph',
+    ),
+  runStoryGraph: (
+    id: string,
+    options?: { auto_approve_gates?: boolean; story_text?: string },
+  ) =>
+    postJson<any>(
+      `${API_BASE_URL}/productions/${id}/run`,
+      options || {},
+      'Failed to run StoryGraph pipeline',
+    ),
+  runStage: (id: string, stageId: string) =>
+    postJson<any>(
+      `${API_BASE_URL}/productions/${id}/stages/${stageId}/run`,
+      {},
+      `Failed to run stage ${stageId}`,
+    ),
+  approveGate: (id: string, gateId: 'G1' | 'G2' | 'G3', notes?: string) =>
+    postJson<any>(
+      `${API_BASE_URL}/productions/${id}/gates/${gateId}/approve`,
+      { reviewer: 'studio_user', notes },
+      `Failed to approve gate ${gateId}`,
+    ),
+  rejectGate: (id: string, gateId: 'G1' | 'G2' | 'G3', notes?: string) =>
+    postJson<any>(
+      `${API_BASE_URL}/productions/${id}/gates/${gateId}/reject`,
+      { reviewer: 'studio_user', notes: notes || 'Revision requested' },
+      `Failed to reject gate ${gateId}`,
+    ),
+  approveAppearance: (id: string, appearanceId: string) =>
+    postJson<any>(
+      `${API_BASE_URL}/productions/${id}/appearances/${appearanceId}/approve`,
+      {},
+      'Failed to approve appearance',
+    ),
+  regenerateAppearance: (id: string, appearanceId: string) =>
+    postJson<any>(
+      `${API_BASE_URL}/productions/${id}/appearances/${appearanceId}/regenerate`,
+      {},
+      'Failed to regenerate appearance',
+    ),
+  compileShot: (id: string, shotId: string) =>
+    postJson<any>(
+      `${API_BASE_URL}/productions/${id}/shots/${shotId}/compile`,
+      {},
+      'Failed to compile shot prompt',
+    ),
   delete: projectsCrud.delete,
   archive: projectsCrud.archive,
   unarchive: projectsCrud.unarchive,

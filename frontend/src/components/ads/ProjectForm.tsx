@@ -1,68 +1,50 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Sparkles, FileText, ImageIcon, Monitor, Smartphone, Clock, Clapperboard, Megaphone, Share2, Play, Settings, Loader2, X, Upload, FolderOpen, RotateCcw, Globe } from 'lucide-react'
+import {
+  ArrowLeft,
+  Sparkles,
+  FileText,
+  Monitor,
+  Smartphone,
+  Clock,
+  Clapperboard,
+  Megaphone,
+  Share2,
+  Play,
+  Loader2,
+  Globe,
+  GitBranch,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button, Card } from '@/components/Common'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useProjectStore } from '@/store/useProjectStore'
-import { projectSchema, type ProjectFormData, VIDEO_LENGTH_OPTIONS, PRODUCTION_LANGUAGES, type SystemResource, type Scene, type UploadRecord } from '@/types/project'
+import {
+  projectSchema,
+  type ProjectFormData,
+  VIDEO_LENGTH_OPTIONS,
+  PRODUCTION_LANGUAGES,
+} from '@/types/project'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
-import { Select } from '@/components/UI'
-import { ResourceModal } from './ResourceModal'
-
-const CATEGORY_MAP: Record<string, string> = {
-  movie: 'production-movie',
-  advertizement: 'production-ad',
-  social: 'production-social',
-}
 
 export const ProjectForm = () => {
   const { setTempProjectData, setActiveProject } = useProjectStore()
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
 
-  const [prompts, setPrompts] = useState<SystemResource[]>([])
-  const [isModalOpen, setIsModalOpen] = useState(false)
   const [existingProject, setExistingProject] = useState<any>(null)
   const [isLoadingProject, setIsLoadingProject] = useState(!!id)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const [referenceImage, setReferenceImage] = useState<{ gcs_uri: string; signed_url: string } | null>(null)
-  const [existingImages, setExistingImages] = useState<UploadRecord[]>([])
-  const [showImagePicker, setShowImagePicker] = useState(false)
-  const [isUploadingRef, setIsUploadingRef] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState(0)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const fetchResources = async () => {
-    try {
-      const allResources = await api.system.listResources()
-      const pList = allResources.filter((r: SystemResource) => r.type === 'prompt')
-      setPrompts(pList)
-
-      // Set default active prompt for new projects
-      if (!id) {
-        const activePrompt = pList.find(p => p.is_active)
-        if (activePrompt) setValue('prompt_id', activePrompt.id)
-      }
-    } catch (err) {
-      console.error("Failed to fetch system resources", err)
-    }
-  }
-
-  useEffect(() => {
-    fetchResources()
-    api.uploads.list({ file_type: 'image' }).then(setExistingImages).catch(() => {})
-  }, [])
-
-  // Fetch existing project from API when editing
   useEffect(() => {
     if (!id) return
     setIsLoadingProject(true)
-    api.projects.get(id)
+    api.projects
+      .get(id)
       .then((project) => {
         if (project && project.id) {
           setExistingProject(project)
@@ -84,32 +66,26 @@ export const ProjectForm = () => {
     resolver: zodResolver(projectSchema),
     defaultValues: {
       name: '',
-      type: 'advertizement',
+      type: 'movie',
       base_concept: '',
       video_length: '16',
       orientation: '16:9',
       language: 'en-IN',
+      auto_approve_gates: false,
     },
   })
 
-  // Reset form when existing project loads from API
   useEffect(() => {
     if (existingProject) {
       reset({
         name: existingProject.name,
-        type: existingProject.type || 'advertizement',
+        type: existingProject.type || 'movie',
         base_concept: existingProject.base_concept,
         video_length: String(existingProject.video_length || '16'),
         orientation: existingProject.orientation || '16:9',
         language: existingProject.language || 'en-IN',
-        prompt_id: existingProject.prompt_info?.id || '',
+        auto_approve_gates: Boolean(existingProject.auto_approve_gates),
       })
-      if (existingProject.reference_image_url) {
-        setReferenceImage({
-          gcs_uri: '',
-          signed_url: existingProject.reference_image_url,
-        })
-      }
     }
   }, [existingProject, reset])
 
@@ -118,104 +94,28 @@ export const ProjectForm = () => {
   const language = watch('language') || 'en-IN'
   const concept = watch('base_concept') || ''
 
-  const [isSubmitting, setIsSubmitting] = useState(false)
-
-  // Filter prompts by selected production type
-  const filteredPrompts = prompts.filter(p => p.category === CATEGORY_MAP[projectType])
-
-  // Auto-select first prompt or clear selection when production type changes
-  useEffect(() => {
-    const category = CATEGORY_MAP[projectType]
-    const matching = prompts.filter(p => p.category === category)
-    const currentPromptId = watch('prompt_id')
-    if (!currentPromptId || !matching.find(p => p.id === currentPromptId)) {
-      setValue('prompt_id', matching[0]?.id || '')
-    }
-  }, [projectType, prompts])
-
-  const handleRefUpload = async (file: File) => {
-    setIsUploadingRef(true)
-    setUploadProgress(0)
-    try {
-      const { promise } = api.assets.directUpload(file, setUploadProgress)
-      const result = await promise
-      setReferenceImage({ gcs_uri: result.gcs_uri, signed_url: result.signed_url })
-      // Refresh image list so it appears in the picker
-      api.uploads.list({ file_type: 'image' }).then(setExistingImages).catch(() => {})
-    } catch (err) {
-      console.error('Reference image upload failed', err)
-    } finally {
-      setIsUploadingRef(false)
-      setUploadProgress(0)
-    }
-  }
-
-  const persistExistingProject = async (projectId: string, data: ProjectFormData, extra?: Record<string, any>) => {
-    await api.projects.update(projectId, {
-      name: data.name,
-      type: data.type,
-      base_concept: data.base_concept,
-      video_length: data.video_length,
-      orientation: data.orientation,
-      language: data.language,
-      ...(referenceImage?.gcs_uri ? { reference_image_url: referenceImage.gcs_uri } : {}),
-      ...(extra || {}),
-    } as any)
-  }
-
-  const onRegenerate = handleSubmit(async (data) => {
-    if (!id) return
+  const onLaunchStudio = handleSubmit(async (data) => {
     setIsSubmitting(true)
     try {
-      await persistExistingProject(id, data, { status: 'draft', scenes: [] })
-      // Clear scenes and navigate — RefinePromptView will auto-trigger analysis
-      setTempProjectData({
-        ...(existingProject || {}),
-        ...data,
-        id,
-        status: 'draft',
-        scenes: [],
-        prompt_id: data.prompt_id,
-      } as any)
-      navigate(`/productions/${id}/script`)
-    } finally {
-      setIsSubmitting(false)
-    }
-  })
-
-  const onAnalyze = handleSubmit(async (data) => {
-    if (existingProject && id) {
-      setIsSubmitting(true)
-      try {
-        const needsReanalyze =
-          String(data.video_length) !== String(existingProject.video_length || '16') ||
-          data.language !== (existingProject.language || 'en-IN') ||
-          data.orientation !== (existingProject.orientation || '16:9') ||
-          data.type !== (existingProject.type || 'advertizement') ||
-          data.base_concept !== existingProject.base_concept
-        await persistExistingProject(
-          id,
-          data,
-          needsReanalyze ? { status: 'draft', scenes: [] } : undefined,
-        )
+      if (existingProject && id) {
+        await api.projects.update(id, {
+          name: data.name,
+          type: data.type,
+          base_concept: data.base_concept,
+          video_length: data.video_length,
+          orientation: data.orientation,
+          language: data.language,
+          auto_approve_gates: Boolean(data.auto_approve_gates),
+        } as any)
         setTempProjectData({
           ...existingProject,
           ...data,
           id,
-          status: needsReanalyze ? 'draft' : existingProject.status,
-          scenes: needsReanalyze ? [] : existingProject.scenes,
-          prompt_id: data.prompt_id,
         } as any)
         navigate(`/productions/${id}/script`)
-      } finally {
-        setIsSubmitting(false)
+        return
       }
-      return
-    }
 
-    // New project — create via API first
-    setIsSubmitting(true)
-    try {
       const created = await api.projects.create({
         name: data.name,
         type: data.type,
@@ -223,12 +123,15 @@ export const ProjectForm = () => {
         video_length: data.video_length,
         orientation: data.orientation,
         language: data.language,
-        ...(referenceImage?.gcs_uri ? { reference_image_url: referenceImage.gcs_uri } : {}),
-      })
-      setTempProjectData({ ...data, id: created.id, prompt_id: data.prompt_id })
+        auto_approve_gates: Boolean(data.auto_approve_gates),
+      } as any)
+      setTempProjectData({
+        ...data,
+        id: created.id,
+      } as any)
       navigate(`/productions/${created.id}/script`)
     } catch (err) {
-      console.error('Failed to create production', err)
+      console.error('Failed to save production', err)
     } finally {
       setIsSubmitting(false)
     }
@@ -248,66 +151,78 @@ export const ProjectForm = () => {
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
-      className="space-y-6 max-w-3xl mx-auto"
+      className="space-y-6 max-w-3xl mx-auto pb-20"
     >
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/productions')}>
-          <ArrowLeft size={18} />
-        </Button>
-        <div>
-          <h2 className="text-xl font-heading text-foreground tracking-tight">
-            {existingProject ? 'Edit Production' : 'New Production'}
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            {existingProject ? 'Update your production settings' : 'Define your core concept and technical constraints.'}
-          </p>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={() => navigate('/productions')}>
+            <ArrowLeft size={18} />
+          </Button>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-heading text-foreground tracking-tight">
+                {existingProject ? 'Edit Production Brief' : 'New Story-to-Video Production'}
+              </h2>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-accent/10 text-accent-dark border border-accent/25 text-[10px] font-mono font-bold uppercase">
+                <GitBranch size={11} /> StoryGraph v1
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Provide a story idea or script. The 10-stage multi-agent StoryGraph studio will extract entities, design reference sheets, direct shots, and compile deterministic prompts.
+            </p>
+          </div>
         </div>
       </div>
 
       <form className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card title="Production Type" icon={projectType === 'movie' ? Clapperboard : projectType === 'social' ? Share2 : Megaphone} className="md:col-span-3">
-            <div className="flex flex-wrap gap-4">
-              {[
-                { id: 'movie', label: 'Movie', icon: Clapperboard, desc: 'Cinematic storytelling' },
-                { id: 'advertizement', label: 'Ad', icon: Megaphone, desc: 'Brand promotion' },
-                { id: 'social', label: 'Social', icon: Share2, desc: 'Viral short content' }
-              ].map((opt) => (
-                <Button
-                  variant="unstyled"
-                  key={opt.id}
-                  type="button"
-                  onClick={() => setValue('type', opt.id as any)}
+        <Card
+          title="Production Format"
+          icon={projectType === 'movie' ? Clapperboard : projectType === 'social' ? Share2 : Megaphone}
+        >
+          <div className="flex flex-wrap gap-4">
+            {[
+              { id: 'movie', label: 'Movie / Short Film', icon: Clapperboard, desc: 'Narrative multi-scene storytelling' },
+              { id: 'advertizement', label: 'Brand Commercial', icon: Megaphone, desc: 'High-impact product & brand story' },
+              { id: 'social', label: 'Social Reel', icon: Share2, desc: 'Fast-paced short-form story' },
+            ].map((opt) => (
+              <Button
+                variant="unstyled"
+                key={opt.id}
+                type="button"
+                onClick={() => setValue('type', opt.id as any)}
+                className={cn(
+                  'flex-1 flex items-center gap-3 p-3 rounded-[6px] border transition-all text-left',
+                  projectType === opt.id
+                    ? 'bg-accent/10 border-accent text-accent-dark shadow-sm'
+                    : 'border-border text-muted-foreground hover:border-accent/30',
+                )}
+              >
+                <div
                   className={cn(
-                    "flex-1 flex items-center gap-3 p-3 rounded-[6px] border transition-all text-left",
-                    projectType === opt.id 
-                      ? "bg-accent/10 border-accent text-accent-dark shadow-sm" 
-                      : "border-border text-muted-foreground hover:border-accent/30"
+                    'p-2 rounded-[5px]',
+                    projectType === opt.id ? 'btn-primary text-white' : 'bg-muted',
                   )}
                 >
-                  <div className={cn(
-                    "p-2 rounded-[5px]",
-                    projectType === opt.id ? "btn-primary text-white" : "bg-muted"
-                  )}>
-                    <opt.icon size={18} />
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-bold uppercase tracking-wider">{opt.label}</p>
-                    <p className="text-[10px] opacity-70">{opt.desc}</p>
-                  </div>
-                </Button>
-              ))}
-            </div>
-          </Card>
-        </div>
+                  <opt.icon size={18} />
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wider">{opt.label}</p>
+                  <p className="text-[10px] opacity-70">{opt.desc}</p>
+                </div>
+              </Button>
+            ))}
+          </div>
+        </Card>
 
-        <Card title="Concept & Vision" icon={FileText}>
+        <Card title="Story Concept & Narrative Brief" icon={FileText}>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Project Name</label>
+              <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Production Title
+              </label>
               <Input
                 {...register('name')}
-                placeholder="Summer Campaign 2026"
+                placeholder="e.g. Midnight Signal at Victoria Terminus"
                 className="w-full px-3 py-2 rounded-lg text-sm glass bg-card border border-border"
               />
               {errors.name && <p className="text-[10px] text-red-500">{errors.name.message}</p>}
@@ -315,82 +230,53 @@ export const ProjectForm = () => {
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Base Concept</label>
-                <span className="text-[10px] font-mono text-muted-foreground">{concept.length}/2000</span>
+                <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Story Idea or Full Script
+                </label>
+                <span className="text-[10px] font-mono text-muted-foreground">
+                  {concept.length}/2000
+                </span>
               </div>
               <Textarea
                 {...register('base_concept')}
-                rows={5}
-                placeholder="Describe the overall story, vibe, and key message..."
+                rows={6}
+                placeholder="Describe characters, locations, props, key events, or paste a multi-scene story..."
                 className="w-full px-3 py-2 rounded-lg text-sm glass bg-card border border-border resize-none"
               />
-              {errors.base_concept && <p className="text-[10px] text-red-500">{errors.base_concept.message}</p>}
+              {errors.base_concept && (
+                <p className="text-[10px] text-red-500">{errors.base_concept.message}</p>
+              )}
             </div>
           </div>
         </Card>
 
-        <Card title="System Configuration" icon={Settings} className="relative z-20">
-          <Select
-            label="Prompt"
-            value={watch('prompt_id') || ''}
-            onChange={(val) => {
-              if (val === 'CREATE_NEW') {
-                setIsModalOpen(true)
-              } else {
-                setValue('prompt_id', val)
-              }
-            }}
-            options={[
-              ...filteredPrompts.map(p => ({
-                value: p.id,
-                label: p.name,
-                description: `Version ${p.version}`
-              })),
-              { value: 'CREATE_NEW', label: '+ Create New Prompt...', className: 'text-accent-dark font-bold bg-accent/5' }
-            ]}
-          />
-        </Card>
-
-        <ResourceModal
-          isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-          type="prompt"
-          existingResources={prompts}
-          onSuccess={(saved) => {
-            fetchResources()
-            setValue('prompt_id', saved.id)
-          }}
-        />
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card title="Duration" icon={Clock}>
-            <div className="flex flex-wrap gap-3">
-              {VIDEO_LENGTH_OPTIONS.map((len) => (
-                <label key={len} className="flex items-center gap-2 cursor-pointer group">
-                  <input
-                    type="radio"
-                    value={len}
-                    {...register('video_length')}
-                    className="sr-only"
-                  />
-                  <div className={cn(
-                    "px-3 py-1.5 rounded-[5px] border text-xs font-medium transition-all",
-                    watch('video_length') === len 
-                      ? "btn-primary text-white border-transparent"
-                      : "border-border hover:border-accent/50 text-muted-foreground"
-                  )}>
-                    {len === 'custom' ? 'Custom' : `${len}s`}
-                  </div>
-                </label>
+          <Card title="Target Duration" icon={Clock}>
+            <div className="flex flex-wrap gap-2.5">
+              {VIDEO_LENGTH_OPTIONS.filter((l) => l !== 'custom').map((len) => (
+                <Button
+                  key={len}
+                  variant="unstyled"
+                  type="button"
+                  onClick={() => setValue('video_length', len)}
+                  className={cn(
+                    'px-3.5 py-2 rounded-[5px] border text-xs font-medium transition-all',
+                    watch('video_length') === len
+                      ? 'btn-primary text-white border-transparent'
+                      : 'border-border hover:border-accent/50 text-muted-foreground',
+                  )}
+                >
+                  {len}s
+                </Button>
               ))}
             </div>
           </Card>
 
-          <Card title="Orientation" icon={orientation === '16:9' ? Monitor : Smartphone}>
+          <Card title="Aspect Ratio" icon={orientation === '16:9' ? Monitor : Smartphone}>
             <div className="flex gap-4">
               {[
-                { id: '16:9', label: 'Landscape', icon: Monitor },
-                { id: '9:16', label: 'Vertical', icon: Smartphone }
+                { id: '16:9', label: '16:9 Landscape', icon: Monitor },
+                { id: '9:16', label: '9:16 Vertical', icon: Smartphone },
               ].map((opt) => (
                 <Button
                   variant="unstyled"
@@ -398,180 +284,82 @@ export const ProjectForm = () => {
                   type="button"
                   onClick={() => setValue('orientation', opt.id as any)}
                   className={cn(
-                    "flex-1 flex flex-col items-center gap-2 p-3 rounded-[6px] border transition-all",
-                    orientation === opt.id 
-                      ? "bg-accent/10 border-accent text-accent-dark" 
-                      : "border-border text-muted-foreground hover:border-accent/30"
+                    'flex-1 flex flex-col items-center gap-2 p-3 rounded-[6px] border transition-all',
+                    orientation === opt.id
+                      ? 'bg-accent/10 border-accent text-accent-dark'
+                      : 'border-border text-muted-foreground hover:border-accent/30',
                   )}
                 >
                   <opt.icon size={20} />
-                  <span className="text-[10px] font-bold uppercase tracking-widest">{opt.label}</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest">
+                    {opt.label}
+                  </span>
                 </Button>
               ))}
             </div>
           </Card>
         </div>
 
-        <Card title="Language (Audio & Video Narration)" icon={Globe}>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {PRODUCTION_LANGUAGES.map((langOpt) => (
-              <Button
-                variant="unstyled"
-                key={langOpt.id}
-                type="button"
-                onClick={() => setValue('language', langOpt.id)}
-                className={cn(
-                  'flex flex-col items-start gap-1 p-3 rounded-[6px] border transition-all text-left',
-                  language === langOpt.id
-                    ? 'bg-accent/10 border-accent text-accent-dark shadow-sm'
-                    : 'border-border text-muted-foreground hover:border-accent/30',
-                )}
-              >
-                <span className="text-xs font-bold">{langOpt.label}</span>
-                <span className="text-[10px] opacity-75">{langOpt.sub}</span>
-              </Button>
-            ))}
+        <Card title="Spoken Language & Studio Gate Mode" icon={Globe}>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {PRODUCTION_LANGUAGES.map((langOpt) => (
+                <Button
+                  variant="unstyled"
+                  key={langOpt.id}
+                  type="button"
+                  onClick={() => setValue('language', langOpt.id)}
+                  className={cn(
+                    'flex flex-col items-start gap-1 p-3 rounded-[6px] border transition-all text-left',
+                    language === langOpt.id
+                      ? 'bg-accent/10 border-accent text-accent-dark shadow-sm'
+                      : 'border-border text-muted-foreground hover:border-accent/30',
+                  )}
+                >
+                  <span className="text-xs font-bold">{langOpt.label}</span>
+                  <span className="text-[10px] opacity-75">{langOpt.sub}</span>
+                </Button>
+              ))}
+            </div>
+            <div className="pt-3 border-t border-border/50 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-foreground">Human-in-the-Loop Gate Mode</p>
+                <p className="text-[10px] text-muted-foreground">
+                  Pause for review at Gate G1 (Entities), Gate G2 (Reference Sheets), and Gate G3 (Shots & Prompts), or auto-approve all gates.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {[
+                  { val: false, label: 'Interactive Gates (G1 · G2 · G3)' },
+                  { val: true, label: 'Auto-Approve Gates' },
+                ].map((opt) => (
+                  <Button
+                    key={String(opt.val)}
+                    type="button"
+                    size="xs"
+                    variant={Boolean(watch('auto_approve_gates')) === opt.val ? 'primary' : 'outline'}
+                    onClick={() => setValue('auto_approve_gates', opt.val)}
+                  >
+                    {opt.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
           </div>
         </Card>
 
-        <Card title="Visual Reference" icon={ImageIcon}>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0]
-              if (file) handleRefUpload(file)
-              e.target.value = ''
-            }}
-          />
-
-          {referenceImage ? (
-            <div className="relative group">
-              <img
-                src={referenceImage.signed_url}
-                alt="Reference"
-                className="w-full max-h-48 object-contain rounded-lg border border-border"
-              />
-              <Button
-                variant="unstyled"
-                type="button"
-                onClick={() => setReferenceImage(null)}
-                className="absolute top-2 right-2 p-1 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80"
-              >
-                <X size={14} />
-              </Button>
-            </div>
-          ) : isUploadingRef ? (
-            <div className="border-2 border-dashed border-accent/40 rounded-xl p-8 flex flex-col items-center justify-center space-y-3">
-              <Loader2 className="animate-spin text-accent" size={24} />
-              <div className="w-48 h-1.5 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-accent rounded-full transition-all duration-300"
-                  style={{ width: `${uploadProgress}%` }}
-                />
-              </div>
-              <p className="text-[10px] text-muted-foreground">Uploading... {uploadProgress}%</p>
-            </div>
-          ) : showImagePicker ? (
-            <div className="space-y-3">
-              {existingImages.length > 0 ? (
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-48 overflow-y-auto">
-                  {existingImages.map((img) => (
-                    <Button
-                      variant="unstyled"
-                      key={img.id}
-                      type="button"
-                      onClick={() => {
-                        setReferenceImage({ gcs_uri: img.gcs_uri, signed_url: img.signed_url || '' })
-                        setShowImagePicker(false)
-                      }}
-                      className="aspect-square rounded-[6px] overflow-hidden border border-border hover:border-accent transition-colors"
-                    >
-                      <img src={img.signed_url} alt={img.display_name || img.filename} className="w-full h-full object-cover" />
-                    </Button>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground text-center py-4">No images in Files yet.</p>
-              )}
-              <Button
-                variant="ghost"
-                size="xs"
-                type="button"
-                onClick={() => setShowImagePicker(false)}
-              >
-                Cancel
-              </Button>
-            </div>
-          ) : (
-            <div className="border-2 border-dashed border-border rounded-xl p-8 flex flex-col items-center justify-center text-center space-y-3 hover:border-accent/50 transition-colors">
-              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-muted-foreground">
-                <ImageIcon size={20} />
-              </div>
-              <p className="text-[10px] text-muted-foreground">Provide a visual anchor for characters and style.</p>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  type="button"
-                  icon={Upload}
-                  iconSize={13}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  Upload New
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  type="button"
-                  icon={FolderOpen}
-                  iconSize={13}
-                  onClick={() => setShowImagePicker(true)}
-                >
-                  Choose from Files
-                </Button>
-              </div>
-            </div>
-          )}
-        </Card>
-
-        {/* Storyboard Preview for existing projects */}
-        {existingProject && existingProject.scenes.length > 0 && (
-          <Card title="Storyboard Preview" icon={Clapperboard}>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {existingProject.scenes.map((scene: Scene) => (
-                <div key={scene.id} className="group relative aspect-video rounded-lg overflow-hidden border border-border bg-muted">
-                  <img src={scene.thumbnail_url} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2">
-                    <span className="text-[8px] text-white font-mono">{scene.timestamp_start}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
-
-        <div className="flex justify-end gap-3 pt-4">
-          {existingProject?.scenes.length > 0 && (
-            <Button
-              onClick={onRegenerate}
-              icon={RotateCcw}
-              variant="secondary"
-              className="w-full md:w-auto"
-              disabled={isSubmitting}
-            >
-              Regenerate Script
-            </Button>
-          )}
+        <div className="flex justify-end gap-3 pt-2">
           <Button
-            onClick={onAnalyze}
-            icon={existingProject?.scenes.length ? Play : Sparkles}
+            onClick={onLaunchStudio}
+            icon={existingProject ? Play : Sparkles}
             className="w-full md:w-auto"
             disabled={isSubmitting}
           >
-            {isSubmitting ? 'Creating...' : existingProject?.scenes.length ? 'View & Edit Script' : 'Generate Scenes'}
+            {isSubmitting
+              ? 'Launching Studio...'
+              : existingProject
+                ? 'Save & Open StoryGraph Studio'
+                : 'Launch Story-to-Video Graph Studio'}
           </Button>
         </div>
       </form>

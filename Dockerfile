@@ -27,6 +27,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend code
 COPY api/ ./api
+COPY productions_service/ ./productions_service
 
 # Copy Next.js standalone SSR build, static assets, and public folder
 COPY --from=frontend-build /app/frontend/.next/standalone ./frontend-standalone

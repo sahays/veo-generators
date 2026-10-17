@@ -109,8 +109,8 @@ export const ProductionSummary = () => {
     <motion.div
       initial={{ opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.98 }}
-      className="max-w-5xl mx-auto space-y-8 pb-20"
+      exit={{ opacity: 0, scale: -0.98 }}
+      className="w-full space-y-6 pb-20"
     >
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -161,10 +161,10 @@ export const ProductionSummary = () => {
               {isUpgrading ? 'Upgrading...' : 'Upgrade to Final (720p HD)'}
             </Button>
           )}
-          <Button variant="ghost" icon={FileText} onClick={() => navigate(`/productions/${id}/script`)}>
-            View Technical Script
+          <Button variant="primary" icon={FileText} onClick={() => navigate(`/productions/${id}/script`)}>
+            Open StoryGraph Studio
           </Button>
-          {canWrite && <Button variant={isDraft ? 'outline' : 'primary'} icon={Plus} onClick={handleStartFresh}>New Production</Button>}
+          {canWrite && <Button variant="outline" icon={Plus} onClick={handleStartFresh}>New Production</Button>}
         </div>
       </div>
 

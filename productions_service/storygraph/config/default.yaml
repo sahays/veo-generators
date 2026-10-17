@@ -1,0 +1,51 @@
+store:
+  backend: "memory"
+  firestore_database: "(default)"
+  collection_prefix: "veo_generators_productions"
+  max_doc_bytes: 900000
+
+blobs:
+  backend: "local"
+  local_root: "/tmp/storygraph_blobs"
+  gcs_prefix: "projects"
+
+models:
+  story_architect: "gemini-3.8-flash"
+  script_supervisor: "gemini-3.8-flash"
+  screenwriter: "gemini-3.8-flash"
+  character_designer: "gemini-3.8-flash"
+  location_designer: "gemini-3.8-flash"
+  object_designer: "gemini-3.8-flash"
+  designer: "gemini-3.8-flash"
+  director: "gemini-3.8-flash"
+  music_director: "gemini-3.8-flash"
+  critic_vlm: "gemini-3.8-flash"
+
+image:
+  provider: "mock"
+  model: "gemini-nano-banana-2.1"
+
+video:
+  provider: "mock"
+  model: "gemini-omni-1.1-flash-preview"
+  max_reference_images: 3
+  max_duration_s: 8.0
+  max_prompt_chars: 4000
+  supports_first_frame: true
+
+  supports_audio_prompt: true
+
+qa:
+  face_cosine_min: 0.65
+  wardrobe_vlm_min: 0.70
+  setting_vlm_min: 0.70
+  action_vlm_min: 0.70
+  dialogue_wer_max: 0.15
+
+caps:
+  shot_max_retries: 3
+  design_loop_max: 2
+  max_words_per_sec: 2.8
+  max_composite_subjects: 2
+  stage_token_cap: 500000
+  project_cost_cap_usd: 50.0

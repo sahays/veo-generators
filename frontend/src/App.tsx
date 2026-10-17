@@ -128,6 +128,7 @@ function App() {
   }
 
   const isChatFullscreen = pathname === '/chat' && isFullscreen
+  const isFullWidthRoute = pathname.startsWith('/productions')
 
   return (
     <div className="flex h-screen bg-background bg-accent-gradient">
@@ -137,10 +138,18 @@ function App() {
           className={
             isChatFullscreen
               ? 'flex-1 overflow-hidden p-0'
-              : 'flex-1 overflow-x-hidden overflow-y-auto p-6 md:p-8'
+              : 'flex-1 overflow-x-hidden overflow-y-auto p-5 md:p-7'
           }
         >
-          <div className={isChatFullscreen ? 'h-full w-full' : 'max-w-4xl mx-auto w-full'}>
+          <div
+            className={
+              isChatFullscreen
+                ? 'h-full w-full'
+                : isFullWidthRoute
+                  ? 'w-full'
+                  : 'max-w-4xl mx-auto w-full'
+            }
+          >
             <PageTransition>
               <Routes>
                 <Route path="/" element={<Navigate to={canWrite ? '/chat' : '/productions'} replace />} />
