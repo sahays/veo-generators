@@ -22,6 +22,39 @@ def gcs_ref_url(project) -> str | None:
     return url if url and url.startswith("gs://") else None
 
 
+LANGUAGE_BRIEF_DIRECTIVES = {
+    "hi-IN": (
+        "AUDIO & VOICE-OVER LANGUAGE: Hindi (hi-IN, हिन्दी). Write every scene's "
+        "`narration` (voice-over or spoken dialogue) in natural, expressive Hindi "
+        "(Devanagari script) matched to the scene duration. Keep `visual_description`, "
+        "`metadata`, and `music_description` in English."
+    ),
+    "en-IN": (
+        "AUDIO & VOICE-OVER LANGUAGE: English (India) (en-IN). Write every scene's "
+        "`narration` (voice-over or spoken dialogue) in natural Indian English "
+        "phrasing and cadence, intended for an Indian English voice-over accent."
+    ),
+    "en-US": "AUDIO & VOICE-OVER LANGUAGE: English (US) (en-US).",
+}
+
+
+def _duration_directive(length: str) -> str:
+    try:
+        total_sec = int(length)
+    except (TypeError, ValueError):
+        return ""
+    if total_sec <= 0:
+        return ""
+    scene_count = max(2, round(total_sec / 8))
+    mins, secs = divmod(total_sec, 60)
+    end_ts = f"{mins:02d}:{secs:02d}"
+    return (
+        f"\nSTRICT DURATION REQUIREMENT: Total video runtime MUST be exactly {total_sec} seconds "
+        f"(00:00 to {end_ts}), structured as {scene_count} contiguous scenes of ~8 seconds each "
+        f"(e.g. 00:00-00:08, 00:08-00:16, ... up to {end_ts})."
+    )
+
+
 class PromptResolver:
     """Resolves prompts and schemas from Firestore or defaults."""
 
@@ -57,15 +90,21 @@ class PromptResolver:
             if gcs_ref_url(project)
             else ""
         )
-        return template.format_map(
+        lang_code = getattr(project, "language", None) or "en-IN"
+        lang_note = LANGUAGE_BRIEF_DIRECTIVES.get(
+            lang_code, LANGUAGE_BRIEF_DIRECTIVES["en-IN"]
+        )
+        formatted = template.format_map(
             defaultdict(
                 str,
                 length=length,
                 orientation=orientation,
                 concept=concept,
                 ref_images=ref_note,
+                language=lang_code,
             )
         )
+        return f"{formatted}\n{_duration_directive(length)}\n{lang_note}"
 
     def _lookup_brief_template(self, prompt_id, project_type) -> str:
         """Resolve template: explicit ID > category > default."""

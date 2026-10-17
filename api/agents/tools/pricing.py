@@ -1,6 +1,7 @@
 """Pricing tools — rates catalog, feature/service map, cost estimates and lookups."""
 
 from ._client import api_call
+from .jobs import normalize_feature
 
 
 async def get_pricing_rates(invite_code: str) -> dict:
@@ -20,13 +21,18 @@ async def estimate_cost(invite_code: str, payload: dict) -> dict:
     `feature` (one of production/adapts/reframe/promo/key_moments/thumbnails)
     plus feature-specific inputs (scene_count, variant_count,
     source_duration_seconds, segment_count, thumbnail_count, etc.)."""
-    return await api_call("POST", "/api/v1/pricing/estimate", invite_code, json=payload)
+    norm_payload = dict(payload)
+    if "feature" in norm_payload:
+        norm_payload["feature"] = normalize_feature(str(norm_payload["feature"]))
+    return await api_call(
+        "POST", "/api/v1/pricing/estimate", invite_code, json=norm_payload
+    )
 
 
 async def get_job_cost(invite_code: str, feature: str, record_id: str) -> dict:
-    """Get the per-service cost breakdown for a completed (or in-progress) job.
-    Returns line items, total cost, and pricing_confidence ('high'/'medium'/'low')
-    plus notes describing any estimated fields."""
+    """Get the per-service cost and token usage breakdown for a completed (or in-progress) job.
+    Returns line items (including token counts in `units`), total cost, and pricing_confidence."""
+    norm_feature = normalize_feature(feature)
     return await api_call(
-        "GET", f"/api/v1/pricing/usage/{feature}/{record_id}", invite_code
+        "GET", f"/api/v1/pricing/usage/{norm_feature}/{record_id}", invite_code
     )

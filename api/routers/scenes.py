@@ -81,19 +81,32 @@ async def generate_scene_frame(
             deps.firestore_svc.update_scene(
                 id, scene_id, {"visual_description": new_desc}
             )
+            scene.visual_description = new_desc
 
     frame_model_id = body.get("model_id") if body else None
     frame_region = body.get("region") if body else None
     try:
-        result = await deps.ai_svc.generate_frame(
-            id,
-            scene,
-            production.orientation,
-            project=production,
-            prompt_override=prompt_override,
-            model_id=frame_model_id,
-            region=frame_region,
-        )
+        try:
+            result = await deps.ai_svc.generate_frame(
+                id,
+                scene,
+                production.orientation,
+                project=production,
+                prompt_override=prompt_override,
+                model_id=frame_model_id,
+                region=frame_region,
+                frame_position="start",
+            )
+        except TypeError:
+            result = await deps.ai_svc.generate_frame(
+                id,
+                scene,
+                production.orientation,
+                project=production,
+                prompt_override=prompt_override,
+                model_id=frame_model_id,
+                region=frame_region,
+            )
     except Exception as e:
         logger.error(f"Frame generation failed for scene {scene_id}: {e}")
         error_msg = f"Image generation failed for scene {scene_id}: {e}"
@@ -110,7 +123,7 @@ async def generate_scene_frame(
     if result.data.get("generated_prompt"):
         scene_updates["generated_prompt"] = result.data["generated_prompt"]
         scene_updates["image_prompt"] = result.data["generated_prompt"]
-    deps.firestore_svc.update_scene(id, scene_id, scene_updates)
+
     accumulate_image_cost_on(
         "production",
         id,
@@ -119,8 +132,48 @@ async def generate_scene_frame(
         output_tokens=result.usage.image_output_tokens,
         model_name=result.usage.image_model_name,
     )
-    # Return signed URL for immediate display
+
+    end_gcs_uri = None
+    try:
+        end_result = await deps.ai_svc.generate_frame(
+            id,
+            scene,
+            production.orientation,
+            project=production,
+            model_id=frame_model_id,
+            region=frame_region,
+            frame_position="end",
+            start_frame_uri=gcs_uri,
+        )
+        end_gcs_uri = end_result.data.get("image_url")
+        if end_gcs_uri:
+            scene_updates["end_frame_url"] = end_gcs_uri
+            if end_result.data.get("generated_prompt"):
+                scene_updates["end_frame_prompt"] = end_result.data["generated_prompt"]
+                result.data["end_frame_prompt"] = end_result.data["generated_prompt"]
+            accumulate_image_cost_on(
+                "production",
+                id,
+                end_result.usage.cost_usd,
+                input_tokens=end_result.usage.image_input_tokens,
+                output_tokens=end_result.usage.image_output_tokens,
+                model_name=end_result.usage.image_model_name,
+            )
+            result.usage.image_generations = max(
+                1, result.usage.image_generations
+            ) + max(1, end_result.usage.image_generations)
+            result.usage.image_input_tokens += end_result.usage.image_input_tokens
+            result.usage.image_output_tokens += end_result.usage.image_output_tokens
+            result.usage.image_cost_usd += end_result.usage.image_cost_usd
+            result.usage.cost_usd += end_result.usage.cost_usd
+    except Exception as e:
+        logger.warning(f"End frame generation skipped/failed for scene {scene_id}: {e}")
+
+    deps.firestore_svc.update_scene(id, scene_id, scene_updates)
+    # Return signed URLs for immediate display
     result.data["image_url"] = deps.storage_svc.get_signed_url(gcs_uri)
+    if end_gcs_uri:
+        result.data["end_frame_url"] = deps.storage_svc.get_signed_url(end_gcs_uri)
     return result
 
 

@@ -123,7 +123,7 @@ export const SceneItemList = ({
                 onClick={handleGenerateFrame}
                 disabled={isBusy}
               >
-                {isGeneratingFrame ? 'Generating...' : 'Generate Frame (2)'}
+                {isGeneratingFrame ? 'Generating...' : 'Generate Start & End Frames (2)'}
               </Button>
               <Button
                 variant="ghost"
@@ -156,6 +156,7 @@ export const SceneItemList = ({
       )}>
         <SceneMediaCarousel
           thumbnailUrl={scene.thumbnail_url}
+          endFrameUrl={scene.end_frame_url}
           videoUrl={scene.video_url}
           isGeneratingFrame={isGeneratingFrame}
           isGeneratingVideo={isGeneratingVideo}

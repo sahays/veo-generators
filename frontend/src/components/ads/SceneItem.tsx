@@ -57,9 +57,15 @@ export const SceneItem = ({
       const imageUrl = result.data?.image_url || result.data
       const updates: Partial<Scene> = {}
       if (imageUrl && typeof imageUrl === 'string') updates.thumbnail_url = imageUrl
+      if (result.data?.end_frame_url && typeof result.data.end_frame_url === 'string') {
+        updates.end_frame_url = result.data.end_frame_url
+      }
       if (result.data?.generated_prompt) {
         updates.image_prompt = result.data.generated_prompt
         updates.generated_prompt = result.data.generated_prompt
+      }
+      if (result.data?.end_frame_prompt) {
+        updates.end_frame_prompt = result.data.end_frame_prompt
       }
       if (Object.keys(updates).length > 0) onUpdate(updates)
     } catch (err) {
@@ -117,7 +123,9 @@ export const SceneItem = ({
     }
   }
 
-  const isBusy = isGeneratingFrame || isGeneratingVideo
+  const activeGeneratingFrame = isGeneratingFrame || scene.status === 'generating_frame'
+  const activeGeneratingVideo = isGeneratingVideo || scene.status === 'generating'
+  const isBusy = activeGeneratingFrame || activeGeneratingVideo
   const View = layout === 'grid' ? SceneItemGrid : SceneItemList
 
   return (
@@ -127,10 +135,10 @@ export const SceneItem = ({
         index={index}
         isReadOnly={isReadOnly}
         aspectClass={aspectClass}
-        isGeneratingFrame={isGeneratingFrame}
-        isGeneratingVideo={isGeneratingVideo}
+        isGeneratingFrame={activeGeneratingFrame}
+        isGeneratingVideo={activeGeneratingVideo}
         isBusy={isBusy}
-        error={error}
+        error={error || (scene as any).error_message || null}
         handleToggle={handleToggle}
         handleTextChange={handleTextChange}
         handleGenerateFrame={() => handleGenerateFrame()}

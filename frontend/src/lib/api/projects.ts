@@ -1,8 +1,10 @@
+import type { Project } from '@/types/project'
 import { createCrudClient } from './_crud'
 import {
   API_BASE_URL,
   buildQS,
   jsonInit,
+  patchJson,
   postJson,
   request,
   requestVoid,
@@ -16,6 +18,8 @@ export const projects = {
   get: projectsCrud.get,
   create: (project: any) =>
     postJson<any>(`${API_BASE_URL}/productions`, project, 'Failed to create production'),
+  update: (id: string, updates: Record<string, any>) =>
+    patchJson(`${API_BASE_URL}/productions/${id}`, updates, 'Failed to update production'),
   updateScene: (id: string, sceneId: string, updates: Record<string, any>) =>
     requestVoid(
       `${API_BASE_URL}/productions/${id}/scenes/${sceneId}`,
@@ -28,10 +32,11 @@ export const projects = {
     schema_id?: string,
     model_id?: string,
     region?: string,
+    overrides?: Record<string, any>,
   ) =>
     postJson<any>(
       `${API_BASE_URL}/productions/${id}/analyze`,
-      { prompt_id, schema_id, model_id, region },
+      { prompt_id, schema_id, model_id, region, ...(overrides || {}) },
       'Analysis failed',
     ),
   buildPrompt: (id: string, sceneId: string) =>
@@ -67,10 +72,39 @@ export const projects = {
       'Operation check failed',
     )
   },
-  render: (id: string) =>
-    request<any>(`${API_BASE_URL}/productions/${id}/render`, 'Render failed', {
-      method: 'POST',
-    }),
+  render: (
+    id: string,
+    options?: {
+      quality?: 'draft' | 'final'
+      resolution?: '360p' | '720p' | '1080p'
+      auto_review?: boolean
+      auto_eval?: boolean
+      max_eval_iterations?: number
+    },
+  ) =>
+    postJson<{ status: string }>(
+      `${API_BASE_URL}/productions/${id}/render`,
+      options || {},
+      'Render failed',
+    ),
+  reviewStoryboard: (id: string) =>
+    postJson<Project>(
+      `${API_BASE_URL}/productions/${id}/review`,
+      {},
+      'Storyboard review failed',
+    ),
+  evaluateVideo: (id: string) =>
+    postJson<Project>(
+      `${API_BASE_URL}/productions/${id}/evaluate`,
+      {},
+      'Video evaluation failed',
+    ),
+  regenerateFlagged: (id: string) =>
+    postJson<{ status: string }>(
+      `${API_BASE_URL}/productions/${id}/regenerate-flagged`,
+      {},
+      'Regenerate flagged scenes failed',
+    ),
   stitch: (id: string) =>
     request<any>(`${API_BASE_URL}/productions/${id}/stitch`, 'Stitch failed', {
       method: 'POST',

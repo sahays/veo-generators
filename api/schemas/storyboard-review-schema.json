@@ -1,0 +1,117 @@
+{
+  "type": "object",
+  "properties": {
+    "overall_score": {
+      "type": "integer",
+      "description": "Continuity, physics, speaker attribution, and transition quality score from 0 to 100 BEFORE fixes were applied"
+    },
+    "summary": {
+      "type": "string",
+      "description": "Concise summary of continuity, character anatomy, prop physics, speaker attribution, environmental state, and transition fixes applied across the storyboard"
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "scene_number": {
+            "type": "integer",
+            "description": "1-based scene number (or 0 for global continuity)"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "speech_speaker",
+              "prop_physics",
+              "character_anatomy",
+              "environment_continuity",
+              "transition_action",
+              "audio_music"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["critical", "warning"]
+          },
+          "problem": {
+            "type": "string",
+            "description": "Specific inconsistency or hallucination risk found (e.g. 'Hanuman might lip-sync Jamvant monologue', 'Ring in hand not anchored to palm', 'Hanuman tail count not constrained', 'Lanka fire missing in Scene 4')"
+          },
+          "fix_applied": {
+            "type": "string",
+            "description": "Exact rewrite applied to the scene or continuity profile to eliminate the issue"
+          }
+        },
+        "required": ["scene_number", "category", "severity", "problem", "fix_applied"]
+      }
+    },
+    "continuity": {
+      "type": "object",
+      "properties": {
+        "characters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string", "description": "Character identifier" },
+              "description": {
+                "type": "string",
+                "description": "Strict physical appearance and anatomical invariants (e.g. 'strictly ONE monkey tail, two arms, two hands')"
+              },
+              "wardrobe": { "type": "string", "description": "Consistent clothing and accessories" }
+            },
+            "required": ["id", "description", "wardrobe"]
+          }
+        },
+        "setting_notes": {
+          "type": "string",
+          "description": "Persistent setting and world-state details (e.g. active fire/smoke in Lanka, time of day, weather) that must remain consistent across cuts"
+        }
+      },
+      "required": ["characters", "setting_notes"]
+    },
+    "scenes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "visual_description": {
+            "type": "string",
+            "description": "Strictly rewritten visual description enforcing single action, explicit speaker lip-sync vs silent listener, solid prop grip contact, anatomical invariants, and persistent environment state"
+          },
+          "timestamp_start": { "type": "string" },
+          "timestamp_end": { "type": "string" },
+          "narration": { "type": "string" },
+          "speaker_notes": {
+            "type": "string",
+            "description": "Explicit speaker and lip-sync rule for this scene (e.g. 'Off-screen narrator only; Hanuman keeps mouth closed' or 'Jamvant speaks on-screen; Hanuman listens silently with mouth closed')"
+          },
+          "music_description": { "type": "string" },
+          "enter_transition": { "type": "string" },
+          "exit_transition": { "type": "string" },
+          "music_transition": { "type": "string" },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "location": { "type": "string" },
+              "characters": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "camera_angle": { "type": "string" },
+              "camera_movement": { "type": "string" },
+              "lighting": { "type": "string" },
+              "cinematic_style": { "type": "string" },
+              "pace": { "type": "string" },
+              "style": { "type": "string" },
+              "mood": { "type": "string" }
+            },
+            "required": ["location", "camera_angle", "camera_movement", "cinematic_style"]
+          }
+        },
+        "required": ["visual_description", "timestamp_start", "timestamp_end", "speaker_notes", "metadata"]
+      }
+    }
+  },
+  "required": ["overall_score", "summary", "issues", "continuity", "scenes"]
+}

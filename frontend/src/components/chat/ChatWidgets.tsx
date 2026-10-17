@@ -1,5 +1,24 @@
 import React, { useState, useEffect } from 'react'
-import { Play, FileVideo, CheckCircle2, Clock, ChevronRight, Film, Upload, Sparkles, Loader2, AlertCircle, X, RefreshCw, Clapperboard, Smartphone, Image, Search, LayoutGrid } from 'lucide-react'
+import {
+  Play,
+  FileVideo,
+  CheckCircle2,
+  Clock,
+  ChevronRight,
+  Film,
+  Upload,
+  Sparkles,
+  Loader2,
+  AlertCircle,
+  X,
+  RefreshCw,
+  Clapperboard,
+  Smartphone,
+  Image,
+  Search,
+  LayoutGrid,
+  Languages,
+} from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,9 +27,17 @@ import { NativeSelect } from '@/components/ui/select'
 import { cn, formatFileSize } from '@/lib/utils'
 import { api } from '@/lib/api'
 
-// ── Types ────────────────────────────────────────────────────────────
+// ── Types (Hybrid A2UI + React Widget Registry) ──────────────────────
 
-type ConfirmationJobType = 'promo' | 'reframe' | 'production' | 'key_moments' | 'thumbnails' | 'adapts'
+export type ConfirmationJobType =
+  | 'promo'
+  | 'reframe'
+  | 'production'
+  | 'key_moments'
+  | 'thumbnails'
+  | 'adapts'
+  | 'dubbing'
+
 type ConfirmationStatus = 'pending' | 'confirming' | 'confirmed' | 'cancelled' | 'failed'
 
 export interface ConfirmationData {
@@ -29,6 +56,7 @@ const JOB_ICONS: Record<ConfirmationJobType, React.ReactNode> = {
   key_moments: <Search size={16} />,
   thumbnails: <Image size={16} />,
   adapts: <LayoutGrid size={16} />,
+  dubbing: <Languages size={16} />,
 }
 
 const ROUTE_MAP: Record<ConfirmationJobType, (id: string) => string> = {
@@ -38,18 +66,26 @@ const ROUTE_MAP: Record<ConfirmationJobType, (id: string) => string> = {
   key_moments: (id) => `/key-moments/${id}`,
   thumbnails: (id) => `/thumbnails/${id}`,
   adapts: (id) => `/adapts/${id}`,
+  dubbing: (id) => `/dubbing/${id}`,
 }
 
 async function executeJob(jobType: ConfirmationJobType, params: Record<string, any>): Promise<any> {
-  // params are dynamically built from agent proposals — cast to satisfy typed API signatures
   const p = params as any
   switch (jobType) {
-    case 'promo': return api.promo.create(p)
-    case 'reframe': return api.reframe.create(p)
-    case 'production': return api.projects.create(p)
-    case 'key_moments': return api.keyMoments.analyze(p)
-    case 'thumbnails': return api.thumbnails.analyze(p)
-    case 'adapts': return api.adapts.create(p)
+    case 'promo':
+      return api.promo.create(p)
+    case 'reframe':
+      return api.reframe.create(p)
+    case 'production':
+      return api.projects.create(p)
+    case 'key_moments':
+      return api.keyMoments.analyze(p)
+    case 'thumbnails':
+      return api.thumbnails.analyze(p)
+    case 'adapts':
+      return api.adapts.create(p)
+    case 'dubbing':
+      return api.dubbing.create(p)
   }
 }
 
@@ -76,12 +112,24 @@ const CONTENT_TYPE_OPTIONS = [
 const DisplayField: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div className="flex items-center justify-between gap-2 py-1">
     <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">{label}</span>
-    <span className="text-[11px] font-medium text-slate-700 dark:text-slate-200 truncate max-w-[60%] text-right">{value || 'Default'}</span>
+    <span className="text-[11px] font-medium text-slate-700 dark:text-slate-200 truncate max-w-[60%] text-right">
+      {value || 'Default'}
+    </span>
   </div>
 )
 
-const ToggleField: React.FC<{ label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }> = ({ label, checked, onChange, disabled }) => (
-  <label className={cn("flex items-center justify-between gap-2 py-1 cursor-pointer", disabled && "opacity-50 pointer-events-none")}>
+const ToggleField: React.FC<{
+  label: string
+  checked: boolean
+  onChange: (v: boolean) => void
+  disabled?: boolean
+}> = ({ label, checked, onChange, disabled }) => (
+  <label
+    className={cn(
+      'flex items-center justify-between gap-2 py-1 cursor-pointer',
+      disabled && 'opacity-50 pointer-events-none',
+    )}
+  >
     <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">{label}</span>
     <Button
       type="button"
@@ -89,36 +137,43 @@ const ToggleField: React.FC<{ label: string; checked: boolean; onChange: (v: boo
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        "relative h-4 w-7 rounded-full transition-colors",
-        checked ? "bg-orange-500" : "bg-slate-300 dark:bg-slate-600"
+        'relative h-4 w-7 rounded-full transition-colors',
+        checked ? 'bg-orange-500' : 'bg-slate-300 dark:bg-slate-600',
       )}
     >
-      <span className={cn(
-        "absolute top-0.5 left-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform",
-        checked && "translate-x-3"
-      )} />
+      <span
+        className={cn(
+          'absolute top-0.5 left-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform',
+          checked && 'translate-x-3',
+        )}
+      />
     </Button>
   </label>
 )
 
-const PromoFields: React.FC<{ params: Record<string, any>; resolved: Record<string, string>; onChange: (p: Record<string, any>) => void; disabled: boolean }> = ({ params, resolved, onChange, disabled }) => (
+const PromoFields: React.FC<{
+  params: Record<string, any>
+  resolved: Record<string, string>
+  onChange: (p: Record<string, any>) => void
+  disabled: boolean
+}> = ({ params, resolved, onChange, disabled }) => (
   <div className="space-y-1">
     <DisplayField label="Source" value={resolved.source_name} />
     <div className="py-1">
       <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Duration</span>
       <div className="flex gap-1 mt-1">
-        {DURATION_OPTIONS.map(opt => (
+        {DURATION_OPTIONS.map((opt) => (
           <Button
             key={opt.value}
             variant="unstyled"
             disabled={disabled}
             onClick={() => onChange({ ...params, target_duration: opt.value })}
             className={cn(
-              "flex-1 py-1 rounded-[4px] text-[10px] font-bold transition-all",
+              'flex-1 py-1 rounded-[4px] text-[10px] font-bold transition-all',
               params.target_duration === opt.value
-                ? "bg-orange-500 text-white shadow-sm"
-                : "bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600",
-              disabled && "pointer-events-none"
+                ? 'bg-orange-500 text-white shadow-sm'
+                : 'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600',
+              disabled && 'pointer-events-none',
             )}
           >
             {opt.label}
@@ -126,39 +181,66 @@ const PromoFields: React.FC<{ params: Record<string, any>; resolved: Record<stri
         ))}
       </div>
     </div>
-    <ToggleField label="Text overlays" checked={params.text_overlay} onChange={v => onChange({ ...params, text_overlay: v })} disabled={disabled} />
-    <ToggleField label="Thumbnail card" checked={params.generate_thumbnail} onChange={v => onChange({ ...params, generate_thumbnail: v })} disabled={disabled} />
+    <ToggleField
+      label="Text overlays"
+      checked={params.text_overlay}
+      onChange={(v) => onChange({ ...params, text_overlay: v })}
+      disabled={disabled}
+    />
+    <ToggleField
+      label="Thumbnail card"
+      checked={params.generate_thumbnail}
+      onChange={(v) => onChange({ ...params, generate_thumbnail: v })}
+      disabled={disabled}
+    />
   </div>
 )
 
-const ReframeFields: React.FC<{ params: Record<string, any>; resolved: Record<string, string>; onChange: (p: Record<string, any>) => void; disabled: boolean }> = ({ params, resolved, onChange, disabled }) => (
+const ReframeFields: React.FC<{
+  params: Record<string, any>
+  resolved: Record<string, string>
+  onChange: (p: Record<string, any>) => void
+  disabled: boolean
+}> = ({ params, resolved, onChange, disabled }) => (
   <div className="space-y-1">
     <DisplayField label="Source" value={resolved.source_name} />
     <div className="flex items-center justify-between gap-2 py-1">
       <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Content type</span>
       <NativeSelect
         value={params.content_type}
-        onChange={e => onChange({ ...params, content_type: e.target.value })}
+        onChange={(e) => onChange({ ...params, content_type: e.target.value })}
         disabled={disabled}
         className="h-7 w-36 px-2 py-0.5 text-[11px]"
       >
-        {CONTENT_TYPE_OPTIONS.map(opt => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        {CONTENT_TYPE_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
         ))}
       </NativeSelect>
     </div>
-    <ToggleField label="Blurred background" checked={params.blurred_bg} onChange={v => onChange({ ...params, blurred_bg: v })} disabled={disabled} />
+    <ToggleField
+      label="Blurred background"
+      checked={params.blurred_bg}
+      onChange={(v) => onChange({ ...params, blurred_bg: v })}
+      disabled={disabled}
+    />
   </div>
 )
 
-const ProductionFields: React.FC<{ params: Record<string, any>; resolved: Record<string, string>; onChange: (p: Record<string, any>) => void; disabled: boolean }> = ({ params, resolved, onChange, disabled }) => (
+const ProductionFields: React.FC<{
+  params: Record<string, any>
+  resolved: Record<string, string>
+  onChange: (p: Record<string, any>) => void
+  disabled: boolean
+}> = ({ params, resolved, onChange, disabled }) => (
   <div className="space-y-1.5">
     <div>
       <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Name</span>
       <Input
         type="text"
         value={params.name}
-        onChange={e => onChange({ ...params, name: e.target.value })}
+        onChange={(e) => onChange({ ...params, name: e.target.value })}
         disabled={disabled}
         className="mt-0.5 h-7 px-2 py-1 text-[11px]"
       />
@@ -167,7 +249,7 @@ const ProductionFields: React.FC<{ params: Record<string, any>; resolved: Record
       <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Concept</span>
       <Textarea
         value={params.base_concept}
-        onChange={e => onChange({ ...params, base_concept: e.target.value })}
+        onChange={(e) => onChange({ ...params, base_concept: e.target.value })}
         disabled={disabled}
         rows={2}
         className="mt-0.5 min-h-[48px] px-2 py-1 text-[11px]"
@@ -184,11 +266,16 @@ const KeyMomentsFields: React.FC<{ resolved: Record<string, string> }> = ({ reso
   </div>
 )
 
-const AdaptsFields: React.FC<{ params: Record<string, any>; resolved: Record<string, string>; onChange: (p: Record<string, any>) => void; disabled: boolean }> = ({ params, resolved, onChange, disabled }) => {
+const AdaptsFields: React.FC<{
+  params: Record<string, any>
+  resolved: Record<string, string>
+  onChange: (p: Record<string, any>) => void
+  disabled: boolean
+}> = ({ params, resolved, onChange, disabled }) => {
   const ratios: string[] = params.aspect_ratios || []
   const allRatios = ['16:9', '9:16', '1:1', '4:5', '4:3', '3:4']
   const toggle = (r: string) => {
-    const next = ratios.includes(r) ? ratios.filter(x => x !== r) : [...ratios, r]
+    const next = ratios.includes(r) ? ratios.filter((x) => x !== r) : [...ratios, r]
     onChange({ ...params, aspect_ratios: next })
   }
   return (
@@ -197,18 +284,18 @@ const AdaptsFields: React.FC<{ params: Record<string, any>; resolved: Record<str
       <div className="py-1">
         <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Aspect ratios</span>
         <div className="flex flex-wrap gap-1 mt-1">
-          {allRatios.map(r => (
+          {allRatios.map((r) => (
             <Button
               key={r}
               variant="unstyled"
               disabled={disabled}
               onClick={() => toggle(r)}
               className={cn(
-                "px-2 py-0.5 rounded-[4px] text-[10px] font-bold transition-all",
+                'px-2 py-0.5 rounded-[4px] text-[10px] font-bold transition-all',
                 ratios.includes(r)
-                  ? "bg-orange-500 text-white"
-                  : "bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-400",
-                disabled && "pointer-events-none"
+                  ? 'bg-orange-500 text-white'
+                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-400',
+                disabled && 'pointer-events-none',
               )}
             >
               {r}
@@ -221,6 +308,66 @@ const AdaptsFields: React.FC<{ params: Record<string, any>; resolved: Record<str
   )
 }
 
+const DubbingFields: React.FC<{
+  params: Record<string, any>
+  resolved: Record<string, string>
+  onChange: (p: Record<string, any>) => void
+  disabled: boolean
+}> = ({ params, resolved, onChange, disabled }) => {
+  const [languages, setLanguages] = useState<{ code: string; label: string }[]>([])
+  const selected: string[] = params.target_languages || []
+
+  useEffect(() => {
+    api.dubbing
+      .listLanguages()
+      .then((res) => {
+        if (Array.isArray(res)) setLanguages(res)
+      })
+      .catch(() => {})
+  }, [])
+
+  const toggleLang = (code: string) => {
+    if (selected.includes(code)) {
+      onChange({ ...params, target_languages: selected.filter((c) => c !== code) })
+    } else if (selected.length < 4) {
+      onChange({ ...params, target_languages: [...selected, code] })
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <DisplayField label="Source" value={resolved.source_name} />
+      <div className="py-1">
+        <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">
+          Target Languages (up to 4)
+        </span>
+        <div className="flex flex-wrap gap-1 mt-1">
+          {(languages.length > 0
+            ? languages
+            : selected.map((c) => ({ code: c, label: c }))
+          ).map((lang) => (
+            <Button
+              key={lang.code}
+              variant="unstyled"
+              disabled={disabled}
+              onClick={() => toggleLang(lang.code)}
+              className={cn(
+                'px-2 py-0.5 rounded-[4px] text-[10px] font-bold transition-all',
+                selected.includes(lang.code)
+                  ? 'bg-orange-500 text-white'
+                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-400',
+                disabled && 'pointer-events-none',
+              )}
+            >
+              {lang.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── ConfirmationCard ─────────────────────────────────────────────────
 
 export const ConfirmationCard: React.FC<{
@@ -229,12 +376,18 @@ export const ConfirmationCard: React.FC<{
   onFailed: (error: string) => void
 }> = ({ confirmation, onConfirmed, onFailed }) => {
   const [localParams, setLocalParams] = useState(confirmation.params)
+  const [localResolved, setLocalResolved] = useState(confirmation.resolved)
   const [status, setStatus] = useState<ConfirmationStatus>('pending')
   const [error, setError] = useState<string | null>(null)
   const [resultId, setResultId] = useState<string | null>(null)
 
   const disabled = status !== 'pending'
-  const { job_type, title, resolved } = confirmation
+  const { job_type, title } = confirmation
+
+  const needsVideoSource =
+    ['promo', 'reframe', 'key_moments', 'thumbnails', 'dubbing'].includes(job_type) &&
+    !localParams.gcs_uri
+  const needsImageSource = job_type === 'adapts' && !localParams.gcs_uri
 
   const handleConfirm = async () => {
     setStatus('confirming')
@@ -290,11 +443,66 @@ export const ConfirmationCard: React.FC<{
           </div>
         ) : (
           <>
-            {job_type === 'promo' && <PromoFields params={localParams} resolved={resolved} onChange={setLocalParams} disabled={disabled} />}
-            {job_type === 'reframe' && <ReframeFields params={localParams} resolved={resolved} onChange={setLocalParams} disabled={disabled} />}
-            {job_type === 'production' && <ProductionFields params={localParams} resolved={resolved} onChange={setLocalParams} disabled={disabled} />}
-            {(job_type === 'key_moments' || job_type === 'thumbnails') && <KeyMomentsFields resolved={resolved} />}
-            {job_type === 'adapts' && <AdaptsFields params={localParams} resolved={resolved} onChange={setLocalParams} disabled={disabled} />}
+            {needsVideoSource && (
+              <VideoSourcePicker
+                onSelect={(uri, name) => {
+                  setLocalParams({ ...localParams, gcs_uri: uri, source_filename: name })
+                  setLocalResolved({ ...localResolved, source_name: name })
+                }}
+              />
+            )}
+            {needsImageSource && (
+              <ImageSourcePicker
+                onSelect={(uri, name) => {
+                  setLocalParams({ ...localParams, gcs_uri: uri, source_filename: name })
+                  setLocalResolved({ ...localResolved, source_name: name })
+                }}
+              />
+            )}
+
+            {job_type === 'promo' && (
+              <PromoFields
+                params={localParams}
+                resolved={localResolved}
+                onChange={setLocalParams}
+                disabled={disabled}
+              />
+            )}
+            {job_type === 'reframe' && (
+              <ReframeFields
+                params={localParams}
+                resolved={localResolved}
+                onChange={setLocalParams}
+                disabled={disabled}
+              />
+            )}
+            {job_type === 'production' && (
+              <ProductionFields
+                params={localParams}
+                resolved={localResolved}
+                onChange={setLocalParams}
+                disabled={disabled}
+              />
+            )}
+            {(job_type === 'key_moments' || job_type === 'thumbnails') && (
+              <KeyMomentsFields resolved={localResolved} />
+            )}
+            {job_type === 'adapts' && (
+              <AdaptsFields
+                params={localParams}
+                resolved={localResolved}
+                onChange={setLocalParams}
+                disabled={disabled}
+              />
+            )}
+            {job_type === 'dubbing' && (
+              <DubbingFields
+                params={localParams}
+                resolved={localResolved}
+                onChange={setLocalParams}
+                disabled={disabled}
+              />
+            )}
 
             {error && (
               <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-red-50 px-2 py-1.5 dark:bg-red-900/20">
@@ -310,34 +518,28 @@ export const ConfirmationCard: React.FC<{
       {(status === 'pending' || status === 'confirming' || status === 'failed') && (
         <div className="flex items-center gap-2 border-t border-slate-100 px-3 py-2 dark:border-slate-700">
           {status === 'failed' ? (
-            <Button
-              variant="ghost"
-              size="xs"
-              icon={RefreshCw}
-              onClick={handleRetry}
-            >
+            <Button variant="ghost" size="xs" icon={RefreshCw} onClick={handleRetry}>
               Retry
             </Button>
           ) : (
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={handleCancel}
-              disabled={status === 'confirming'}
-            >
+            <Button variant="ghost" size="xs" onClick={handleCancel} disabled={status === 'confirming'}>
               Cancel
             </Button>
           )}
           <Button
             size="xs"
             onClick={handleConfirm}
-            disabled={status === 'confirming'}
+            disabled={status === 'confirming' || needsVideoSource || needsImageSource}
             className="ml-auto"
           >
             {status === 'confirming' ? (
-              <><Loader2 size={10} className="animate-spin" /> Confirming...</>
+              <>
+                <Loader2 size={10} className="animate-spin" /> Confirming...
+              </>
             ) : (
-              <><CheckCircle2 size={10} /> Confirm</>
+              <>
+                <CheckCircle2 size={10} /> Confirm
+              </>
             )}
           </Button>
         </div>
@@ -347,17 +549,13 @@ export const ConfirmationCard: React.FC<{
 }
 
 // --- Video Result Card ---
-export const VideoResultCard: React.FC<{ 
-  title: string, 
-  status: string, 
-  id: string, 
-  type: 'promo' | 'reframe' | 'production' 
+export const VideoResultCard: React.FC<{
+  title: string
+  status: string
+  id: string
+  type: ConfirmationJobType
 }> = ({ title, status, id, type }) => {
-  const pathMap = {
-    promo: `/promos/${id}`,
-    reframe: `/orientations/${id}`,
-    production: `/productions/${id}`
-  }
+  const toPath = (ROUTE_MAP[type] || ROUTE_MAP.production)(id)
 
   return (
     <div className="mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
@@ -366,7 +564,9 @@ export const VideoResultCard: React.FC<{
           <FileVideo size={20} />
         </div>
         <div className="flex-1 min-w-0">
-          <h5 className="truncate text-xs font-semibold text-slate-900 dark:text-white">{title || 'Untitled Video'}</h5>
+          <h5 className="truncate text-xs font-semibold text-slate-900 dark:text-white">
+            {title || 'Untitled Job'}
+          </h5>
           <div className="flex items-center gap-1.5 mt-0.5">
             {status === 'completed' ? (
               <CheckCircle2 size={12} className="text-green-500" />
@@ -376,8 +576,8 @@ export const VideoResultCard: React.FC<{
             <span className="text-[10px] uppercase tracking-wider text-slate-500">{status}</span>
           </div>
         </div>
-        <Link 
-          to={pathMap[type]}
+        <Link
+          to={toPath}
           className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-orange-600 hover:text-white dark:bg-slate-700 dark:text-slate-300"
         >
           <ChevronRight size={16} />
@@ -385,15 +585,15 @@ export const VideoResultCard: React.FC<{
       </div>
       {status === 'completed' && (
         <div className="aspect-video bg-slate-900 flex items-center justify-center group relative cursor-pointer">
-           <Play size={24} className="text-white opacity-50 group-hover:opacity-100 transition-opacity" />
-           <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+          <Play size={24} className="text-white opacity-50 group-hover:opacity-100 transition-opacity" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
         </div>
       )}
     </div>
   )
 }
 
-// --- Universal Video Source Picker (Reused logic from VideoSourceSelector) ---
+// --- Universal Video Source Picker ---
 export const VideoSourcePicker: React.FC<{
   onSelect: (gcs_uri: string, filename: string, type: string) => void
 }> = ({ onSelect }) => {
@@ -405,7 +605,7 @@ export const VideoSourcePicker: React.FC<{
   useEffect(() => {
     Promise.all([
       api.promo.listUploadSources().catch(() => []),
-      api.promo.listProductionSources().catch(() => [])
+      api.promo.listProductionSources().catch(() => []),
     ]).then(([ups, prods]) => {
       setUploads(ups)
       setProductions(prods)
@@ -416,14 +616,21 @@ export const VideoSourcePicker: React.FC<{
   return (
     <div className="mt-3 space-y-2">
       <div className="flex gap-1 bg-slate-100 p-1 rounded-lg dark:bg-slate-800">
-        {([['uploads', Upload, 'Uploads'], ['productions', Film, 'Productions']] as const).map(([key, Icon, label]) => (
+        {(
+          [
+            ['uploads', Upload, 'Uploads'],
+            ['productions', Film, 'Productions'],
+          ] as const
+        ).map(([key, Icon, label]) => (
           <Button
             key={key}
             variant="unstyled"
             onClick={() => setTab(key)}
             className={cn(
-              "flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-[5px] text-[10px] font-bold uppercase tracking-wider transition-all",
-              tab === key ? "bg-white text-orange-600 shadow-sm dark:bg-slate-700 dark:text-orange-400" : "text-slate-500"
+              'flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-[5px] text-[10px] font-bold uppercase tracking-wider transition-all',
+              tab === key
+                ? 'bg-white text-orange-600 shadow-sm dark:bg-slate-700 dark:text-orange-400'
+                : 'text-slate-500',
             )}
           >
             <Icon size={12} /> {label}
@@ -433,9 +640,11 @@ export const VideoSourcePicker: React.FC<{
 
       <div className="max-h-48 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
         {loading ? (
-          <div className="py-8 flex justify-center"><Clock className="animate-spin text-slate-300" size={16} /></div>
+          <div className="py-8 flex justify-center">
+            <Clock className="animate-spin text-slate-300" size={16} />
+          </div>
         ) : tab === 'uploads' ? (
-          uploads.map(u => (
+          uploads.map((u) => (
             <Button
               key={u.id}
               variant="unstyled"
@@ -444,13 +653,15 @@ export const VideoSourcePicker: React.FC<{
             >
               <FileVideo size={12} className="text-slate-400" />
               <div className="flex-1 min-w-0">
-                <p className="truncate font-medium text-slate-900 dark:text-white">{u.display_name || u.filename}</p>
+                <p className="truncate font-medium text-slate-900 dark:text-white">
+                  {u.display_name || u.filename}
+                </p>
                 <p className="text-[9px] text-slate-500">{formatFileSize(u.file_size_bytes)}</p>
               </div>
             </Button>
           ))
         ) : (
-          productions.map(p => (
+          productions.map((p) => (
             <Button
               key={p.id}
               variant="unstyled"
@@ -470,7 +681,7 @@ export const VideoSourcePicker: React.FC<{
   )
 }
 
-// --- Image Source Picker (adapts resize an image, not a video) ---
+// --- Image Source Picker ---
 export const ImageSourcePicker: React.FC<{
   onSelect: (gcs_uri: string, filename: string) => void
 }> = ({ onSelect }) => {
@@ -492,9 +703,13 @@ export const ImageSourcePicker: React.FC<{
       </p>
       <div className="max-h-48 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
         {loading ? (
-          <div className="py-8 flex justify-center"><Clock className="animate-spin text-slate-300" size={16} /></div>
+          <div className="py-8 flex justify-center">
+            <Clock className="animate-spin text-slate-300" size={16} />
+          </div>
         ) : images.length === 0 ? (
-          <p className="px-1 text-[10px] italic text-slate-400">No uploaded images found. Upload one on the Adapts page first.</p>
+          <p className="px-1 text-[10px] italic text-slate-400">
+            No uploaded images found. Upload one on the Adapts page first.
+          </p>
         ) : (
           images.map((img) => (
             <Button
@@ -505,7 +720,9 @@ export const ImageSourcePicker: React.FC<{
             >
               <img src={img.image_signed_url} alt="" className="h-8 w-8 flex-shrink-0 rounded object-cover" />
               <div className="flex-1 min-w-0">
-                <p className="truncate font-medium text-slate-900 dark:text-white">{img.display_name || img.filename}</p>
+                <p className="truncate font-medium text-slate-900 dark:text-white">
+                  {img.display_name || img.filename}
+                </p>
                 <p className="text-[9px] text-slate-500">{img.mime_type}</p>
               </div>
             </Button>
@@ -518,14 +735,14 @@ export const ImageSourcePicker: React.FC<{
 
 // --- Prompt Picker Widget ---
 export const PromptPicker: React.FC<{
-  category: string,
+  category: string
   onSelect: (id: string, name: string) => void
 }> = ({ category, onSelect }) => {
   const [prompts, setPrompts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.system.listResources('prompt', category).then(res => {
+    api.system.listResources('prompt', category).then((res) => {
       setPrompts(res)
       setLoading(false)
     })
@@ -538,23 +755,30 @@ export const PromptPicker: React.FC<{
       </p>
       <div className="space-y-1">
         {loading ? (
-          <div className="py-4 flex justify-center"><Clock className="animate-spin text-slate-300" size={16} /></div>
+          <div className="py-4 flex justify-center">
+            <Clock className="animate-spin text-slate-300" size={16} />
+          </div>
         ) : (
-          prompts.map(p => (
+          prompts.map((p) => (
             <Button
               key={p.id}
               variant="unstyled"
               onClick={() => onSelect(p.id, p.name)}
               className={cn(
-                "flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-left text-[11px] transition-all hover:border-orange-500 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-orange-900/20",
-                p.is_active && "border-amber-200 bg-amber-50/30 dark:border-amber-900/50 dark:bg-amber-900/10"
+                'flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-left text-[11px] transition-all hover:border-orange-500 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-orange-900/20',
+                p.is_active &&
+                  'border-amber-200 bg-amber-50/30 dark:border-amber-900/50 dark:bg-amber-900/10',
               )}
             >
               <div className="flex-1 min-w-0">
                 <p className="truncate font-medium text-slate-900 dark:text-white">{p.name}</p>
                 <p className="text-[9px] text-slate-500 truncate">{p.description}</p>
               </div>
-              {p.is_active && <span className="text-[8px] font-bold bg-amber-100 text-amber-700 px-1 rounded dark:bg-amber-900/40 dark:text-amber-400">ACTIVE</span>}
+              {p.is_active && (
+                <span className="text-[8px] font-bold bg-amber-100 text-amber-700 px-1 rounded dark:bg-amber-900/40 dark:text-amber-400">
+                  ACTIVE
+                </span>
+              )}
             </Button>
           ))
         )}

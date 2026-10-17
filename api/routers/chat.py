@@ -1,27 +1,20 @@
 import logging
-import time
-from typing import List
+import uuid
+from datetime import datetime, timezone
+from typing import List, Optional
 
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from google.adk import Runner
-from google.adk.events.event import Event
-from google.adk.events.event_actions import EventActions
-from google.adk.sessions import InMemorySessionService
-from google.genai import types
-from agents.factory import create_orchestrator, get_agent_context
+import deps
+from agents.factory import run_agent_chat
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 
-_EMPTY_ACTIONS = EventActions(
-    artifact_delta={},
-    requested_auth_configs={},
-    requested_tool_confirmations={},
-    state_delta={},
-)
+# In-memory fallback when Firestore isn't initialized (e.g., unit tests).
+_MEMORY_SHARED_CHATS: dict[str, dict] = {}
 
 
 class ChatMessage(BaseModel):
@@ -34,6 +27,19 @@ class ChatRequest(BaseModel):
     history: List[ChatMessage] = []
 
 
+class SharedChatItem(BaseModel):
+    role: str
+    content: str
+    agent: Optional[str] = None
+    latency_ms: Optional[int] = None
+    timestamp: Optional[int] = None
+
+
+class ShareChatRequest(BaseModel):
+    title: Optional[str] = None
+    messages: List[SharedChatItem]
+
+
 @router.post("")
 async def chat_endpoint(body: ChatRequest, request: Request):
     """Chat with the Veo AI Multi-Agent system."""
@@ -42,60 +48,62 @@ async def chat_endpoint(body: ChatRequest, request: Request):
         raise HTTPException(status_code=403, detail="Invite code required for chat")
 
     try:
-        orchestrator = create_orchestrator(invite_code)
-
-        session_service = InMemorySessionService()
-        runner = Runner(
-            app_name="VeoGen",
-            agent=orchestrator,
-            session_service=session_service,
-            auto_create_session=True,
+        return await run_agent_chat(
+            invite_code=invite_code,
+            message=body.message,
+            history=[(m.role, m.content) for m in body.history],
         )
-
-        # Seed conversation history so the agent has context from prior turns.
-        if body.history:
-            session = await session_service.create_session(
-                app_name="VeoGen",
-                user_id=invite_code,
-                session_id=invite_code,
-            )
-            for msg in body.history:
-                await session_service.append_event(
-                    session,
-                    Event(
-                        author="user" if msg.role == "user" else "Aanya",
-                        content=types.Content(
-                            role=msg.role, parts=[types.Part(text=msg.content)]
-                        ),
-                        actions=_EMPTY_ACTIONS,
-                        timestamp=time.time(),
-                    ),
-                )
-
-        msg = types.Content(role="user", parts=[types.Part(text=body.message)])
-
-        full_response = ""
-        last_agent = "Aanya"
-
-        async for event in runner.run_async(
-            user_id=invite_code, session_id=invite_code, new_message=msg
-        ):
-            if event.content:
-                for part in event.content.parts:
-                    if hasattr(part, "text") and part.text:
-                        full_response += part.text
-            if event.author:
-                last_agent = event.author
-
-        return {
-            "response": full_response,
-            "role": "model",
-            "agent": last_agent,
-            "data": get_agent_context().copy(),
-        }
     except Exception:
         logger.exception("Error in chat orchestrator")
         raise HTTPException(
             status_code=500,
             detail="An error occurred processing your request. Please try again.",
         )
+
+
+@router.post("/share")
+async def create_shared_chat(body: ShareChatRequest, request: Request):
+    """Create a publicly shareable snapshot of a chat conversation."""
+    invite_code = getattr(request.state, "invite_code", None)
+    if not invite_code:
+        raise HTTPException(status_code=403, detail="Invite code required")
+    if not body.messages:
+        raise HTTPException(status_code=400, detail="Cannot share an empty chat")
+
+    first_user = next(
+        (
+            m.content.strip()
+            for m in body.messages
+            if m.role == "user" and m.content.strip()
+        ),
+        "Ask Aanya Conversation",
+    )
+    title = (body.title or first_user)[:80]
+    share_id = f"sh-{uuid.uuid4().hex[:8]}"
+    created_at = datetime.now(timezone.utc).isoformat()
+    record = {
+        "id": share_id,
+        "title": title,
+        "created_at": created_at,
+        "messages": [m.model_dump() for m in body.messages],
+    }
+
+    if deps.firestore_svc:
+        deps.firestore_svc.create_shared_chat(share_id, record)
+    else:
+        _MEMORY_SHARED_CHATS[share_id] = record
+
+    return {"id": share_id, "title": title, "created_at": created_at}
+
+
+@router.get("/share/{share_id}")
+async def get_shared_chat(share_id: str):
+    """Publicly retrieve a shared chat conversation by ID."""
+    record = (
+        deps.firestore_svc.get_shared_chat(share_id)
+        if deps.firestore_svc
+        else _MEMORY_SHARED_CHATS.get(share_id)
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="Shared chat not found")
+    return record

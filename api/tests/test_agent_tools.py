@@ -320,6 +320,7 @@ class TestJobStatusEndpoints:
         "key_moments": "/api/v1/key-moments",
         "thumbnails": "/api/v1/thumbnails",
         "adapts": "/api/v1/adapts",
+        "dubbing": "/api/v1/dubbing",
     }
 
     def test_all_job_types_present(self):
@@ -620,3 +621,141 @@ class TestMarketerAdaptsImageSource:
 
         names = {getattr(f, "__name__", "") for f in _make_marketer_tools("code")}
         assert "list_available_images" in names
+
+
+class TestFeatureIsolatedAgentHierarchy:
+    """Verify the 9-agent ADK topology (1 pure router + 8 feature specialists, excluding Avatars)."""
+
+    def test_orchestrator_is_pure_router_with_8_feature_specialists(self, monkeypatch):
+        from google.adk.models.google_llm import Gemini
+        from agents import _shared
+        from agents.factory import create_orchestrator
+
+        monkeypatch.setattr(
+            _shared,
+            "create_model",
+            lambda tier="router": Gemini(model=_shared.resolve_tier_model_id(tier)),
+        )
+        orchestrator = create_orchestrator("code-test")
+        assert orchestrator.name == "Aanya"
+        assert len(orchestrator.tools) == 0
+
+        sub_names = [a.name for a in orchestrator.sub_agents]
+        assert sub_names == [
+            "productions_agent",
+            "reframe_agent",
+            "key_moments_agent",
+            "thumbnails_agent",
+            "promo_agent",
+            "adapts_agent",
+            "dubbing_agent",
+            "finops_agent",
+        ]
+        assert "avatars_agent" not in sub_names
+
+    def test_model_tiers_match_responsibilities(self):
+        from agents._shared import resolve_tier_model_id
+
+        assert resolve_tier_model_id("router") == "gemini-3.5-flash-lite"
+        assert resolve_tier_model_id("finops") == "gemini-3.5-flash-lite"
+        assert resolve_tier_model_id("specialist") == "gemini-3.8-flash"
+        assert resolve_tier_model_id("creative") == "gemini-3.8-flash"
+
+
+class TestDubbingAgentTools:
+    """Verify dubbing_agent tools and A2UI job_proposal payload."""
+
+    def test_propose_dubbing_populates_a2ui_and_confirmation(self, monkeypatch):
+        import asyncio
+
+        from agents import _shared
+        from agents._shared import get_agent_context, reset_agent_context
+        from agents.specialists import dubbing as dubbing_mod
+
+        prods = [{"id": "p-1", "name": "Demo", "final_video_url": "gs://b/demo.mp4"}]
+
+        async def fake_api_call(method, path, invite_code, **kwargs):
+            if "productions" in path:
+                return prods
+            return []
+
+        async def fake_langs(invite_code):
+            return [
+                {"code": "es-US", "label": "Spanish (US)"},
+                {"code": "hi-IN", "label": "Hindi"},
+            ]
+
+        monkeypatch.setattr(_shared, "api_call", fake_api_call)
+        monkeypatch.setattr(
+            dubbing_mod.agent_tools, "list_dubbing_languages", fake_langs
+        )
+        reset_agent_context()
+        tools = {f.__name__: f for f in dubbing_mod._make_dubbing_tools("code")}
+        asyncio.run(tools["propose_dubbing"]("p-1", ["es-US", "hi-IN"], "demo.mp4"))
+        ctx = get_agent_context()
+        assert ctx["confirmation"]["job_type"] == "dubbing"
+        assert ctx["confirmation"]["params"]["gcs_uri"] == "gs://b/demo.mp4"
+        assert ctx["confirmation"]["params"]["target_languages"] == ["es-US", "hi-IN"]
+        assert ctx["a2ui"]["kind"] == "job_proposal"
+
+
+class TestFinOpsAgentTools:
+    """Verify finops_agent exposes pricing, models, and uploads tools."""
+
+    def test_finops_exposes_all_7_tools(self):
+        from agents.specialists.finops import make_finops_tools
+
+        names = {getattr(f, "__name__", "") for f in make_finops_tools("code")}
+        assert names == {
+            "get_pricing_rates",
+            "get_feature_services",
+            "estimate_cost",
+            "get_job_cost",
+            "list_recent_jobs",
+            "list_registered_models",
+            "list_uploaded_assets",
+        }
+
+    def test_sanitize_markdown_response_strips_html_br_in_tables(self):
+        from agents._shared import sanitize_markdown_response
+
+        raw = (
+            "| Feature | Services |\n"
+            "|---|---|\n"
+            "| Productions | • Gemini Nano Banana 2.1<br>• Gemini Omni 1.1 Flash<br>• Cloud Transcoder HD |\n"
+            "Line 1<br/>Line 2"
+        )
+        cleaned = sanitize_markdown_response(raw)
+        assert "<br" not in cleaned
+        assert (
+            "| Productions | Gemini Nano Banana 2.1; Gemini Omni 1.1 Flash; Cloud Transcoder HD |"
+            in cleaned
+        )
+        assert "Line 1\nLine 2" in cleaned
+
+    def test_create_and_get_shared_chat(self, monkeypatch):
+        import asyncio
+        from types import SimpleNamespace
+        from routers import chat as chat_router
+
+        monkeypatch.setattr(chat_router.deps, "firestore_svc", None)
+        req = SimpleNamespace(state=SimpleNamespace(invite_code="test-code"))
+        body = chat_router.ShareChatRequest(
+            messages=[
+                chat_router.SharedChatItem(role="user", content="List orientations"),
+                chat_router.SharedChatItem(
+                    role="model",
+                    content="Here is 1 job",
+                    agent="reframe_agent",
+                    latency_ms=1420,
+                ),
+            ]
+        )
+        res = asyncio.run(chat_router.create_shared_chat(body, req))
+        assert res["id"].startswith("sh-")
+        assert res["title"] == "List orientations"
+
+        fetched = asyncio.run(chat_router.get_shared_chat(res["id"]))
+        assert fetched["id"] == res["id"]
+        assert len(fetched["messages"]) == 2
+        assert fetched["messages"][1]["latency_ms"] == 1420

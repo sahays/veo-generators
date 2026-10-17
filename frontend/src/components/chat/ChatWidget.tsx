@@ -1,6 +1,6 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MessageCircle, X, Bot } from 'lucide-react'
+import { MessageCircle, X, Bot, Maximize2, Minimize2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useChatStore } from '@/store/useChatStore'
 import { ChatWindow } from './ChatWindow'
@@ -8,6 +8,7 @@ import { clsx } from 'clsx'
 
 export const ChatWidget: React.FC = () => {
   const { isOpen, setIsOpen } = useChatStore()
+  const [isExpanded, setIsExpanded] = useState(false)
 
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
@@ -17,7 +18,12 @@ export const ChatWidget: React.FC = () => {
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="mb-4 flex h-[600px] w-[400px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+            className={clsx(
+              'mb-4 flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl transition-all dark:border-slate-800 dark:bg-slate-900',
+              isExpanded
+                ? 'h-[calc(100vh-6rem)] w-[min(900px,calc(100vw-3rem))]'
+                : 'h-[600px] w-[420px]',
+            )}
           >
             {/* Header */}
             <div className="flex items-center justify-between bg-slate-900 px-4 py-3 text-white">
@@ -33,18 +39,29 @@ export const ChatWidget: React.FC = () => {
                   </div>
                 </div>
               </div>
-              <Button
-                variant="unstyled"
-                onClick={() => setIsOpen(false)}
-                className="rounded-[5px] p-1 transition-colors hover:bg-slate-800 text-white"
-              >
-                <X size={20} />
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="unstyled"
+                  onClick={() => setIsExpanded(!isExpanded)}
+                  title={isExpanded ? 'Restore size' : 'Expand full height'}
+                  className="rounded-[5px] p-1.5 transition-colors hover:bg-slate-800 text-white"
+                >
+                  {isExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                </Button>
+                <Button
+                  variant="unstyled"
+                  onClick={() => setIsOpen(false)}
+                  title="Close chat"
+                  className="rounded-[5px] p-1.5 transition-colors hover:bg-slate-800 text-white"
+                >
+                  <X size={18} />
+                </Button>
+              </div>
             </div>
 
             {/* Chat Body */}
             <div className="flex-1 overflow-hidden">
-               <ChatWindow showClearHistory={false} />
+              <ChatWindow showClearHistory />
             </div>
           </motion.div>
         )}
@@ -54,8 +71,10 @@ export const ChatWidget: React.FC = () => {
         variant="unstyled"
         onClick={() => setIsOpen(!isOpen)}
         className={clsx(
-          "flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all active:scale-90 hover:scale-105",
-          isOpen ? "bg-slate-200 text-slate-900 dark:bg-slate-800 dark:text-white" : "bg-gradient-brand text-white"
+          'flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all active:scale-90 hover:scale-105',
+          isOpen
+            ? 'bg-slate-200 text-slate-900 dark:bg-slate-800 dark:text-white'
+            : 'bg-gradient-brand text-white',
         )}
       >
         {isOpen ? <X size={28} /> : <MessageCircle size={28} />}

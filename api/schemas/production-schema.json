@@ -22,6 +22,10 @@
             "type": "string",
             "description": "Voice-over narration text spoken during this scene. Natural, conversational tone matching the scene duration."
           },
+          "speaker_notes": {
+            "type": "string",
+            "description": "Explicit speaker and lip-sync attribution for this scene (e.g. 'Off-screen narrator only; on-screen characters keep mouths closed' or 'Jamvant speaks on-screen; Hanuman listens silently with mouth closed')."
+          },
           "music_description": {
             "type": "string",
             "description": "Background music description: genre, tempo, instruments, mood. E.g. 'upbeat electronic with synth pads, 120 BPM'"

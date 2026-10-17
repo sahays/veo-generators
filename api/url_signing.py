@@ -114,11 +114,12 @@ def _resolve_with_recovery(gcs_uri: str, cache: dict) -> tuple[str, bool]:
 
 def _sign_scene_urls(scene: dict, cache: dict, thumbnails_only: bool) -> bool:
     dirty = False
-    if scene.get("thumbnail_url"):
-        scene["thumbnail_url"], changed = _resolve_with_recovery(
-            scene["thumbnail_url"], cache
-        )
-        dirty = dirty or changed
+    for frame_field in ("thumbnail_url", "end_frame_url"):
+        if scene.get(frame_field):
+            scene[frame_field], changed = _resolve_with_recovery(
+                scene[frame_field], cache
+            )
+            dirty = dirty or changed
     if not thumbnails_only and scene.get("video_url"):
         scene["video_url"], changed = _resolve_with_recovery(scene["video_url"], cache)
         dirty = dirty or changed
@@ -141,7 +142,7 @@ def sign_production_urls(production: Project, thumbnails_only: bool = False) -> 
     for scene in data.get("scenes", []):
         dirty = _sign_scene_urls(scene, cache, thumbnails_only) or dirty
     if not thumbnails_only:
-        for field in ("final_video_url", "reference_image_url"):
+        for field in ("final_video_url", "draft_video_url", "reference_image_url"):
             if data.get(field):
                 data[field], changed = _resolve_with_recovery(data[field], cache)
                 dirty = dirty or changed

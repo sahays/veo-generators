@@ -1,11 +1,14 @@
 """Shared HTTPX client used by every agent tool.
 
-All tools reach the FastAPI app through an in-process ASGITransport so we
-don't pay the cost of a real network round-trip. The client is a module-level
-singleton; FastAPI's shutdown hook closes it via `close_client()`.
+Supports two execution modes for strict separation of duties:
+1. Remote Microservice Mode (`VEOGEN_API_ORIGIN` set, e.g. `https://veo-generators-...run.app`):
+   The dedicated `veo-generators-agents` Cloud Run service calls the main API over HTTPS.
+2. In-Process ASGI Mode (`VEOGEN_API_ORIGIN` unset):
+   Reaches the FastAPI app through an in-process ASGITransport during unit tests or local dev.
 """
 
 import logging
+import os
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -16,28 +19,38 @@ BASE_URL = "http://internal"
 _TIMEOUT = 30.0
 
 _client: Optional[httpx.AsyncClient] = None
+_client_origin: Optional[str] = None
 
 
 def _get_client() -> httpx.AsyncClient:
-    global _client
-    if _client is None:
-        # Lazy import to break circular dep (tools → main → routers → agents → tools).
-        from main import app
+    global _client, _client_origin
+    api_origin = os.getenv("VEOGEN_API_ORIGIN", "").strip().rstrip("/")
+    if _client is None or _client_origin != api_origin:
+        if api_origin:
+            _client = httpx.AsyncClient(
+                base_url=api_origin,
+                timeout=_TIMEOUT,
+            )
+        else:
+            # Lazy import to break circular dep in local/test mode
+            from main import app
 
-        _client = httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app),
-            base_url=BASE_URL,
-            timeout=_TIMEOUT,
-        )
+            _client = httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app),
+                base_url=BASE_URL,
+                timeout=_TIMEOUT,
+            )
+        _client_origin = api_origin
     return _client
 
 
 async def close_client() -> None:
     """Close the shared AsyncClient. Called from FastAPI shutdown."""
-    global _client
+    global _client, _client_origin
     if _client is not None:
         await _client.aclose()
         _client = None
+        _client_origin = None
 
 
 async def api_call(
@@ -47,8 +60,8 @@ async def api_call(
     json: Optional[Dict[str, Any]] = None,
     params: Optional[Dict[str, Any]] = None,
 ) -> Any:
-    """Make an authenticated API call through the in-process FastAPI app."""
-    headers = {"X-Invite-Code": invite_code, "User-Agent": "VeoAgent/1.0"}
+    """Make an authenticated REST API call to the VeoGen backend."""
+    headers = {"X-Invite-Code": invite_code, "User-Agent": "VeoAgent/2.0"}
     client = _get_client()
     response = await client.request(
         method, path, headers=headers, json=json, params=params, follow_redirects=True

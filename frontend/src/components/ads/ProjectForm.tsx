@@ -1,13 +1,13 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Sparkles, FileText, ImageIcon, Monitor, Smartphone, Clock, Clapperboard, Megaphone, Share2, Play, Settings, Loader2, X, Upload, FolderOpen, RotateCcw } from 'lucide-react'
+import { ArrowLeft, Sparkles, FileText, ImageIcon, Monitor, Smartphone, Clock, Clapperboard, Megaphone, Share2, Play, Settings, Loader2, X, Upload, FolderOpen, RotateCcw, Globe } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button, Card } from '@/components/Common'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useProjectStore } from '@/store/useProjectStore'
-import { projectSchema, type ProjectFormData, VIDEO_LENGTH_OPTIONS, type SystemResource, type Scene, type UploadRecord } from '@/types/project'
+import { projectSchema, type ProjectFormData, VIDEO_LENGTH_OPTIONS, PRODUCTION_LANGUAGES, type SystemResource, type Scene, type UploadRecord } from '@/types/project'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api'
@@ -88,6 +88,7 @@ export const ProjectForm = () => {
       base_concept: '',
       video_length: '16',
       orientation: '16:9',
+      language: 'en-IN',
     },
   })
 
@@ -98,8 +99,10 @@ export const ProjectForm = () => {
         name: existingProject.name,
         type: existingProject.type || 'advertizement',
         base_concept: existingProject.base_concept,
-        video_length: existingProject.video_length || '16',
+        video_length: String(existingProject.video_length || '16'),
         orientation: existingProject.orientation || '16:9',
+        language: existingProject.language || 'en-IN',
+        prompt_id: existingProject.prompt_info?.id || '',
       })
       if (existingProject.reference_image_url) {
         setReferenceImage({
@@ -112,6 +115,7 @@ export const ProjectForm = () => {
 
   const orientation = watch('orientation')
   const projectType = watch('type')
+  const language = watch('language') || 'en-IN'
   const concept = watch('base_concept') || ''
 
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -146,18 +150,66 @@ export const ProjectForm = () => {
     }
   }
 
+  const persistExistingProject = async (projectId: string, data: ProjectFormData, extra?: Record<string, any>) => {
+    await api.projects.update(projectId, {
+      name: data.name,
+      type: data.type,
+      base_concept: data.base_concept,
+      video_length: data.video_length,
+      orientation: data.orientation,
+      language: data.language,
+      ...(referenceImage?.gcs_uri ? { reference_image_url: referenceImage.gcs_uri } : {}),
+      ...(extra || {}),
+    } as any)
+  }
+
   const onRegenerate = handleSubmit(async (data) => {
     if (!id) return
-    // Clear scenes and navigate — RefinePromptView will auto-trigger analysis
-    setTempProjectData({ ...data, id, scenes: [], prompt_id: data.prompt_id })
-    navigate(`/productions/${id}/script`)
+    setIsSubmitting(true)
+    try {
+      await persistExistingProject(id, data, { status: 'draft', scenes: [] })
+      // Clear scenes and navigate — RefinePromptView will auto-trigger analysis
+      setTempProjectData({
+        ...(existingProject || {}),
+        ...data,
+        id,
+        status: 'draft',
+        scenes: [],
+        prompt_id: data.prompt_id,
+      } as any)
+      navigate(`/productions/${id}/script`)
+    } finally {
+      setIsSubmitting(false)
+    }
   })
 
   const onAnalyze = handleSubmit(async (data) => {
-    if (existingProject) {
-      // Existing project — just pass through to script page
-      setTempProjectData({ ...data, id, scenes: existingProject.scenes, prompt_id: data.prompt_id })
-      navigate(`/productions/${id}/script`)
+    if (existingProject && id) {
+      setIsSubmitting(true)
+      try {
+        const needsReanalyze =
+          String(data.video_length) !== String(existingProject.video_length || '16') ||
+          data.language !== (existingProject.language || 'en-IN') ||
+          data.orientation !== (existingProject.orientation || '16:9') ||
+          data.type !== (existingProject.type || 'advertizement') ||
+          data.base_concept !== existingProject.base_concept
+        await persistExistingProject(
+          id,
+          data,
+          needsReanalyze ? { status: 'draft', scenes: [] } : undefined,
+        )
+        setTempProjectData({
+          ...existingProject,
+          ...data,
+          id,
+          status: needsReanalyze ? 'draft' : existingProject.status,
+          scenes: needsReanalyze ? [] : existingProject.scenes,
+          prompt_id: data.prompt_id,
+        } as any)
+        navigate(`/productions/${id}/script`)
+      } finally {
+        setIsSubmitting(false)
+      }
       return
     }
 
@@ -170,6 +222,7 @@ export const ProjectForm = () => {
         base_concept: data.base_concept,
         video_length: data.video_length,
         orientation: data.orientation,
+        language: data.language,
         ...(referenceImage?.gcs_uri ? { reference_image_url: referenceImage.gcs_uri } : {}),
       })
       setTempProjectData({ ...data, id: created.id, prompt_id: data.prompt_id })
@@ -358,6 +411,28 @@ export const ProjectForm = () => {
             </div>
           </Card>
         </div>
+
+        <Card title="Language (Audio & Video Narration)" icon={Globe}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {PRODUCTION_LANGUAGES.map((langOpt) => (
+              <Button
+                variant="unstyled"
+                key={langOpt.id}
+                type="button"
+                onClick={() => setValue('language', langOpt.id)}
+                className={cn(
+                  'flex flex-col items-start gap-1 p-3 rounded-[6px] border transition-all text-left',
+                  language === langOpt.id
+                    ? 'bg-accent/10 border-accent text-accent-dark shadow-sm'
+                    : 'border-border text-muted-foreground hover:border-accent/30',
+                )}
+              >
+                <span className="text-xs font-bold">{langOpt.label}</span>
+                <span className="text-[10px] opacity-75">{langOpt.sub}</span>
+              </Button>
+            ))}
+          </div>
+        </Card>
 
         <Card title="Visual Reference" icon={ImageIcon}>
           <input

@@ -26,25 +26,34 @@ http.createServer = function patchedCreateServer(...args) {
 
   if (nextListener) {
     origOn('request', (req, res) => {
-      if (req.url === '/health' || req.url?.startsWith('/health?')) {
-        const proxyReq = http.get(
+      if (
+        req.url === '/health' ||
+        req.url?.startsWith('/health?') ||
+        req.url?.startsWith('/api/v1/')
+      ) {
+        const proxyHeaders = {
+          ...req.headers,
+          host: `${FASTAPI_HOST}:${FASTAPI_PORT}`,
+        }
+        const proxyReq = http.request(
           {
             hostname: FASTAPI_HOST,
             port: FASTAPI_PORT,
             path: req.url,
+            method: req.method,
+            headers: proxyHeaders,
           },
           (proxyRes) => {
-            res.writeHead(proxyRes.statusCode || 200, {
-              'Content-Type': proxyRes.headers['content-type'] || 'application/json',
-            })
+            res.writeHead(proxyRes.statusCode || 200, proxyRes.headers)
             proxyRes.pipe(res)
           },
         )
         proxyReq.on('error', (err) => {
-          console.error('Health check proxy error:', err.message)
+          console.error('FastAPI proxy error:', err.message)
           if (!res.headersSent) res.writeHead(502)
           res.end('Bad Gateway')
         })
+        req.pipe(proxyReq)
         return
       }
       nextListener(req, res)

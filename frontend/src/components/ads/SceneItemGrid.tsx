@@ -41,6 +41,7 @@ export const SceneItemGrid = ({
     <div className={cn('relative overflow-hidden', aspectClass)}>
       <SceneMediaCarousel
         thumbnailUrl={scene.thumbnail_url}
+        endFrameUrl={scene.end_frame_url}
         videoUrl={scene.video_url}
         isGeneratingFrame={isGeneratingFrame}
         isGeneratingVideo={isGeneratingVideo}
@@ -122,7 +123,7 @@ export const SceneItemGrid = ({
                 onClick={handleGenerateFrame}
                 disabled={isBusy}
                 className="h-7 w-7 text-accent-dark"
-                title="Generate Frame (2 credits)"
+                title="Generate Start & End Frames (2 credits)"
               >
                 {isGeneratingFrame ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />}
               </Button>

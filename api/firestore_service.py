@@ -39,6 +39,7 @@ class FirestoreService:
         self.models_collection = self.db.collection(f"{prefix}_models")
         self.avatars_collection = self.db.collection(f"{prefix}_avatars")
         self.avatar_turns_collection = self.db.collection(f"{prefix}_avatar_turns")
+        self.shared_chats_collection = self.db.collection(f"{prefix}_shared_chats")
 
     # --- Generic CRUD helpers ---
 
@@ -141,16 +142,25 @@ class FirestoreService:
         self._delete_record(self.collection, production_id)
 
     def update_scene(self, production_id: str, scene_id: str, updates: dict):
-        production = self.get_production(production_id)
-        if not production:
-            return
-        # Dict-by-id mutation: O(n) once instead of branching per scene.
-        scenes_by_id = {s.id: s.dict() for s in production.scenes}
-        target = scenes_by_id.get(scene_id)
-        if not target:
-            return
-        target.update(updates)
-        self.update_production(production_id, {"scenes": list(scenes_by_id.values())})
+        import threading
+
+        lock = getattr(self, "_scene_lock", None)
+        if lock is None:
+            lock = threading.Lock()
+            self._scene_lock = lock
+        with lock:
+            production = self.get_production(production_id)
+            if not production:
+                return
+            # Dict-by-id mutation: O(n) once instead of branching per scene.
+            scenes_by_id = {s.id: s.dict() for s in production.scenes}
+            target = scenes_by_id.get(scene_id)
+            if not target:
+                return
+            target.update(updates)
+            self.update_production(
+                production_id, {"scenes": list(scenes_by_id.values())}
+            )
 
     # --- Key Moments ---
 
@@ -430,3 +440,12 @@ class FirestoreService:
 
     def delete_avatar_turn(self, turn_id: str):
         self._delete_record(self.avatar_turns_collection, turn_id)
+
+    # --- Shared Chats ---
+
+    def create_shared_chat(self, share_id: str, record: dict):
+        self.shared_chats_collection.document(share_id).set(record)
+
+    def get_shared_chat(self, share_id: str) -> Optional[dict]:
+        doc = self.shared_chats_collection.document(share_id).get()
+        return doc.to_dict() if doc.exists else None

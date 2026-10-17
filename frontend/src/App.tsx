@@ -11,6 +11,7 @@ import { PromptDetailPage } from './components/pages/PromptDetailPage'
 import { KeyMomentsLandingPage } from './components/pages/KeyMomentsLandingPage'
 import { KeyMomentsAnalyzePage } from './components/pages/KeyMomentsAnalyzePage'
 import { ChatPage } from './components/pages/ChatPage'
+import { SharedChatPage } from './components/pages/SharedChatPage'
 import { ThumbnailsLandingPage } from './components/pages/ThumbnailsLandingPage'
 import { ThumbnailsWorkPage } from './components/pages/ThumbnailsWorkPage'
 import { ReframeLandingPage } from './components/pages/ReframeLandingPage'
@@ -34,12 +35,14 @@ import { ChatWidget } from './components/chat/ChatWidget'
 import { PageTransition } from './components/shared/PageTransition'
 import { ToastViewport } from './components/shared/ToastViewport'
 import { useAuthStore } from './store/useAuthStore'
+import { useChatStore } from './store/useChatStore'
 import { api } from './lib/api'
 
 const GUEST_INVITE_CODE = process.env.NEXT_PUBLIC_GUEST_INVITE_CODE || ''
 
 function App() {
   const { isAuthenticated, isMaster, isPower, inviteCode, login, logout } = useAuthStore()
+  const { isFullscreen } = useChatStore()
   // Power users have full feature access except invite-code management.
   const canWrite = isMaster || isPower
   const [guestLoginPending, setGuestLoginPending] = useState(false)
@@ -79,7 +82,7 @@ function App() {
   }
 
   // Auto-scroll to hash anchor (retry for async content)
-  const { hash } = useLocation()
+  const { hash, pathname } = useLocation()
   useEffect(() => {
     if (!hash) return
     const id = hash.slice(1)
@@ -95,6 +98,18 @@ function App() {
     }
     tryScroll()
   }, [hash])
+
+  // Public shared chat route — accessible without an invite code.
+  if (pathname.startsWith('/share/chat/')) {
+    return (
+      <>
+        <Routes>
+          <Route path="/share/chat/:id" element={<SharedChatPage />} />
+        </Routes>
+        <ToastViewport />
+      </>
+    )
+  }
 
   if (!isAuthenticated) {
     if (GUEST_INVITE_CODE && guestLoginPending) {
@@ -112,12 +127,20 @@ function App() {
     )
   }
 
+  const isChatFullscreen = pathname === '/chat' && isFullscreen
+
   return (
     <div className="flex h-screen bg-background bg-accent-gradient">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <main className="flex-1 overflow-x-hidden overflow-y-auto p-6 md:p-8">
-          <div className="max-w-4xl mx-auto w-full">
+        <main
+          className={
+            isChatFullscreen
+              ? 'flex-1 overflow-hidden p-0'
+              : 'flex-1 overflow-x-hidden overflow-y-auto p-6 md:p-8'
+          }
+        >
+          <div className={isChatFullscreen ? 'h-full w-full' : 'max-w-4xl mx-auto w-full'}>
             <PageTransition>
               <Routes>
                 <Route path="/" element={<Navigate to={canWrite ? '/chat' : '/productions'} replace />} />

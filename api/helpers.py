@@ -59,21 +59,18 @@ def apply_indexed_uris(
 # --- Gemini API ---
 
 
-async def gemini_call_with_retry(
-    client,
-    model: str,
-    contents: list,
-    config,
+async def sdk_call_with_retry(
+    fn,
+    *args,
     max_retries: int = 4,
     initial_backoff: int = 2,
+    **kwargs,
 ):
-    """Call Gemini with exponential backoff on rate limits."""
+    """Run a blocking SDK call in a worker thread with exponential backoff on 429s."""
     last_error = None
     for attempt in range(max_retries + 1):
         try:
-            return client.models.generate_content(
-                model=model, contents=contents, config=config
-            )
+            return await asyncio.to_thread(fn, *args, **kwargs)
         except Exception as e:
             last_error = e
             err_str = str(e)
@@ -88,6 +85,25 @@ async def gemini_call_with_retry(
             else:
                 raise
     raise last_error  # type: ignore[misc]
+
+
+async def gemini_call_with_retry(
+    client,
+    model: str,
+    contents: list,
+    config,
+    max_retries: int = 4,
+    initial_backoff: int = 2,
+):
+    """Call Gemini with exponential backoff on rate limits."""
+    return await sdk_call_with_retry(
+        client.models.generate_content,
+        model=model,
+        contents=contents,
+        config=config,
+        max_retries=max_retries,
+        initial_backoff=initial_backoff,
+    )
 
 
 # --- Prompt Building ---

@@ -22,8 +22,11 @@ class ProjectStatus(str, Enum):
     DRAFT = "draft"
     ANALYZING = "analyzing"
     SCRIPTED = "scripted"
+    REVIEWING = "reviewing"
     GENERATING = "generating"
     STITCHING = "stitching"
+    EVALUATING = "evaluating"
+    REGENERATING = "regenerating"
     COMPLETED = "completed"
     FAILED = "failed"
 

@@ -84,19 +84,30 @@ class TranscoderService:
             print(f"Error deleting job: {e}")
 
     def stitch_from_uris(
-        self, production_id: str, scene_uris: list, orientation: str = "16:9"
-    ) -> str:
-        """Stitch a list of GCS video URIs into a single final video."""
+        self,
+        production_id: str,
+        scene_uris: list,
+        orientation: str = "16:9",
+        resolution: str = "720p",
+    ) -> tuple:
+        """Stitch a list of GCS video URIs into a single final or draft video."""
         import os
 
         bucket = os.getenv("GCS_BUCKET")
         # Transcoder writes to {output_uri}/{mux_key}.mp4
         output_uri = f"gs://{bucket}/productions/{production_id}/stitched/"
 
-        if orientation == "9:16":
-            width, height = 720, 1280
+        if resolution == "360p":
+            base_w, base_h, bitrate_bps, mux_key = 640, 360, 1500000, "draft"
+        elif resolution == "1080p":
+            base_w, base_h, bitrate_bps, mux_key = 1920, 1080, 8000000, "final"
         else:
-            width, height = 1280, 720
+            base_w, base_h, bitrate_bps, mux_key = 1280, 720, 5000000, "final"
+
+        if orientation == "9:16":
+            width, height = base_h, base_w
+        else:
+            width, height = base_w, base_h
 
         inputs = [
             transcoder_v1.types.Input(key=f"input{i}", uri=uri)
@@ -119,7 +130,7 @@ class TranscoderService:
                     key="v1",
                     video_stream=transcoder_v1.types.VideoStream(
                         h264=transcoder_v1.types.VideoStream.H264CodecSettings(
-                            bitrate_bps=5000000,
+                            bitrate_bps=bitrate_bps,
                             frame_rate=30,
                             height_pixels=height,
                             width_pixels=width,
@@ -135,14 +146,14 @@ class TranscoderService:
             ],
             mux_streams=[
                 transcoder_v1.types.MuxStream(
-                    key="final", container="mp4", elementary_streams=["v1", "a1"]
+                    key=mux_key, container="mp4", elementary_streams=["v1", "a1"]
                 )
             ],
         )
 
         created_job = self.client.create_job(parent=self.parent, job=job)
         # Actual file is at {output_uri}{mux_key}.mp4
-        return (created_job.name, f"{output_uri}final.mp4")
+        return (created_job.name, f"{output_uri}{mux_key}.mp4")
 
     def compress_video(self, upload_id: str, input_uri: str, resolution: str) -> tuple:
         """Compress a video to a lower resolution. Returns (job_name, output_gcs_uri)."""

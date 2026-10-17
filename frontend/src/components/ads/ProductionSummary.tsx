@@ -1,11 +1,19 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Play, FileText, LayoutGrid, Cpu, CheckCircle2, Plus, Loader2, Eye, ChevronDown } from 'lucide-react'
+import {
+  ArrowLeft, Play, FileText, LayoutGrid, Cpu, CheckCircle2, Plus, Loader2, Eye, ChevronDown, Sparkles, ShieldCheck,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button, Card, AnchorHeading } from '@/components/Common'
 import { ModelRegionPicker } from '@/components/ModelRegionPicker'
 import { PromptModal } from '@/components/ads/PromptModal'
 import { CostBreakdownPill } from '@/components/ads/CostBreakdownPill'
+import {
+  EvalStatusPill,
+  RenderQualityBadge,
+  StepStatusIcon,
+  StepUsageBadges,
+} from '@/components/ads/SceneItemShared'
 import { ServicesUsedPanel } from '@/components/pricing/ServicesUsedPanel'
 import { ModelPill } from '@/components/ModelPill'
 import { useProjectStore } from '@/store/useProjectStore'
@@ -20,6 +28,7 @@ export const ProductionSummary = () => {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const [isLoading, setIsLoading] = useState(false)
+  const [isUpgrading, setIsUpgrading] = useState(false)
   const [modelConfig, setModelConfig] = useState<{ modelId?: string; region?: string }>({})
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null)
   const [showAnalysisPrompt, setShowAnalysisPrompt] = useState(false)
@@ -43,6 +52,27 @@ export const ProductionSummary = () => {
     setActiveProject(null)
     setTempProjectData(null)
     navigate('/productions/new')
+  }
+
+  const handleUpgradeToFinal = async () => {
+    const prodId = (tempProjectData as any)?.id || id
+    if (!prodId) return
+    setIsUpgrading(true)
+    try {
+      await api.projects.render(prodId, {
+        quality: 'final',
+        resolution: '720p',
+        auto_review: false,
+        auto_eval: true,
+      })
+      const updated = await api.projects.get(prodId).catch(() => null)
+      if (updated) setTempProjectData({ ...updated, scenes: updated.scenes || [] } as any)
+      navigate(`/productions/${prodId}/script`)
+    } catch (err) {
+      console.error('Failed to start 720p HD upgrade', err)
+    } finally {
+      setIsUpgrading(false)
+    }
   }
 
   if (isLoading) {
@@ -70,6 +100,10 @@ export const ProductionSummary = () => {
   const veoCost = totalUsage?.veo_cost_usd || 0
   const isPortrait = tempProjectData.orientation === '9:16'
   const aspectClass = isPortrait ? 'aspect-[9/16]' : 'aspect-video'
+  const videoSrc = project.final_video_url || project.draft_video_url
+  const isDraft = project.render_quality === 'draft'
+  const pipelineSteps = project.pipeline_steps || []
+  const evalReport = project.eval_report
 
   return (
     <motion.div
@@ -79,7 +113,7 @@ export const ProductionSummary = () => {
       className="max-w-5xl mx-auto space-y-8 pb-20"
     >
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <Button
             variant="ghost"
@@ -90,30 +124,59 @@ export const ProductionSummary = () => {
           </Button>
           <div>
             <h2 className="text-2xl font-heading text-foreground tracking-tight">{tempProjectData.name}</h2>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex flex-wrap items-center gap-2 mt-1">
               <span className="px-1.5 py-0.5 rounded bg-green-500/10 text-green-500 text-[9px] font-bold uppercase tracking-wider border border-green-500/20 flex items-center gap-1">
                 <CheckCircle2 size={10} /> Published
               </span>
+              <RenderQualityBadge
+                quality={project.render_quality}
+                resolution={project.video_resolution}
+              />
+              {evalReport && (
+                <span
+                  className={cn(
+                    'px-2 py-0.5 rounded text-[10px] font-mono font-bold border inline-flex items-center gap-1',
+                    evalReport.passed
+                      ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/25'
+                      : 'bg-amber-500/10 text-amber-500 border-amber-500/25',
+                  )}
+                >
+                  <ShieldCheck size={11} />
+                  AI Eval: {evalReport.overall_score}/100
+                </span>
+              )}
               <p className="text-xs text-muted-foreground">Generated on {new Date().toLocaleDateString()}</p>
             </div>
           </div>
         </div>
-        <div className="flex items-end gap-3">
+        <div className="flex flex-wrap items-end gap-3">
           <ModelRegionPicker capability="text" value={modelConfig} onChange={setModelConfig} />
-          <Button variant="ghost" icon={FileText} onClick={() => navigate(`/productions/${id}/script`)}>View Technical Script</Button>
-          {canWrite && <Button icon={Plus} onClick={handleStartFresh}>New Production</Button>}
+          {canWrite && isDraft && (
+            <Button
+              variant="primary"
+              icon={isUpgrading ? Loader2 : Sparkles}
+              onClick={handleUpgradeToFinal}
+              disabled={isUpgrading}
+            >
+              {isUpgrading ? 'Upgrading...' : 'Upgrade to Final (720p HD)'}
+            </Button>
+          )}
+          <Button variant="ghost" icon={FileText} onClick={() => navigate(`/productions/${id}/script`)}>
+            View Technical Script
+          </Button>
+          {canWrite && <Button variant={isDraft ? 'outline' : 'primary'} icon={Plus} onClick={handleStartFresh}>New Production</Button>}
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Hero: Video Player */}
         <div className="lg:col-span-2 space-y-6">
-          {project.final_video_url ? (
+          {videoSrc ? (
             <div className={cn("bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/5", isPortrait ? "aspect-[9/16] max-w-sm mx-auto" : "aspect-video")}>
               <video
                 controls
                 className="w-full h-full"
-                src={project.final_video_url}
+                src={videoSrc}
                 poster={scenes[0]?.thumbnail_url}
               />
             </div>
@@ -164,6 +227,58 @@ export const ProductionSummary = () => {
               </div>
             )}
           </Card>
+
+          {/* Compact Pipeline Step Token & Cost Summary */}
+          {(pipelineSteps.length > 0 || evalReport) && (
+            <Card id="pipeline-telemetry" title="Pipeline Steps & Quality Evaluation" icon={Sparkles}>
+              <div className="space-y-4">
+                {evalReport && (
+                  <div className="rounded-xl bg-muted/40 border border-border/60 p-3 space-y-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                        <ShieldCheck size={14} className="text-emerald-500" />
+                        Finished-Video AI Evaluation
+                      </span>
+                      <span
+                        className={cn(
+                          'px-2 py-0.5 rounded text-[10px] font-mono font-bold border',
+                          evalReport.passed
+                            ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+                            : 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+                        )}
+                      >
+                        Score: {evalReport.overall_score}/100 ({evalReport.passed ? 'Passed' : 'Needs Review'})
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{evalReport.summary}</p>
+                    <StepUsageBadges usage={evalReport.usage} />
+                  </div>
+                )}
+
+                {pipelineSteps.length > 0 && (
+                  <div className="divide-y divide-border/40">
+                    {pipelineSteps.map((step) => (
+                      <div
+                        key={step.step_id}
+                        className="py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                      >
+                        <div className="flex items-center gap-2">
+                          <StepStatusIcon status={step.status} />
+                          <div>
+                            <span className="text-xs font-semibold text-foreground">{step.label}</span>
+                            {step.detail && (
+                              <p className="text-[10px] text-muted-foreground">{step.detail}</p>
+                            )}
+                          </div>
+                        </div>
+                        <StepUsageBadges usage={step.usage} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
         </div>
 
         {/* Sidebar: Metadata & Metrics */}
@@ -202,6 +317,13 @@ export const ProductionSummary = () => {
           <Card id="technical-specs" title="Technical Specs" icon={LayoutGrid}>
              <div className="space-y-3">
                 <div className="flex justify-between items-center text-xs">
+                  <span className="text-muted-foreground">Quality Tier</span>
+                  <RenderQualityBadge
+                    quality={project.render_quality}
+                    resolution={project.video_resolution}
+                  />
+                </div>
+                <div className="flex justify-between items-center text-xs">
                   <span className="text-muted-foreground">Orientation</span>
                   <span className="font-medium">{tempProjectData.orientation || '16:9'}</span>
                 </div>
@@ -236,8 +358,15 @@ export const ProductionSummary = () => {
                       <LayoutGrid size={16} className="text-muted-foreground/30" />
                     </div>
                   )}
-                  <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] font-mono text-white">
-                    {scene.timestamp_start}
+                  <div className="absolute top-2 left-2 flex items-center gap-1">
+                    <span className="bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] font-mono text-white">
+                      {scene.timestamp_start}
+                    </span>
+                    {scene.video_resolution && (
+                      <span className="bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded text-[8px] font-mono text-amber-300">
+                        {scene.video_resolution}
+                      </span>
+                    )}
                   </div>
                   {(scene.image_prompt || scene.video_prompt) && (
                     <Button
@@ -250,8 +379,19 @@ export const ProductionSummary = () => {
                     </Button>
                   )}
                 </div>
-                <div className="p-2.5">
-                  <p className="text-[10px] text-muted-foreground line-clamp-2">Scene {i + 1}: {scene.visual_description}</p>
+                <div className="p-2.5 space-y-1.5">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[9px] font-bold uppercase text-muted-foreground">Scene {i + 1}</span>
+                    {scene.eval_status && (
+                      <EvalStatusPill status={scene.eval_status} regenCount={scene.regen_count} />
+                    )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground line-clamp-2">{scene.visual_description}</p>
+                  {scene.speaker_notes && (
+                    <p className="text-[9px] italic text-accent-dark line-clamp-1" title={scene.speaker_notes}>
+                      {scene.speaker_notes}
+                    </p>
+                  )}
                 </div>
               </div>
             ))}

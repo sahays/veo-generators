@@ -6,6 +6,7 @@ from typing import Optional
 from google import genai
 from google.genai import types
 from ai_helpers import resolve_model
+from helpers import sdk_call_with_retry
 from models import Scene, Project
 from prompt_templates import PHYSICAL_REALISM_DIRECTIVE, VEO_NEGATIVE_PROMPT
 
@@ -86,6 +87,10 @@ class VideoService:
         if project and project.continuity and project.continuity.setting_notes:
             parts.append(f"Setting: {project.continuity.setting_notes}.")
         parts.append(scene.visual_description)
+        if scene.speaker_notes:
+            parts.append(f"Speaker & lip-sync rule: {scene.speaker_notes}.")
+        if scene.eval_feedback:
+            parts.append(f"STRICT CORRECTION FROM VIDEO EVAL: {scene.eval_feedback}.")
         parts.append(PHYSICAL_REALISM_DIRECTIVE)
 
         # Visual enter/exit transitions are intentionally NOT sent to Veo: it
@@ -95,7 +100,22 @@ class VideoService:
             parts.append(f"Music transition: {scene.music_transition}")
 
         if scene.narration_enabled and scene.narration:
-            parts.append(f'Voice-over narration: "{scene.narration}"')
+            lang = getattr(project, "language", None) or "en-IN"
+            speaker_rule = (
+                f" ({scene.speaker_notes})"
+                if scene.speaker_notes
+                else " (non-speaking on-screen characters must keep their mouths closed and not lip-sync someone else's lines)"
+            )
+            if lang == "hi-IN":
+                parts.append(
+                    f'Voice-over narration in Hindi (hi-IN, native Hindi pronunciation){speaker_rule}: "{scene.narration}"'
+                )
+            elif lang == "en-IN":
+                parts.append(
+                    f'Voice-over narration in English (India, en-IN, natural Indian English accent){speaker_rule}: "{scene.narration}"'
+                )
+            else:
+                parts.append(f'Voice-over narration{speaker_rule}: "{scene.narration}"')
 
         if scene.music_enabled:
             music = scene.music_description
@@ -183,14 +203,39 @@ class VideoService:
         prompt_override: Optional[str] = None,
         model_id: Optional[str] = None,
         region: Optional[str] = None,
+        resolution: Optional[str] = None,
+        render_quality: Optional[str] = None,
     ):
-        model_id = resolve_model(
-            self.firestore_svc,
-            "video",
-            "VIDEO_GEN_MODEL",
-            "gemini-omni-1.1-flash-preview",
-            model_id,
+        effective_quality = (
+            render_quality
+            or (getattr(project, "render_quality", None) if project else None)
+            or "final"
         )
+        effective_resolution = (
+            resolution
+            or (
+                "360p"
+                if effective_quality == "draft"
+                else (getattr(project, "video_resolution", None) if project else None)
+            )
+            or "720p"
+        )
+        if effective_quality == "draft" or effective_resolution == "360p":
+            effective_resolution = "360p"
+            model_id = model_id or "gemini-omni-1.1-flash-preview"
+            if not _is_omni_model(model_id):
+                model_id = "gemini-omni-1.1-flash-preview"
+        else:
+            if effective_resolution == "360p":
+                effective_resolution = "720p"
+            model_id = resolve_model(
+                self.firestore_svc,
+                "video",
+                "VIDEO_GEN_MODEL",
+                "gemini-omni-1.1-flash-preview",
+                model_id,
+            )
+
         is_omni = _is_omni_model(model_id)
         # Gemini Omni 1.1 Flash is only available on the global endpoint.
         client = self._get_client("global" if is_omni else region)
@@ -215,6 +260,19 @@ class VideoService:
         elif project and project.reference_image_url:
             ref_url = project.reference_image_url
 
+        end_ref_url = None
+        if getattr(scene, "end_frame_url", None) and scene.end_frame_url.startswith(
+            "gs://"
+        ):
+            end_ref_url = scene.end_frame_url
+
+        if ref_url and end_ref_url:
+            enriched_prompt = (
+                f"{enriched_prompt} "
+                f"Start-to-End Keyframe Guidance: Begin from the provided START frame (0s) "
+                f"and smoothly progress the continuous action to arrive at the provided END frame ({duration}s)."
+            )
+
         if is_omni:
             input_blocks: list[dict] = [{"type": "text", "text": enriched_prompt}]
             video_task = "text_to_video"
@@ -223,13 +281,18 @@ class VideoService:
                     {"type": "image", "uri": ref_url, "mime_type": "image/png"}
                 )
                 video_task = "image_to_video"
+            if end_ref_url and end_ref_url.startswith("gs://"):
+                input_blocks.append(
+                    {"type": "image", "uri": end_ref_url, "mime_type": "image/png"}
+                )
+                video_task = "image_to_video"
 
             response_format_block: dict = {
                 "type": "video",
                 "aspect_ratio": project.orientation
                 if project and project.orientation
                 else "16:9",
-                "resolution": "720p",
+                "resolution": effective_resolution,
                 "duration": f"{duration}s",
             }
             bucket = os.getenv("GCS_BUCKET")
@@ -237,13 +300,28 @@ class VideoService:
                 response_format_block["delivery"] = "uri"
                 response_format_block["gcs_uri"] = f"gs://{bucket}/videos/{project_id}/"
 
-            interaction = client.interactions.create(
-                model=model_id,
-                background=not blocking,
-                input=input_blocks,
-                response_format=[response_format_block],
-                generation_config={"video_config": {"task": video_task}},
-            )
+            try:
+                interaction = await sdk_call_with_retry(
+                    client.interactions.create,
+                    model=model_id,
+                    background=not blocking,
+                    input=input_blocks,
+                    response_format=[response_format_block],
+                    generation_config={"video_config": {"task": video_task}},
+                )
+            except Exception:
+                if end_ref_url and len(input_blocks) > 2:
+                    single_img_blocks = input_blocks[:2]
+                    interaction = await sdk_call_with_retry(
+                        client.interactions.create,
+                        model=model_id,
+                        background=not blocking,
+                        input=single_img_blocks,
+                        response_format=[response_format_block],
+                        generation_config={"video_config": {"task": video_task}},
+                    )
+                else:
+                    raise
             interaction_id = getattr(interaction, "id", None) or (
                 interaction.get("id") if isinstance(interaction, dict) else ""
             )
@@ -255,11 +333,14 @@ class VideoService:
                     "generated_prompt": enriched_prompt,
                     "model_id": model_id,
                     "duration_seconds": duration,
+                    "resolution": effective_resolution,
                 }
 
             while getattr(interaction, "status", None) in ("in_progress", "queued"):
                 await asyncio.sleep(10)
-                interaction = client.interactions.get(interaction_id)
+                interaction = await asyncio.to_thread(
+                    client.interactions.get, interaction_id
+                )
 
             uri = self._extract_omni_video_uri(
                 interaction, interaction_id or project_id
@@ -269,28 +350,41 @@ class VideoService:
                 "generated_prompt": enriched_prompt,
                 "model_id": model_id,
                 "duration_seconds": duration,
+                "resolution": effective_resolution,
             }
 
+        veo_res = (
+            effective_resolution
+            if effective_resolution in ("720p", "1080p", "4k")
+            else "720p"
+        )
+        config_kwargs: dict = {
+            "duration_seconds": duration,
+            "seed": seed,
+            "aspect_ratio": project.orientation if project else "16:9",
+            "number_of_videos": 1,
+            "generate_audio": True,
+            "person_generation": "allow_all",
+            "resolution": veo_res,
+            "negative_prompt": VEO_NEGATIVE_PROMPT,
+        }
+        if end_ref_url and end_ref_url.startswith("gs://"):
+            config_kwargs["last_frame"] = types.Image(
+                gcs_uri=end_ref_url, mime_type="image/png"
+            )
         generate_kwargs = {
             "model": model_id,
             "prompt": enriched_prompt,
-            "config": types.GenerateVideosConfig(
-                duration_seconds=duration,
-                seed=seed,
-                aspect_ratio=project.orientation if project else "16:9",
-                number_of_videos=1,
-                generate_audio=True,
-                person_generation="allow_all",
-                resolution="720p",
-                negative_prompt=VEO_NEGATIVE_PROMPT,
-            ),
+            "config": types.GenerateVideosConfig(**config_kwargs),
         }
         if ref_url and ref_url.startswith("gs://"):
             generate_kwargs["image"] = types.Image(
                 gcs_uri=ref_url, mime_type="image/png"
             )
 
-        operation = client.models.generate_videos(**generate_kwargs)
+        operation = await sdk_call_with_retry(
+            client.models.generate_videos, **generate_kwargs
+        )
 
         if not blocking:
             return {
@@ -299,6 +393,7 @@ class VideoService:
                 "generated_prompt": enriched_prompt,
                 "model_id": model_id,
                 "duration_seconds": duration,
+                "resolution": veo_res,
             }
 
         while not operation.done:
@@ -310,6 +405,7 @@ class VideoService:
                 "generated_prompt": enriched_prompt,
                 "model_id": model_id,
                 "duration_seconds": duration,
+                "resolution": veo_res,
             }
 
         return {
@@ -317,6 +413,7 @@ class VideoService:
             "generated_prompt": enriched_prompt,
             "model_id": model_id,
             "duration_seconds": duration,
+            "resolution": veo_res,
         }
 
     async def get_video_generation_status(self, operation_name: str):
@@ -326,7 +423,9 @@ class VideoService:
             if operation_name.startswith("interaction:"):
                 interaction_id = operation_name.split("interaction:", 1)[1]
                 client = self._get_client("global")
-                interaction = client.interactions.get(interaction_id)
+                interaction = await asyncio.to_thread(
+                    client.interactions.get, interaction_id
+                )
                 status = getattr(interaction, "status", None) or (
                     interaction.get("status") if isinstance(interaction, dict) else None
                 )
@@ -354,7 +453,9 @@ class VideoService:
                 return {"status": "processing"}
 
             operation_wrapper = types.GenerateVideosOperation(name=operation_name)
-            operation = self.video_client.operations.get(operation_wrapper)
+            operation = await asyncio.to_thread(
+                self.video_client.operations.get, operation_wrapper
+            )
             print(f"Operation type: {type(operation)}")
 
             is_done = getattr(operation, "done", None)

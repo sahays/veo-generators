@@ -1,4 +1,4 @@
-"""Director specialist — manages video projects and system-prompt browsing."""
+"""Productions & Prompts specialist (`productions_agent`) — manages video productions, lifecycle steps, and system prompts."""
 
 from typing import Optional
 
@@ -14,14 +14,17 @@ from .._shared import (
     resolve_prompt_name,
 )
 
-_DIRECTOR_ROLE = (
-    "You are the Production Director. You manage video projects and scripts.\n"
+_PRODUCTIONS_ROLE = (
+    "You are the Productions & Script Studio Specialist (`productions_agent`). "
+    "You manage multi-scene video productions, scripts, storyboards, and system prompt templates.\n"
     "IMPORTANT: Call list_prompt_categories() to discover categories (with example "
     "prompt names), then match the user's intent to the best-fitting category and "
     "call list_prompts(category) with the exact ID. Never ask the user to choose "
     "from raw category IDs — infer the best match from the examples and proceed.\n"
-    "IMPORTANT: Use propose_production() to create a confirmation card. "
-    "Never execute jobs directly — always let the user review and confirm first."
+    "IMPORTANT: Use propose_production() to create an A2UI confirmation card. "
+    "Never execute new production jobs directly — always let the user review and confirm first.\n"
+    "For existing productions, you can trigger lifecycle stages (analyze script, "
+    "generate-storyboard, generate-videos, stitch) via advance_production_stage()."
 )
 
 
@@ -56,27 +59,78 @@ def _make_director_tools(invite_code: str) -> list:
         return f"Prompts for '{category}':\n" + "\n".join(lines)
 
     async def propose_production(
-        name: str, base_concept: str, prompt_id: Optional[str] = None
+        name: str,
+        base_concept: str,
+        prompt_id: Optional[str] = None,
+        video_length: str = "16",
+        orientation: str = "16:9",
+        project_type: str = "movie",
+        language: str = "en-IN",
     ):
-        """Propose creating a new video production. Returns a confirmation card."""
+        """Propose creating a new video production (`video_length` in seconds e.g. '16', '24', '32', '48'; `language` in 'en-IN', 'hi-IN', 'en-US'; `project_type` in 'movie', 'advertizement', 'social'). Returns an interactive A2UI confirmation card."""
         resolved: dict = {}
         if prompt_id:
             resolved["prompt_name"] = await resolve_prompt_name(invite_code, prompt_id)
-        params: dict = {"name": name, "base_concept": base_concept}
+        clean_len = str(video_length).rstrip("s").strip() or "16"
+        params: dict = {
+            "name": name,
+            "base_concept": base_concept,
+            "video_length": clean_len,
+            "orientation": orientation,
+            "type": project_type,
+            "language": language,
+        }
         if prompt_id:
             params["prompt_id"] = prompt_id
         return propose_job("production", f"Create production: {name}", params, resolved)
 
+    async def advance_production_stage(production_id: str, stage: str):
+        """Trigger a lifecycle stage on an existing production. `stage` must be one of:
+        'analyze' (generate script), 'review' (storyboard continuity review),
+        'render', 'render-draft' (360p draft pipeline), 'upgrade-final' (720p HD upgrade),
+        'evaluate' (multimodal video evaluation), 'regenerate-flagged',
+        'generate-storyboard', 'generate-videos', or 'stitch'."""
+        allowed = {
+            "analyze",
+            "review",
+            "render",
+            "render-draft",
+            "upgrade-final",
+            "evaluate",
+            "regenerate-flagged",
+            "generate-storyboard",
+            "generate-videos",
+            "stitch",
+        }
+        if stage not in allowed:
+            return (
+                f"Invalid stage '{stage}'. Valid stages: {', '.join(sorted(allowed))}"
+            )
+        return await agent_tools.trigger_production_step(
+            invite_code, production_id, stage
+        )
+
     return [
         list_recent_productions,
         propose_production,
+        advance_production_stage,
         list_prompt_categories,
         list_prompts,
         make_check_job_status(invite_code),
     ]
 
 
-def create_director_agent(invite_code: str, model: Gemini) -> LlmAgent:
+def create_productions_agent(
+    invite_code: str, model: Optional[Gemini] = None
+) -> LlmAgent:
     return build_specialist(
-        "director", _DIRECTOR_ROLE, _make_director_tools(invite_code), model
+        "productions_agent",
+        _PRODUCTIONS_ROLE,
+        _make_director_tools(invite_code),
+        model=model,
+        tier="creative",
     )
+
+
+def create_director_agent(invite_code: str, model: Optional[Gemini] = None) -> LlmAgent:
+    return create_productions_agent(invite_code, model)

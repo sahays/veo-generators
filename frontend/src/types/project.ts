@@ -21,29 +21,54 @@ export const sceneSchema = z.object({
   exit_transition: z.string().optional(),
   music_transition: z.string().optional(),
   thumbnail_url: z.string().optional(),
+  end_frame_url: z.string().optional(),
   video_url: z.string().optional(),
   generated_prompt: z.string().optional(),
   image_prompt: z.string().optional(),
+  end_frame_prompt: z.string().optional(),
   video_prompt: z.string().optional(),
   operation_name: z.string().optional(),
   status: z.string().optional(),
   error_message: z.string().optional(),
+  speaker_notes: z.string().optional(),
+  video_resolution: z.string().optional(),
+  eval_status: z.string().optional(),
+  eval_feedback: z.string().optional(),
+  regen_count: z.number().optional(),
   tokens_consumed: z.object({
     input: z.number().default(0),
     output: z.number().default(0),
   }).optional(),
 })
 
-export type Scene = z.infer<typeof sceneSchema>
+export type RenderQuality = 'draft' | 'final'
+export type VideoResolution = '360p' | '720p' | '1080p'
+
+export type Scene = z.infer<typeof sceneSchema> & {
+  video_resolution?: VideoResolution | string
+  eval_status?: 'passed' | 'flagged' | 'regenerating' | 'regenerated' | string
+}
 
 export type ProjectType = 'movie' | 'advertizement' | 'social'
+export type ProductionLanguage = 'en-IN' | 'hi-IN' | 'en-US'
+
+export const PRODUCTION_LANGUAGES: {
+  id: ProductionLanguage
+  label: string
+  sub: string
+}[] = [
+  { id: 'en-IN', label: 'English (India)', sub: 'Indian English audio & video' },
+  { id: 'hi-IN', label: 'Hindi (हिन्दी)', sub: 'Native Hindi audio & video' },
+  { id: 'en-US', label: 'English (US)', sub: 'Standard US English' },
+]
 
 export const projectSchema = z.object({
   name: z.string().min(1, 'Project name is required'),
   type: z.enum(['movie', 'advertizement', 'social']),
-  base_concept: z.string().min(10, 'Concept must be at least 10 characters').max(2000),
-  video_length: z.enum(['16', '24', '32', '48', 'custom']),
+  base_concept: z.string().min(10, 'Concept must be at least 10 characters').max(10000),
+  video_length: z.string().min(1),
   orientation: z.enum(['16:9', '9:16']),
+  language: z.enum(['en-IN', 'hi-IN', 'en-US']),
   reference_image_url: z.string().optional(),
   prompt_id: z.string().optional(),
   schema_id: z.string().optional(),
@@ -54,7 +79,17 @@ export type ProjectFormData = z.infer<typeof projectSchema> & {
   schema_id?: string
 }
 
-export type ProjectStatus = 'draft' | 'analyzing' | 'scripted' | 'generating' | 'stitching' | 'completed' | 'failed'
+export type ProjectStatus =
+  | 'draft'
+  | 'analyzing'
+  | 'scripted'
+  | 'reviewing'
+  | 'generating'
+  | 'stitching'
+  | 'evaluating'
+  | 'regenerating'
+  | 'completed'
+  | 'failed'
 
 export interface SystemResourceInfo {
   id: string
@@ -184,6 +219,57 @@ export interface Continuity {
   setting_notes?: string
 }
 
+export interface PipelineStepLog {
+  step_id: string
+  label: string
+  status: 'pending' | 'running' | 'completed' | 'skipped' | 'failed'
+  detail?: string
+  usage?: UsageMetrics
+  started_at?: string
+  completed_at?: string
+}
+
+export interface StoryboardReviewIssue {
+  scene_number: number
+  category: string
+  severity: 'critical' | 'warning' | string
+  problem: string
+  fix_applied: string
+}
+
+export interface StoryboardReviewReport {
+  overall_score: number
+  summary: string
+  issues: StoryboardReviewIssue[]
+  usage?: UsageMetrics
+  reviewed_at?: string
+}
+
+export interface SceneEvalFinding {
+  scene_number: number
+  scene_id?: string
+  category: string
+  severity: 'critical' | 'warning' | string
+  observed_issue: string
+  regenerate_frame: boolean
+  regenerate_video: boolean
+  corrected_visual_description?: string
+  corrected_speaker_notes?: string
+  corrected_narration?: string
+  corrected_music_description?: string
+}
+
+export interface VideoEvalReport {
+  overall_score: number
+  passed: boolean
+  iteration: number
+  summary: string
+  findings: SceneEvalFinding[]
+  regenerated_scene_ids?: string[]
+  usage?: UsageMetrics
+  evaluated_at?: string
+}
+
 export interface Project {
   id: string
   name: string
@@ -192,6 +278,13 @@ export interface Project {
   video_length: '16' | '24' | '32' | '48' | 'custom'
   orientation: '16:9' | '9:16'
   status: ProjectStatus
+  render_quality?: RenderQuality
+  video_resolution?: VideoResolution
+  draft_video_url?: string
+  pipeline_stage?: string
+  pipeline_steps?: PipelineStepLog[]
+  review_report?: StoryboardReviewReport
+  eval_report?: VideoEvalReport
   prompt_info?: SystemResourceInfo
   schema_info?: SystemResourceInfo
   reference_image_url?: string

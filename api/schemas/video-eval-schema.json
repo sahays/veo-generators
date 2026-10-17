@@ -1,0 +1,83 @@
+{
+  "type": "object",
+  "properties": {
+    "overall_score": {
+      "type": "integer",
+      "description": "Overall finished-video quality & continuity score from 0 to 100"
+    },
+    "passed": {
+      "type": "boolean",
+      "description": "True ONLY if the finished video has zero critical inconsistencies in speaker attribution, prop physics, character anatomy, environment continuity, and transitions; False if any scene needs regeneration"
+    },
+    "summary": {
+      "type": "string",
+      "description": "Concise executive summary of the finished video evaluation and which scenes passed or require regeneration"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "scene_number": {
+            "type": "integer",
+            "description": "1-based index of the scene where the inconsistency was observed"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "speech_speaker",
+              "prop_physics",
+              "character_anatomy",
+              "environment_continuity",
+              "transition_action",
+              "audio_music"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["critical", "warning"]
+          },
+          "observed_issue": {
+            "type": "string",
+            "description": "Specific visual or audio defect observed in the rendered video clip (e.g. 'Hanuman moves his mouth during Jamvant monologue', 'Ring is floating above palm', 'Hanuman has two tails', 'No fire visible in Lanka')"
+          },
+          "regenerate_frame": {
+            "type": "boolean",
+            "description": "True if the defect is present in the static composition/anatomy/environment and requires regenerating the keyframe image as well as the video"
+          },
+          "regenerate_video": {
+            "type": "boolean",
+            "description": "True if the scene video clip must be regenerated with the corrected prompt"
+          },
+          "corrected_visual_description": {
+            "type": "string",
+            "description": "Updated visual_description with explicit physical, anatomical, speaker, and environmental constraints to fix the observed defect"
+          },
+          "corrected_speaker_notes": {
+            "type": "string",
+            "description": "Updated speaker_notes strictly specifying whose mouth moves vs who stays silent with mouth closed"
+          },
+          "corrected_narration": {
+            "type": "string",
+            "description": "Optional updated narration text if dialogue/monologue phrasing caused the issue"
+          },
+          "corrected_music_description": {
+            "type": "string",
+            "description": "Optional updated music_description if audio/music clashed"
+          }
+        },
+        "required": [
+          "scene_number",
+          "category",
+          "severity",
+          "observed_issue",
+          "regenerate_frame",
+          "regenerate_video",
+          "corrected_visual_description",
+          "corrected_speaker_notes"
+        ]
+      }
+    }
+  },
+  "required": ["overall_score", "passed", "summary", "findings"]
+}

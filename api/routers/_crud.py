@@ -119,10 +119,34 @@ def register_crud_routes(
             return {"id": record_id, "status": "pending"}
 
 
+_ALLOWED_PATCH_STRING_FIELDS = (
+    "display_name",
+    "name",
+    "type",
+    "base_concept",
+    "video_length",
+    "orientation",
+    "language",
+    "reference_image_url",
+    "render_quality",
+    "video_resolution",
+    "status",
+)
+
+_ALLOWED_PATCH_OBJECT_FIELDS = (
+    "scenes",
+    "global_style",
+    "continuity",
+)
+
+
 def _extract_patch_updates(body: dict) -> dict:
-    """The only field currently allowed via PATCH is display_name. Centralized
-    so feature routers stay in sync if we add more."""
+    """Extract allowed fields for PATCH endpoints across feature routers."""
     updates: dict = {}
-    if "display_name" in body:
-        updates["display_name"] = str(body["display_name"]).strip()
+    for field in _ALLOWED_PATCH_STRING_FIELDS:
+        if field in body and body[field] is not None:
+            updates[field] = str(body[field]).strip()
+    for field in _ALLOWED_PATCH_OBJECT_FIELDS:
+        if field in body and body[field] is not None:
+            updates[field] = body[field]
     return updates

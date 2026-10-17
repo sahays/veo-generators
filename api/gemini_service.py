@@ -1,5 +1,6 @@
 """Gemini service — video analysis, image generation, and content creation."""
 
+import json
 import logging
 import os
 from typing import Optional
@@ -16,11 +17,20 @@ from ai_helpers import (
     resolve_model,
     resolve_resource,
 )
-from brief_helpers import parse_scenes
+from brief_helpers import (
+    parse_eval_response,
+    parse_review_response,
+    parse_scenes,
+)
 from helpers import gemini_call_with_retry
 from models import AIResponseWrapper, Project, Scene, UsageMetrics
 from prompt_resolver import PromptResolver, gcs_ref_url
-from prompt_templates import SCENE_ANALYSIS_PROMPT, build_collage_prompt
+from prompt_templates import (
+    FINISHED_VIDEO_EVAL_PROMPT,
+    SCENE_ANALYSIS_PROMPT,
+    STORYBOARD_REVIEWER_PROMPT,
+    build_collage_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +58,7 @@ class GeminiService:
         return self._clients[loc]
 
     # ------------------------------------------------------------------
-    # Brief analysis (production planning)
+    # Brief analysis, Storyboard Review & Finished-Video Evaluation
     # ------------------------------------------------------------------
 
     async def analyze_brief(
@@ -79,10 +89,11 @@ class GeminiService:
             schema_id, "project-analysis", "production-schema"
         )
         contents = _build_ref_contents(project, prompt)
-        response = client.models.generate_content(
-            model=model_id,
-            contents=contents,
-            config=types.GenerateContentConfig(
+        response = await gemini_call_with_retry(
+            client,
+            model_id,
+            contents,
+            types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=schema,
             ),
@@ -98,6 +109,141 @@ class GeminiService:
             usage=compute_usage(response, model_id),
         )
 
+    async def review_storyboard(
+        self,
+        project_id: str,
+        project: Project,
+        model_id: Optional[str] = None,
+        region: Optional[str] = None,
+    ) -> AIResponseWrapper:
+        """Audit the entire storyboard for speaker attribution, prop physics,
+        character anatomy, environmental continuity, and transitions."""
+        model_id = resolve_model(
+            self.firestore_svc,
+            "text",
+            "OPTIMIZE_PROMPT_MODEL",
+            "gemini-3.8-flash",
+            model_id,
+        )
+        client = self._get_client(region)
+        schema = load_schema("storyboard-review-schema")
+        storyboard_payload = {
+            "project_name": project.name,
+            "base_concept": project.base_concept,
+            "orientation": project.orientation,
+            "language": project.language,
+            "global_style": project.global_style.dict() if project.global_style else {},
+            "continuity": project.continuity.dict() if project.continuity else {},
+            "scenes": [
+                {
+                    "scene_number": idx + 1,
+                    "visual_description": s.visual_description,
+                    "timestamp_start": s.timestamp_start,
+                    "timestamp_end": s.timestamp_end,
+                    "narration": s.narration or "",
+                    "speaker_notes": s.speaker_notes or "",
+                    "music_description": s.music_description or "",
+                    "enter_transition": s.enter_transition or "",
+                    "exit_transition": s.exit_transition or "",
+                    "music_transition": s.music_transition or "",
+                    "metadata": s.metadata.dict() if s.metadata else {},
+                }
+                for idx, s in enumerate(project.scenes)
+            ],
+        }
+        prompt = (
+            f"{STORYBOARD_REVIEWER_PROMPT}\n\n"
+            f"STORYBOARD TO REVIEW:\n{json.dumps(storyboard_payload, indent=2)}"
+        )
+        response = await gemini_call_with_retry(
+            client,
+            model_id,
+            [prompt],
+            types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=schema,
+                max_output_tokens=65536,
+            ),
+        )
+        usage = compute_usage(response, model_id)
+        parsed_data = parse_review_response(
+            response.parsed, project.scenes, usage=usage
+        )
+        return AIResponseWrapper(data=parsed_data, usage=usage)
+
+    async def evaluate_finished_video(
+        self,
+        project_id: str,
+        project: Project,
+        video_gcs_uri: Optional[str] = None,
+        iteration: int = 1,
+        model_id: Optional[str] = None,
+        region: Optional[str] = None,
+    ) -> AIResponseWrapper:
+        """Multimodal evaluation of the rendered video and scene clips against the storyboard."""
+        model_id = resolve_model(
+            self.firestore_svc,
+            "text",
+            "OPTIMIZE_PROMPT_MODEL",
+            "gemini-3.8-flash",
+            model_id,
+        )
+        client = self._get_client(region)
+        schema = load_schema("video-eval-schema")
+
+        contents: list = []
+        primary_uri = (
+            video_gcs_uri or project.final_video_url or project.draft_video_url
+        )
+        if primary_uri and primary_uri.startswith("gs://"):
+            contents.append(
+                types.Part.from_uri(file_uri=primary_uri, mime_type="video/mp4")
+            )
+        else:
+            for s in project.scenes:
+                if s.video_url and s.video_url.startswith("gs://"):
+                    contents.append(
+                        types.Part.from_uri(file_uri=s.video_url, mime_type="video/mp4")
+                    )
+
+        storyboard_spec = {
+            "project_name": project.name,
+            "base_concept": project.base_concept,
+            "continuity": project.continuity.dict() if project.continuity else {},
+            "scenes": [
+                {
+                    "scene_number": idx + 1,
+                    "scene_id": s.id,
+                    "timestamp_start": s.timestamp_start,
+                    "timestamp_end": s.timestamp_end,
+                    "visual_description": s.visual_description,
+                    "narration": s.narration or "",
+                    "speaker_notes": s.speaker_notes or "",
+                    "music_description": s.music_description or "",
+                }
+                for idx, s in enumerate(project.scenes)
+            ],
+        }
+        contents.append(
+            f"{FINISHED_VIDEO_EVAL_PROMPT}\n\n"
+            f"INTENDED STORYBOARD SPECIFICATION:\n{json.dumps(storyboard_spec, indent=2)}"
+        )
+        response = await gemini_call_with_retry(
+            client,
+            model_id,
+            contents,
+            types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=schema,
+                max_output_tokens=65536,
+            ),
+        )
+        usage = compute_usage(response, model_id)
+        report = parse_eval_response(
+            response.parsed, project.scenes, iteration=iteration, usage=usage
+        )
+        return AIResponseWrapper(data={"eval_report": report}, usage=usage)
+
     # ------------------------------------------------------------------
     # Frame / image generation
     # ------------------------------------------------------------------
@@ -111,6 +257,8 @@ class GeminiService:
         prompt_override: Optional[str] = None,
         model_id: Optional[str] = None,
         region: Optional[str] = None,
+        frame_position: str = "start",
+        start_frame_uri: Optional[str] = None,
     ) -> AIResponseWrapper:
         model_id = resolve_model(
             self.firestore_svc,
@@ -120,8 +268,15 @@ class GeminiService:
             model_id,
         )
         client = self._get_client(region)
-        prompt = prompt_override or _build_scene_prompt(scene, project, orientation)
-        contents = _build_ref_contents(project, prompt, style_guide=True)
+        prompt = prompt_override or _build_scene_prompt(
+            scene, project, orientation, frame_position=frame_position
+        )
+        contents = _build_ref_contents(
+            project,
+            prompt,
+            style_guide=True,
+            start_frame_uri=start_frame_uri if frame_position == "end" else None,
+        )
         response = await gemini_call_with_retry(
             client,
             model_id,
@@ -135,7 +290,11 @@ class GeminiService:
             response, self.storage_svc, f"generated/{project_id}"
         )
         return AIResponseWrapper(
-            data={"image_url": url, "generated_prompt": prompt},
+            data={
+                "image_url": url,
+                "generated_prompt": prompt,
+                "frame_position": frame_position,
+            },
             usage=compute_image_usage(response, model_id),
         )
 
@@ -625,12 +784,25 @@ class GeminiService:
 
 
 def _build_scene_prompt(
-    scene: Scene, project: Optional[Project], orientation: Optional[str]
+    scene: Scene,
+    project: Optional[Project],
+    orientation: Optional[str],
+    frame_position: str = "start",
 ) -> str:
-    """Build a flat scene prompt from project context."""
+    """Build a flat scene keyframe prompt (start or end frame) from project context."""
     parts = []
     if orientation:
         parts.append(f"Aspect ratio: {orientation}.")
+    if frame_position == "end":
+        parts.append(
+            "KEYFRAME ROLE: END FRAME (final closing composition at the end of this scene's action). "
+            "Depict the completed state of the action described below while keeping character identity, "
+            "single-tail anatomy, wardrobe, held props, and background environment 100% consistent with the opening frame."
+        )
+    else:
+        parts.append(
+            "KEYFRAME ROLE: START FRAME (initial opening composition at the beginning of this scene's action)."
+        )
     if project and project.global_style:
         gs = project.global_style
         parts.append(
@@ -646,16 +818,43 @@ def _build_scene_prompt(
     if project and project.continuity and project.continuity.setting_notes:
         parts.append(f"Setting: {project.continuity.setting_notes}.")
     parts.append(scene.visual_description)
+    if frame_position == "end" and scene.exit_transition:
+        parts.append(f"End-of-shot camera framing: {scene.exit_transition}.")
+    elif frame_position == "start" and scene.enter_transition:
+        parts.append(f"Opening camera framing: {scene.enter_transition}.")
+    if scene.speaker_notes:
+        parts.append(f"Speaker/Action note: {scene.speaker_notes}.")
+    if scene.eval_feedback:
+        parts.append(f"STRICT CORRECTION: {scene.eval_feedback}.")
     return " ".join(parts)
 
 
-def _build_ref_contents(project, prompt, style_guide: bool = False) -> list:
-    """Build contents list with optional reference image."""
+def _build_ref_contents(
+    project,
+    prompt,
+    style_guide: bool = False,
+    start_frame_uri: Optional[str] = None,
+) -> list:
+    """Build contents list with optional project reference image and/or scene start frame."""
+    contents: list = []
     ref = gcs_ref_url(project)
-    if not ref:
+    if ref:
+        contents.append(types.Part.from_uri(file_uri=ref, mime_type="image/png"))
+    if start_frame_uri and start_frame_uri.startswith("gs://"):
+        contents.append(
+            types.Part.from_uri(file_uri=start_frame_uri, mime_type="image/png")
+        )
+    if not contents:
         return [prompt]
-    prefix = "Use the above reference image as a style guide. " if style_guide else ""
-    return [
-        types.Part.from_uri(file_uri=ref, mime_type="image/png"),
-        f"{prefix}{prompt}",
-    ]
+    prefix_parts = []
+    if ref and style_guide:
+        prefix_parts.append("Use the reference image as a style guide.")
+    if start_frame_uri and start_frame_uri.startswith("gs://"):
+        prefix_parts.append(
+            "Use the attached START frame of this scene as strict visual continuity reference "
+            "(identical character face, wardrobe, single tail, props, and background environment) "
+            "and generate the END frame showing the final pose/composition at the conclusion of this scene's action."
+        )
+    prefix = (" ".join(prefix_parts) + " ") if prefix_parts else ""
+    contents.append(f"{prefix}{prompt}")
+    return contents

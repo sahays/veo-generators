@@ -9,11 +9,19 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 
 import deps
 from models import ProjectStatus
-from routers.render_helpers import process_render
+from routers.render_helpers import build_initial_pipeline_steps, process_render
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/productions", tags=["render"])
+
+_ACTIVE_RENDER_STATUSES = (
+    ProjectStatus.REVIEWING,
+    ProjectStatus.GENERATING,
+    ProjectStatus.STITCHING,
+    ProjectStatus.EVALUATING,
+    ProjectStatus.REGENERATING,
+)
 
 
 def _require_render_services() -> None:
@@ -37,12 +45,65 @@ def _require_production(production_id: str):
 async def start_render(request: Request, id: str, background_tasks: BackgroundTasks):
     _require_render_services()
     production = _require_production(id)
-    # Don't restart if already running.
-    if production.status in (ProjectStatus.GENERATING, ProjectStatus.STITCHING):
+    if production.status in _ACTIVE_RENDER_STATUSES:
         return {"status": str(production.status.value)}
-    deps.firestore_svc.update_production(id, {"status": ProjectStatus.GENERATING})
-    background_tasks.add_task(process_render, id)
-    return {"status": "started"}
+
+    try:
+        body = await request.json()
+        if not isinstance(body, dict):
+            body = {}
+    except Exception:
+        body = {}
+
+    quality = (
+        body.get("quality") or getattr(production, "render_quality", None) or "draft"
+    )
+    if quality == "draft":
+        resolution = body.get("resolution") or "360p"
+    else:
+        raw_res = (
+            body.get("resolution")
+            or getattr(production, "video_resolution", None)
+            or "720p"
+        )
+        resolution = "720p" if raw_res == "360p" else raw_res
+
+    auto_review = bool(body.get("auto_review", True))
+    auto_eval = bool(body.get("auto_eval", True))
+    max_eval_iterations = int(body.get("max_eval_iterations", 1))
+
+    pipeline_steps = build_initial_pipeline_steps(
+        auto_review=auto_review, auto_eval=auto_eval
+    )
+    initial_status = (
+        ProjectStatus.REVIEWING if auto_review else ProjectStatus.GENERATING
+    )
+    initial_stage = "review_storyboard" if auto_review else "generate_frames"
+    deps.firestore_svc.update_production(
+        id,
+        {
+            "status": initial_status,
+            "render_quality": quality,
+            "video_resolution": resolution,
+            "pipeline_stage": initial_stage,
+            "pipeline_steps": pipeline_steps,
+            "error_message": None,
+        },
+    )
+    background_tasks.add_task(
+        process_render,
+        id,
+        quality,
+        resolution,
+        auto_review,
+        auto_eval,
+        max_eval_iterations,
+    )
+    return {
+        "status": "started",
+        "quality": quality,
+        "resolution": resolution,
+    }
 
 
 def _scene_uris_or_400(production) -> list[str]:

@@ -22,7 +22,21 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 API_DIR = REPO_ROOT / "api"
 WORKERS_DIR = REPO_ROOT / "workers"
+AGENTS_SERVICE_DIR = REPO_ROOT / "agents_service"
 FRONTEND_SRC_DIR = REPO_ROOT / "frontend" / "src"
+
+_FORBIDDEN_AGENT_IMPORT_PREFIXES = (
+    "api/deps.py",
+    "api/firestore_service.py",
+    "api/storage_service.py",
+    "api/gemini_service.py",
+    "api/video_service.py",
+    "api/pricing_config.py",
+    "api/reframe_strategies.py",
+    "api/models",
+    "api/routers/",
+    "workers/",
+)
 
 
 @dataclass(frozen=True)
@@ -55,7 +69,11 @@ def classify_backend_module(rel_path: str) -> int | None:
 
     if rel.startswith("api/models") or rel == "api/pricing_config.py":
         return 1
-    if rel == "api/main.py" or rel.startswith("workers/") or rel.startswith("api/scripts/"):
+    if (
+        rel in ("api/main.py", "agents_service/main.py")
+        or rel.startswith("workers/")
+        or rel.startswith("api/scripts/")
+    ):
         return 5
     if rel in ("api/routers/_crud.py", "api/routers/render_helpers.py"):
         return 3
@@ -67,7 +85,7 @@ def classify_backend_module(rel_path: str) -> int | None:
 def resolve_backend_import(module_name: str) -> str | None:
     """Resolve an import target like `routers.adapts` or `deps` to a repo-relative path."""
     parts = module_name.split(".")
-    for base_prefix in ("api", "workers"):
+    for base_prefix in ("api", "workers", "agents_service"):
         candidate_py = REPO_ROOT / base_prefix / ("/".join(parts) + ".py")
         if candidate_py.is_file():
             return str(candidate_py.relative_to(REPO_ROOT)).replace("\\", "/")
@@ -144,7 +162,7 @@ def analyze_python_ast() -> list[Violation]:
     seen_hashes: dict[str, tuple[str, str, int]] = {}
 
     py_files: list[Path] = []
-    for folder in (API_DIR, WORKERS_DIR):
+    for folder in (API_DIR, WORKERS_DIR, AGENTS_SERVICE_DIR):
         if not folder.exists():
             continue
         for path in sorted(folder.rglob("*.py")):
@@ -165,9 +183,10 @@ def analyze_python_ast() -> list[Violation]:
             continue
 
         src_tier = classify_backend_module(rel)
+        is_agent_module = rel.startswith("api/agents/") or rel.startswith("agents_service/")
 
-        # 1. Check top-level module imports for tier-breakers
-        if src_tier is not None:
+        # 1. Check module imports for tier-breakers and agent isolation
+        if src_tier is not None or is_agent_module:
             for stmt in tree.body:
                 imported_modules: list[tuple[str, int]] = []
                 if isinstance(stmt, ast.Import):
@@ -184,8 +203,23 @@ def analyze_python_ast() -> list[Violation]:
                     target_rel = resolve_backend_import(mod_name)
                     if not target_rel or target_rel == rel:
                         continue
+                    if is_agent_module and any(
+                        target_rel.startswith(p) for p in _FORBIDDEN_AGENT_IMPORT_PREFIXES
+                    ):
+                        violations.append(
+                            Violation(
+                                "tier-breaker",
+                                f"{rel}:{lineno}",
+                                f"Agent module '{rel}' cannot directly import backend internal module '{target_rel}' (must use REST API tools)",
+                            )
+                        )
+                        continue
                     target_tier = classify_backend_module(target_rel)
-                    if target_tier is not None and target_tier > src_tier:
+                    if (
+                        src_tier is not None
+                        and target_tier is not None
+                        and target_tier > src_tier
+                    ):
                         violations.append(
                             Violation(
                                 "tier-breaker",

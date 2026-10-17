@@ -1,153 +1,175 @@
-"""Aanya orchestrator — routes user intent to specialists, handles pricing inline.
+"""Aanya orchestrator — pure intent router delegating to 8 feature-isolated specialists.
 
-Specialists live under `agents/specialists/*`. Shared scaffolding (model
-factory, request-scoped context, scope policy) is in `agents/_shared.py`.
+Each feature in Veo Generators has its own dedicated ADK specialist agent with
+strictly scoped API tools and a Gemini model matched to its responsibility tier:
+0. `Aanya` (Root Router) — `gemini-3.5-flash-lite` (0 domain tools; pure delegation)
+1. `productions_agent` — Productions, Scripts, Storyboards, Prompts (`creative` tier)
+2. `reframe_agent` — Vertical/Portrait Video Reframing (`specialist` tier)
+3. `key_moments_agent` — Timestamped Key Moments Analysis (`specialist` tier)
+4. `thumbnails_agent` — Video Thumbnail Analysis, Frame Capture & Collage (`specialist` tier)
+5. `promo_agent` — Promotional Video Cutdowns (`specialist` tier)
+6. `adapts_agent` — Social Media Image Adaptations (`specialist` tier)
+7. `dubbing_agent` — Multi-Language Video Dubbing & Subtitles (`specialist` tier)
+8. `finops_agent` — Pricing, Cost Estimates, Job Usage Breakdowns, Models & Uploads (`finops` tier)
 """
 
-from typing import Optional
+import time
 
+from google.adk import Runner
 from google.adk.agents import LlmAgent
-from google.adk.tools import FunctionTool
+from google.adk.events.event import Event
+from google.adk.events.event_actions import EventActions
+from google.adk.sessions import InMemorySessionService
+from google.genai import types
 
-from . import tools as agent_tools
 from ._shared import (
     STRICT_SCOPE_INSTRUCTION,
     create_model,
     get_agent_context,
     reset_agent_context,
+    sanitize_markdown_response,
 )
 from .specialists import (
+    create_adapts_agent,
     create_director_agent,
+    create_dubbing_agent,
     create_editor_agent,
+    create_finops_agent,
+    create_key_moments_agent,
     create_marketer_agent,
+    create_productions_agent,
+    create_promo_agent,
+    create_reframe_agent,
+    create_thumbnails_agent,
+    make_finops_tools,
 )
 
-# Public re-exports so existing `from agents.factory import …` callers
-# continue to work without touching their imports.
+# Public re-exports for callers and tests
 __all__ = [
-    "create_orchestrator",
+    "create_adapts_agent",
     "create_director_agent",
+    "create_dubbing_agent",
     "create_editor_agent",
+    "create_finops_agent",
+    "create_key_moments_agent",
     "create_marketer_agent",
+    "create_orchestrator",
+    "create_productions_agent",
+    "create_promo_agent",
+    "create_reframe_agent",
+    "create_thumbnails_agent",
     "get_agent_context",
+    "run_agent_chat",
+    "_make_orchestrator_tools",
 ]
+
+_EMPTY_ACTIONS = EventActions(
+    artifact_delta={},
+    requested_auth_configs={},
+    requested_tool_confirmations={},
+    state_delta={},
+)
 
 _ORCHESTRATOR_ROLE = (
     "Introduce yourself as Aanya, the Veo AI Orchestrator. "
-    "Delegate based on intent:\n"
-    "- New projects, scripts, system prompts/templates, prompt categories: 'director'\n"
-    "- Editing, reframing, thumbnails, key moments: 'editor'\n"
-    "- Promo video generation, marketing, social adaptations: 'marketer'\n"
-    "- Pricing, rates, cost estimates, cost breakdown for a job: handle "
-    "yourself using get_pricing_rates / get_feature_services / "
-    "estimate_cost / get_job_cost. Do NOT delegate pricing questions.\n\n"
-    "IMPORTANT: When the user asks to list or browse 'prompts' or 'templates', "
-    "delegate to 'director' (NOT 'marketer'). 'Prompts' are system prompt templates "
-    "managed by the director. 'Promos' are promotional video jobs managed by the marketer.\n"
-    "When a sub-agent proposes a job, relay their response. A confirmation card "
-    "will appear automatically for the user to review and confirm.\n"
-    "For cost questions:\n"
-    "- If the user references a specific record ID, call get_job_cost(feature, id) directly.\n"
-    "- If the user says 'last/previous/most recent X' or 'my X' without an ID, "
-    "first call list_recent_jobs(feature, limit=1) to resolve the ID, then "
-    "call get_job_cost. Do NOT ask the user for an ID — look it up yourself.\n"
-    "- If the user asks to list or compare multiple recent jobs, call "
-    "list_recent_jobs, then get_job_cost for each, and present a table.\n"
-    "- If the user asks 'how much would X cost' without a record, use estimate_cost.\n"
-    "- If the user asks about rates or which services are billed, use "
-    "get_pricing_rates or get_feature_services.\n"
-    "- Always surface the pricing_confidence field when you return a job cost — "
-    "say 'this is approximate' when it's not 'high'.\n"
-    "- When showing multiple records, prefer a markdown table (GFM tables are "
-    "supported in the chat UI).\n"
-    "Always be helpful, friendly, and professional."
+    "You are a pure router with 8 dedicated feature specialist sub-agents. "
+    "Delegate every user request based on feature intent:\n"
+    "1. 'productions_agent': New video/ad productions, scripts, storyboards, scene videos, "
+    "stitching, or browsing system prompts/templates/categories.\n"
+    "2. 'reframe_agent': Reframing videos to vertical/portrait (9:16, 3:4) or checking orientations.\n"
+    "3. 'key_moments_agent': Analyzing videos to find timestamped key moments or highlights.\n"
+    "4. 'thumbnails_agent': Generating video thumbnails, capturing frames, or building collages.\n"
+    "5. 'promo_agent': Creating promotional trailer/cutdown videos from a source video.\n"
+    "6. 'adapts_agent': Adapting/outpainting an image across multiple social aspect ratios.\n"
+    "7. 'dubbing_agent': Translating and dubbing videos into target languages (Spanish, Hindi, French, etc.).\n"
+    "8. 'finops_agent': Pricing rates, feature service maps, pre-job cost estimates, "
+    "post-job cost breakdowns, token consumption / usage metrics for any job, registered AI models, and uploaded files inventory.\n\n"
+    "IMPORTANT: Any question about tokens consumed, usage, cost, or billing for a job "
+    "(e.g. 'how many tokens consumed for the last Orientations job?') goes to 'finops_agent'.\n"
+    "Distinguish 'prompts' (system prompt templates → 'productions_agent') "
+    "from 'promos' (promotional video cutdowns → 'promo_agent').\n"
+    "When a specialist proposes a job, an interactive A2UI confirmation card appears "
+    "automatically in the Ask Aanya chat UI for the user to review, adjust, and confirm."
 )
 
-
-_ESTIMATE_FIELDS = (
-    "scene_count",
-    "video_length_seconds",
-    "variant_count",
-    "source_duration_seconds",
-    "segment_count",
-    "has_title_card",
-    "thumbnail_count",
-)
+# Backward-compatible alias for unit tests inspecting FinOps tools
+_make_orchestrator_tools = make_finops_tools
 
 
-def _make_orchestrator_tools(invite_code: str) -> list:
-    async def get_pricing_rates():
-        """Return the current pricing catalog — per-token rates for Gemini text
-        and image models, per-second Veo rates, and per-minute flat services
-        (Cloud Transcoder, Speech V2 diarization). Use when the user asks
-        about rates, what a service costs per unit, or which models exist."""
-        return await agent_tools.get_pricing_rates(invite_code)
-
-    async def get_feature_services():
-        """Return the list of services each feature consumes (production,
-        adapts, reframe, promo, key_moments, thumbnails) with rates inlined.
-        Use when the user asks 'what does feature X use?' or 'what services
-        are billed for Y?'."""
-        return await agent_tools.get_feature_services(invite_code)
-
-    async def estimate_cost(
-        feature: str,
-        scene_count: Optional[int] = None,
-        video_length_seconds: Optional[float] = None,
-        variant_count: Optional[int] = None,
-        source_duration_seconds: Optional[float] = None,
-        segment_count: Optional[int] = None,
-        has_title_card: Optional[bool] = None,
-        thumbnail_count: Optional[int] = None,
-    ):
-        """Estimate the cost of a job BEFORE it runs. `feature` must be one of
-        production/adapts/reframe/promo/key_moments/thumbnails. Pass the
-        feature-specific inputs (scene_count, video_length_seconds,
-        variant_count, source_duration_seconds, segment_count, has_title_card,
-        thumbnail_count). Returns a per-service breakdown plus total_usd."""
-        locals_ = locals()
-        payload: dict = {"feature": feature}
-        for k in _ESTIMATE_FIELDS:
-            v = locals_[k]
-            if v is not None:
-                payload[k] = v
-        return await agent_tools.estimate_cost(invite_code, payload)
-
-    async def get_job_cost(feature: str, record_id: str):
-        """Return the per-service cost breakdown for an existing job, plus
-        total and pricing confidence (high/medium/low with notes for any
-        estimated fields)."""
-        return await agent_tools.get_job_cost(invite_code, feature, record_id)
-
-    async def list_recent_jobs(feature: str, limit: int = 5):
-        """List the most recent records for any feature, sorted newest-first.
-        Returns [{id, name, status, createdAt}]. Use this FIRST to resolve
-        relative references like 'my last production' before calling
-        get_job_cost. `feature` is one of
-        production/adapts/reframe/promo/key_moments/thumbnails."""
-        return await agent_tools.list_recent_jobs(invite_code, feature, limit)
-
-    return [
-        get_pricing_rates,
-        get_feature_services,
-        estimate_cost,
-        get_job_cost,
-        list_recent_jobs,
-    ]
-
-
-def create_orchestrator(invite_code: str):
-    """The central Router agent that delegates to specialists and handles pricing itself."""
+def create_orchestrator(invite_code: str) -> LlmAgent:
+    """Create the root Aanya Router agent (0 direct tools) with 8 feature-isolated sub-agents."""
     reset_agent_context()
-    model = create_model()
+    router_model = create_model("router")
+    specialist_model = create_model("specialist")
+    creative_model = create_model("creative")
+    finops_model = create_model("finops")
+
     return LlmAgent(
         name="Aanya",
-        model=model,
+        model=router_model,
         instruction=f"{STRICT_SCOPE_INSTRUCTION}\n{_ORCHESTRATOR_ROLE}",
-        tools=[FunctionTool(func=f) for f in _make_orchestrator_tools(invite_code)],
+        tools=[],
         sub_agents=[
-            create_director_agent(invite_code, model),
-            create_editor_agent(invite_code, model),
-            create_marketer_agent(invite_code, model),
+            create_productions_agent(invite_code, creative_model),
+            create_reframe_agent(invite_code, specialist_model),
+            create_key_moments_agent(invite_code, specialist_model),
+            create_thumbnails_agent(invite_code, specialist_model),
+            create_promo_agent(invite_code, specialist_model),
+            create_adapts_agent(invite_code, specialist_model),
+            create_dubbing_agent(invite_code, specialist_model),
+            create_finops_agent(invite_code, finops_model),
         ],
     )
+
+
+async def run_agent_chat(
+    invite_code: str, message: str, history: list[tuple[str, str]]
+) -> dict:
+    """Execute a turn of the Aanya ADK multi-agent hierarchy and return the chat response."""
+    t0 = time.perf_counter()
+    orchestrator = create_orchestrator(invite_code)
+    session_service = InMemorySessionService()
+    runner = Runner(
+        app_name="VeoGen",
+        agent=orchestrator,
+        session_service=session_service,
+    )
+
+    session = await session_service.create_session(
+        app_name="VeoGen",
+        user_id=invite_code,
+        session_id=invite_code,
+    )
+    for role, content in history:
+        await session_service.append_event(
+            session,
+            Event(
+                author="user" if role == "user" else "Aanya",
+                content=types.Content(role=role, parts=[types.Part(text=content)]),
+                actions=_EMPTY_ACTIONS,
+                timestamp=time.time(),
+            ),
+        )
+
+    msg = types.Content(role="user", parts=[types.Part(text=message)])
+    full_response = ""
+    last_agent = "Aanya"
+
+    async for event in runner.run_async(
+        user_id=invite_code, session_id=invite_code, new_message=msg
+    ):
+        if event.content:
+            for part in event.content.parts:
+                if hasattr(part, "text") and part.text:
+                    full_response += part.text
+        if event.author:
+            last_agent = event.author
+
+    latency_ms = max(1, round((time.perf_counter() - t0) * 1000))
+    return {
+        "response": sanitize_markdown_response(full_response),
+        "role": "model",
+        "agent": last_agent,
+        "latency_ms": latency_ms,
+        "data": get_agent_context().copy(),
+    }

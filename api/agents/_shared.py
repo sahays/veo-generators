@@ -1,4 +1,4 @@
-"""Shared scaffolding for the orchestrator + specialists.
+"""Shared scaffolding for the orchestrator + 8 feature specialists.
 
 Lives outside `factory.py` so each specialist module can import these
 helpers without forming a cycle with the orchestrator.
@@ -7,7 +7,8 @@ helpers without forming a cycle with the orchestrator.
 import contextvars
 import logging
 import os
-from typing import List, Optional
+import re
+from typing import Any, Dict, List, Optional
 
 from google import genai
 from google.adk.agents import LlmAgent
@@ -21,6 +22,13 @@ logger = logging.getLogger(__name__)
 
 AGENT_MODEL_ID = os.getenv("GEMINI_AGENT_ORCHESTRATOR", "gemini-3.5-flash-lite")
 
+MODEL_TIER_ENV = {
+    "router": ("GEMINI_AGENT_ORCHESTRATOR", "gemini-3.5-flash-lite"),
+    "finops": ("GEMINI_AGENT_FINOPS_MODEL", "gemini-3.5-flash-lite"),
+    "specialist": ("GEMINI_AGENT_SPECIALIST_MODEL", "gemini-3.8-flash"),
+    "creative": ("GEMINI_AGENT_CREATIVE_MODEL", "gemini-3.8-flash"),
+}
+
 # Request-scoped context so concurrent requests don't clobber each other.
 _request_context: contextvars.ContextVar[dict] = contextvars.ContextVar(
     "_request_context", default={}
@@ -28,20 +36,46 @@ _request_context: contextvars.ContextVar[dict] = contextvars.ContextVar(
 
 STRICT_SCOPE_INSTRUCTION = (
     "SCOPE POLICY: You are an AI assistant for the Veo Generators application. "
-    "You handle video production, scripts, orientations, thumbnails, social media adapts, "
-    "promos, costs, usage, and all features of this app.\n"
+    "You handle video production, scripts, orientations/reframing, thumbnails, "
+    "key moments, social media adapts, promos, multi-language dubbing, "
+    "costs, usage, and all features of this app.\n"
     "DO NOT answer questions completely unrelated to this app (general knowledge, jokes, "
     "coding help for other projects, politics, news). For those, politely decline.\n"
     "IMPORTANT: If a question relates to this app but you lack the tools or data to answer it, "
-    "say so honestly (e.g. 'I don't have access to cost breakdowns yet') — do NOT "
-    "reject it as out of scope. Questions about job details, pricing, usage, and how the app "
-    "works are always in scope even if you can't fully answer them."
+    "say so honestly — do NOT reject it as out of scope. Questions about job details, pricing, "
+    "usage, and how the app works are always in scope.\n"
+    "FORMATTING POLICY: Always format your responses in clean GitHub-Flavored Markdown (GFM). "
+    "NEVER output raw HTML tags such as <br>, <br/>, <p>, <ul>, <li>, or <b>. "
+    "Inside Markdown table cells, NEVER use <br> or bullet characters (•); either put one service/item "
+    "per table row or separate multiple items in a cell with '; '."
 )
 
 
-def create_model() -> Gemini:
-    """Create a Gemini model with explicit Vertex AI credentials (matching GeminiService)."""
-    model = Gemini(model=AGENT_MODEL_ID)
+def sanitize_markdown_response(text: str) -> str:
+    """Strip raw HTML line breaks (<br>) from LLM output so GFM tables and lists render cleanly."""
+    if not text or "<br" not in text.lower():
+        return text
+    cleaned_lines = []
+    for line in text.splitlines():
+        if line.lstrip().startswith("|"):
+            line = re.sub(r"<br\s*/?>\s*[•*\-]?\s*", "; ", line, flags=re.IGNORECASE)
+            line = re.sub(r"\|\s*•\s*", "| ", line)
+        else:
+            line = re.sub(r"<br\s*/?>", "\n", line, flags=re.IGNORECASE)
+        cleaned_lines.append(line)
+    return "\n".join(cleaned_lines)
+
+
+def resolve_tier_model_id(tier: str = "router") -> str:
+    """Return the model ID configured for a given agent responsibility tier."""
+    env_var, default_model = MODEL_TIER_ENV.get(tier, MODEL_TIER_ENV["specialist"])
+    return os.getenv(env_var, default_model)
+
+
+def create_model(tier: str = "router") -> Gemini:
+    """Create a Gemini model with explicit Vertex AI credentials for the given responsibility tier."""
+    model_id = resolve_tier_model_id(tier)
+    model = Gemini(model=model_id)
     model.__dict__["api_client"] = genai.Client(
         vertexai=True,
         project=os.getenv("GOOGLE_CLOUD_PROJECT"),
@@ -50,23 +84,37 @@ def create_model() -> Gemini:
     return model
 
 
-def propose_job(job_type: str, title: str, params: dict, resolved: dict) -> str:
-    """Record a job proposal in request-scoped context for frontend confirmation."""
-    _request_context.get()["confirmation"] = {
+def propose_job(
+    job_type: str,
+    title: str,
+    params: dict,
+    resolved: dict,
+    missing_fields: Optional[List[str]] = None,
+    options: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Record a job proposal + A2UI widget envelope in request-scoped context."""
+    ctx = _request_context.get()
+    proposal = {
         "job_type": job_type,
         "title": title,
         "params": params,
         "resolved": resolved,
     }
+    ctx["confirmation"] = proposal
+    ctx["a2ui"] = {
+        "kind": "job_proposal",
+        **proposal,
+        "missing_fields": missing_fields or [],
+        "options": options or {},
+    }
     return (
         f"I've prepared your {job_type.replace('_', ' ')} proposal. "
-        "Please review the details and click Confirm when ready."
+        "Please review the interactive card and click Confirm when ready."
     )
 
 
 def get_agent_context() -> dict:
-    """Accumulated context (confirmations, source pickers, etc.) from the
-    current request."""
+    """Accumulated context (confirmations, A2UI payloads, source pickers) from the current request."""
     return _request_context.get()
 
 
@@ -76,7 +124,9 @@ def reset_agent_context() -> None:
 
 
 def display_name(source_filename: str, gcs_uri: str) -> str:
-    return source_filename or gcs_uri.rsplit("/", 1)[-1]
+    return source_filename or (
+        gcs_uri.rsplit("/", 1)[-1] if gcs_uri else "Select source"
+    )
 
 
 async def resolve_prompt_name(invite_code: str, prompt_id: str) -> str:
@@ -92,29 +142,27 @@ async def resolve_prompt_name(invite_code: str, prompt_id: str) -> str:
 
 
 def build_specialist(
-    name: str, role_instruction: str, tool_funcs: list, model: Gemini
+    name: str,
+    role_instruction: str,
+    tool_funcs: list,
+    model: Optional[Gemini] = None,
+    tier: str = "specialist",
 ) -> LlmAgent:
     """Assemble an LlmAgent from a role-specific instruction and tool functions."""
+    active_model = model or create_model(tier)
     return LlmAgent(
         name=name,
-        model=model,
+        model=active_model,
         instruction=f"{STRICT_SCOPE_INSTRUCTION}\n{role_instruction}",
         tools=[FunctionTool(func=f) for f in tool_funcs],
     )
 
 
 def make_prompt_lister(invite_code: str, category: str, tool_name: str, label: str):
-    """Build a tool that lists prompts for a fixed category and opens the picker.
-
-    Mirrors the director's inline `list_prompts` pattern so specialists that
-    need a prompt for a specific feature (key moments, thumbnails) can surface
-    the `PromptPicker` widget without the user knowing a prompt ID.
-    """
+    """Build a tool that lists prompts for a fixed category and opens the picker."""
 
     async def lister():
         prompts = await agent_tools.list_system_prompts(invite_code, category)
-        # Setting prompt_picker in the request context tells the frontend to
-        # render PromptPicker(category) so the user can click a prompt.
         _request_context.get().update({"prompt_picker": category})
         if not isinstance(prompts, list) or not prompts:
             return f"No {label} prompts found."
@@ -125,7 +173,7 @@ def make_prompt_lister(invite_code: str, category: str, tool_name: str, label: s
         ]
         return f"{label} prompts:\n" + "\n".join(lines)
 
-    lister.__name__ = tool_name  # FunctionTool derives the tool name from __name__
+    lister.__name__ = tool_name
     lister.__doc__ = (
         f"List {label} prompts and open a picker for the user to choose one."
     )
@@ -152,15 +200,7 @@ def _match_source(items, needle: str) -> Optional[str]:
 async def resolve_source_uri(
     invite_code: str, ref: str, kind: str = "video"
 ) -> Optional[str]:
-    """Resolve a user-supplied source reference to a gs:// URI.
-
-    Accepts a gs:// URI (returned as-is) or an id/name/filename. The agent
-    sometimes passes a production ID (e.g. 'p-...') or a display name instead of
-    the underlying URI; resolving it here stops a bad `file_uri`/source from
-    reaching the model or worker. `kind` selects which catalog to search:
-    "video" → productions + video uploads; "image" → adapt image uploads.
-    Returns None when nothing matches so the caller can open the source picker.
-    """
+    """Resolve a user-supplied source reference to a gs:// URI."""
     if not ref:
         return None
     if ref.startswith("gs://"):
@@ -177,6 +217,55 @@ async def resolve_source_uri(
         return match
     ups = await api_call("GET", "/api/v1/promo/sources/uploads", invite_code)
     return _match_source(ups, needle)
+
+
+def source_picker_fallback(kind: str = "video") -> str:
+    noun = "images" if kind == "image" else "videos"
+    selector = "image" if kind == "image" else "video"
+    return (
+        f"I couldn't match that to one of your {noun}. I've opened the "
+        f"{selector} selector — pick the source and I'll continue."
+    )
+
+
+async def resolve_or_pick(
+    invite_code: str, gcs_uri: str, kind: str = "video"
+) -> Optional[str]:
+    """Resolve a source reference to a gs:// URI, or open the picker and return None."""
+    resolved = await resolve_source_uri(invite_code, gcs_uri, kind=kind)
+    if not resolved:
+        _request_context.get().update(
+            {"source_picker": "image" if kind == "image" else True}
+        )
+    return resolved
+
+
+def make_prompt_video_proposer(
+    invite_code: str, job_type: str, title: str, func_name: str, doc: str
+):
+    """Build a propose_* tool for video+prompt analysis features (key_moments, thumbnails)."""
+
+    async def proposer(gcs_uri: str, prompt_id: str, source_filename: str = "") -> str:
+        resolved_uri = await resolve_or_pick(invite_code, gcs_uri, kind="video")
+        if not resolved_uri:
+            return source_picker_fallback("video")
+        return propose_job(
+            job_type,
+            title,
+            {
+                "gcs_uri": resolved_uri,
+                "prompt_id": prompt_id,
+                "video_filename": source_filename,
+            },
+            {
+                "prompt_name": await resolve_prompt_name(invite_code, prompt_id),
+                "source_name": display_name(source_filename, resolved_uri),
+            },
+        )
+
+    proposer.__name__ = func_name
+    proposer.__doc__ = doc
+    return proposer
 
 
 def make_check_job_status(invite_code: str):
@@ -208,6 +297,7 @@ def make_list_available_images(_invite_code: str):
 __all__ = [
     "AGENT_MODEL_ID",
     "List",
+    "MODEL_TIER_ENV",
     "Optional",
     "STRICT_SCOPE_INSTRUCTION",
     "build_specialist",
@@ -218,9 +308,13 @@ __all__ = [
     "make_list_available_images",
     "make_list_available_videos",
     "make_prompt_lister",
+    "make_prompt_video_proposer",
     "propose_job",
     "reset_agent_context",
+    "resolve_or_pick",
     "resolve_prompt_name",
     "resolve_source_uri",
+    "resolve_tier_model_id",
+    "source_picker_fallback",
     "_request_context",
 ]

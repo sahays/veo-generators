@@ -58,6 +58,7 @@ WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 READ_ONLY_WRITES = {
     "/api/v1/auth/validate",
     "/api/v1/pricing/estimate",
+    "/api/v1/chat/share",
 }
 
 # Path prefixes that require a privileged user (master OR power) on every
@@ -96,7 +97,7 @@ app.add_middleware(
 # Invite code validation middleware
 @app.middleware("http")
 async def validate_invite_code(request: Request, call_next):
-    # Skip validation for health check, docs, and static files
+    # Skip validation for health check, docs, public shared chats, and static files
     path = request.url.path
     if (
         path
@@ -106,6 +107,7 @@ async def validate_invite_code(request: Request, call_next):
             "/openapi.json",
             "/api/v1/auth/validate",
         ]
+        or (path.startswith("/api/v1/chat/share/") and request.method == "GET")
         or path.startswith("/static")
         or path.startswith("/_next")
     ):

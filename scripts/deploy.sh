@@ -7,12 +7,13 @@ PROJECT_ROOT="$SCRIPT_DIR/.."
 cd "$PROJECT_ROOT"
 
 # Optional target: which service(s) to build + deploy.
-#   ./scripts/deploy.sh          → both (default)
-#   ./scripts/deploy.sh api      → API only (frontend bundles into this image)
-#   ./scripts/deploy.sh worker   → worker only
+#   ./scripts/deploy.sh          → all three (default)
+#   ./scripts/deploy.sh api      → API + Next.js SSR only
+#   ./scripts/deploy.sh agents   → Dedicated ADK Agents microservice only
+#   ./scripts/deploy.sh worker   → Background worker only
 TARGET="${1:-all}"
-if [[ "$TARGET" != "all" && "$TARGET" != "api" && "$TARGET" != "worker" ]]; then
-    echo "Usage: $0 [all|api|worker]  (default: all)"
+if [[ "$TARGET" != "all" && "$TARGET" != "api" && "$TARGET" != "worker" && "$TARGET" != "agents" ]]; then
+    echo "Usage: $0 [all|api|agents|worker]  (default: all)"
     exit 1
 fi
 echo "🎯 Deploy target: $TARGET"
@@ -34,9 +35,11 @@ VEO_REGION=${VEO_REGION:-global}
 GCS_BUCKET=${GCS_BUCKET:-aug18-25-3-veo-generators-media}
 SERVICE_NAME=${SERVICE_NAME:-veo-generators}
 WORKER_SERVICE_NAME="${SERVICE_NAME}-worker"
+AGENTS_SERVICE_NAME="${SERVICE_NAME}-agents"
 ARTIFACT_REPO=${ARTIFACT_REPO:-superexam-repo}
 IMAGE_NAME="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/${SERVICE_NAME}"
 WORKER_IMAGE_NAME="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/${WORKER_SERVICE_NAME}"
+AGENTS_IMAGE_NAME="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/${AGENTS_SERVICE_NAME}"
 
 # Model Configs
 OPTIMIZE_PROMPT_MODEL=${OPTIMIZE_PROMPT_MODEL:-gemini-3.8-flash}
@@ -44,6 +47,9 @@ STORYBOARD_MODEL=${STORYBOARD_MODEL:-gemini-nano-banana-2.1}
 ADAPTS_MODEL=${ADAPTS_MODEL:-gemini-nano-banana-2.1}
 VIDEO_GEN_MODEL=${VIDEO_GEN_MODEL:-gemini-omni-1.1-flash-preview}
 GEMINI_AGENT_ORCHESTRATOR=${GEMINI_AGENT_ORCHESTRATOR:-gemini-3.5-flash-lite}
+GEMINI_AGENT_FINOPS_MODEL=${GEMINI_AGENT_FINOPS_MODEL:-gemini-3.5-flash-lite}
+GEMINI_AGENT_SPECIALIST_MODEL=${GEMINI_AGENT_SPECIALIST_MODEL:-gemini-3.8-flash}
+GEMINI_AGENT_CREATIVE_MODEL=${GEMINI_AGENT_CREATIVE_MODEL:-gemini-3.8-flash}
 AVATAR_VIDEO_MODEL=${AVATAR_VIDEO_MODEL:-gemini-omni-1.1-flash-preview}
 AVATAR_LIVE_MODEL=${AVATAR_LIVE_MODEL:-gemini-3.8-live}
 AVATAR_LIVE_LOCATION=${AVATAR_LIVE_LOCATION:-us}
@@ -149,6 +155,37 @@ prune_revisions() {
 # Ensure Docker is authenticated with Artifact Registry
 gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
 
+# Resolve existing API URL for Agents Service tool calls
+VEOGEN_API_ORIGIN=${VEOGEN_API_ORIGIN:-$(gcloud run services describe "$SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)' 2>/dev/null || echo "https://veo-generators-1086704919590.asia-south1.run.app")}
+
+# ── Dedicated ADK Agents Service ─────────────────────────────
+if [[ "$TARGET" == "all" || "$TARGET" == "agents" ]]; then
+  echo "📦 Building ADK Agents image..."
+  docker build -f Dockerfile.agents -t $AGENTS_IMAGE_NAME .
+
+  echo "📤 Pushing ADK Agents image..."
+  docker push $AGENTS_IMAGE_NAME
+
+  echo "🚀 Deploying ADK Agents ($AGENTS_SERVICE_NAME) to Cloud Run..."
+  gcloud run deploy $AGENTS_SERVICE_NAME \
+    --project $PROJECT_ID \
+    --image $AGENTS_IMAGE_NAME \
+    --platform managed \
+    --region $REGION \
+    --allow-unauthenticated \
+    --no-invoker-iam-check \
+    --cpu 2 \
+    --memory 4Gi \
+    --set-env-vars "${ENV_DELIM}GOOGLE_CLOUD_PROJECT=$PROJECT_ID@GOOGLE_CLOUD_LOCATION=$REGION@GEMINI_REGION=$GEMINI_REGION@VEOGEN_API_ORIGIN=$VEOGEN_API_ORIGIN@MASTER_INVITE_CODE=$MASTER_INVITE_CODE@GEMINI_AGENT_ORCHESTRATOR=$GEMINI_AGENT_ORCHESTRATOR@GEMINI_AGENT_FINOPS_MODEL=$GEMINI_AGENT_FINOPS_MODEL@GEMINI_AGENT_SPECIALIST_MODEL=$GEMINI_AGENT_SPECIALIST_MODEL@GEMINI_AGENT_CREATIVE_MODEL=$GEMINI_AGENT_CREATIVE_MODEL" \
+    --port 8080
+
+  prune_revisions "$AGENTS_SERVICE_NAME"
+  echo "✅ ADK Agents deployment complete!"
+fi
+
+# Resolve Agents Service URL so Next.js Server Actions route /api/v1/chat to it
+AGENTS_SERVICE_ORIGIN=${AGENTS_SERVICE_ORIGIN:-$(gcloud run services describe "$AGENTS_SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)' 2>/dev/null || echo "")}
+
 # ── API Service ──────────────────────────────────────────────
 if [[ "$TARGET" == "all" || "$TARGET" == "api" ]]; then
   echo "📦 Building API image..."
@@ -169,7 +206,7 @@ if [[ "$TARGET" == "all" || "$TARGET" == "api" ]]; then
     --no-invoker-iam-check \
     --cpu 8 \
     --memory 16Gi \
-    --set-env-vars "${ENV_DELIM}GOOGLE_CLOUD_PROJECT=$PROJECT_ID@GOOGLE_CLOUD_LOCATION=$REGION@GCS_BUCKET=$GCS_BUCKET@GEMINI_REGION=$GEMINI_REGION@VEO_REGION=$VEO_REGION@SERVICE_NAME=$SERVICE_NAME@OPTIMIZE_PROMPT_MODEL=$OPTIMIZE_PROMPT_MODEL@STORYBOARD_MODEL=$STORYBOARD_MODEL@ADAPTS_MODEL=$ADAPTS_MODEL@VIDEO_GEN_MODEL=$VIDEO_GEN_MODEL@GEMINI_AGENT_ORCHESTRATOR=$GEMINI_AGENT_ORCHESTRATOR@MASTER_INVITE_CODE=$MASTER_INVITE_CODE@AVATAR_LIVE_MODEL=$AVATAR_LIVE_MODEL@AVATAR_LIVE_LOCATION=$AVATAR_LIVE_LOCATION@AVATAR_LIVE_PROJECT=$AVATAR_LIVE_PROJECT@AVATAR_LIVE_PRESET_NAME=${AVATAR_LIVE_PRESET_NAME:-Kira}@DUBBING_MAX_LANGUAGES=$DUBBING_MAX_LANGUAGES@DUBBING_MAX_SOURCE_MINUTES=$DUBBING_MAX_SOURCE_MINUTES" \
+    --set-env-vars "${ENV_DELIM}GOOGLE_CLOUD_PROJECT=$PROJECT_ID@GOOGLE_CLOUD_LOCATION=$REGION@GCS_BUCKET=$GCS_BUCKET@GEMINI_REGION=$GEMINI_REGION@VEO_REGION=$VEO_REGION@SERVICE_NAME=$SERVICE_NAME@AGENTS_SERVICE_ORIGIN=$AGENTS_SERVICE_ORIGIN@OPTIMIZE_PROMPT_MODEL=$OPTIMIZE_PROMPT_MODEL@STORYBOARD_MODEL=$STORYBOARD_MODEL@ADAPTS_MODEL=$ADAPTS_MODEL@VIDEO_GEN_MODEL=$VIDEO_GEN_MODEL@GEMINI_AGENT_ORCHESTRATOR=$GEMINI_AGENT_ORCHESTRATOR@GEMINI_AGENT_FINOPS_MODEL=$GEMINI_AGENT_FINOPS_MODEL@GEMINI_AGENT_SPECIALIST_MODEL=$GEMINI_AGENT_SPECIALIST_MODEL@GEMINI_AGENT_CREATIVE_MODEL=$GEMINI_AGENT_CREATIVE_MODEL@MASTER_INVITE_CODE=$MASTER_INVITE_CODE@AVATAR_LIVE_MODEL=$AVATAR_LIVE_MODEL@AVATAR_LIVE_LOCATION=$AVATAR_LIVE_LOCATION@AVATAR_LIVE_PROJECT=$AVATAR_LIVE_PROJECT@AVATAR_LIVE_PRESET_NAME=${AVATAR_LIVE_PRESET_NAME:-Kira}@DUBBING_MAX_LANGUAGES=$DUBBING_MAX_LANGUAGES@DUBBING_MAX_SOURCE_MINUTES=$DUBBING_MAX_SOURCE_MINUTES" \
     --port 8080
 
   prune_revisions "$SERVICE_NAME"
