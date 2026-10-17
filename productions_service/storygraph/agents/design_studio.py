@@ -13,7 +13,7 @@ from ..repo import Repo
 from ..schema import Entity, EntityType, Role
 from ..tools import write_tools as wt
 from ..tools.registry import ToolContext
-from ..views import entity_design_view
+from ..views import EntityDesignView, entity_design_view
 from .critic import review_visual_asset
 from .runner import RoleRunResult, run_role
 
@@ -43,70 +43,163 @@ def _designer_role_for_entity(entity_type: EntityType) -> tuple[Role, str]:
     return Role.OBJECT_DESIGNER, "prop_sheet"
 
 
-def _default_design_for_entity(
-    ent: Entity, required_labels: list[str]
+def _default_character_design(
+    ent: Entity, existing_desc: str, required_labels: list[str]
 ) -> EntityDesignOutput:
-    existing_desc = ", ".join(f"{k}: {v.value}" for k, v in ent.attributes.items())
-    if ent.entity_type == EntityType.CHARACTER:
-        attrs = [
-            AttributeKV(key="role", value="story character"),
-            AttributeKV(
-                key="distinctive_features", value=existing_desc or ent.canonical_name
-            ),
-        ]
-        apps = []
-        for lbl in required_labels:
-            wardrobe_desc = (
+    """Build fallback Character design attributes and state-label appearances."""
+    attrs = [
+        AttributeKV(key="role", value="story character"),
+        AttributeKV(
+            key="distinctive_features", value=existing_desc or ent.canonical_name
+        ),
+    ]
+    fallback_vis = (
+        existing_desc
+        or "expressive protagonist with distinctive silhouette and costume"
+    )
+    apps = [
+        AppearanceDraft(
+            state_label=lbl,
+            visual_description=f"{ent.canonical_name} ({fallback_vis})",
+            wardrobe=(
                 "signature character attire matching the story setting"
                 if lbl == "default"
                 else f"{lbl.replace('_', ' ')} attire"
-            )
-            apps.append(
-                AppearanceDraft(
-                    state_label=lbl,
-                    visual_description=(
-                        f"{ent.canonical_name} ({existing_desc or 'expressive protagonist with distinctive silhouette and costume'})"
-                    ),
-                    wardrobe=wardrobe_desc,
-                    condition_tags=[lbl],
-                )
-            )
-        return EntityDesignOutput(attributes=attrs, appearances=apps)
+            ),
+            condition_tags=[lbl],
+        )
+        for lbl in required_labels
+    ]
+    return EntityDesignOutput(attributes=attrs, appearances=apps)
+
+
+def _default_design_for_entity(
+    ent: Entity, required_labels: list[str]
+) -> EntityDesignOutput:
+    """Build deterministic fallback design attributes and appearances for `ent`."""
+    existing_desc = ", ".join(f"{k}: {v.value}" for k, v in ent.attributes.items())
+    if ent.entity_type == EntityType.CHARACTER:
+        return _default_character_design(ent, existing_desc, required_labels)
 
     if ent.entity_type == EntityType.LOCATION:
         attrs = [
             AttributeKV(key="architecture", value=existing_desc or ent.canonical_name),
             AttributeKV(key="atmosphere", value="cinematic depth and lighting"),
         ]
-        apps = [
-            AppearanceDraft(
-                state_label=lbl,
-                visual_description=(
-                    f"{ent.canonical_name} ({existing_desc or 'detailed environment establishing plate matching the story world'})"
-                ),
-                wardrobe=None,
-                condition_tags=[lbl],
-            )
-            for lbl in required_labels
+        desc_base = (
+            existing_desc
+            or "detailed environment establishing plate matching the story world"
+        )
+    else:
+        attrs = [
+            AttributeKV(key="material", value=existing_desc or ent.canonical_name),
+            AttributeKV(key="scale", value="key story prop"),
         ]
-        return EntityDesignOutput(attributes=attrs, appearances=apps)
+        desc_base = existing_desc or "distinctive story object prop sheet"
 
-    attrs = [
-        AttributeKV(key="material", value=existing_desc or ent.canonical_name),
-        AttributeKV(key="scale", value="key story prop"),
-    ]
     apps = [
         AppearanceDraft(
             state_label=lbl,
-            visual_description=(
-                f"{ent.canonical_name} ({existing_desc or 'distinctive story object prop sheet'})"
-            ),
+            visual_description=f"{ent.canonical_name} ({desc_base})",
             wardrobe=None,
             condition_tags=[lbl],
         )
         for lbl in required_labels
     ]
     return EntityDesignOutput(attributes=attrs, appearances=apps)
+
+
+def _apply_invented_attributes(
+    designer_ctx: ToolContext, ent: Entity, design_out: EntityDesignOutput
+) -> None:
+    """Persist invented attributes on `ent` without overwriting `from_text` provenance."""
+    safe_attrs = {
+        kv.key: kv.value
+        for kv in design_out.attributes
+        if kv.key
+        and (
+            kv.key not in ent.attributes
+            or ent.attributes[kv.key].provenance.value != "from_text"
+        )
+    }
+    if safe_attrs:
+        wt.set_entity_attributes(
+            designer_ctx, entity_id=ent.id, attributes=safe_attrs, provenance="invented"
+        )
+
+
+def _design_and_critique_label(
+    designer_ctx: ToolContext,
+    critic_ctx: ToolContext,
+    vlm: VLMProvider,
+    ent: Entity,
+    asset_kind: str,
+    lbl: str,
+    app_draft: AppearanceDraft,
+    max_iters: int,
+    force_regenerate: bool,
+) -> str:
+    """Create or reuse an Appearance for `lbl` and run the Designer -> VLM Critic loop."""
+    existing_apps = [
+        a
+        for a in designer_ctx.repo.list_appearances(entity_id=ent.id, active_only=True)
+        if a.state_label == lbl
+    ]
+    if existing_apps and existing_apps[-1].asset_ids and not force_regenerate:
+        return existing_apps[-1].id
+
+    saved_app_dict = wt.add_appearance(
+        designer_ctx,
+        entity_id=ent.id,
+        state_label=lbl,
+        visual_description=app_draft.visual_description,
+        wardrobe=app_draft.wardrobe,
+        condition_tags=app_draft.condition_tags,
+    )
+    app_id = str(saved_app_dict["id"])
+    for iteration in range(max_iters):
+        asset_dict = wt._generate_entity_asset_with_adapter(
+            designer_ctx,
+            entity_id=ent.id,
+            appearance_id=app_id,
+            kind=asset_kind,
+            extra_prompt=f"iteration={iteration + 1}",
+            seed=100 + iteration * 17,
+        )
+        critique = review_visual_asset(
+            critic_ctx, vlm=vlm, asset_id=str(asset_dict["id"]), appearance_id=app_id
+        )
+        if critique.approved or iteration + 1 >= max_iters:
+            break
+    return app_id
+
+
+def _invoke_entity_designer(
+    role: Role,
+    designer_ctx: ToolContext,
+    story_context: str,
+    ent: Entity,
+    ed_view: EntityDesignView,
+    mock_llm: MockLLMClient | None,
+) -> RoleRunResult:
+    """Invoke the entity-type Designer role agent via `run_role`."""
+    prompt = (
+        f"Story context:\n{story_context}\n\n"
+        f"Design {ent.entity_type} '{ent.canonical_name}' (id='{ent.id}') for required state labels "
+        f"{ed_view.required_state_labels}. Make the visual_description and wardrobe 100% faithful "
+        f"to this specific character/location/object in the story and the StyleGuide:\n"
+        f"{ed_view.model_dump_json()}"
+    )
+    return run_role(
+        role=role,
+        ctx=designer_ctx,
+        user_prompt=prompt,
+        output_schema=EntityDesignOutput,
+        mock_llm=mock_llm,
+        fallback_builder=lambda: _default_design_for_entity(
+            ent, ed_view.required_state_labels
+        ),
+    )
 
 
 def design_single_entity(
@@ -126,96 +219,34 @@ def design_single_entity(
     critic_ctx = ToolContext(repo=repo, role=Role.CRITIC, cfg=cfg, image_gen=image_gen)
     story_context = repo.get_source_text() or ""
 
-    res: RoleRunResult = run_role(
-        role=role,
-        ctx=designer_ctx,
-        user_prompt=(
-            f"Story context:\n{story_context}\n\n"
-            f"Design {ent.entity_type} '{ent.canonical_name}' (id='{ent.id}') for required state labels "
-            f"{ed_view.required_state_labels}. Make the visual_description and wardrobe 100% faithful "
-            f"to this specific character/location/object in the story and the StyleGuide:\n"
-            f"{ed_view.model_dump_json()}"
-        ),
-        output_schema=EntityDesignOutput,
-        mock_llm=mock_llm,
-        fallback_builder=lambda: _default_design_for_entity(
-            ent, ed_view.required_state_labels
-        ),
+    res = _invoke_entity_designer(
+        role, designer_ctx, story_context, ent, ed_view, mock_llm
     )
     design_out: EntityDesignOutput = res.output
+    _apply_invented_attributes(designer_ctx, ent, design_out)
 
-    safe_attrs = {
-        kv.key: kv.value
-        for kv in design_out.attributes
-        if kv.key
-        and (
-            kv.key not in ent.attributes
-            or ent.attributes[kv.key].provenance.value != "from_text"
-        )
-    }
-    if safe_attrs:
-        wt.set_entity_attributes(
-            designer_ctx,
-            entity_id=ent.id,
-            attributes=safe_attrs,
-            provenance="invented",
-        )
-
-    created_app_ids: list[str] = []
-    max_iters = max(1, cfg.caps.design_loop_max)
-
-    # Ensure every required state_label is covered
     draft_by_label = {a.state_label: a for a in design_out.appearances}
     for req_lbl in ed_view.required_state_labels:
         if req_lbl not in draft_by_label:
-            fallback_d = _default_design_for_entity(ent, [req_lbl]).appearances[0]
-            draft_by_label[req_lbl] = fallback_d
+            draft_by_label[req_lbl] = _default_design_for_entity(
+                ent, [req_lbl]
+            ).appearances[0]
 
-    for lbl, app_draft in draft_by_label.items():
-        existing_apps = [
-            a
-            for a in repo.list_appearances(entity_id=ent.id, active_only=True)
-            if a.state_label == lbl
-        ]
-        if existing_apps and existing_apps[-1].asset_ids and not force_regenerate:
-            created_app_ids.append(existing_apps[-1].id)
-            continue
-
-        current_desc = app_draft.visual_description
-        saved_app_dict = wt.add_appearance(
+    max_iters = max(1, cfg.caps.design_loop_max)
+    created_app_ids = [
+        _design_and_critique_label(
             designer_ctx,
-            entity_id=ent.id,
-            state_label=lbl,
-            visual_description=current_desc,
-            wardrobe=app_draft.wardrobe,
-            condition_tags=app_draft.condition_tags,
+            critic_ctx,
+            vlm,
+            ent,
+            asset_kind,
+            lbl,
+            draft,
+            max_iters,
+            force_regenerate,
         )
-        app_id = saved_app_dict["id"]
-        created_app_ids.append(app_id)
-
-        # LoopAgent pattern: Designer generates image -> CRITIC reviews via VLM -> refine up to design_loop_max
-        for iteration in range(max_iters):
-            seed = 100 + iteration * 17
-            asset_dict = wt._generate_entity_asset_with_adapter(
-                designer_ctx,
-                entity_id=ent.id,
-                appearance_id=app_id,
-                kind=asset_kind,
-                extra_prompt=f"iteration={iteration + 1}",
-                seed=seed,
-            )
-            asset_id = asset_dict["id"]
-            critique = review_visual_asset(
-                critic_ctx,
-                vlm=vlm,
-                asset_id=asset_id,
-                appearance_id=app_id,
-            )
-            if critique.approved or iteration + 1 >= max_iters:
-                break
-            if critique.refined_visual_description:
-                current_desc = critique.refined_visual_description
-
+        for lbl, draft in draft_by_label.items()
+    ]
     return created_app_ids, res.tokens_in, res.tokens_out
 
 

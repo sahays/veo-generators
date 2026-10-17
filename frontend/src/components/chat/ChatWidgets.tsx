@@ -1,13 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import {
-  Play,
-  FileVideo,
   CheckCircle2,
-  Clock,
-  ChevronRight,
   Film,
-  Upload,
-  Sparkles,
   Loader2,
   AlertCircle,
   X,
@@ -21,33 +15,40 @@ import {
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { NativeSelect } from '@/components/ui/select'
-import { cn, formatFileSize } from '@/lib/utils'
-import { api } from '@/lib/api'
+import {
+  ROUTE_MAP,
+  executeConfirmationJob,
+  type ConfirmationData,
+  type ConfirmationJobParams,
+  type ConfirmationJobResult,
+  type ConfirmationJobType,
+} from './widgets/useChatWidgetActions'
+import {
+  PromoFields,
+  ReframeFields,
+  ProductionFields,
+  KeyMomentsFields,
+  AdaptsFields,
+  DubbingFields,
+} from './widgets/ChatConfirmationFields'
+import {
+  VideoResultCard,
+  VideoSourcePicker,
+  ImageSourcePicker,
+  PromptPicker,
+} from './widgets/ChatSourcePickers'
 
-// ── Types (Hybrid A2UI + React Widget Registry) ──────────────────────
-
-export type ConfirmationJobType =
-  | 'promo'
-  | 'reframe'
-  | 'production'
-  | 'key_moments'
-  | 'thumbnails'
-  | 'adapts'
-  | 'dubbing'
-
-type ConfirmationStatus = 'pending' | 'confirming' | 'confirmed' | 'cancelled' | 'failed'
-
-export interface ConfirmationData {
-  job_type: ConfirmationJobType
-  title: string
-  params: Record<string, any>
-  resolved: Record<string, string>
+export {
+  VideoResultCard,
+  VideoSourcePicker,
+  ImageSourcePicker,
+  PromptPicker,
+  type ConfirmationData,
+  type ConfirmationJobType,
+  type ConfirmationJobResult,
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────
+type ConfirmationStatus = 'pending' | 'confirming' | 'confirmed' | 'cancelled' | 'failed'
 
 const JOB_ICONS: Record<ConfirmationJobType, React.ReactNode> = {
   promo: <Clapperboard size={16} />,
@@ -59,331 +60,134 @@ const JOB_ICONS: Record<ConfirmationJobType, React.ReactNode> = {
   dubbing: <Languages size={16} />,
 }
 
-const ROUTE_MAP: Record<ConfirmationJobType, (id: string) => string> = {
-  promo: (id) => `/promos/${id}`,
-  reframe: (id) => `/orientations/${id}`,
-  production: (id) => `/productions/${id}`,
-  key_moments: (id) => `/key-moments/${id}`,
-  thumbnails: (id) => `/thumbnails/${id}`,
-  adapts: (id) => `/adapts/${id}`,
-  dubbing: (id) => `/dubbing/${id}`,
-}
-
-async function executeJob(jobType: ConfirmationJobType, params: Record<string, any>): Promise<any> {
-  const p = params as any
-  switch (jobType) {
-    case 'promo':
-      return api.promo.create(p)
-    case 'reframe':
-      return api.reframe.create(p)
-    case 'production':
-      return api.projects.create(p)
-    case 'key_moments':
-      return api.keyMoments.analyze(p)
-    case 'thumbnails':
-      return api.thumbnails.analyze(p)
-    case 'adapts':
-      return api.adapts.create(p)
-    case 'dubbing':
-      return api.dubbing.create(p)
-  }
-}
-
-const DURATION_OPTIONS = [
-  { value: 60, label: '1m' },
-  { value: 90, label: '1.5m' },
-  { value: 120, label: '2m' },
-  { value: 150, label: '2.5m' },
-  { value: 180, label: '3m' },
-]
-
-const CONTENT_TYPE_OPTIONS = [
-  { value: 'movies', label: 'Movies' },
-  { value: 'documentaries', label: 'Documentaries' },
-  { value: 'sports', label: 'Sports' },
-  { value: 'podcasts', label: 'Podcasts' },
-  { value: 'promos', label: 'Promos' },
-  { value: 'news', label: 'News' },
-  { value: 'other', label: 'Other' },
-]
-
-// ── Per-type field renderers ─────────────────────────────────────────
-
-const DisplayField: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <div className="flex items-center justify-between gap-2 py-1">
-    <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">{label}</span>
-    <span className="text-[11px] font-medium text-slate-700 dark:text-slate-200 truncate max-w-[60%] text-right">
-      {value || 'Default'}
-    </span>
+const ConfirmationHeader: React.FC<{
+  jobType: ConfirmationJobType
+  title: string
+  status: ConfirmationStatus
+}> = ({ jobType, title, status }) => (
+  <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/80">
+    <div className="flex h-6 w-6 items-center justify-center rounded-md bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-400">
+      {JOB_ICONS[jobType]}
+    </div>
+    <span className="text-[11px] font-semibold text-slate-900 dark:text-white flex-1 truncate">{title}</span>
+    {status === 'confirmed' && <CheckCircle2 size={14} className="text-green-500" />}
+    {status === 'cancelled' && <X size={14} className="text-slate-400" />}
   </div>
 )
 
-const ToggleField: React.FC<{
-  label: string
-  checked: boolean
-  onChange: (v: boolean) => void
-  disabled?: boolean
-}> = ({ label, checked, onChange, disabled }) => (
-  <label
-    className={cn(
-      'flex items-center justify-between gap-2 py-1 cursor-pointer',
-      disabled && 'opacity-50 pointer-events-none',
+const ConfirmationFieldSwitch: React.FC<{
+  jobType: ConfirmationJobType
+  params: ConfirmationJobParams
+  resolved: Record<string, string>
+  onChange: (p: ConfirmationJobParams) => void
+  disabled: boolean
+}> = ({ jobType, params, resolved, onChange, disabled }) => {
+  if (jobType === 'promo') return <PromoFields params={params} resolved={resolved} onChange={onChange} disabled={disabled} />
+  if (jobType === 'reframe') return <ReframeFields params={params} resolved={resolved} onChange={onChange} disabled={disabled} />
+  if (jobType === 'production') return <ProductionFields params={params} resolved={resolved} onChange={onChange} disabled={disabled} />
+  if (jobType === 'key_moments' || jobType === 'thumbnails') return <KeyMomentsFields resolved={resolved} />
+  if (jobType === 'adapts') return <AdaptsFields params={params} resolved={resolved} onChange={onChange} disabled={disabled} />
+  if (jobType === 'dubbing') return <DubbingFields params={params} resolved={resolved} onChange={onChange} disabled={disabled} />
+  return null
+}
+
+const ConfirmationActiveBody: React.FC<{
+  jobType: ConfirmationJobType
+  localParams: ConfirmationJobParams
+  localResolved: Record<string, string>
+  setLocalParams: (p: ConfirmationJobParams) => void
+  setLocalResolved: (r: Record<string, string>) => void
+  needsVideoSource: boolean
+  needsImageSource: boolean
+  disabled: boolean
+  error: string | null
+}> = ({
+  jobType,
+  localParams,
+  localResolved,
+  setLocalParams,
+  setLocalResolved,
+  needsVideoSource,
+  needsImageSource,
+  disabled,
+  error,
+}) => (
+  <>
+    {needsVideoSource && (
+      <VideoSourcePicker
+        onSelect={(uri, name) => {
+          setLocalParams({ ...localParams, gcs_uri: uri, source_filename: name })
+          setLocalResolved({ ...localResolved, source_name: name })
+        }}
+      />
     )}
-  >
-    <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">{label}</span>
-    <Button
-      type="button"
-      variant="unstyled"
+    {needsImageSource && (
+      <ImageSourcePicker
+        onSelect={(uri, name) => {
+          setLocalParams({ ...localParams, gcs_uri: uri, source_filename: name })
+          setLocalResolved({ ...localResolved, source_name: name })
+        }}
+      />
+    )}
+    <ConfirmationFieldSwitch
+      jobType={jobType}
+      params={localParams}
+      resolved={localResolved}
+      onChange={setLocalParams}
       disabled={disabled}
-      onClick={() => onChange(!checked)}
-      className={cn(
-        'relative h-4 w-7 rounded-full transition-colors',
-        checked ? 'bg-orange-500' : 'bg-slate-300 dark:bg-slate-600',
+    />
+    {error && (
+      <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-red-50 px-2 py-1.5 dark:bg-red-900/20">
+        <AlertCircle size={12} className="mt-0.5 text-red-500 flex-shrink-0" />
+        <span className="text-[10px] text-red-600 dark:text-red-400">{error}</span>
+      </div>
+    )}
+  </>
+)
+
+const ConfirmationFooter: React.FC<{
+  status: ConfirmationStatus
+  disableConfirm: boolean
+  onConfirm: () => void
+  onRetry: () => void
+  onCancel: () => void
+}> = ({ status, disableConfirm, onConfirm, onRetry, onCancel }) => (
+  <div className="flex items-center gap-2 border-t border-slate-100 px-3 py-2 dark:border-slate-700">
+    {status === 'failed' ? (
+      <Button variant="ghost" size="xs" icon={RefreshCw} onClick={onRetry}>
+        Retry
+      </Button>
+    ) : (
+      <Button variant="ghost" size="xs" onClick={onCancel} disabled={status === 'confirming'}>
+        Cancel
+      </Button>
+    )}
+    <Button size="xs" onClick={onConfirm} disabled={disableConfirm} className="ml-auto">
+      {status === 'confirming' ? (
+        <>
+          <Loader2 size={10} className="animate-spin" /> Confirming...
+        </>
+      ) : (
+        <>
+          <CheckCircle2 size={10} /> Confirm
+        </>
       )}
-    >
-      <span
-        className={cn(
-          'absolute top-0.5 left-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform',
-          checked && 'translate-x-3',
-        )}
-      />
     </Button>
-  </label>
-)
-
-const PromoFields: React.FC<{
-  params: Record<string, any>
-  resolved: Record<string, string>
-  onChange: (p: Record<string, any>) => void
-  disabled: boolean
-}> = ({ params, resolved, onChange, disabled }) => (
-  <div className="space-y-1">
-    <DisplayField label="Source" value={resolved.source_name} />
-    <div className="py-1">
-      <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Duration</span>
-      <div className="flex gap-1 mt-1">
-        {DURATION_OPTIONS.map((opt) => (
-          <Button
-            key={opt.value}
-            variant="unstyled"
-            disabled={disabled}
-            onClick={() => onChange({ ...params, target_duration: opt.value })}
-            className={cn(
-              'flex-1 py-1 rounded-[4px] text-[10px] font-bold transition-all',
-              params.target_duration === opt.value
-                ? 'bg-orange-500 text-white shadow-sm'
-                : 'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-400 dark:hover:bg-slate-600',
-              disabled && 'pointer-events-none',
-            )}
-          >
-            {opt.label}
-          </Button>
-        ))}
-      </div>
-    </div>
-    <ToggleField
-      label="Text overlays"
-      checked={params.text_overlay}
-      onChange={(v) => onChange({ ...params, text_overlay: v })}
-      disabled={disabled}
-    />
-    <ToggleField
-      label="Thumbnail card"
-      checked={params.generate_thumbnail}
-      onChange={(v) => onChange({ ...params, generate_thumbnail: v })}
-      disabled={disabled}
-    />
   </div>
 )
-
-const ReframeFields: React.FC<{
-  params: Record<string, any>
-  resolved: Record<string, string>
-  onChange: (p: Record<string, any>) => void
-  disabled: boolean
-}> = ({ params, resolved, onChange, disabled }) => (
-  <div className="space-y-1">
-    <DisplayField label="Source" value={resolved.source_name} />
-    <div className="flex items-center justify-between gap-2 py-1">
-      <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Content type</span>
-      <NativeSelect
-        value={params.content_type}
-        onChange={(e) => onChange({ ...params, content_type: e.target.value })}
-        disabled={disabled}
-        className="h-7 w-36 px-2 py-0.5 text-[11px]"
-      >
-        {CONTENT_TYPE_OPTIONS.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </NativeSelect>
-    </div>
-    <ToggleField
-      label="Blurred background"
-      checked={params.blurred_bg}
-      onChange={(v) => onChange({ ...params, blurred_bg: v })}
-      disabled={disabled}
-    />
-  </div>
-)
-
-const ProductionFields: React.FC<{
-  params: Record<string, any>
-  resolved: Record<string, string>
-  onChange: (p: Record<string, any>) => void
-  disabled: boolean
-}> = ({ params, resolved, onChange, disabled }) => (
-  <div className="space-y-1.5">
-    <div>
-      <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Name</span>
-      <Input
-        type="text"
-        value={params.name}
-        onChange={(e) => onChange({ ...params, name: e.target.value })}
-        disabled={disabled}
-        className="mt-0.5 h-7 px-2 py-1 text-[11px]"
-      />
-    </div>
-    <div>
-      <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Concept</span>
-      <Textarea
-        value={params.base_concept}
-        onChange={(e) => onChange({ ...params, base_concept: e.target.value })}
-        disabled={disabled}
-        rows={2}
-        className="mt-0.5 min-h-[48px] px-2 py-1 text-[11px]"
-      />
-    </div>
-    {resolved.prompt_name && <DisplayField label="Prompt" value={resolved.prompt_name} />}
-  </div>
-)
-
-const KeyMomentsFields: React.FC<{ resolved: Record<string, string> }> = ({ resolved }) => (
-  <div className="space-y-1">
-    <DisplayField label="Source" value={resolved.source_name} />
-    {resolved.prompt_name && <DisplayField label="Prompt" value={resolved.prompt_name} />}
-  </div>
-)
-
-const AdaptsFields: React.FC<{
-  params: Record<string, any>
-  resolved: Record<string, string>
-  onChange: (p: Record<string, any>) => void
-  disabled: boolean
-}> = ({ params, resolved, onChange, disabled }) => {
-  const ratios: string[] = params.aspect_ratios || []
-  const allRatios = ['16:9', '9:16', '1:1', '4:5', '4:3', '3:4']
-  const toggle = (r: string) => {
-    const next = ratios.includes(r) ? ratios.filter((x) => x !== r) : [...ratios, r]
-    onChange({ ...params, aspect_ratios: next })
-  }
-  return (
-    <div className="space-y-1">
-      <DisplayField label="Source" value={resolved.source_name} />
-      <div className="py-1">
-        <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Aspect ratios</span>
-        <div className="flex flex-wrap gap-1 mt-1">
-          {allRatios.map((r) => (
-            <Button
-              key={r}
-              variant="unstyled"
-              disabled={disabled}
-              onClick={() => toggle(r)}
-              className={cn(
-                'px-2 py-0.5 rounded-[4px] text-[10px] font-bold transition-all',
-                ratios.includes(r)
-                  ? 'bg-orange-500 text-white'
-                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-400',
-                disabled && 'pointer-events-none',
-              )}
-            >
-              {r}
-            </Button>
-          ))}
-        </div>
-      </div>
-      {resolved.preset_name && <DisplayField label="Preset" value={resolved.preset_name} />}
-    </div>
-  )
-}
-
-const DubbingFields: React.FC<{
-  params: Record<string, any>
-  resolved: Record<string, string>
-  onChange: (p: Record<string, any>) => void
-  disabled: boolean
-}> = ({ params, resolved, onChange, disabled }) => {
-  const [languages, setLanguages] = useState<{ code: string; label: string }[]>([])
-  const selected: string[] = params.target_languages || []
-
-  useEffect(() => {
-    api.dubbing
-      .listLanguages()
-      .then((res) => {
-        if (Array.isArray(res)) setLanguages(res)
-      })
-      .catch(() => {})
-  }, [])
-
-  const toggleLang = (code: string) => {
-    if (selected.includes(code)) {
-      onChange({ ...params, target_languages: selected.filter((c) => c !== code) })
-    } else if (selected.length < 4) {
-      onChange({ ...params, target_languages: [...selected, code] })
-    }
-  }
-
-  return (
-    <div className="space-y-1">
-      <DisplayField label="Source" value={resolved.source_name} />
-      <div className="py-1">
-        <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">
-          Target Languages (up to 4)
-        </span>
-        <div className="flex flex-wrap gap-1 mt-1">
-          {(languages.length > 0
-            ? languages
-            : selected.map((c) => ({ code: c, label: c }))
-          ).map((lang) => (
-            <Button
-              key={lang.code}
-              variant="unstyled"
-              disabled={disabled}
-              onClick={() => toggleLang(lang.code)}
-              className={cn(
-                'px-2 py-0.5 rounded-[4px] text-[10px] font-bold transition-all',
-                selected.includes(lang.code)
-                  ? 'bg-orange-500 text-white'
-                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-400',
-                disabled && 'pointer-events-none',
-              )}
-            >
-              {lang.label}
-            </Button>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── ConfirmationCard ─────────────────────────────────────────────────
 
 export const ConfirmationCard: React.FC<{
   confirmation: ConfirmationData
-  onConfirmed: (jobType: ConfirmationJobType, result: any) => void
+  onConfirmed: (jobType: ConfirmationJobType, result: ConfirmationJobResult) => void
   onFailed: (error: string) => void
 }> = ({ confirmation, onConfirmed, onFailed }) => {
-  const [localParams, setLocalParams] = useState(confirmation.params)
+  const [localParams, setLocalParams] = useState<ConfirmationJobParams>(confirmation.params)
   const [localResolved, setLocalResolved] = useState(confirmation.resolved)
   const [status, setStatus] = useState<ConfirmationStatus>('pending')
   const [error, setError] = useState<string | null>(null)
   const [resultId, setResultId] = useState<string | null>(null)
 
-  const disabled = status !== 'pending'
   const { job_type, title } = confirmation
-
   const needsVideoSource =
     ['promo', 'reframe', 'key_moments', 'thumbnails', 'dubbing'].includes(job_type) &&
     !localParams.gcs_uri
@@ -393,40 +197,21 @@ export const ConfirmationCard: React.FC<{
     setStatus('confirming')
     setError(null)
     try {
-      const result = await executeJob(job_type, localParams)
+      const result = await executeConfirmationJob(job_type, localParams)
       setStatus('confirmed')
-      setResultId(result.id)
+      setResultId(result.id || null)
       onConfirmed(job_type, result)
-    } catch (err: any) {
+    } catch (err: unknown) {
       setStatus('failed')
-      const msg = err.message || 'Something went wrong'
+      const msg = err instanceof Error ? err.message : 'Something went wrong'
       setError(msg)
       onFailed(msg)
     }
   }
 
-  const handleRetry = () => {
-    setStatus('pending')
-    setError(null)
-  }
-
-  const handleCancel = () => {
-    setStatus('cancelled')
-  }
-
   return (
     <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/80">
-        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-400">
-          {JOB_ICONS[job_type]}
-        </div>
-        <span className="text-[11px] font-semibold text-slate-900 dark:text-white flex-1 truncate">{title}</span>
-        {status === 'confirmed' && <CheckCircle2 size={14} className="text-green-500" />}
-        {status === 'cancelled' && <X size={14} className="text-slate-400" />}
-      </div>
-
-      {/* Body */}
+      <ConfirmationHeader jobType={job_type} title={title} status={status} />
       <div className="px-3 py-2">
         {status === 'cancelled' ? (
           <p className="text-[11px] text-slate-400 italic">Cancelled</p>
@@ -442,347 +227,31 @@ export const ConfirmationCard: React.FC<{
             </Link>
           </div>
         ) : (
-          <>
-            {needsVideoSource && (
-              <VideoSourcePicker
-                onSelect={(uri, name) => {
-                  setLocalParams({ ...localParams, gcs_uri: uri, source_filename: name })
-                  setLocalResolved({ ...localResolved, source_name: name })
-                }}
-              />
-            )}
-            {needsImageSource && (
-              <ImageSourcePicker
-                onSelect={(uri, name) => {
-                  setLocalParams({ ...localParams, gcs_uri: uri, source_filename: name })
-                  setLocalResolved({ ...localResolved, source_name: name })
-                }}
-              />
-            )}
-
-            {job_type === 'promo' && (
-              <PromoFields
-                params={localParams}
-                resolved={localResolved}
-                onChange={setLocalParams}
-                disabled={disabled}
-              />
-            )}
-            {job_type === 'reframe' && (
-              <ReframeFields
-                params={localParams}
-                resolved={localResolved}
-                onChange={setLocalParams}
-                disabled={disabled}
-              />
-            )}
-            {job_type === 'production' && (
-              <ProductionFields
-                params={localParams}
-                resolved={localResolved}
-                onChange={setLocalParams}
-                disabled={disabled}
-              />
-            )}
-            {(job_type === 'key_moments' || job_type === 'thumbnails') && (
-              <KeyMomentsFields resolved={localResolved} />
-            )}
-            {job_type === 'adapts' && (
-              <AdaptsFields
-                params={localParams}
-                resolved={localResolved}
-                onChange={setLocalParams}
-                disabled={disabled}
-              />
-            )}
-            {job_type === 'dubbing' && (
-              <DubbingFields
-                params={localParams}
-                resolved={localResolved}
-                onChange={setLocalParams}
-                disabled={disabled}
-              />
-            )}
-
-            {error && (
-              <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-red-50 px-2 py-1.5 dark:bg-red-900/20">
-                <AlertCircle size={12} className="mt-0.5 text-red-500 flex-shrink-0" />
-                <span className="text-[10px] text-red-600 dark:text-red-400">{error}</span>
-              </div>
-            )}
-          </>
+          <ConfirmationActiveBody
+            jobType={job_type}
+            localParams={localParams}
+            localResolved={localResolved}
+            setLocalParams={setLocalParams}
+            setLocalResolved={setLocalResolved}
+            needsVideoSource={needsVideoSource}
+            needsImageSource={needsImageSource}
+            disabled={status !== 'pending'}
+            error={error}
+          />
         )}
       </div>
-
-      {/* Footer */}
       {(status === 'pending' || status === 'confirming' || status === 'failed') && (
-        <div className="flex items-center gap-2 border-t border-slate-100 px-3 py-2 dark:border-slate-700">
-          {status === 'failed' ? (
-            <Button variant="ghost" size="xs" icon={RefreshCw} onClick={handleRetry}>
-              Retry
-            </Button>
-          ) : (
-            <Button variant="ghost" size="xs" onClick={handleCancel} disabled={status === 'confirming'}>
-              Cancel
-            </Button>
-          )}
-          <Button
-            size="xs"
-            onClick={handleConfirm}
-            disabled={status === 'confirming' || needsVideoSource || needsImageSource}
-            className="ml-auto"
-          >
-            {status === 'confirming' ? (
-              <>
-                <Loader2 size={10} className="animate-spin" /> Confirming...
-              </>
-            ) : (
-              <>
-                <CheckCircle2 size={10} /> Confirm
-              </>
-            )}
-          </Button>
-        </div>
+        <ConfirmationFooter
+          status={status}
+          disableConfirm={status === 'confirming' || needsVideoSource || needsImageSource}
+          onConfirm={handleConfirm}
+          onRetry={() => {
+            setStatus('pending')
+            setError(null)
+          }}
+          onCancel={() => setStatus('cancelled')}
+        />
       )}
-    </div>
-  )
-}
-
-// --- Video Result Card ---
-export const VideoResultCard: React.FC<{
-  title: string
-  status: string
-  id: string
-  type: ConfirmationJobType
-}> = ({ title, status, id, type }) => {
-  const toPath = (ROUTE_MAP[type] || ROUTE_MAP.production)(id)
-
-  return (
-    <div className="mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
-      <div className="flex items-center gap-3 p-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-400">
-          <FileVideo size={20} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h5 className="truncate text-xs font-semibold text-slate-900 dark:text-white">
-            {title || 'Untitled Job'}
-          </h5>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            {status === 'completed' ? (
-              <CheckCircle2 size={12} className="text-green-500" />
-            ) : (
-              <Clock size={12} className="text-amber-500 animate-pulse" />
-            )}
-            <span className="text-[10px] uppercase tracking-wider text-slate-500">{status}</span>
-          </div>
-        </div>
-        <Link
-          to={toPath}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-orange-600 hover:text-white dark:bg-slate-700 dark:text-slate-300"
-        >
-          <ChevronRight size={16} />
-        </Link>
-      </div>
-      {status === 'completed' && (
-        <div className="aspect-video bg-slate-900 flex items-center justify-center group relative cursor-pointer">
-          <Play size={24} className="text-white opacity-50 group-hover:opacity-100 transition-opacity" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-        </div>
-      )}
-    </div>
-  )
-}
-
-// --- Universal Video Source Picker ---
-export const VideoSourcePicker: React.FC<{
-  onSelect: (gcs_uri: string, filename: string, type: string) => void
-}> = ({ onSelect }) => {
-  const [tab, setTab] = useState<'uploads' | 'productions'>('uploads')
-  const [uploads, setUploads] = useState<any[]>([])
-  const [productions, setProductions] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    Promise.all([
-      api.promo.listUploadSources().catch(() => []),
-      api.promo.listProductionSources().catch(() => []),
-    ]).then(([ups, prods]) => {
-      setUploads(ups)
-      setProductions(prods)
-      setLoading(false)
-    })
-  }, [])
-
-  return (
-    <div className="mt-3 space-y-2">
-      <div className="flex gap-1 bg-slate-100 p-1 rounded-lg dark:bg-slate-800">
-        {(
-          [
-            ['uploads', Upload, 'Uploads'],
-            ['productions', Film, 'Productions'],
-          ] as const
-        ).map(([key, Icon, label]) => (
-          <Button
-            key={key}
-            variant="unstyled"
-            onClick={() => setTab(key)}
-            className={cn(
-              'flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-[5px] text-[10px] font-bold uppercase tracking-wider transition-all',
-              tab === key
-                ? 'bg-white text-orange-600 shadow-sm dark:bg-slate-700 dark:text-orange-400'
-                : 'text-slate-500',
-            )}
-          >
-            <Icon size={12} /> {label}
-          </Button>
-        ))}
-      </div>
-
-      <div className="max-h-48 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
-        {loading ? (
-          <div className="py-8 flex justify-center">
-            <Clock className="animate-spin text-slate-300" size={16} />
-          </div>
-        ) : tab === 'uploads' ? (
-          uploads.map((u) => (
-            <Button
-              key={u.id}
-              variant="unstyled"
-              onClick={() => onSelect(u.gcs_uri, u.display_name || u.filename, 'upload')}
-              className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-left text-[11px] transition-all hover:border-orange-500 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-orange-900/20"
-            >
-              <FileVideo size={12} className="text-slate-400" />
-              <div className="flex-1 min-w-0">
-                <p className="truncate font-medium text-slate-900 dark:text-white">
-                  {u.display_name || u.filename}
-                </p>
-                <p className="text-[9px] text-slate-500">{formatFileSize(u.file_size_bytes)}</p>
-              </div>
-            </Button>
-          ))
-        ) : (
-          productions.map((p) => (
-            <Button
-              key={p.id}
-              variant="unstyled"
-              onClick={() => onSelect(p.final_video_url, p.name, 'production')}
-              className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-left text-[11px] transition-all hover:border-orange-500 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-orange-900/20"
-            >
-              <Film size={12} className="text-slate-400" />
-              <div className="flex-1 min-w-0">
-                <p className="truncate font-medium text-slate-900 dark:text-white">{p.name}</p>
-                <p className="text-[9px] text-slate-500">{p.orientation}</p>
-              </div>
-            </Button>
-          ))
-        )}
-      </div>
-    </div>
-  )
-}
-
-// --- Image Source Picker ---
-export const ImageSourcePicker: React.FC<{
-  onSelect: (gcs_uri: string, filename: string) => void
-}> = ({ onSelect }) => {
-  const [images, setImages] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    api.adapts
-      .listUploadSources()
-      .then((imgs) => setImages(imgs))
-      .catch(() => setImages([]))
-      .finally(() => setLoading(false))
-  }, [])
-
-  return (
-    <div className="mt-3 space-y-2">
-      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 flex items-center gap-1">
-        <Image size={10} /> Select Image
-      </p>
-      <div className="max-h-48 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
-        {loading ? (
-          <div className="py-8 flex justify-center">
-            <Clock className="animate-spin text-slate-300" size={16} />
-          </div>
-        ) : images.length === 0 ? (
-          <p className="px-1 text-[10px] italic text-slate-400">
-            No uploaded images found. Upload one on the Adapts page first.
-          </p>
-        ) : (
-          images.map((img) => (
-            <Button
-              key={img.id}
-              variant="unstyled"
-              onClick={() => onSelect(img.gcs_uri, img.display_name || img.filename)}
-              className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-left text-[11px] transition-all hover:border-orange-500 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-orange-900/20"
-            >
-              <img src={img.image_signed_url} alt="" className="h-8 w-8 flex-shrink-0 rounded object-cover" />
-              <div className="flex-1 min-w-0">
-                <p className="truncate font-medium text-slate-900 dark:text-white">
-                  {img.display_name || img.filename}
-                </p>
-                <p className="text-[9px] text-slate-500">{img.mime_type}</p>
-              </div>
-            </Button>
-          ))
-        )}
-      </div>
-    </div>
-  )
-}
-
-// --- Prompt Picker Widget ---
-export const PromptPicker: React.FC<{
-  category: string
-  onSelect: (id: string, name: string) => void
-}> = ({ category, onSelect }) => {
-  const [prompts, setPrompts] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    api.system.listResources('prompt', category).then((res) => {
-      setPrompts(res)
-      setLoading(false)
-    })
-  }, [category])
-
-  return (
-    <div className="mt-3 space-y-2">
-      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 flex items-center gap-1">
-        <Sparkles size={10} /> Select {category} Prompt
-      </p>
-      <div className="space-y-1">
-        {loading ? (
-          <div className="py-4 flex justify-center">
-            <Clock className="animate-spin text-slate-300" size={16} />
-          </div>
-        ) : (
-          prompts.map((p) => (
-            <Button
-              key={p.id}
-              variant="unstyled"
-              onClick={() => onSelect(p.id, p.name)}
-              className={cn(
-                'flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-left text-[11px] transition-all hover:border-orange-500 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-orange-900/20',
-                p.is_active &&
-                  'border-amber-200 bg-amber-50/30 dark:border-amber-900/50 dark:bg-amber-900/10',
-              )}
-            >
-              <div className="flex-1 min-w-0">
-                <p className="truncate font-medium text-slate-900 dark:text-white">{p.name}</p>
-                <p className="text-[9px] text-slate-500 truncate">{p.description}</p>
-              </div>
-              {p.is_active && (
-                <span className="text-[8px] font-bold bg-amber-100 text-amber-700 px-1 rounded dark:bg-amber-900/40 dark:text-amber-400">
-                  ACTIVE
-                </span>
-              )}
-            </Button>
-          ))
-        )}
-      </div>
     </div>
   )
 }

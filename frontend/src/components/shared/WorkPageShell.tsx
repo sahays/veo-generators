@@ -3,23 +3,22 @@ import { ArrowLeft, Loader2, RotateCcw, type LucideIcon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/Common'
 import { ErrorDisplay } from '@/components/shared/ErrorDisplay'
-import { ProgressBar } from '@/components/shared/ProgressBar'
+import { ProgressBar } from '@/components/shared/media/ProgressBar'
 import { WorkPageHeader } from '@/components/shared/WorkPageHeader'
 import { useAuthStore } from '@/store/useAuthStore'
 import type { JobStatusConfig } from '@/hooks/jobStatus'
 import { cn } from '@/lib/utils'
 
-export interface WorkViewShellProps<
-  T extends {
-    id: string
-    status: string
-    progress_pct?: number
-    error_message?: string
-    display_name?: string
-    createdAt?: string
-    [key: string]: any
-  },
-> {
+export interface BaseWorkRecord {
+  id: string
+  status: string
+  progress_pct?: number
+  error_message?: string
+  display_name?: string
+  createdAt?: string
+}
+
+export interface WorkViewShellProps<T extends BaseWorkRecord> {
   backPath: string
   backLabel: string
   defaultName: string
@@ -37,48 +36,45 @@ export interface WorkViewShellProps<
   children: (record: T) => React.ReactNode
 }
 
-export const WorkViewShell = <
-  T extends {
-    id: string
-    status: string
-    progress_pct?: number
-    error_message?: string
-    display_name?: string
-    createdAt?: string
-    [key: string]: any
-  },
->({
-  backPath,
-  backLabel,
-  defaultName,
-  loadingLabel,
-  record,
-  loading,
-  pollError,
-  statusConfig,
-  activeStatuses,
-  onSaveName,
+const WorkRetrySection = ({
+  errorMessage,
+  canWrite,
+  retryLabel,
   onRetry,
-  retryLabel = 'Retry',
-  retryStatuses = ['failed'],
-  headerBadges,
-  children,
-}: WorkViewShellProps<T>) => {
-  const navigate = useNavigate()
-  const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
+}: {
+  errorMessage?: string
+  canWrite: boolean
+  retryLabel: string
+  onRetry: () => Promise<void>
+}) => {
   const [retrying, setRetrying] = useState(false)
-
   const handleRetryClick = async () => {
-    if (!onRetry) return
     setRetrying(true)
     try {
       await onRetry()
-    } catch (err) {
-      console.error(`Failed to retry ${defaultName.toLowerCase()}`, err)
+    } catch {
+      return
     } finally {
       setRetrying(false)
     }
   }
+
+  return (
+    <div className="space-y-3">
+      {errorMessage && <ErrorDisplay error={errorMessage} size="md" />}
+      {canWrite && (
+        <Button icon={retrying ? Loader2 : RotateCcw} onClick={handleRetryClick} disabled={retrying}>
+          {retrying ? 'Retrying...' : retryLabel}
+        </Button>
+      )}
+    </div>
+  )
+}
+
+export const WorkViewShell = <T extends BaseWorkRecord>(props: WorkViewShellProps<T>) => {
+  const { backPath, backLabel, defaultName, loadingLabel, record, loading, pollError, statusConfig, activeStatuses, onSaveName, onRetry, retryLabel = 'Retry', retryStatuses = ['failed'], headerBadges, children } = props
+  const navigate = useNavigate()
+  const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
 
   if (loading) {
     return (
@@ -92,59 +88,21 @@ export const WorkViewShell = <
   if (pollError && !record) {
     return (
       <div className="space-y-4">
-        <Button
-          variant="link"
-          icon={ArrowLeft}
-          onClick={() => navigate(backPath)}
-          className="text-sm"
-        >
-          {backLabel}
-        </Button>
+        <Button variant="link" icon={ArrowLeft} onClick={() => navigate(backPath)} className="text-sm">{backLabel}</Button>
         <ErrorDisplay error={pollError} size="md" />
       </div>
     )
   }
 
   if (!record) return null
-
   const isProcessing = activeStatuses.includes(record.status)
-  const showRetry = onRetry && retryStatuses.includes(record.status)
+  const showRetry = Boolean(onRetry && retryStatuses.includes(record.status))
 
   return (
     <div className="space-y-6">
-      <WorkPageHeader
-        backPath={backPath}
-        backLabel={backLabel}
-        record={record}
-        defaultName={defaultName}
-        onSaveName={onSaveName}
-        statusConfig={statusConfig}
-        activeStatuses={activeStatuses}
-      >
-        {headerBadges}
-      </WorkPageHeader>
-
-      {isProcessing && record.progress_pct !== undefined && (
-        <ProgressBar progress={record.progress_pct} />
-      )}
-
-      {showRetry && (
-        <div className="space-y-3">
-          {record.error_message && (
-            <ErrorDisplay error={record.error_message} size="md" />
-          )}
-          {canWrite && (
-            <Button
-              icon={retrying ? Loader2 : RotateCcw}
-              onClick={handleRetryClick}
-              disabled={retrying}
-            >
-              {retrying ? 'Retrying...' : retryLabel}
-            </Button>
-          )}
-        </div>
-      )}
-
+      <WorkPageHeader backPath={backPath} backLabel={backLabel} record={record} defaultName={defaultName} onSaveName={onSaveName} statusConfig={statusConfig} activeStatuses={activeStatuses}>{headerBadges}</WorkPageHeader>
+      {isProcessing && record.progress_pct !== undefined && <ProgressBar progress={record.progress_pct} />}
+      {showRetry && onRetry && <WorkRetrySection errorMessage={record.error_message} canWrite={canWrite} retryLabel={retryLabel} onRetry={onRetry} />}
       {children(record)}
     </div>
   )
@@ -188,37 +146,22 @@ export const WorkCreateShell = ({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <Button
-          variant="link"
-          icon={ArrowLeft}
-          onClick={() => navigate(backPath)}
-          className="text-sm"
-        >
+        <Button variant="link" icon={ArrowLeft} onClick={() => navigate(backPath)} className="text-sm">
           {backLabel}
         </Button>
       </div>
-
       <div className="space-y-1">
         <h2 className="text-lg font-heading font-bold text-foreground">{title}</h2>
         <p className="text-sm text-muted-foreground">{subtitle}</p>
       </div>
-
       {children}
-
       <ErrorDisplay error={error ?? null} />
-
       <div className="flex items-end justify-end gap-4">
         {actionLeft}
-        <Button
-          icon={actionIcon}
-          onClick={onSubmit}
-          disabled={disabled || submitting}
-          className={cn('py-2.5', submitting && '[&_svg]:animate-spin')}
-        >
+        <Button icon={actionIcon} onClick={onSubmit} disabled={disabled || submitting} className={cn('py-2.5', submitting && '[&_svg]:animate-spin')}>
           {submitting ? submittingLabel : actionLabel}
         </Button>
       </div>
-
       {footerExtra}
     </div>
   )

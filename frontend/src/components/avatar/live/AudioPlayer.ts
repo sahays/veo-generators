@@ -6,8 +6,6 @@
 export class AudioPlayer {
   private context: AudioContext | null = null
   private nextStartTime = 0
-  private chunkCount = 0
-
   pushChunk(mimeType: string, data: Uint8Array) {
     this._ensureContext()
     if (!this.context) return
@@ -15,20 +13,6 @@ export class AudioPlayer {
     // with the page since we created the context.
     if (this.context.state === 'suspended') {
       void this.context.resume().catch(() => {})
-    }
-    this.chunkCount += 1
-    if (this.chunkCount === 1 || this.chunkCount % 50 === 0) {
-      const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
-      let peak = 0
-      for (let i = 0; i < view.byteLength; i += 2) {
-        const s = Math.abs(view.getInt16(i, true))
-        if (s > peak) peak = s
-      }
-      // eslint-disable-next-line no-console
-      console.log(
-        `[AudioPlayer] chunk #${this.chunkCount} mime=${mimeType} ` +
-          `size=${data.byteLength} peak=${peak} ctx=${this.context.state}`,
-      )
     }
     const sampleRate = parseRate(mimeType) ?? 24000
     const samples = data.byteLength / 2

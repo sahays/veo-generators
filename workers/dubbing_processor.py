@@ -3,6 +3,7 @@
 import logging
 import os
 import time
+from typing import Any, Callable, Optional
 
 import deps
 from base_processor import JobProcessor, TempFileManager, resolve_variant_status
@@ -37,7 +38,7 @@ class DubbingProcessor(JobProcessor):
     def get_pending_records(self) -> list:
         return deps.firestore_svc.get_dub_records(include_archived=False)
 
-    def process(self, record) -> None:
+    def process(self, record: Any) -> None:
         record_id = record.id
         tag = f"[dub:{record_id}]"
         variants = [v.dict() for v in record.variants]
@@ -52,12 +53,8 @@ class DubbingProcessor(JobProcessor):
             pcm_path = tmp.track(extract_source_pcm(video_path, tag))
             onset = first_speech_onset(video_path, tag=tag)
             self.update_status(
-                record_id,
-                "generating",
-                PROGRESS_FLOOR,
-                duration_sec=probe["duration"],
+                record_id, "generating", PROGRESS_FLOOR, duration_sec=probe["duration"]
             )
-
             results = self._run_async(
                 self._dub_each_language(
                     record_id, variants, video_path, pcm_path, probe, onset
@@ -65,7 +62,17 @@ class DubbingProcessor(JobProcessor):
             )
             self._finalize(record_id, record, variants, results, probe, tag)
         except Exception as e:
-            logger.error(f"{tag} failed: {e}", exc_info=True)
+            logger.error(
+                f"{tag} failed: {e}",
+                exc_info=True,
+                extra={
+                    "who": "dubbing",
+                    "where": "process",
+                    "what": f"failed:{record_id}",
+                    "why": str(e),
+                    "how": "mark_failed",
+                },
+            )
             self.mark_failed(record_id, str(e))
         finally:
             tmp.cleanup()
@@ -74,7 +81,9 @@ class DubbingProcessor(JobProcessor):
     # Source acquisition
     # ------------------------------------------------------------------
 
-    def _fetch_source(self, record, tag: str, tmp: TempFileManager) -> tuple[str, dict]:
+    def _fetch_source(
+        self, record: Any, tag: str, tmp: TempFileManager
+    ) -> tuple[str, dict]:
         """Download the source and validate it can actually be dubbed.
 
         The bucket check is defensive: `source_gcs_uri` reaches the worker via
@@ -98,8 +107,14 @@ class DubbingProcessor(JobProcessor):
                 f"{max_source_minutes():.0f} min"
             )
         logger.info(
-            f"{tag} source {probe['duration']:.1f}s "
-            f"{probe['width']}x{probe['height']} downloaded"
+            f"{tag} source {probe['duration']:.1f}s {probe['width']}x{probe['height']} downloaded",
+            extra={
+                "who": "dubbing",
+                "where": "_fetch_source",
+                "what": f"duration={probe['duration']:.1f}s",
+                "why": "source_validated",
+                "how": "ffprobe_video",
+            },
         )
         return video_path, probe
 
@@ -108,8 +123,14 @@ class DubbingProcessor(JobProcessor):
     # ------------------------------------------------------------------
 
     async def _dub_each_language(
-        self, record_id, variants, video_path, pcm_path, probe, onset
-    ) -> list:
+        self,
+        record_id: str,
+        variants: list[dict],
+        video_path: str,
+        pcm_path: str,
+        probe: dict,
+        onset: Optional[float],
+    ) -> list[tuple[int, tuple[Any, str]]]:
         """Dub each pending language in turn, publishing results as they land.
 
         Sequential rather than concurrent: running all four at once finished
@@ -125,7 +146,7 @@ class DubbingProcessor(JobProcessor):
             i for i, v in enumerate(variants) if v["status"] in ("pending", "failed")
         ]
 
-        results = []
+        results: list[tuple[int, tuple[Any, str]]] = []
         for step, index in enumerate(pending):
             variants[index] = {**variants[index], "status": "generating"}
             self._write_progress(record_id, variants, step, 0.0, len(pending))
@@ -149,7 +170,9 @@ class DubbingProcessor(JobProcessor):
     # Progress
     # ------------------------------------------------------------------
 
-    def _progress_reporter(self, record_id, variants, step, total):
+    def _progress_reporter(
+        self, record_id: str, variants: list[dict], step: int, total: int
+    ) -> Callable[[float], None]:
         """Throttled callback handed to the Live sender.
 
         Streaming is ~all of a language's wall clock, so without this the record
@@ -168,7 +191,14 @@ class DubbingProcessor(JobProcessor):
 
         return report
 
-    def _write_progress(self, record_id, variants, step, fraction, total) -> None:
+    def _write_progress(
+        self,
+        record_id: str,
+        variants: list[dict],
+        step: int,
+        fraction: float,
+        total: int,
+    ) -> None:
         """Map (language index, position within it) onto the 15-95% band."""
         if total <= 0:
             return
@@ -182,7 +212,15 @@ class DubbingProcessor(JobProcessor):
     # Persistence
     # ------------------------------------------------------------------
 
-    def _finalize(self, record_id, record, variants, results, probe, tag) -> None:
+    def _finalize(
+        self,
+        record_id: str,
+        record: Any,
+        variants: list[dict],
+        results: list[tuple[int, tuple[Any, str]]],
+        probe: dict,
+        tag: str,
+    ) -> None:
         """Write variant outcomes, the source transcript, usage and rollup."""
         source_text = ""
         for index, (variant, session_source_text) in results:
@@ -191,7 +229,7 @@ class DubbingProcessor(JobProcessor):
             source_text = source_text or session_source_text
 
         status = resolve_variant_status(variants)
-        updates = {
+        updates: dict[str, Any] = {
             "variants": variants,
             "status": status,
             "progress_pct": 100,
@@ -204,10 +242,19 @@ class DubbingProcessor(JobProcessor):
         deps.firestore_svc.update_dub_record(record_id, updates)
 
         completed = sum(1 for v in variants if v["status"] == "completed")
-        logger.info(f"{tag} {status}: {completed}/{len(variants)} languages dubbed")
+        logger.info(
+            f"{tag} {status}: {completed}/{len(variants)} languages dubbed",
+            extra={
+                "who": "dubbing",
+                "where": "_finalize",
+                "what": f"{status}:{completed}/{len(variants)}",
+                "why": "job_complete",
+                "how": "update_dub_record",
+            },
+        )
 
     @staticmethod
-    def _merge_usage(record, variants, probe) -> dict:
+    def _merge_usage(record: Any, variants: list[dict], probe: dict) -> dict:
         """Record dubbed minutes as a fact; cost is recomputed from it by
         `/pricing/usage` against current rates."""
         usage = record.usage.dict()

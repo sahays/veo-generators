@@ -38,6 +38,113 @@ interface VideoSourceSelectorProps {
   emptyProductionsMessage?: string
 }
 
+function VideoSourceTabs({
+  sourceTab,
+  onTabChange,
+}: {
+  sourceTab: VideoSourceTab
+  onTabChange: (tab: VideoSourceTab) => void
+}): JSX.Element {
+  const tabs = [
+    { key: 'past-uploads' as VideoSourceTab, label: 'Uploads', icon: Upload },
+    { key: 'productions' as VideoSourceTab, label: 'Productions', icon: Film },
+  ]
+  return (
+    <div className="flex gap-1 bg-muted/50 rounded-[6px] p-1">
+      {tabs.map((tab) => (
+        <Button
+          key={tab.key}
+          variant="unstyled"
+          onClick={() => onTabChange(tab.key)}
+          className={cn(
+            'flex items-center gap-1.5 flex-1 justify-center px-3 py-2 rounded-[5px] text-xs font-medium transition-all',
+            sourceTab === tab.key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          <tab.icon size={14} />
+          {tab.label}
+        </Button>
+      ))}
+    </div>
+  )
+}
+
+function UploadsList({
+  uploads,
+  selectedUri,
+  onSelectUpload,
+  emptyMessage,
+}: {
+  uploads: UploadItem[]
+  selectedUri: string | null
+  onSelectUpload: (upload: UploadItem) => void
+  emptyMessage: string
+}): JSX.Element {
+  if (uploads.length === 0) {
+    return <p className="text-sm text-muted-foreground text-center py-8">{emptyMessage}</p>
+  }
+  return (
+    <>
+      {uploads.map((u) => (
+        <Button
+          key={u.id}
+          variant="unstyled"
+          onClick={() => onSelectUpload(u)}
+          className={cn(
+            'w-full flex items-center gap-3 p-3 rounded-[6px] border transition-all text-left',
+            selectedUri === u.gcs_uri ? 'border-accent bg-accent/5' : 'border-border hover:border-accent/40 bg-card',
+          )}
+        >
+          <FileVideo size={18} className="text-muted-foreground shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-foreground truncate">{u.display_name || u.filename}</p>
+            <p className="text-[10px] text-muted-foreground">{formatFileSize(u.file_size_bytes)} &middot; {getTimeAgo(u.createdAt)}</p>
+          </div>
+          <ChevronRight size={16} className="text-muted-foreground shrink-0" />
+        </Button>
+      ))}
+    </>
+  )
+}
+
+function ProductionsList({
+  productions,
+  selectedUri,
+  onSelectProduction,
+  emptyMessage,
+}: {
+  productions: ProductionItem[]
+  selectedUri: string | null
+  onSelectProduction: (production: ProductionItem) => void
+  emptyMessage: string
+}): JSX.Element {
+  if (productions.length === 0) {
+    return <p className="text-sm text-muted-foreground text-center py-8">{emptyMessage}</p>
+  }
+  return (
+    <>
+      {productions.map((p) => (
+        <Button
+          key={p.id}
+          variant="unstyled"
+          onClick={() => onSelectProduction(p)}
+          className={cn(
+            'w-full flex items-center gap-3 p-3 rounded-[6px] border transition-all text-left',
+            selectedUri === p.final_video_url ? 'border-accent bg-accent/5' : 'border-border hover:border-accent/40 bg-card',
+          )}
+        >
+          <Film size={18} className="text-muted-foreground shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-foreground truncate">{p.name}</p>
+            <p className="text-[10px] text-muted-foreground">{p.orientation} &middot; {getTimeAgo(p.createdAt)}</p>
+          </div>
+          <ChevronRight size={16} className="text-muted-foreground shrink-0" />
+        </Button>
+      ))}
+    </>
+  )
+}
+
 export function VideoSourceSelector({
   uploads,
   productions,
@@ -50,34 +157,9 @@ export function VideoSourceSelector({
   emptyUploadsMessage = 'No uploaded videos found. Upload a video in the Files section first.',
   emptyProductionsMessage = 'No completed productions found.',
 }: VideoSourceSelectorProps): JSX.Element {
-  const tabs = [
-    { key: 'past-uploads' as VideoSourceTab, label: 'Uploads', icon: Upload },
-    { key: 'productions' as VideoSourceTab, label: 'Productions', icon: Film },
-  ]
-
   return (
     <>
-      {/* Tab bar */}
-      <div className="flex gap-1 bg-muted/50 rounded-[6px] p-1">
-        {tabs.map((tab) => (
-          <Button
-            key={tab.key}
-            variant="unstyled"
-            onClick={() => onTabChange(tab.key)}
-            className={cn(
-              'flex items-center gap-1.5 flex-1 justify-center px-3 py-2 rounded-[5px] text-xs font-medium transition-all',
-              sourceTab === tab.key
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            <tab.icon size={14} />
-            {tab.label}
-          </Button>
-        ))}
-      </div>
-
-      {/* Source list */}
+      <VideoSourceTabs sourceTab={sourceTab} onTabChange={onTabChange} />
       {loading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="animate-spin text-accent" size={24} />
@@ -85,55 +167,9 @@ export function VideoSourceSelector({
       ) : (
         <div className="space-y-2">
           {sourceTab === 'past-uploads' ? (
-            uploads.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">{emptyUploadsMessage}</p>
-            ) : (
-              uploads.map((u) => (
-                <Button
-                  key={u.id}
-                  variant="unstyled"
-                  onClick={() => onSelectUpload(u)}
-                  className={cn(
-                    'w-full flex items-center gap-3 p-3 rounded-[6px] border transition-all text-left',
-                    selectedUri === u.gcs_uri
-                      ? 'border-accent bg-accent/5'
-                      : 'border-border hover:border-accent/40 bg-card',
-                  )}
-                >
-                  <FileVideo size={18} className="text-muted-foreground shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{u.display_name || u.filename}</p>
-                    <p className="text-[10px] text-muted-foreground">{formatFileSize(u.file_size_bytes)} &middot; {getTimeAgo(u.createdAt)}</p>
-                  </div>
-                  <ChevronRight size={16} className="text-muted-foreground shrink-0" />
-                </Button>
-              ))
-            )
+            <UploadsList uploads={uploads} selectedUri={selectedUri} onSelectUpload={onSelectUpload} emptyMessage={emptyUploadsMessage} />
           ) : (
-            productions.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">{emptyProductionsMessage}</p>
-            ) : (
-              productions.map((p) => (
-                <Button
-                  key={p.id}
-                  variant="unstyled"
-                  onClick={() => onSelectProduction(p)}
-                  className={cn(
-                    'w-full flex items-center gap-3 p-3 rounded-[6px] border transition-all text-left',
-                    selectedUri === p.final_video_url
-                      ? 'border-accent bg-accent/5'
-                      : 'border-border hover:border-accent/40 bg-card',
-                  )}
-                >
-                  <Film size={18} className="text-muted-foreground shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{p.name}</p>
-                    <p className="text-[10px] text-muted-foreground">{p.orientation} &middot; {getTimeAgo(p.createdAt)}</p>
-                  </div>
-                  <ChevronRight size={16} className="text-muted-foreground shrink-0" />
-                </Button>
-              ))
-            )
+            <ProductionsList productions={productions} selectedUri={selectedUri} onSelectProduction={onSelectProduction} emptyMessage={emptyProductionsMessage} />
           )}
         </div>
       )}

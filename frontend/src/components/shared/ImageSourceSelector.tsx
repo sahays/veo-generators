@@ -21,6 +21,45 @@ interface ImageSourceSelectorProps {
   emptyMessage?: string
 }
 
+function ImageSourceCard({
+  img,
+  isSelected,
+  onSelect,
+}: {
+  img: ImageUploadItem
+  isSelected: boolean
+  onSelect: () => void
+}): JSX.Element {
+  return (
+    <Button
+      variant="unstyled"
+      onClick={onSelect}
+      className={cn(
+        'flex flex-col rounded-[6px] border transition-all text-left overflow-hidden',
+        isSelected
+          ? 'border-accent bg-accent/5 ring-1 ring-accent/30'
+          : 'border-border hover:border-accent/40 bg-card',
+      )}
+    >
+      <div className="aspect-square bg-muted/50 overflow-hidden">
+        <img
+          src={img.image_signed_url}
+          alt={img.display_name || img.filename}
+          className="w-full h-full object-cover"
+        />
+      </div>
+      <div className="p-2 min-w-0">
+        <p className="text-xs font-medium text-foreground truncate">
+          {img.display_name || img.filename}
+        </p>
+        <p className="text-[10px] text-muted-foreground">
+          {formatFileSize(img.file_size_bytes)} &middot; {getTimeAgo(img.createdAt)}
+        </p>
+      </div>
+    </Button>
+  )
+}
+
 export function ImageSourceSelector({
   images,
   loading,
@@ -43,33 +82,12 @@ export function ImageSourceSelector({
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
       {images.map((img) => (
-        <Button
+        <ImageSourceCard
           key={img.id}
-          variant="unstyled"
-          onClick={() => onSelect(img)}
-          className={cn(
-            'flex flex-col rounded-[6px] border transition-all text-left overflow-hidden',
-            selectedUri === img.gcs_uri
-              ? 'border-accent bg-accent/5 ring-1 ring-accent/30'
-              : 'border-border hover:border-accent/40 bg-card',
-          )}
-        >
-          <div className="aspect-square bg-muted/50 overflow-hidden">
-            <img
-              src={img.image_signed_url}
-              alt={img.display_name || img.filename}
-              className="w-full h-full object-cover"
-            />
-          </div>
-          <div className="p-2 min-w-0">
-            <p className="text-xs font-medium text-foreground truncate">
-              {img.display_name || img.filename}
-            </p>
-            <p className="text-[10px] text-muted-foreground">
-              {formatFileSize(img.file_size_bytes)} &middot; {getTimeAgo(img.createdAt)}
-            </p>
-          </div>
-        </Button>
+          img={img}
+          isSelected={selectedUri === img.gcs_uri}
+          onSelect={() => onSelect(img)}
+        />
       ))}
     </div>
   )

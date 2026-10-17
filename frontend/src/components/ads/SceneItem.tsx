@@ -1,8 +1,8 @@
 import { useCallback, useRef, useState } from 'react'
-import { PromptModal } from '@/components/ads/PromptModal'
-import { SceneItemGrid } from '@/components/ads/SceneItemGrid'
-import { SceneItemList } from '@/components/ads/SceneItemList'
-import { api } from '@/lib/api'
+import { PromptModal } from './PromptModal'
+import { SceneItemGrid } from './studio/SceneItemGrid'
+import { SceneItemList } from './studio/SceneItemList'
+import { useAdsProjectActions } from './projects/useAdsProjectActions'
 import type { Scene } from '@/types/project'
 
 interface Props {
@@ -15,27 +15,36 @@ interface Props {
   onUpdate: (updates: Partial<Scene>) => void
 }
 
-export const SceneItem = ({
-  scene,
-  index,
-  layout,
-  isReadOnly,
-  productionId,
-  orientation,
-  onUpdate,
-}: Props) => {
-  const isPortrait = orientation === '9:16'
-  const aspectClass = isPortrait ? 'aspect-[9/16]' : 'aspect-video'
-  const [isGeneratingFrame, setIsGeneratingFrame] = useState(false)
-  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [showPromptModal, setShowPromptModal] = useState(false)
+function extractFrameUpdates(data: Record<string, unknown> | string | undefined): Partial<Scene> {
+  if (!data) return {}
+  if (typeof data === 'string') return { thumbnail_url: data }
+  const updates: Partial<Scene> = {}
+  if (typeof data.image_url === 'string') updates.thumbnail_url = data.image_url
+  if (typeof data.end_frame_url === 'string') updates.end_frame_url = data.end_frame_url
+  if (typeof data.generated_prompt === 'string') {
+    updates.image_prompt = data.generated_prompt
+    updates.generated_prompt = data.generated_prompt
+  }
+  if (typeof data.end_frame_prompt === 'string') updates.end_frame_prompt = data.end_frame_prompt
+  return updates
+}
+
+function useSceneFieldPersistence(
+  productionId: string,
+  sceneId: string,
+  isReadOnly: boolean,
+  onUpdate: (updates: Partial<Scene>) => void,
+) {
+  const { projects: projectsApi } = useAdsProjectActions()
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const persistScene = useCallback((updates: Partial<Scene>) => {
-    if (!productionId || !scene.id || isReadOnly) return
-    api.projects.updateScene(productionId, scene.id, updates).catch(() => {})
-  }, [productionId, scene.id, isReadOnly])
+  const persistScene = useCallback(
+    (updates: Partial<Scene>) => {
+      if (!productionId || !sceneId || isReadOnly) return
+      projectsApi.updateScene(productionId, sceneId, updates).catch(() => {})
+    },
+    [projectsApi, productionId, sceneId, isReadOnly],
+  )
 
   const handleToggle = (updates: Partial<Scene>) => {
     onUpdate(updates)
@@ -48,111 +57,102 @@ export const SceneItem = ({
     debounceRef.current = setTimeout(() => persistScene(updates), 800)
   }
 
-  const handleGenerateFrame = async (promptData?: any) => {
-    if (!productionId || !scene.id) return
+  return { handleToggle, handleTextChange }
+}
+
+function useSceneMediaGeneration(
+  productionId: string,
+  sceneId: string,
+  onUpdate: (updates: Partial<Scene>) => void,
+) {
+  const { projects: projectsApi } = useAdsProjectActions()
+  const [isGeneratingFrame, setIsGeneratingFrame] = useState(false)
+  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const applyCompletedVideo = async (videoUrl?: string) => {
+    const prod = await projectsApi.get(productionId)
+    const updatedScene = prod?.scenes?.find((s: Scene) => s.id === sceneId)
+    onUpdate({
+      video_url: videoUrl,
+      video_prompt: updatedScene?.video_prompt,
+      generated_prompt: updatedScene?.generated_prompt,
+    })
+    setIsGeneratingVideo(false)
+  }
+
+  const pollVideoOperation = (opName: string) => {
+    const poll = async () => {
+      const status = await projectsApi.checkOperation(opName, productionId, sceneId)
+      if (status.status === 'completed') {
+        await applyCompletedVideo(status.signed_url || status.video_uri)
+      } else if (status.status === 'failed' || status.status === 'error') {
+        setError(status.message || 'Video generation failed')
+        setIsGeneratingVideo(false)
+      } else {
+        setTimeout(poll, 10000)
+      }
+    }
+    setTimeout(poll, 10000)
+  }
+
+  const handleGenerateFrame = async (promptData?: Record<string, unknown>) => {
+    if (!productionId || !sceneId) return
     setIsGeneratingFrame(true)
     setError(null)
     try {
-      const result = await api.projects.generateFrame(productionId, scene.id, promptData)
-      const imageUrl = result.data?.image_url || result.data
-      const updates: Partial<Scene> = {}
-      if (imageUrl && typeof imageUrl === 'string') updates.thumbnail_url = imageUrl
-      if (result.data?.end_frame_url && typeof result.data.end_frame_url === 'string') {
-        updates.end_frame_url = result.data.end_frame_url
-      }
-      if (result.data?.generated_prompt) {
-        updates.image_prompt = result.data.generated_prompt
-        updates.generated_prompt = result.data.generated_prompt
-      }
-      if (result.data?.end_frame_prompt) {
-        updates.end_frame_prompt = result.data.end_frame_prompt
-      }
+      const result = await projectsApi.generateFrame(productionId, sceneId, promptData)
+      const updates = extractFrameUpdates(result.data)
       if (Object.keys(updates).length > 0) onUpdate(updates)
-    } catch (err) {
-      console.error('Frame generation failed:', err)
+    } catch {
       setError('Frame generation failed')
     } finally {
       setIsGeneratingFrame(false)
     }
   }
 
-  const handleGenerateVideo = async (promptData?: any) => {
-    if (!productionId || !scene.id) return
+  const handleGenerateVideo = async (promptData?: Record<string, unknown>) => {
+    if (!productionId || !sceneId) return
     setIsGeneratingVideo(true)
     setError(null)
     try {
-      const result = await api.projects.generateSceneVideo(productionId, scene.id, promptData)
+      const result = await projectsApi.generateSceneVideo(productionId, sceneId, promptData)
       if (result.status === 'completed' && result.signed_url) {
-        const prod = await api.projects.get(productionId)
-        const updatedScene = prod?.scenes?.find((s: Scene) => s.id === scene.id)
-        onUpdate({
-          video_url: result.signed_url,
-          video_prompt: updatedScene?.video_prompt,
-          generated_prompt: updatedScene?.generated_prompt,
-        })
-        setIsGeneratingVideo(false)
+        await applyCompletedVideo(result.signed_url)
         return
       }
-      if (result.operation_name) {
-        const poll = async () => {
-          const status = await api.projects.checkOperation(
-            result.operation_name, productionId, scene.id,
-          )
-          if (status.status === 'completed') {
-            const prod = await api.projects.get(productionId)
-            const updatedScene = prod?.scenes?.find((s: Scene) => s.id === scene.id)
-            onUpdate({
-              video_url: status.signed_url || status.video_uri,
-              video_prompt: updatedScene?.video_prompt,
-              generated_prompt: updatedScene?.generated_prompt,
-            })
-            setIsGeneratingVideo(false)
-          } else if (status.status === 'failed' || status.status === 'error') {
-            setError(status.message || 'Video generation failed')
-            setIsGeneratingVideo(false)
-          } else {
-            setTimeout(poll, 10000)
-          }
-        }
-        setTimeout(poll, 10000)
-      }
-    } catch (err) {
-      console.error('Video generation failed:', err)
+      if (result.operation_name) pollVideoOperation(result.operation_name)
+    } catch {
       setError('Video generation failed')
       setIsGeneratingVideo(false)
     }
   }
 
-  const activeGeneratingFrame = isGeneratingFrame || scene.status === 'generating_frame'
-  const activeGeneratingVideo = isGeneratingVideo || scene.status === 'generating'
-  const isBusy = activeGeneratingFrame || activeGeneratingVideo
+  return { isGeneratingFrame, isGeneratingVideo, error, handleGenerateFrame, handleGenerateVideo }
+}
+
+export const SceneItem = ({ scene, index, layout, isReadOnly, productionId, orientation, onUpdate }: Props) => {
+  const [showPromptModal, setShowPromptModal] = useState(false)
+  const { handleToggle, handleTextChange } = useSceneFieldPersistence(productionId, scene.id, isReadOnly, onUpdate)
+  const gen = useSceneMediaGeneration(productionId, scene.id, onUpdate)
+  const activeFrame = gen.isGeneratingFrame || scene.status === 'generating_frame'
+  const activeVideo = gen.isGeneratingVideo || scene.status === 'generating'
   const View = layout === 'grid' ? SceneItemGrid : SceneItemList
+  const sceneErr = (scene as Scene & { error_message?: string }).error_message
 
   return (
     <>
       <View
-        scene={scene}
-        index={index}
-        isReadOnly={isReadOnly}
-        aspectClass={aspectClass}
-        isGeneratingFrame={activeGeneratingFrame}
-        isGeneratingVideo={activeGeneratingVideo}
-        isBusy={isBusy}
-        error={error || (scene as any).error_message || null}
-        handleToggle={handleToggle}
-        handleTextChange={handleTextChange}
-        handleGenerateFrame={() => handleGenerateFrame()}
-        handleGenerateVideo={() => handleGenerateVideo()}
+        scene={scene} index={index} isReadOnly={isReadOnly} aspectClass={orientation === '9:16' ? 'aspect-[9/16]' : 'aspect-video'}
+        isGeneratingFrame={activeFrame} isGeneratingVideo={activeVideo} isBusy={activeFrame || activeVideo}
+        error={gen.error || sceneErr || null} handleToggle={handleToggle} handleTextChange={handleTextChange}
+        handleGenerateFrame={() => gen.handleGenerateFrame()} handleGenerateVideo={() => gen.handleGenerateVideo()}
         onShowPromptModal={() => setShowPromptModal(true)}
       />
       {showPromptModal && (
         <PromptModal
-          scene={scene}
-          productionId={productionId}
-          isReadOnly={isReadOnly}
-          onClose={() => setShowPromptModal(false)}
-          onGenerateFrame={handleGenerateFrame}
-          onGenerateVideo={handleGenerateVideo}
+          scene={scene} productionId={productionId} isReadOnly={isReadOnly} onClose={() => setShowPromptModal(false)}
+          onGenerateFrame={gen.handleGenerateFrame} onGenerateVideo={gen.handleGenerateVideo}
           onDescriptionChange={(desc) => onUpdate({ visual_description: desc })}
         />
       )}

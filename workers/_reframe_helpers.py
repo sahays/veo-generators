@@ -6,25 +6,66 @@ file-size budget. The formatters are pure; `ensure_cv2_readable` does I/O
 """
 
 import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-def ensure_cv2_readable(src_path: str, tmp, record_id: str = "") -> str:
+def _transcode_for_cv2(src_path: str, tmp: Any, record_id: str, cv2_mod: Any) -> str:
+    """Transcode an undecodable source (e.g. AV1) to H.264 for OpenCV frame decoding."""
+    try:
+        from ffmpeg_runner import run_ffmpeg
+
+        out = tmp.create(suffix="_det.mp4")
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            src_path,
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-pix_fmt",
+            "yuv420p",
+            out,
+        ]
+        run_ffmpeg(cmd, label="reframe-detect-transcode")
+        cap2 = cv2_mod.VideoCapture(out)
+        ok2 = cap2.isOpened() and cap2.read()[0]
+        cap2.release()
+        if ok2:
+            return out
+        logger.warning(
+            f"[reframe:{record_id}] transcoded copy still unreadable by cv2",
+            extra={
+                "who": "reframe",
+                "where": "_transcode_for_cv2",
+                "what": "transcode_unreadable",
+                "why": "cv2_read_failed",
+                "how": "fallback_src_path",
+            },
+        )
+    except Exception as e:
+        logger.warning(
+            f"[reframe:{record_id}] detection transcode failed ({e})",
+            extra={
+                "who": "reframe",
+                "where": "_transcode_for_cv2",
+                "what": "transcode_error",
+                "why": str(e),
+                "how": "fallback_src_path",
+            },
+        )
+    return src_path
+
+
+def ensure_cv2_readable(src_path: str, tmp: Any, record_id: str = "") -> str:
     """Return a path whose frames OpenCV (cv2) can actually decode.
 
-    Detection is MediaPipe, but every detector is FED frames by OpenCV
-    (`cv2.VideoCapture`): face/person detection, scene-cut detection and text
-    detection all decode via cv2. OpenCV's FFmpeg backend in the Cloud Run image
-    tries HARDWARE AV1 decoding and — with no GPU — reads ZERO frames instead of
-    falling back to software. The result: an AV1 (or otherwise cv2-undecodable)
-    upload yields NO detections at all, and the planner silently degrades to one
-    static center crop over the whole video.
-
-    ffmpeg itself software-decodes AV1 fine (so render + diarization still work),
-    so we probe cv2 and, if it can't read a frame, transcode to H.264 for the
-    detection passes only — the render keeps using the original. Best-effort: any
-    transcode failure returns the original so the job still completes.
+    Probes cv2 and, if it can't read a frame (e.g. AV1 without HW decode),
+    transcodes to H.264 for the detection passes only.
     """
     try:
         import cv2
@@ -37,39 +78,16 @@ def ensure_cv2_readable(src_path: str, tmp, record_id: str = "") -> str:
         return src_path
 
     logger.warning(
-        f"[reframe:{record_id}] OpenCV cannot decode source frames (likely AV1 / "
-        "no HW decode) — transcoding to H.264 for detection so MediaPipe gets frames"
+        f"[reframe:{record_id}] OpenCV cannot decode source frames (likely AV1 / no HW decode) — transcoding to H.264 for detection so MediaPipe gets frames",
+        extra={
+            "who": "reframe",
+            "where": "ensure_cv2_readable",
+            "what": "cv2_decode_failed",
+            "why": "av1_or_no_hw_decode",
+            "how": "_transcode_for_cv2",
+        },
     )
-    try:
-        from ffmpeg_runner import run_ffmpeg
-
-        out = tmp.create(suffix="_det.mp4")
-        run_ffmpeg(
-            [
-                "ffmpeg",
-                "-y",
-                "-i",
-                src_path,
-                "-an",
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-pix_fmt",
-                "yuv420p",
-                out,
-            ],
-            label="reframe-detect-transcode",
-        )
-        cap2 = cv2.VideoCapture(out)
-        ok2 = cap2.isOpened() and cap2.read()[0]
-        cap2.release()
-        if ok2:
-            return out
-        logger.warning(f"[reframe:{record_id}] transcoded copy still unreadable by cv2")
-    except Exception as e:
-        logger.warning(f"[reframe:{record_id}] detection transcode failed ({e})")
-    return src_path
+    return _transcode_for_cv2(src_path, tmp, record_id, cv2)
 
 
 def format_chirp_context(speaker_segments: list) -> str:
@@ -104,10 +122,12 @@ def format_chirp_context(speaker_segments: list) -> str:
             f"[{seg['start_sec']:.1f}s - {seg['end_sec']:.1f}s] {seg['speaker_id']} ({dur:.0f}s)"
         )
 
-    unique = sorted(set(s["speaker_id"] for s in significant))
-    lines.append("")
-    lines.append(
-        f"{len(significant)} speaker turns, {len(unique)} speakers: {', '.join(unique)}"
+    unique = sorted({s["speaker_id"] for s in significant})
+    lines.extend(
+        [
+            "",
+            f"{len(significant)} speaker turns, {len(unique)} speakers: {', '.join(unique)}",
+        ]
     )
     return "\n".join(lines)
 

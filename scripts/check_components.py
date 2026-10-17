@@ -21,43 +21,56 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-FRONTEND_SRC_DIR = REPO_ROOT / "frontend" / "src"
+REPO_ROOT: Path = Path(__file__).resolve().parent.parent
+FRONTEND_SRC_DIR: Path = REPO_ROOT / "frontend" / "src"
 
-_COMMENT_RE = re.compile(r"//[^\n]*|/\*[\s\S]*?\*/")
-_RAW_BUTTON_RE = re.compile(r"<(?:motion\.)?button\b")
-_RAW_ANCHOR_RE = re.compile(r"<(?:motion\.)?a\b")
-_RAW_TEXTAREA_RE = re.compile(r"<textarea\b")
-_RAW_SELECT_RE = re.compile(r"<select\b")
-_RAW_INPUT_TAG_RE = re.compile(
+_COMMENT_RE: re.Pattern[str] = re.compile(r"//[^\n]*|/\*[\s\S]*?\*/")
+_RAW_BUTTON_RE: re.Pattern[str] = re.compile(r"<(?:motion\.)?button\b")
+_RAW_ANCHOR_RE: re.Pattern[str] = re.compile(r"<(?:motion\.)?a\b")
+_RAW_TEXTAREA_RE: re.Pattern[str] = re.compile(r"<textarea\b")
+_RAW_SELECT_RE: re.Pattern[str] = re.compile(r"<select\b")
+_RAW_INPUT_TAG_RE: re.Pattern[str] = re.compile(
     r"<input\b(?P<attrs>(?:[^>\"']|\"[^\"]*\"|'[^']*')*?)>", re.DOTALL
 )
-_INPUT_TYPE_RE = re.compile(
+_INPUT_TYPE_RE: re.Pattern[str] = re.compile(
     r"\btype\s*=\s*(?:['\"]([^'\"]+)['\"]|\{\s*['\"]([^'\"]+)['\"]\s*\})"
 )
-_STEEL_CLASS_RE = re.compile(r"\b(?:from|via|to|bg|text|border)-steel-\d+\b")
-_FLAT_ACCENT_BUTTON_RE = re.compile(
+_STEEL_CLASS_RE: re.Pattern[str] = re.compile(r"\b(?:from|via|to|bg|text|border)-steel-\d+\b")
+_FLAT_ACCENT_BUTTON_RE: re.Pattern[str] = re.compile(
     r"\bbg-accent\b[^\n\"'`]*\btext-(?:white|accent-foreground|slate-900)\b"
     r"|\btext-(?:white|accent-foreground|slate-900)\b[^\n\"'`]*\bbg-accent\b"
 )
-_RAW_FETCH_RE = re.compile(r"(?<![.\w])fetch\s*\(")
+_RAW_FETCH_RE: re.Pattern[str] = re.compile(r"(?<![.\w])fetch\s*\(")
 
-ALLOWED_RAW_INPUT_TYPES = {"file", "checkbox", "radio", "range", "hidden"}
+ALLOWED_RAW_INPUT_TYPES: frozenset[str] = frozenset(
+    {"file", "checkbox", "radio", "range", "hidden"}
+)
+
+_SIMPLE_TAG_RULES: tuple[tuple[re.Pattern[str], str, str], ...] = (
+    (_RAW_BUTTON_RE, "raw-button", "use <Button> instead."),
+    (_RAW_ANCHOR_RE, "raw-anchor", "use <Button href=...> or <AnchorLink> instead."),
+    (_RAW_TEXTAREA_RE, "raw-textarea", "use <Textarea> instead."),
+    (_RAW_SELECT_RE, "raw-select", "use <Select> or <NativeSelect> instead."),
+)
 
 
 @dataclass(frozen=True)
 class ComponentViolation:
+    """Single UI component or browser fetch violation."""
+
     location: str
     rule: str
     message: str
 
 
-def check_frontend_components() -> list[ComponentViolation]:
-    violations: list[ComponentViolation] = []
-    if not FRONTEND_SRC_DIR.exists():
-        return violations
+def _strip_comments(raw: str) -> str:
+    """Replace comments with spaces while preserving line numbers."""
+    return _COMMENT_RE.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), raw)
 
-    # Check raw fetch() across all .ts and .tsx files (only lib/api/serverAction.ts may call fetch)
+
+def _check_raw_fetch_calls() -> list[ComponentViolation]:
+    """Check raw fetch() across all .ts/.tsx files outside lib/api/serverAction.ts."""
+    violations: list[ComponentViolation] = []
     for path in sorted(FRONTEND_SRC_DIR.rglob("*")):
         if path.suffix not in {".ts", ".tsx"} or not path.is_file():
             continue
@@ -65,111 +78,69 @@ def check_frontend_components() -> list[ComponentViolation]:
         if rel_src == "lib/api/serverAction.ts":
             continue
         rel_repo = str(path.relative_to(REPO_ROOT)).replace("\\", "/")
-        raw = path.read_text(encoding="utf-8")
-        clean = _COMMENT_RE.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), raw)
+        clean = _strip_comments(path.read_text(encoding="utf-8"))
         for match in _RAW_FETCH_RE.finditer(clean):
             lineno = clean[: match.start()].count("\n") + 1
-            violations.append(
-                ComponentViolation(
-                    f"{rel_repo}:{lineno}",
-                    "raw-fetch",
-                    "Browser fetch() used outside lib/api/serverAction.ts; use api.* / serverApiRequest for server-to-server calls.",
-                )
-            )
+            msg = "Browser fetch() used outside lib/api/serverAction.ts; use api.* / serverApiRequest for server-to-server calls."
+            violations.append(ComponentViolation(f"{rel_repo}:{lineno}", "raw-fetch", msg))
+    return violations
 
-    tsx_files = sorted(FRONTEND_SRC_DIR.rglob("*.tsx"))
-    for path in tsx_files:
-        rel_src = str(path.relative_to(FRONTEND_SRC_DIR)).replace("\\", "/")
-        rel_repo = str(path.relative_to(REPO_ROOT)).replace("\\", "/")
-        raw = path.read_text(encoding="utf-8")
-        # Keep newline positions identical by replacing comments with spaces/newlines
-        clean = _COMMENT_RE.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), raw)
 
-        # Check deprecated steel-* classes across all TSX files (including ui/)
-        for match in _STEEL_CLASS_RE.finditer(clean):
+def _check_tsx_controls(clean: str, rel_repo: str) -> list[ComponentViolation]:
+    """Check raw HTML controls and flat accent overrides in a non-ui TSX file."""
+    violations: list[ComponentViolation] = []
+    for pattern, rule_id, hint in _SIMPLE_TAG_RULES:
+        for match in pattern.finditer(clean):
             lineno = clean[: match.start()].count("\n") + 1
-            violations.append(
-                ComponentViolation(
-                    f"{rel_repo}:{lineno}",
-                    "deprecated-gradient-color",
-                    f"Disallowed '{match.group(0)}' class; use Shades of Orange ('orange-*' / 'amber-*').",
-                )
-            )
+            msg = f"Raw '{match.group(0)}>' used outside components/ui/; {hint}"
+            violations.append(ComponentViolation(f"{rel_repo}:{lineno}", rule_id, msg))
 
-        # Skip primitive implementation files under components/ui/
-        if rel_src.startswith("components/ui/"):
-            continue
-
-        for match in _RAW_BUTTON_RE.finditer(clean):
+    for match in _RAW_INPUT_TAG_RE.finditer(clean):
+        type_match = _INPUT_TYPE_RE.search(match.group("attrs"))
+        input_type = (type_match.group(1) or type_match.group(2)) if type_match else "text"
+        if input_type not in ALLOWED_RAW_INPUT_TYPES:
             lineno = clean[: match.start()].count("\n") + 1
-            violations.append(
-                ComponentViolation(
-                    f"{rel_repo}:{lineno}",
-                    "raw-button",
-                    f"Raw '{match.group(0)}>' used outside components/ui/; use <Button> instead.",
-                )
-            )
+            msg = f"Raw '<input type=\"{input_type}\">' used outside components/ui/; use <Input> instead."
+            violations.append(ComponentViolation(f"{rel_repo}:{lineno}", "raw-input", msg))
 
-        for match in _RAW_ANCHOR_RE.finditer(clean):
-            lineno = clean[: match.start()].count("\n") + 1
-            violations.append(
-                ComponentViolation(
-                    f"{rel_repo}:{lineno}",
-                    "raw-anchor",
-                    f"Raw '{match.group(0)}>' used outside components/ui/; use <Button href=...> or <AnchorLink> instead.",
-                )
-            )
+    for match in _FLAT_ACCENT_BUTTON_RE.finditer(clean):
+        lineno = clean[: match.start()].count("\n") + 1
+        msg = f"Flat '{match.group(0)}' used outside components/ui/; use <Button variant=\"primary\"> or 'btn-primary' gradient."
+        violations.append(ComponentViolation(f"{rel_repo}:{lineno}", "flat-accent-override", msg))
+    return violations
 
-        for match in _RAW_TEXTAREA_RE.finditer(clean):
-            lineno = clean[: match.start()].count("\n") + 1
-            violations.append(
-                ComponentViolation(
-                    f"{rel_repo}:{lineno}",
-                    "raw-textarea",
-                    "Raw '<textarea>' used outside components/ui/; use <Textarea> instead.",
-                )
-            )
 
-        for match in _RAW_SELECT_RE.finditer(clean):
-            lineno = clean[: match.start()].count("\n") + 1
-            violations.append(
-                ComponentViolation(
-                    f"{rel_repo}:{lineno}",
-                    "raw-select",
-                    "Raw '<select>' used outside components/ui/; use <Select> or <NativeSelect> instead.",
-                )
-            )
+def _check_tsx_file(path: Path) -> list[ComponentViolation]:
+    """Check a single .tsx file for deprecated classes and raw HTML controls."""
+    rel_src = str(path.relative_to(FRONTEND_SRC_DIR)).replace("\\", "/")
+    rel_repo = str(path.relative_to(REPO_ROOT)).replace("\\", "/")
+    clean = _strip_comments(path.read_text(encoding="utf-8"))
+    violations: list[ComponentViolation] = []
 
-        for match in _RAW_INPUT_TAG_RE.finditer(clean):
-            attrs = match.group("attrs")
-            type_match = _INPUT_TYPE_RE.search(attrs)
-            input_type = (
-                (type_match.group(1) or type_match.group(2)) if type_match else "text"
-            )
-            if input_type not in ALLOWED_RAW_INPUT_TYPES:
-                lineno = clean[: match.start()].count("\n") + 1
-                violations.append(
-                    ComponentViolation(
-                        f"{rel_repo}:{lineno}",
-                        "raw-input",
-                        f"Raw '<input type=\"{input_type}\">' used outside components/ui/; use <Input> instead.",
-                    )
-                )
+    for match in _STEEL_CLASS_RE.finditer(clean):
+        lineno = clean[: match.start()].count("\n") + 1
+        msg = f"Disallowed '{match.group(0)}' class; use Shades of Orange ('orange-*' / 'amber-*')."
+        violations.append(
+            ComponentViolation(f"{rel_repo}:{lineno}", "deprecated-gradient-color", msg)
+        )
 
-        for match in _FLAT_ACCENT_BUTTON_RE.finditer(clean):
-            lineno = clean[: match.start()].count("\n") + 1
-            violations.append(
-                ComponentViolation(
-                    f"{rel_repo}:{lineno}",
-                    "flat-accent-override",
-                    f"Flat '{match.group(0)}' used outside components/ui/; use <Button variant=\"primary\"> or 'btn-primary' gradient.",
-                )
-            )
+    if not rel_src.startswith("components/ui/"):
+        violations.extend(_check_tsx_controls(clean, rel_repo))
+    return violations
 
+
+def check_frontend_components() -> list[ComponentViolation]:
+    """Run all UI component and raw fetch checks across `frontend/src/`."""
+    if not FRONTEND_SRC_DIR.exists():
+        return []
+    violations = _check_raw_fetch_calls()
+    for path in sorted(FRONTEND_SRC_DIR.rglob("*.tsx")):
+        violations.extend(_check_tsx_file(path))
     return violations
 
 
 def main() -> int:
+    """CLI entrypoint for UI component static verification."""
     violations = check_frontend_components()
     if not violations:
         print(
@@ -185,4 +156,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

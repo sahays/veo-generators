@@ -3,6 +3,7 @@
 import logging
 import os
 import time
+from typing import Any, Optional
 
 import deps
 from cost_tracking import (
@@ -10,16 +11,33 @@ from cost_tracking import (
     accumulate_text_cost_on,
     accumulate_transcoder_cost,
 )
-from models import SpeakerSegment
 
-from base_processor import JobProcessor, TempFileManager
-from _reframe_helpers import (
-    ensure_cv2_readable,
-    format_chirp_context,
-    format_track_summary,
+from _reframe_ai_pipeline import (
+    analyze_scenes,
+    apply_gemini_decisions,
+    collect_semantics,
+    run_diarization,
 )
+from _reframe_reporting import (
+    dump_detection_fixture,
+    store_eval_report,
+    store_render_check,
+    store_segment_plan,
+)
+from _reframe_v2_pipeline import (  # noqa: F401
+    _mark_outlier_full_frame_shots,
+    _resolve_canvas_and_rungs,
+    detect_and_scan_video,
+    launch_semantic_pass,
+    plan_and_evaluate_segments,
+    run_ai_reframe_pipeline,
+    run_diagnostic_pipeline,
+)
+from base_processor import JobProcessor, TempFileManager
 
 logger = logging.getLogger(__name__)
+
+__all__ = ["ReframeProcessor", "accumulate_diarization_cost", "accumulate_text_cost_on"]
 
 
 class ReframeProcessor(JobProcessor):
@@ -36,850 +54,315 @@ class ReframeProcessor(JobProcessor):
     def get_pending_records(self) -> list:
         return deps.firestore_svc.get_reframe_records(include_archived=False)
 
-    def process(self, record) -> None:
+    def process(self, record: Any) -> None:
         record_id = record.id
         tmp = TempFileManager()
         try:
             src_path, probe = self._download_and_probe(record, record_id, tmp)
             out_path = tmp.create(suffix=".mp4")
-
             if getattr(record, "diagnostic_mode", False):
                 self._run_diagnostic(record, record_id, src_path, out_path, probe, tmp)
                 output_uri = self._upload_diagnostic(record_id, out_path)
                 self.update_status(
                     record_id, "completed", 100, output_gcs_uri=output_uri
                 )
-                logger.info(f"[reframe:{record_id}] Diagnostic done: {output_uri}")
+                logger.info(
+                    f"[reframe:{record_id}] Diagnostic done: {output_uri}",
+                    extra={
+                        "who": "reframe",
+                        "where": "process",
+                        "what": f"diagnostic_done:{output_uri}",
+                        "why": "diagnostic_mode",
+                        "how": "update_status",
+                    },
+                )
                 return
 
             self._run_ai_reframe(record, record_id, src_path, out_path, probe, tmp)
-
             self.update_status(record_id, "processing", 65)
             output_uri = self._upload_and_encode(record, record_id, out_path, probe)
             self.update_status(record_id, "completed", 100, output_gcs_uri=output_uri)
-            logger.info(f"[reframe:{record_id}] Completed: {output_uri}")
+            logger.info(
+                f"[reframe:{record_id}] Completed: {output_uri}",
+                extra={
+                    "who": "reframe",
+                    "where": "process",
+                    "what": f"completed:{output_uri}",
+                    "why": "job_done",
+                    "how": "update_status",
+                },
+            )
         finally:
             tmp.cleanup()
 
-    def _run_diagnostic(self, record, record_id, src_path, out_path, probe, tmp):
+    def _run_diagnostic(
+        self,
+        record: Any,
+        record_id: str,
+        src_path: str,
+        out_path: str,
+        probe: dict,
+        tmp: TempFileManager,
+    ) -> None:
         """Diagnostic mode: run detection, render detector overlays (no crop)."""
-        from reframe_diagnostic import render_diagnostic
-        from reframe_filters import OUTPUT_CANVAS
-        from reframe_plan import RUNGS_BY_CANVAS
+        run_diagnostic_pipeline(self, record, record_id, src_path, out_path, probe, tmp)
 
-        has_audio = probe.get("has_audio", True)
-
-        # Same output canvas + rung ladder selection as the real reframe path, so
-        # the diagnostic previews what the chosen aspect ratio (9:16 or 3:4) crops.
-        ar = getattr(record, "output_aspect_ratio", "9:16") or "9:16"
-        out_w, out_h = OUTPUT_CANVAS.get(ar, OUTPUT_CANVAS["9:16"])
-        rungs = RUNGS_BY_CANVAS.get(ar, RUNGS_BY_CANVAS["9:16"])
-
-        chirp_context, speaker_segments = self._run_diarization(
-            record, record_id, src_path, probe, tmp, has_audio
-        )
-
-        self.update_status(record_id, "processing", 30)
-        # Sample densely (faces + persons) so overlay boxes track subjects closely
-        # instead of lingering on stale positions across cuts (this is a viz).
-        from mediapipe_detection import scan_video_detections, track_faces
-
-        # Same AV1/OpenCV guard as the main path — detection (and the diagnostic
-        # overlay render, which also reads frames via cv2) need a decodable copy.
-        det_src = ensure_cv2_readable(src_path, tmp, record_id)
-
-        from reframe_plan import attach_keypoints, reconcile
-        from scene_detect import detect_cuts
-        from text_detect import scan_video_text
-
-        # Cuts before tracking: the v2 tracker resets identity at scene cuts.
-        cuts = detect_cuts(det_src)
-
-        logger.info(f"[reframe:{record_id}] MediaPipe scanning (faces+persons)...")
-        det_frames = scan_video_detections(det_src, sample_fps=4.0)
-        tracked_frames = track_faces(
-            [{"time_sec": f["time_sec"], "faces": f["faces"]} for f in det_frames],
-            cuts=cuts,
-        )
-        person_frames = [
-            {"time_sec": f["time_sec"], "persons": f["persons"]} for f in det_frames
-        ]
-        track_summary = format_track_summary(tracked_frames)
-        deps.firestore_svc.update_reframe_record(
-            record_id, {"track_summary": track_summary}
-        )
-
-        text_frames = scan_video_text(det_src, sample_fps=2.0)
-        # Diagnostic runs detect at 4 fps — dump the same replay fixture as the
-        # main path so a diagnostic re-run of a reference job feeds the corpus.
-        self._dump_detection_fixture(
-            record_id,
-            probe,
-            ar,
-            cuts,
-            det_frames,
-            text_frames,
-            speaker_segments,
-            sample_fps=4.0,
-        )
-        scenes = self._analyze_scenes(
-            record, record_id, chirp_context, track_summary, cuts=cuts
-        )
-
-        # Run the real planner so the diagnostic shows the chosen crop window +
-        # the decision trigger per shot (observability), not just detections.
-        segments = reconcile(
-            scenes,
-            tracked_frames,
-            cuts,
-            probe["width"],
-            probe["height"],
-            probe["duration"],
-            person_frames=person_frames,
-            rungs=rungs,
-            text_frames=text_frames,
-        )
-        attach_keypoints(segments, probe["fps"], probe["width"], probe["height"])
-        self._store_segment_plan(record_id, segments)
-
-        self.update_status(record_id, "processing", 60)
-        logger.info(f"[reframe:{record_id}] Rendering diagnostic overlay ({ar})...")
-        render_diagnostic(
-            src_path=det_src,
-            out_path=out_path,
-            tracked_frames=tracked_frames,
-            scenes=scenes,
-            src_w=probe["width"],
-            src_h=probe["height"],
-            has_audio=has_audio,
-            person_frames=person_frames,
-            segments=segments,
-            out_w=out_w,
-            out_h=out_h,
-        )
-
-    def _upload_diagnostic(self, record_id, out_path):
+    def _upload_diagnostic(self, record_id: str, out_path: str) -> str:
         """Upload the diagnostic video (already the output canvas size — no transcode)."""
         bucket = os.getenv("GCS_BUCKET")
         uri = f"gs://{bucket}/reframes/{record_id}/diagnostic.mp4"
         deps.storage_svc.upload_from_file(out_path, uri)
         return uri
 
-    # ------------------------------------------------------------------
-    # Pipeline steps
-    # ------------------------------------------------------------------
-
-    def _download_and_probe(self, record, record_id, tmp):
+    def _download_and_probe(
+        self, record: Any, record_id: str, tmp: TempFileManager
+    ) -> tuple[str, dict]:
         """Step 1: Download source video and probe dimensions."""
         from reframe_service import ffprobe_video
 
         self.update_status(record_id, "processing", 5)
-        logger.info(f"[reframe:{record_id}] Downloading source video...")
+        logger.info(
+            f"[reframe:{record_id}] Downloading source video...",
+            extra={
+                "who": "reframe",
+                "where": "_download_and_probe",
+                "what": record.source_gcs_uri,
+                "why": "acquire_source",
+                "how": "download_to_file",
+            },
+        )
         src_path = tmp.create(suffix=".mp4")
         deps.storage_svc.download_to_file(record.source_gcs_uri, src_path)
         probe = ffprobe_video(src_path)
         logger.info(
-            f"[reframe:{record_id}] Source: {probe['width']}x{probe['height']} "
-            f"@ {probe['fps']}fps, {probe['duration']:.1f}s, audio={probe.get('has_audio', True)}"
+            f"[reframe:{record_id}] Source: {probe['width']}x{probe['height']} @ {probe['fps']}fps, {probe['duration']:.1f}s, audio={probe.get('has_audio', True)}",
+            extra={
+                "who": "reframe",
+                "where": "_download_and_probe",
+                "what": f"{probe['width']}x{probe['height']}",
+                "why": "probe_complete",
+                "how": "ffprobe_video",
+            },
         )
-        # `<` (not `<=`): a square source still has width to crop away and the
-        # filter layer handles it (unit-tested) — only true portrait is rejected.
         if probe["width"] < probe["height"]:
             raise ValueError(
-                f"Source not landscape ({probe['width']}x{probe['height']}). "
-                "Reframe requires a landscape or square source."
+                f"Source not landscape ({probe['width']}x{probe['height']}). Reframe requires a landscape or square source."
             )
         return src_path, probe
 
-    def _run_ai_reframe(self, record, record_id, src_path, out_path, probe, tmp):
-        """v2 adaptive letterbox: cuts → detect → Gemini → plan → smooth → render."""
-        from mediapipe_detection import scan_video_detections, track_faces
-        from reframe_filters import OUTPUT_CANVAS
-        from reframe_plan import RUNGS_BY_CANVAS, attach_keypoints, reconcile
-        from reframe_service import render_plan
-        from scene_detect import detect_cuts
-        from text_detect import scan_video_text
+    def _launch_semantic_pass(
+        self, record: Any, cuts: list, chirp_context: str, dur: float
+    ) -> tuple[Any, Any]:
+        """Start async whole-video semantic pass in background if enabled."""
+        return launch_semantic_pass(self, record, cuts, chirp_context, dur)
 
-        has_audio = probe.get("has_audio", True)
-        w, h, dur, fps = (
-            probe["width"],
-            probe["height"],
-            probe["duration"],
-            probe["fps"],
-        )
-        # Output canvas + rung ladder per selected aspect ratio (default 9:16).
-        ar = getattr(record, "output_aspect_ratio", "9:16") or "9:16"
-        out_w, out_h = OUTPUT_CANVAS.get(ar, OUTPUT_CANVAS["9:16"])
-        rungs = RUNGS_BY_CANVAS.get(ar, RUNGS_BY_CANVAS["9:16"])
-        logger.info(f"[reframe:{record_id}] output {ar} ({out_w}x{out_h})")
+    def _detect_and_scan(
+        self,
+        record: Any,
+        record_id: str,
+        src_path: str,
+        probe: dict,
+        ar: str,
+        tmp: TempFileManager,
+    ) -> dict[str, Any]:
+        """Run diarization, cut detection, active-area detection, MediaPipe scan, and semantic pass."""
+        return detect_and_scan_video(self, record, record_id, src_path, probe, ar, tmp)
 
-        # Diarization runs first — speaker turns feed the planner, the talker
-        # eval, and (as labeled context) the whole-video semantic pass.
-        chirp_context, speaker_segments = self._run_diarization(
-            record, record_id, src_path, probe, tmp, has_audio
-        )
-
-        self.update_status(record_id, "analyzing", 15)
-        # OpenCV (which feeds frames to MediaPipe + cut/text detection) can't HW-
-        # decode AV1 in this image and reads 0 frames → no detections → a static
-        # center crop. Detect on a cv2-readable copy (transcoded only if needed);
-        # the render below still uses the AV1 original (ffmpeg decodes it fine).
-        det_src = ensure_cv2_readable(src_path, tmp, record_id)
-        cuts = detect_cuts(det_src)
-        logger.info(f"[reframe:{record_id}] {len(cuts)} cuts detected")
-
-        # Baked-in letterbox/pillarbox bars (cinema-scope trailer inside a 16:9
-        # file): detect the ACTIVE picture rect once and run the whole pipeline
-        # in active coordinates — detection slices frames before inference, the
-        # planner/eval get the active dims as src_w/src_h, and the renderer
-        # trims the same rect via a crop= prefix. None → full frame (no change).
-        from reframe_active_area import (
-            crop_prefilter,
-            detect_active_area,
-            outlier_shot_ranges,
-            rect_px,
-            summarize as summarize_active_area,
+    def _plan_and_evaluate(
+        self,
+        record: Any,
+        record_id: str,
+        scan: dict[str, Any],
+        probe: dict,
+        out_h: int,
+        rungs: Any,
+    ) -> tuple[list[dict], Optional[dict]]:
+        """Reconcile segment plan, apply Pass-2 Gemini verdicts, and store evaluation report."""
+        return plan_and_evaluate_segments(
+            self, record, record_id, scan, probe, out_h, rungs
         )
 
-        active_area = detect_active_area(det_src)
-        _ax, _ay, w, h = rect_px(active_area, probe["width"], probe["height"])
-        src_crop = crop_prefilter((_ax, _ay, w, h), probe["width"], probe["height"])
-        if active_area:
-            logger.info(
-                f"[reframe:{record_id}] baked bars detected — active picture "
-                f"{w}x{h}+{_ax}+{_ay} of {probe['width']}x{probe['height']}"
-            )
+    def _run_ai_reframe(
+        self,
+        record: Any,
+        record_id: str,
+        src_path: str,
+        out_path: str,
+        probe: dict,
+        tmp: TempFileManager,
+    ) -> None:
+        """v2 adaptive letterbox: cuts -> detect -> Gemini -> plan -> smooth -> render."""
+        run_ai_reframe_pipeline(self, record, record_id, src_path, out_path, probe, tmp)
 
-        # Whole-video semantic pass (Phase 4, flag-gated): ONE flash-lite
-        # video+audio call for per-shot judgments (content kind, text
-        # importance, speaker positions) — replaces the text/no-subject/
-        # weak-subject thumbnail escalations. Launched here so it overlaps the
-        # MediaPipe scan below; joined (with the full fallback ladder) just
-        # before planning. Gemini never supplies a coordinate.
-        from reframe_semantic import semantic_pass_enabled
-
-        sem_future = sem_executor = None
-        if semantic_pass_enabled(record):
-            from concurrent.futures import ThreadPoolExecutor
-
-            sem_executor = ThreadPoolExecutor(max_workers=1)
-            sem_future = sem_executor.submit(
-                self._run_async,
-                deps.ai_svc.analyze_video_semantics(
-                    record.source_gcs_uri,
-                    cuts,
-                    chirp_context,
-                    dur,
-                    region=getattr(record, "region", None),
-                ),
-            )
-
-        # Faces + persons in one decode pass; faces drive subject framing, persons
-        # cover subjects with no visible face (distant, profile, walking away).
-        # 4 fps is the AutoFlip-derived floor: at the old 1 fps a fast-cut video
-        # (1-2s shots) yielded 1-2 samples per shot, starving every downstream
-        # gate (STABLE_FRAC, MAR) into blind center crops.
-        det_fps = float(os.getenv("REFRAME_DETECT_FPS", "4.0"))
-        det_frames = scan_video_detections(
-            det_src, sample_fps=det_fps, active_area=active_area
-        )
-        tracked_frames = track_faces(
-            [{"time_sec": f["time_sec"], "faces": f["faces"]} for f in det_frames],
-            cuts=cuts,
-        )
-        person_frames = [
-            {"time_sec": f["time_sec"], "persons": f["persons"]} for f in det_frames
-        ]
-        track_summary = format_track_summary(tracked_frames)
-        deps.firestore_svc.update_reframe_record(
-            record_id, {"track_summary": track_summary}
+    def _collect_semantics(
+        self,
+        record_id: str,
+        future: Any,
+        cuts: list,
+        text_frames: list,
+        duration: float,
+    ) -> tuple[list, str]:
+        return collect_semantics(
+            record_id, future, cuts, text_frames, duration, accumulate_text_cost_on
         )
 
-        # Measure on-screen text bands (independent pass). A persistent wide band
-        # that the subject's crop would clip is escalated to gemini-3.5-flash in
-        # Pass 2 (decision point #1) — the CPU never self-letterboxes from it.
-        text_frames = scan_video_text(det_src, sample_fps=2.0, active_area=active_area)
-
-        # Raw pipeline inputs → GCS: the deterministic replay corpus for
-        # api/tests/test_reframe_regression.py (best-effort, never fails the job).
-        self._dump_detection_fixture(
+    def _dump_detection_fixture(
+        self,
+        record_id: str,
+        probe: dict,
+        canvas: str,
+        cuts: list,
+        det_frames: list,
+        text_frames: list,
+        speaker_segments: list,
+        sample_fps: float,
+        active_area: Any = None,
+    ) -> None:
+        dump_detection_fixture(
             record_id,
             probe,
-            ar,
+            canvas,
             cuts,
             det_frames,
             text_frames,
             speaker_segments,
-            sample_fps=det_fps,
+            sample_fps,
             active_area=active_area,
         )
 
-        # Join the semantic pass (if launched). Failure at any rung of the
-        # ladder → scenes=[] → every segment keeps the full legacy escalation
-        # behavior, so the plan is always renderable.
-        scenes: list = []
-        semantic_status = "off"
-        if sem_future is not None:
-            scenes, semantic_status = self._collect_semantics(
-                record_id, sem_future, cuts, text_frames, dur
-            )
-            sem_executor.shutdown(wait=False)
-
-        self.update_status(record_id, "processing", 40)
-        segments = reconcile(
-            scenes,
-            tracked_frames,
-            cuts,
-            w,
-            h,
-            dur,
-            person_frames=person_frames,
-            rungs=rungs,
-            text_frames=text_frames,
-            # Diarization supplies the two-person-dialogue signal (keep-both/split)
-            # now that the dense Gemini scene pass — which used to label it — is gone.
-            speaker_segments=speaker_segments,
-        )
-        # Minority full-bleed shots (a scope trailer's end slate): their pixels
-        # genuinely extend into the trim, so those segments render untrimmed.
-        for lo, hi in outlier_shot_ranges(active_area, cuts, dur):
-            for seg in segments:
-                if seg["start"] < hi and seg["end"] > lo:
-                    seg["src_full_frame"] = True
-        # Pass 2: let gemini-3.5-flash settle the planner's escalated decision
-        # points (real side text vs background; which subject) before keypoints.
-        # Use det_src (the cv2-readable copy), NOT src_path: render_decision_thumbs
-        # decodes the decision thumbnails with cv2, which can't HW-decode AV1 in
-        # Cloud Run — passing the AV1 original yields blank thumbnails and the model
-        # guesses (a SonyLIV title card was mis-judged "real person" → crop).
-        self._apply_gemini_decisions(
-            record,
-            record_id,
-            segments,
-            det_src,
-            w,
-            h,
-            rungs,
-            tracked_frames,
-            person_frames,
-            active_area=active_area,
-        )
-        attach_keypoints(segments, fps, w, h)
-        self._store_segment_plan(
+    def _store_segment_plan(
+        self,
+        record_id: str,
+        segments: list[dict],
+        semantic_status: str = "off",
+        active_area: Any = None,
+    ) -> None:
+        store_segment_plan(
             record_id,
             segments,
             semantic_status=semantic_status,
-            active_area=summarize_active_area(active_area),
+            active_area=active_area,
         )
-        logger.info(f"[reframe:{record_id}] plan: {len(segments)} segments")
 
-        from mediapipe_detection import detection_backend
+    def _apply_gemini_decisions(
+        self,
+        record: Any,
+        record_id: str,
+        segments: list[dict],
+        src_path: str,
+        src_w: int,
+        src_h: int,
+        rungs: Any,
+        tracked_frames: Optional[list] = None,
+        person_frames: Optional[list] = None,
+        active_area: Any = None,
+    ) -> None:
+        apply_gemini_decisions(
+            record,
+            record_id,
+            segments,
+            src_path,
+            src_w,
+            src_h,
+            rungs,
+            self._run_async,
+            accumulate_text_cost_on,
+            tracked_frames=tracked_frames,
+            person_frames=person_frames,
+            active_area=active_area,
+        )
 
-        report = self._store_eval_report(
+    def _store_eval_report(
+        self,
+        record_id: str,
+        segments: list[dict],
+        tracked_frames: list,
+        person_frames: list,
+        speaker_segments: list,
+        src_w: int,
+        src_h: int,
+        duration: float,
+        canvas_h: int = 1920,
+        rungs: Any = None,
+        perception: Optional[dict] = None,
+    ) -> Optional[dict]:
+        return store_eval_report(
             record_id,
             segments,
             tracked_frames,
             person_frames,
             speaker_segments,
-            w,
-            h,
-            dur,
-            canvas_h=out_h,
+            src_w,
+            src_h,
+            duration,
+            canvas_h=canvas_h,
             rungs=rungs,
-            perception={
-                **detection_backend(),
-                "sample_fps": det_fps,
-                "frames_expected": int(dur * det_fps),
-                "active_area": summarize_active_area(active_area),
-            },
+            perception=perception,
         )
-
-        self.update_status(record_id, "processing", 50)
-        render_plan(
-            src_path=src_path,
-            out_path=out_path,
-            segments=segments,
-            src_w=w,
-            src_h=h,
-            has_audio=has_audio,
-            out_w=out_w,
-            out_h=out_h,
-            src_crop=src_crop,
-            full_src_wh=(probe["width"], probe["height"]),
-        )
-
-        # Now that the canvas exists, validate OUTPUT pixels (catches render/encode
-        # defects the geometry-only eval can't see). Folds into the eval report.
-        self._store_render_check(
-            record_id, report, out_path, segments, w, h, out_w, out_h
-        )
-
-    def _collect_semantics(self, record_id, future, cuts, text_frames, duration):
-        """Join the semantic-pass thread → (scenes, status). Best-effort.
-
-        Ladder: call failed / timed out → legacy; payload fails validation →
-        legacy; partial validity → the valid shots only (uncovered spans get
-        `{}` = deterministic behavior). Usage is accounted whenever a response
-        exists, even an unusable one.
-        """
-        from reframe_semantic import reconcile_semantics, validate
-        from text_detect import persistent_text_regions
-
-        try:
-            result = future.result(timeout=180)
-        except Exception as e:
-            logger.warning(
-                f"[reframe:{record_id}] semantic pass failed ({e}) — "
-                "falling back to legacy escalations"
-            )
-            return [], "fallback_legacy"
-        usage = result.usage
-        if usage and usage.cost_usd:
-            accumulate_text_cost_on(
-                "reframe",
-                record_id,
-                cost_usd=usage.cost_usd,
-                input_tokens=usage.input_tokens,
-                output_tokens=usage.output_tokens,
-                model_name=usage.model_name,
-            )
-        shots = validate(result.data, cuts, duration)
-        if shots is None:
-            logger.warning(
-                f"[reframe:{record_id}] semantic payload unusable — "
-                "falling back to legacy escalations"
-            )
-            return [], "fallback_legacy"
-        try:
-            deps.firestore_svc.update_reframe_record(
-                record_id, {"semantic_shots": shots}
-            )
-        except Exception as e:  # observability only — never fails the job
-            logger.warning(f"[reframe:{record_id}] semantic_shots store skipped ({e})")
-        scenes = reconcile_semantics(shots, persistent_text_regions(text_frames))
-        covered = sum(s["end_sec"] - s["start_sec"] for s in shots)
-        status = "ok" if covered >= 0.95 * max(duration, 0.001) else "partial"
-        logger.info(
-            f"[reframe:{record_id}] semantic pass: {len(scenes)} shots, "
-            f"{covered:.1f}/{duration:.1f}s covered ({status})"
-        )
-        return scenes, status
-
-    def _dump_detection_fixture(
-        self,
-        record_id,
-        probe,
-        canvas,
-        cuts,
-        det_frames,
-        text_frames,
-        speaker_segments,
-        sample_fps,
-        active_area=None,
-    ):
-        """Persist the raw pipeline inputs to GCS (gzipped JSON).
-
-        Everything the pure planning/eval pipeline consumes, so a production job
-        can be replayed deterministically in CI (see reframe_replay +
-        api/tests/test_reframe_regression.py). Best-effort: never fails the job.
-        """
-        import gzip
-        import json
-
-        try:
-            payload = {
-                "record_id": record_id,
-                "canvas": canvas,
-                "sample_fps": sample_fps,
-                "probe": {
-                    k: probe.get(k)
-                    for k in ("width", "height", "duration", "fps", "has_audio")
-                },
-                # Detections are normalized to this rect (replay must plan in
-                # active-picture dims, not probe dims). Absent → full frame.
-                "active_area": active_area,
-                "cuts": cuts,
-                "det_frames": det_frames,
-                "text_frames": text_frames,
-                "speaker_segments": speaker_segments,
-            }
-            data = gzip.compress(json.dumps(payload, default=float).encode("utf-8"))
-            uri = deps.storage_svc.upload_bytes(
-                data,
-                f"reframes/{record_id}/detections.json.gz",
-                content_type="application/gzip",
-            )
-            logger.info(
-                f"[reframe:{record_id}] detection fixture: {uri} ({len(data) // 1024} KiB)"
-            )
-        except Exception as e:
-            logger.warning(f"[reframe:{record_id}] fixture dump skipped ({e})")
-
-    def _store_segment_plan(
-        self, record_id, segments, semantic_status="off", active_area=None
-    ):
-        """Persist the per-segment decision trace + a run summary (observability)."""
-        from collections import Counter
-
-        compact = [
-            {
-                "start": round(s["start"], 2),
-                "end": round(s["end"], 2),
-                "layout": s["layout"],
-                # split has no inner AR (stacked panels fill the canvas) → null
-                "inner_ar": list(s["inner_ar"]) if s["inner_ar"] else None,
-                "reason": s.get("reason", ""),
-                "trace": s.get("trace"),
-                # decision point #1+ : the judgment deferred to gemini-3.5-flash
-                "escalate": s.get("escalate"),
-                # False = mid-shot boundary (subdivision / speaker turn): the pan
-                # eases across it and letterbox verdicts may extend across it.
-                "starts_at_cut": s.get("starts_at_cut"),
-            }
-            for s in segments
-        ]
-        ar = Counter(
-            "split"
-            if s["inner_ar"] is None
-            else f"{s['inner_ar'][0]}:{s['inner_ar'][1]}"
-            for s in segments
-        )
-        src = Counter(s.get("trace", {}).get("source") for s in segments)
-        # Why did letterboxing (16:9) happen?
-        why16 = Counter()
-        for s in segments:
-            if s["inner_ar"] is None or tuple(s["inner_ar"]) != (16, 9):
-                continue
-            tr = s.get("trace", {})
-            if tr.get("layout") == "keep_both":
-                why16["two-face span"] += 1
-            elif tr.get("source") == "semantic_graphic" or tr.get("text_keep"):
-                # Semantic pass: essential text/graphic, geometrically grounded.
-                why16["semantic text/graphic"] += 1
-            elif tr.get("source") in ("gemini_text", "gemini_graphic"):
-                # Pass-2 verdict letterboxed to keep side text / a full-frame graphic.
-                why16["gemini text/graphic"] += 1
-            else:
-                why16["wide subject"] += 1
-        summary = {
-            "segments": len(segments),
-            "aspect_ratios": dict(ar),
-            "sources": dict(src),
-            "letterbox_16x9_reasons": dict(why16),
-            "hysteresis_segments": sum(
-                1 for s in segments if s.get("trace", {}).get("hysteresis")
-            ),
-            "speaker_segments": src.get("speaker", 0),
-            "split_segments": sum(1 for s in segments if s["layout"] == "split"),
-            "semantic": {
-                "status": semantic_status,
-                "text_keep_segments": sum(
-                    1 for s in segments if s.get("trace", {}).get("text_keep")
-                ),
-            },
-            # Baked-in source bars trimmed for this job (None = full frame).
-            "active_area": active_area,
-            # Segments rendered untrimmed (their shots genuinely fill the container).
-            "full_frame_segments": sum(1 for s in segments if s.get("src_full_frame")),
-        }
-        # Record the (post-verdict) escalation call plan for observability.
-        from reframe_escalation import plan_batches
-        from reframe_plan import collect_escalation_points
-
-        batch = plan_batches(collect_escalation_points(segments))
-        summary["escalations"] = {
-            "n_points": batch["n_points"],
-            "n_clusters": batch["n_clusters"],
-            "n_calls": batch["n_calls"],
-            "dropped": len(batch["dropped"]),
-        }
-        deps.firestore_svc.update_reframe_record(
-            record_id, {"segment_plan": compact, "reframe_summary": summary}
-        )
-
-    def _apply_gemini_decisions(
-        self,
-        record,
-        record_id,
-        segments,
-        src_path,
-        src_w,
-        src_h,
-        rungs,
-        tracked_frames=None,
-        person_frames=None,
-        active_area=None,
-    ):
-        """Pass 2: resolve the planner's escalated decision points (gemini-3.5-flash).
-
-        Collects the escalations, batches them (clustered, sequential), calls the
-        decision model, and applies the verdicts in place. Best-effort: any
-        failure leaves every segment on its deterministic fallback, so the plan is
-        always renderable.
-        """
-        from reframe_decide import apply_verdicts, harmonize_letterbox
-        from reframe_escalation import plan_batches, summarize
-        from reframe_plan import collect_escalation_points
-
-        points = collect_escalation_points(segments)
-        if not points:
-            return
-        batch = plan_batches(points)
-        logger.info(f"[reframe:{record_id}] {summarize(batch)}")
-        if not batch["batches"]:
-            return
-        try:
-            result = self._run_async(
-                deps.ai_svc.decide_escalations(
-                    batch["batches"],
-                    src_path,
-                    region=getattr(record, "region", None),
-                    canvas=getattr(record, "output_aspect_ratio", "9:16") or "9:16",
-                    active_area=active_area,
-                )
-            )
-        except Exception as e:
-            logger.warning(f"[reframe:{record_id}] gemini decisions skipped ({e})")
-            return
-        verdicts = result.data.get("verdicts", [])
-        changed = apply_verdicts(
-            segments, verdicts, src_w, src_h, rungs, tracked_frames, person_frames
-        )
-        # A text letterbox that covers only part of a shot would pop its bars
-        # on/off at a subdivision boundary mid-shot — extend it to same-shot
-        # neighbors that also measured text.
-        widened = harmonize_letterbox(segments, src_w, src_h, rungs)
-        logger.info(
-            f"[reframe:{record_id}] gemini verdicts: {len(verdicts)} returned, "
-            f"{changed} segment(s) re-framed, {widened} widened across shots"
-        )
-        usage = result.usage
-        if usage and usage.cost_usd:
-            accumulate_text_cost_on(
-                "reframe",
-                record_id,
-                cost_usd=usage.cost_usd,
-                input_tokens=usage.input_tokens,
-                output_tokens=usage.output_tokens,
-                model_name=usage.model_name,
-            )
-
-    def _store_eval_report(
-        self,
-        record_id,
-        segments,
-        tracked_frames,
-        person_frames,
-        speaker_segments,
-        src_w,
-        src_h,
-        duration,
-        canvas_h=1920,
-        rungs=None,
-        perception=None,
-    ):
-        """Reference-free quality report card (runs before render → visible mid-job).
-
-        Scores the plan against signals that didn't decide it (all detections +
-        Chirp speech turns). Never fails the reframe — degrade to no report.
-        """
-        try:
-            from reframe_eval import evaluate
-
-            speech = [
-                {"start_sec": s.get("start_sec"), "end_sec": s.get("end_sec")}
-                for s in (speaker_segments or [])
-            ]
-            report = evaluate(
-                segments,
-                tracked_frames,
-                person_frames,
-                speech,
-                src_w,
-                src_h,
-                duration,
-                canvas_h=canvas_h,
-                rungs=rungs,
-                perception=perception,
-            )
-            if not report:
-                return None
-            # Stash source dims so the typed plan model (reframe_plan_model) can
-            # reconstruct + EXPLAIN a stored record without external metadata.
-            report.setdefault("meta", {}).update({"src_w": src_w, "src_h": src_h})
-            deps.firestore_svc.update_reframe_record(record_id, {"eval_report": report})
-            lb, talker = report["letterbox"], report.get("talker") or {}
-            failing = report.get("failing") or []
-            fail_str = (
-                " failing=" + ",".join(f"{f['metric']}:{f['value']}" for f in failing)
-                if failing
-                else ""
-            )
-            logger.info(
-                f"[reframe:{record_id}] eval: overall={report['overall']} "
-                f"face_cut={lb['face_cut_rate']} over_lb={lb['over_letterbox_rate']} "
-                f"av_sync={talker.get('av_sync_score')} "
-                f"miss={talker.get('speaker_miss_rate')}{fail_str}"
-            )
-            return report
-        except Exception as e:
-            logger.warning(f"[reframe:{record_id}] eval skipped ({e})")
-            return None
 
     def _store_render_check(
-        self, record_id, report, out_path, segments, src_w, src_h, out_w, out_h
-    ):
-        """Sampled OUTPUT-pixel validation (runs after render). Best-effort.
-
-        Decodes a few output frames and checks the framed subject actually landed
-        where the plan predicted — catches black frames, wrong crop offsets, broken
-        split panels. Folds into the eval report (so the scorecard shows it) and
-        rolls its flag into `overall`. Never fails the reframe.
-        """
-        try:
-            from reframe_eval import _rollup
-            from reframe_render_check import check_render
-
-            block = check_render(out_path, segments, src_w, src_h, out_w, out_h)
-            if not block:
-                return
-            if report is not None:
-                report["render"] = block
-                report["overall"] = _rollup(
-                    report.get("overall", "na"), block.get("flag", "na")
-                )
-                update = {"eval_report": report}
-            else:
-                update = {"eval_report": {"render": block, "overall": block["flag"]}}
-            deps.firestore_svc.update_reframe_record(record_id, update)
-            logger.info(
-                f"[reframe:{record_id}] render-check: {block['flag']} "
-                f"nonblank={block['nonblank_rate']} "
-                f"face={block.get('face_present_rate')} "
-                f"panels={block.get('split_panel_fill_rate')}"
-            )
-        except Exception as e:
-            logger.warning(f"[reframe:{record_id}] render-check skipped ({e})")
-
-    def _run_diarization(self, record, record_id, src_path, probe, tmp, has_audio):
-        """Step 2: Chirp 3 speaker diarization — runs whenever the source has audio.
-
-        Speaker turns only improve framing (who's talking → which face to follow);
-        Gemini ignores them when there's no dialogue, so always run when audio
-        is present rather than gating on a manual content type.
-        """
-        chirp_context = ""
-        speaker_segments: list = []
-        logger.info(
-            f"[reframe:{record_id}] Diarization: audio={has_audio}, "
-            f"svc={'yes' if deps.diarization_svc else 'NO'}"
+        self,
+        record_id: str,
+        report: Optional[dict],
+        out_path: str,
+        segments: list[dict],
+        src_w: int,
+        src_h: int,
+        out_w: int,
+        out_h: int,
+    ) -> None:
+        store_render_check(
+            record_id, report, out_path, segments, src_w, src_h, out_w, out_h
         )
-        if not (has_audio and deps.diarization_svc):
-            return chirp_context, speaker_segments
 
-        self.update_status(record_id, "analyzing", 10)
-        logger.info(f"[reframe:{record_id}] Running Chirp 3 diarization...")
-        try:
-            from diarization_service import extract_audio
-
-            audio_path = tmp.create(suffix=".wav")
-            extract_audio(src_path, audio_path)
-
-            bucket = os.getenv("GCS_BUCKET")
-            audio_uri = f"gs://{bucket}/reframes/{record_id}/audio.wav"
-            deps.storage_svc.upload_from_file(audio_path, audio_uri)
-
-            result = deps.diarization_svc.transcribe_with_diarization(
-                audio_gcs_uri=audio_uri,
-                storage_svc=deps.storage_svc,
-                record_id=record_id,
-                audio_duration=probe["duration"],
-            )
-            speaker_segments = result.get("speaker_segments", [])
-            deps.firestore_svc.update_reframe_record(
-                record_id,
-                {
-                    "speaker_segments": [
-                        SpeakerSegment(**s).dict() for s in speaker_segments
-                    ]
-                },
-            )
-            logger.info(
-                f"[reframe:{record_id}] Chirp 3: {len(speaker_segments)} segments"
-            )
-            chirp_context = format_chirp_context(speaker_segments)
-            accumulate_diarization_cost("reframe", record_id, probe["duration"] / 60.0)
-        except Exception as e:
-            # Diarization only enriches speaker framing — never fail the reframe
-            # because it broke. Degrade to no speaker context.
-            logger.warning(f"[reframe:{record_id}] Diarization skipped ({e})")
-        return chirp_context, speaker_segments
+    def _run_diarization(
+        self,
+        record: Any,
+        record_id: str,
+        src_path: str,
+        probe: dict,
+        tmp: TempFileManager,
+        has_audio: bool,
+    ) -> tuple[str, list]:
+        return run_diarization(
+            record_id, src_path, probe, tmp, has_audio, self.update_status
+        )
 
     def _analyze_scenes(
         self,
-        record,
-        record_id,
-        chirp_context,
-        track_summary="",
-        cuts=None,
-    ):
-        """Step 3b: Gemini scene analysis, informed by cuts + MediaPipe tracks.
-
-        When the record opts into deterministic-only planning, Gemini is skipped
-        entirely and an empty scene list is returned — `reconcile` then plans from
-        CPU detections alone (faces/persons/text), with no Gemini coverage floor.
-        """
-        self.update_status(record_id, "analyzing", 20)
-        if getattr(record, "deterministic_only", False):
-            logger.info(
-                f"[reframe:{record_id}] deterministic-only: skipping Gemini scene analysis"
-            )
-            return []
-        logger.info(f"[reframe:{record_id}] Gemini scene analysis")
-
-        # Combine Chirp + track summary as context for Gemini
-        context = "\n\n".join(filter(None, [chirp_context, track_summary]))
-        result = self._run_async(
-            deps.ai_svc.analyze_video_scenes(
-                gcs_uri=record.source_gcs_uri,
-                mime_type="video/mp4",
-                chirp_context=context,
-                cuts=cuts,
-                model_id=getattr(record, "model_id", None),
-                region=getattr(record, "region", None),
-            )
-        )
-        scenes = result.data.get("scenes", [])
-        deps.firestore_svc.update_reframe_record(
+        record: Any,
+        record_id: str,
+        chirp_context: str,
+        track_summary: str = "",
+        cuts: Optional[list] = None,
+    ) -> list:
+        return analyze_scenes(
+            record,
             record_id,
-            {
-                "prompt_variables": result.data.get("prompt_variables", {}),
-                "prompt_text_used": result.data.get("prompt_text_used", ""),
-                "gemini_scenes": scenes,
+            chirp_context,
+            track_summary,
+            cuts,
+            self._run_async,
+            self.update_status,
+            accumulate_text_cost_on,
+        )
+
+    def _upload_and_encode(
+        self, record: Any, record_id: str, out_path: str, probe: dict
+    ) -> str:
+        """Step 5-6: Upload to GCS and transcode."""
+        has_audio = probe.get("has_audio", True)
+        ar, _out_w, out_h, _rungs = _resolve_canvas_and_rungs(record)
+        logger.info(
+            f"[reframe:{record_id}] Uploading cropped video...",
+            extra={
+                "who": "reframe",
+                "where": "_upload_and_encode",
+                "what": f"record={record_id}",
+                "why": "intermediate_upload",
+                "how": "upload_from_file",
             },
         )
-        # Accumulate (don't overwrite) Gemini usage so diarization/transcoder
-        # costs recorded before/after this step survive.
-        usage = result.usage
-        accumulate_text_cost_on(
-            "reframe",
-            record_id,
-            cost_usd=usage.cost_usd,
-            input_tokens=usage.input_tokens,
-            output_tokens=usage.output_tokens,
-            model_name=usage.model_name,
-        )
-        logger.info(f"[reframe:{record_id}] {len(scenes)} scenes from Gemini")
-        return scenes
-
-    def _upload_and_encode(self, record, record_id, out_path, probe):
-        """Step 5-6: Upload to GCS and transcode."""
-        from reframe_filters import OUTPUT_CANVAS
-
-        has_audio = probe.get("has_audio", True)
-        ar = getattr(record, "output_aspect_ratio", "9:16") or "9:16"
-        _out_w, out_h = OUTPUT_CANVAS.get(ar, OUTPUT_CANVAS["9:16"])
-        logger.info(f"[reframe:{record_id}] Uploading cropped video...")
         bucket = os.getenv("GCS_BUCKET")
         intermediate_uri = f"gs://{bucket}/reframes/{record_id}/cropped.mp4"
         deps.storage_svc.upload_from_file(out_path, intermediate_uri)
@@ -888,8 +371,16 @@ class ReframeProcessor(JobProcessor):
         if not deps.transcoder_svc:
             return intermediate_uri
 
-        logger.info(f"[reframe:{record_id}] Starting Transcoder encode ({ar})...")
-        # v2 hands a finished 1080-wide canvas (out_h per aspect ratio) — re-encode.
+        logger.info(
+            f"[reframe:{record_id}] Starting Transcoder encode ({ar})...",
+            extra={
+                "who": "reframe",
+                "where": "_upload_and_encode",
+                "what": f"ar={ar},out_h={out_h}",
+                "why": "transcode_final",
+                "how": "reframe_encode",
+            },
+        )
         job_name, output_uri = deps.transcoder_svc.reframe_encode(
             record_id,
             intermediate_uri,
@@ -901,12 +392,21 @@ class ReframeProcessor(JobProcessor):
         accumulate_transcoder_cost("reframe", record_id, probe["duration"] / 60.0)
         return output_uri
 
-    def _poll_transcoder(self, record_id, job_name):
+    def _poll_transcoder(self, record_id: str, job_name: str) -> None:
         """Poll transcoder job until complete or timeout."""
         elapsed, timeout = 0, 600
         while elapsed < timeout:
             status = deps.transcoder_svc.get_job_status(job_name)
-            logger.info(f"[reframe:{record_id}] Transcoder: {status} ({elapsed}s)")
+            logger.info(
+                f"[reframe:{record_id}] Transcoder: {status} ({elapsed}s)",
+                extra={
+                    "who": "reframe",
+                    "where": "_poll_transcoder",
+                    "what": f"status={status},elapsed={elapsed}s",
+                    "why": "poll_transcoder",
+                    "how": "get_job_status",
+                },
+            )
             if status == "SUCCEEDED":
                 return
             if status in ("FAILED", "UNKNOWN"):

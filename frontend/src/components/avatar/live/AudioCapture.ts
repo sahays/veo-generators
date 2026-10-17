@@ -30,27 +30,9 @@ export class AudioCapture {
     await this.context.audioWorklet.addModule('/audio-capture-worklet.js')
     this.source = this.context.createMediaStreamSource(this.stream)
     this.node = new AudioWorkletNode(this.context, 'audio-capture-processor')
-    let chunkCount = 0
     this.node.port.onmessage = (e) => {
       if (this.muted) return
-      const pcm = e.data as ArrayBuffer
-      // Log first chunk + occasional samples so we can confirm non-silent
-      // capture from the browser console.
-      if (chunkCount < 3 || chunkCount % 100 === 0) {
-        const view = new DataView(pcm)
-        let peak = 0
-        for (let i = 0; i < view.byteLength; i += 2) {
-          const s = Math.abs(view.getInt16(i, true))
-          if (s > peak) peak = s
-        }
-        // eslint-disable-next-line no-console
-        console.log(
-          `[mic] chunk #${chunkCount} ${pcm.byteLength}B peak=${peak} ` +
-          `ctx=${this.context?.state}`,
-        )
-      }
-      chunkCount++
-      onChunk(pcm)
+      onChunk(e.data as ArrayBuffer)
     }
     this.source.connect(this.node)
     // Chrome won't run a worklet that has no downstream connection. Route

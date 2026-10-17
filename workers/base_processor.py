@@ -6,7 +6,7 @@ import pathlib
 import tempfile
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Sequence
+from typing import Any, Awaitable, Sequence
 
 import deps
 
@@ -34,7 +34,7 @@ def resolve_variant_status(variants: Sequence[dict]) -> str:
 class TempFileManager:
     """Tracks temporary files and cleans them up."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.files: list[str] = []
 
     def create(self, suffix: str = ".mp4") -> str:
@@ -82,11 +82,11 @@ class JobProcessor(ABC):
         """Fetch pending records from Firestore."""
 
     @abstractmethod
-    def process(self, record) -> None:
+    def process(self, record: Any) -> None:
         """Process a single job record."""
 
     def update_status(
-        self, record_id: str, status: str, progress: int, **extra
+        self, record_id: str, status: str, progress: int, **extra: Any
     ) -> None:
         """Persist status/progress updates, adding completedAt on terminal states."""
         updates = {"status": status, "progress_pct": progress, **extra}
@@ -101,7 +101,7 @@ class JobProcessor(ABC):
         if status in ("completed", "failed"):
             updates["completedAt"] = datetime.utcnow()
 
-    def _run_async(self, coro):
+    def _run_async(self, coro: Awaitable[Any]) -> Any:
         """Drive an async coroutine from sync `process` code on its own loop."""
         loop = asyncio.new_event_loop()
         try:

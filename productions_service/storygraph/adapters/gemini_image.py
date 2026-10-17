@@ -3,11 +3,23 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from google import genai
 from google.genai import types
 
 from ..errors import StoryGraphError
+
+
+def _extract_inline_image(resp: Any) -> bytes | None:
+    """Extract the first inline image payload from a Gemini `GenerateContentResponse`."""
+    for cand in resp.candidates or []:
+        if not cand.content or not cand.content.parts:
+            continue
+        for part in cand.content.parts:
+            if part.inline_data and part.inline_data.data:
+                return bytes(part.inline_data.data)
+    return None
 
 
 class GeminiImageGenerator:
@@ -34,11 +46,10 @@ class GeminiImageGenerator:
             client = genai.Client(
                 vertexai=True, project=self.project, location=self.location
             )
-            contents: list = []
-            for img_bytes in reference_images or []:
-                contents.append(
-                    types.Part.from_bytes(data=img_bytes, mime_type="image/png")
-                )
+            contents: list[Any] = [
+                types.Part.from_bytes(data=img_bytes, mime_type="image/png")
+                for img_bytes in (reference_images or [])
+            ]
             contents.append(f"{prompt} (Aspect ratio: {aspect_ratio})")
             resp = client.models.generate_content(
                 model=self.model,
@@ -48,12 +59,9 @@ class GeminiImageGenerator:
                     seed=seed,
                 ),
             )
-            for cand in resp.candidates or []:
-                if not cand.content or not cand.content.parts:
-                    continue
-                for part in cand.content.parts:
-                    if part.inline_data and part.inline_data.data:
-                        return bytes(part.inline_data.data)
+            img_data = _extract_inline_image(resp)
+            if img_data is not None:
+                return img_data
         except Exception as exc:
             raise StoryGraphError(
                 f"GeminiImageGenerator ({self.model}) failed: {exc}"

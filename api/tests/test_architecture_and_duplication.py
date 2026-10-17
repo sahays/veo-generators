@@ -4,12 +4,13 @@ import ast
 import importlib.util
 import sys
 from pathlib import Path
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 CHECKER_PATH = REPO_ROOT / "scripts" / "check_architecture.py"
 
 
-def _load_checker():
+def _load_checker() -> Any:
     spec = importlib.util.spec_from_file_location("check_architecture", CHECKER_PATH)
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
@@ -18,7 +19,7 @@ def _load_checker():
     return mod
 
 
-def test_codebase_has_no_duplicate_code_or_tier_breakers():
+def test_codebase_has_no_duplicate_code_or_tier_breakers() -> None:
     """Verify the entire Python + TypeScript codebase has 0 duplicate AST blocks and 0 tier-breakers."""
     checker = _load_checker()
     violations = checker.run_all_checks()
@@ -28,7 +29,7 @@ def test_codebase_has_no_duplicate_code_or_tier_breakers():
     assert not violations, f"AST Static Checker found violations:\n{formatted}"
 
 
-def test_python_ast_normalizer_detects_renamed_clones():
+def test_python_ast_normalizer_detects_renamed_clones() -> None:
     """Verify the Python AST canonical normalizer catches cloned functions even when variables are renamed."""
     checker = _load_checker()
     fn_a = """
@@ -60,7 +61,7 @@ def duplicate_calculation(elements, multiplier):
     assert dump_a == dump_b
 
 
-def test_ts_ast_normalizer_detects_structural_clones():
+def test_ts_ast_normalizer_detects_structural_clones() -> None:
     """Verify the TypeScript AST token normalizer catches structural duplicates with renamed identifiers."""
     checker = _load_checker()
     ts_a = "{ const x = a + b; if (x > 10) { return x * 2; } return 0; }"
@@ -70,20 +71,20 @@ def test_ts_ast_normalizer_detects_structural_clones():
     assert sig_a == sig_b
 
 
-def test_tier_classification_enforces_hierarchy():
+def test_tier_classification_enforces_hierarchy() -> None:
     """Verify both backend and frontend tier classifiers enforce expected hierarchy."""
     checker = _load_checker()
     assert checker.classify_backend_module(
-        "api/models_records.py"
+        "api/models/models_records.py"
     ) < checker.classify_backend_module("api/storage_service.py")
     assert checker.classify_backend_module(
         "api/storage_service.py"
     ) < checker.classify_backend_module("api/routers/_crud.py")
     assert checker.classify_backend_module(
         "api/routers/_crud.py"
-    ) < checker.classify_backend_module("api/routers/adapts.py")
+    ) < checker.classify_backend_module("api/routers/media/adapts.py")
     assert checker.classify_backend_module(
-        "api/routers/adapts.py"
+        "api/routers/media/adapts.py"
     ) < checker.classify_backend_module("api/main.py")
 
     t_types, _ = checker.classify_frontend_module("types/project.ts")
@@ -99,7 +100,7 @@ def test_tier_classification_enforces_hierarchy():
     assert dom_a == "adapts"
 
 
-def test_codebase_has_no_ui_component_lapses():
+def test_codebase_has_no_ui_component_lapses() -> None:
     """Verify no raw <button>, <textarea>, <select>, or text <input> elements exist outside components/ui/."""
     comp_checker_path = REPO_ROOT / "scripts" / "check_components.py"
     spec = importlib.util.spec_from_file_location("check_components", comp_checker_path)

@@ -7,7 +7,7 @@ import { EditableNameField } from '@/components/shared/EditableNameField'
 interface WorkPageHeaderProps {
   backPath: string
   backLabel: string
-  record: { display_name?: string; createdAt?: string; status: string; progress_pct?: number; [key: string]: any }
+  record: { display_name?: string; createdAt?: string; status: string; progress_pct?: number }
   defaultName: string
   nameField?: string
   onSaveName: (newName: string) => Promise<void>
@@ -30,40 +30,26 @@ export const WorkPageHeader = ({
   const navigate = useNavigate()
   const statusCfg = statusConfig[record.status] || statusConfig.pending || { label: record.status, color: 'text-slate-500' }
   const isProcessing = activeStatuses.includes(record.status)
+  const rawFallback = (record as Record<string, unknown>)[nameField]
+  const fallbackField = typeof rawFallback === 'string' ? rawFallback : ''
 
   return (
     <>
       <div className="flex items-center justify-between">
-        <Button
-          variant="link"
-          icon={ArrowLeft}
-          onClick={() => navigate(backPath)}
-          className="text-sm"
-        >
+        <Button variant="link" icon={ArrowLeft} onClick={() => navigate(backPath)} className="text-sm">
           {backLabel}
         </Button>
-        {record.createdAt && (
-          <span className="text-xs text-muted-foreground">{getTimeAgo(record.createdAt)}</span>
-        )}
+        {record.createdAt && <span className="text-xs text-muted-foreground">{getTimeAgo(record.createdAt)}</span>}
       </div>
-
       <div className="space-y-2">
-        <EditableNameField
-          value={record.display_name || record[nameField] || ''}
-          onSave={onSaveName}
-          defaultText={defaultName}
-        />
+        <EditableNameField value={record.display_name || fallbackField} onSave={onSaveName} defaultText={defaultName} />
         <div className="flex items-center gap-2">
-          <span className={cn("text-sm font-medium", statusCfg.color)}>{statusCfg.label}</span>
+          <span className={cn('text-sm font-medium', statusCfg.color)}>{statusCfg.label}</span>
           {isProcessing && record.progress_pct !== undefined && (
             <span className="text-xs text-muted-foreground">({record.progress_pct}%)</span>
           )}
         </div>
-        {children && (
-          <div className="flex items-center gap-1.5">
-            {children}
-          </div>
-        )}
+        {children && <div className="flex items-center gap-1.5">{children}</div>}
       </div>
     </>
   )

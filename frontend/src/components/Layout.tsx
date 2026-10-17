@@ -70,6 +70,21 @@ function getPageTitle(pathname: string): string {
   return 'VeoGen'
 }
 
+const ActiveLinkDecorations = () => (
+  <>
+    <motion.div
+      layoutId="sidebar-active-pill"
+      transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+      className="absolute inset-0 rounded-[6px] bg-gradient-to-r from-orange-500/18 via-orange-500/10 to-amber-500/5 border border-orange-500/30 shadow-[0_2px_10px_-2px_rgba(249,115,22,0.18)] pointer-events-none"
+    />
+    <motion.div
+      layoutId="sidebar-active-bar"
+      transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+      className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-gradient-to-b from-orange-400 to-orange-600 pointer-events-none"
+    />
+  </>
+)
+
 const SidebarNavLink = ({
   item,
   collapsed,
@@ -86,50 +101,24 @@ const SidebarNavLink = ({
       className={({ isActive }) =>
         cn(
           'relative flex items-center rounded-[6px] transition-all duration-200 group cursor-pointer overflow-hidden',
-          collapsed
-            ? 'h-10 w-10 mx-auto justify-center px-0'
-            : 'h-9 w-full px-3 gap-3',
-          isActive
-            ? 'text-accent font-semibold'
-            : 'text-sidebar-text/80 hover:bg-orange-500/8 hover:text-sidebar-text',
+          collapsed ? 'h-10 w-10 mx-auto justify-center px-0' : 'h-9 w-full px-3 gap-3',
+          isActive ? 'text-accent font-semibold' : 'text-sidebar-text/80 hover:bg-orange-500/8 hover:text-sidebar-text',
         )
       }
     >
       {({ isActive }) => (
         <>
-          {isActive && (
-            <motion.div
-              layoutId="sidebar-active-pill"
-              transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-              className="absolute inset-0 rounded-[6px] bg-gradient-to-r from-orange-500/18 via-orange-500/10 to-amber-500/5 border border-orange-500/30 shadow-[0_2px_10px_-2px_rgba(249,115,22,0.18)] pointer-events-none"
-            />
-          )}
-          {isActive && (
-            <motion.div
-              layoutId="sidebar-active-bar"
-              transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-              className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-gradient-to-b from-orange-400 to-orange-600 pointer-events-none"
-            />
-          )}
+          {isActive && <ActiveLinkDecorations />}
           <item.icon
             size={18}
-            className={cn(
-              'relative z-10 shrink-0 transition-transform duration-200 group-hover:scale-105',
-              isActive && 'text-accent',
-            )}
+            className={cn('relative z-10 shrink-0 transition-transform duration-200 group-hover:scale-105', isActive && 'text-accent')}
           />
-          {!collapsed && (
-            <span className="relative z-10 text-sm font-medium truncate">
-              {item.name}
-            </span>
-          )}
+          {!collapsed && <span className="relative z-10 text-sm font-medium truncate">{item.name}</span>}
         </>
       )}
     </NavLink>
   )
-
   if (!collapsed) return linkEl
-
   return (
     <Tooltip>
       <TooltipTrigger asChild>{linkEl}</TooltipTrigger>
@@ -138,33 +127,7 @@ const SidebarNavLink = ({
   )
 }
 
-export const Sidebar = () => {
-  const {
-    isSidebarCollapsed,
-    toggleCollapse,
-    isSidebarOpen,
-    setSidebarOpen,
-    theme,
-    toggleTheme,
-  } = useLayoutStore()
-  const { isMaster, isPower, logout } = useAuthStore()
-  const canWrite = isMaster || isPower
-
-  const location = useLocation()
-  const pageTitle = getPageTitle(location.pathname)
-
-  useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-    }
-  }, [theme])
-
-  useEffect(() => {
-    document.title = pageTitle === 'VeoGen' ? 'VeoGen' : `${pageTitle} | VeoGen`
-  }, [pageTitle])
-
+function getNavLists(canWrite: boolean, isMaster: boolean) {
   const navItems: NavItem[] = [
     ...(canWrite ? [{ name: 'Ask Aanya', icon: Bot, path: '/chat' }] : []),
     ...(canWrite ? [{ name: 'Avatars', icon: User, path: '/avatars' }] : []),
@@ -176,53 +139,174 @@ export const Sidebar = () => {
     { name: 'Adapts', icon: LayoutGrid, path: '/adapts' },
     { name: 'Dubbing', icon: Languages, path: '/dubbing' },
   ]
-
   const settingsItems: NavItem[] = [
     { name: 'Files', icon: Upload, path: '/uploads' },
     { name: 'System Prompts', icon: FileText, path: '/prompts' },
-    ...(canWrite
-      ? [
-          { name: 'Models', icon: Cpu, path: '/models' },
-          { name: 'Diagnostics', icon: Activity, path: '/diagnostics' },
-        ]
-      : []),
+    ...(canWrite ? [{ name: 'Models', icon: Cpu, path: '/models' }, { name: 'Diagnostics', icon: Activity, path: '/diagnostics' }] : []),
     ...(isMaster ? [{ name: 'Invite Codes', icon: Shield, path: '/invite-codes' }] : []),
   ]
+  return { navItems, settingsItems }
+}
+
+const SidebarHeader = ({
+  collapsed,
+  onToggleCollapse,
+  onCloseMobile,
+}: {
+  collapsed: boolean
+  onToggleCollapse: () => void
+  onCloseMobile: () => void
+}) => (
+  <div
+    className={cn(
+      'border-b border-sidebar-text/8 flex items-center',
+      collapsed ? 'flex-col justify-center gap-2 px-2 py-3' : 'justify-between px-4 py-3.5',
+    )}
+  >
+    <div className="flex items-center gap-2.5">
+      <div className="p-1.5 rounded-[6px] bg-gradient-to-br from-orange-500/20 to-amber-500/10 border border-orange-500/25">
+        <GoogleLogo size={18} />
+      </div>
+      {!collapsed && <h2 className="text-lg font-heading font-bold tracking-tight">VeoGen</h2>}
+    </div>
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={onToggleCollapse}
+      className="hidden lg:inline-flex h-7 w-7 text-sidebar-text/75 hover:text-sidebar-text"
+      title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+    >
+      {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+    </Button>
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={onCloseMobile}
+      className="lg:hidden h-7 w-7 text-sidebar-text/75 hover:text-sidebar-text"
+    >
+      <X size={17} />
+    </Button>
+  </div>
+)
+
+const SidebarNavSection = ({
+  navItems,
+  settingsItems,
+  collapsed,
+  onSelect,
+}: {
+  navItems: NavItem[]
+  settingsItems: NavItem[]
+  collapsed: boolean
+  onSelect: () => void
+}) => (
+  <nav className={cn('flex-1 py-3 overflow-y-auto no-scrollbar space-y-1', collapsed ? 'px-2' : 'px-3')}>
+    {navItems.map((item) => (
+      <SidebarNavLink key={item.name} item={item} collapsed={collapsed} onSelect={onSelect} />
+    ))}
+    <div className={cn('flex items-center gap-2 pt-4 pb-1', collapsed ? 'justify-center px-0' : 'px-3')}>
+      {collapsed ? (
+        <Settings size={14} className="opacity-40" />
+      ) : (
+        <span className="text-[10px] font-bold uppercase tracking-widest opacity-45">Settings</span>
+      )}
+    </div>
+    {settingsItems.map((item) => (
+      <SidebarNavLink key={item.name} item={item} collapsed={collapsed} onSelect={onSelect} />
+    ))}
+  </nav>
+)
+
+const SidebarFooter = ({
+  collapsed,
+  theme,
+  onToggleTheme,
+  onLogout,
+}: {
+  collapsed: boolean
+  theme: string
+  onToggleTheme: () => void
+  onLogout: () => void
+}) => {
+  const btnCls = collapsed ? 'h-10 w-10 mx-auto justify-center p-0' : 'h-9 w-full justify-start px-3 gap-3'
+  return (
+    <div className={cn('py-3 border-t border-sidebar-text/10 flex flex-col gap-1', collapsed ? 'px-2' : 'px-3')}>
+      <Button variant="ghost" onClick={onToggleTheme} className={cn('rounded-[6px] text-sidebar-text/85 hover:text-sidebar-text', btnCls)}>
+        {theme === 'light' ? (
+          <Moon size={18} className="text-orange-600 transition-transform group-hover:rotate-12 shrink-0" />
+        ) : (
+          <Sun size={18} className="text-orange-400 transition-transform group-hover:rotate-45 shrink-0" />
+        )}
+        {!collapsed && <span className="text-sm font-medium">{theme === 'light' ? 'Dark Mode' : 'Light Mode'}</span>}
+      </Button>
+      <Button
+        variant="ghost"
+        onClick={onLogout}
+        className={cn('rounded-[6px] text-sidebar-text/85 hover:bg-red-500/15 hover:text-red-500 hover:border-red-500/25', btnCls)}
+      >
+        <LogOut size={18} className="shrink-0" />
+        {!collapsed && <span className="text-sm font-medium">Sign Out</span>}
+      </Button>
+    </div>
+  )
+}
+
+const MobileSidebarControls = ({
+  isOpen,
+  onOpen,
+  onClose,
+}: {
+  isOpen: boolean
+  onOpen: () => void
+  onClose: () => void
+}) => (
+  <>
+    {!isOpen && (
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={onOpen}
+        className="fixed top-4 left-4 z-30 lg:hidden bg-card/90 backdrop-blur shadow-lg"
+        aria-label="Open navigation menu"
+      >
+        <Menu size={18} />
+      </Button>
+    )}
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+          className="fixed inset-0 bg-black/55 z-40 lg:hidden backdrop-blur-sm"
+        />
+      )}
+    </AnimatePresence>
+  </>
+)
+
+export const Sidebar = () => {
+  const { isSidebarCollapsed, toggleCollapse, isSidebarOpen, setSidebarOpen, theme, toggleTheme } = useLayoutStore()
+  const { isMaster, isPower, logout } = useAuthStore()
+  const location = useLocation()
+  const pageTitle = getPageTitle(location.pathname)
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+  }, [theme])
+
+  useEffect(() => {
+    document.title = pageTitle === 'VeoGen' ? 'VeoGen' : `${pageTitle} | VeoGen`
+  }, [pageTitle])
+
+  const { navItems, settingsItems } = getNavLists(isMaster || isPower, isMaster)
 
   return (
     <>
-      {/* Mobile Floating Menu Trigger */}
-      {!isSidebarOpen && (
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => setSidebarOpen(true)}
-          className="fixed top-4 left-4 z-30 lg:hidden bg-card/90 backdrop-blur shadow-lg"
-          aria-label="Open navigation menu"
-        >
-          <Menu size={18} />
-        </Button>
-      )}
-
-      {/* Mobile Overlay */}
-      <AnimatePresence>
-        {isSidebarOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setSidebarOpen(false)}
-            className="fixed inset-0 bg-black/55 z-40 lg:hidden backdrop-blur-sm"
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Sidebar Content */}
+      <MobileSidebarControls isOpen={isSidebarOpen} onOpen={() => setSidebarOpen(true)} onClose={() => setSidebarOpen(false)} />
       <motion.aside
-        animate={{
-          width: isSidebarCollapsed ? '68px' : '256px',
-          x: 0,
-        }}
+        animate={{ width: isSidebarCollapsed ? '68px' : '256px', x: 0 }}
         initial={false}
         transition={{ type: 'spring', stiffness: 360, damping: 32 }}
         className={cn(
@@ -231,130 +315,11 @@ export const Sidebar = () => {
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
         )}
       >
-        <div
-          className={cn(
-            'border-b border-sidebar-text/8 flex items-center',
-            isSidebarCollapsed
-              ? 'flex-col justify-center gap-2 px-2 py-3'
-              : 'justify-between px-4 py-3.5',
-          )}
-        >
-          {!isSidebarCollapsed ? (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex items-center gap-2.5"
-            >
-              <div className="p-1.5 rounded-[6px] bg-gradient-to-br from-orange-500/20 to-amber-500/10 border border-orange-500/25">
-                <GoogleLogo size={18} />
-              </div>
-              <h2 className="text-lg font-heading font-bold tracking-tight">VeoGen</h2>
-            </motion.div>
-          ) : (
-            <div className="p-1.5 rounded-[6px] bg-gradient-to-br from-orange-500/20 to-amber-500/10 border border-orange-500/25">
-              <GoogleLogo size={18} />
-            </div>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleCollapse}
-            className="hidden lg:inline-flex h-7 w-7 text-sidebar-text/75 hover:text-sidebar-text"
-            title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {isSidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setSidebarOpen(false)}
-            className="lg:hidden h-7 w-7 text-sidebar-text/75 hover:text-sidebar-text"
-          >
-            <X size={17} />
-          </Button>
-        </div>
-
-        <nav
-          className={cn(
-            'flex-1 py-3 overflow-y-auto no-scrollbar space-y-1',
-            isSidebarCollapsed ? 'px-2' : 'px-3',
-          )}
-        >
-          {navItems.map((item) => (
-            <SidebarNavLink
-              key={item.name}
-              item={item}
-              collapsed={isSidebarCollapsed}
-              onSelect={() => setSidebarOpen(false)}
-            />
-          ))}
-
-          <div
-            className={cn(
-              'flex items-center gap-2 pt-4 pb-1',
-              isSidebarCollapsed ? 'justify-center px-0' : 'px-3',
-            )}
-          >
-            {isSidebarCollapsed ? (
-              <Settings size={14} className="opacity-40" />
-            ) : (
-              <span className="text-[10px] font-bold uppercase tracking-widest opacity-45">
-                Settings
-              </span>
-            )}
-          </div>
-          {settingsItems.map((item) => (
-            <SidebarNavLink
-              key={item.name}
-              item={item}
-              collapsed={isSidebarCollapsed}
-              onSelect={() => setSidebarOpen(false)}
-            />
-          ))}
-        </nav>
-
-        <div
-          className={cn(
-            'py-3 border-t border-sidebar-text/10 flex flex-col gap-1',
-            isSidebarCollapsed ? 'px-2' : 'px-3',
-          )}
-        >
-          <Button
-            variant="ghost"
-            onClick={toggleTheme}
-            className={cn(
-              'rounded-[6px] text-sidebar-text/85 hover:text-sidebar-text',
-              isSidebarCollapsed
-                ? 'h-10 w-10 mx-auto justify-center p-0'
-                : 'h-9 w-full justify-start px-3 gap-3',
-            )}
-          >
-            {theme === 'light' ? (
-              <Moon size={18} className="text-orange-600 transition-transform group-hover:rotate-12 shrink-0" />
-            ) : (
-              <Sun size={18} className="text-orange-400 transition-transform group-hover:rotate-45 shrink-0" />
-            )}
-            {!isSidebarCollapsed && (
-              <span className="text-sm font-medium">
-                {theme === 'light' ? 'Dark Mode' : 'Light Mode'}
-              </span>
-            )}
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={logout}
-            className={cn(
-              'rounded-[6px] text-sidebar-text/85 hover:bg-red-500/15 hover:text-red-500 hover:border-red-500/25',
-              isSidebarCollapsed
-                ? 'h-10 w-10 mx-auto justify-center p-0'
-                : 'h-9 w-full justify-start px-3 gap-3',
-            )}
-          >
-            <LogOut size={18} className="shrink-0" />
-            {!isSidebarCollapsed && <span className="text-sm font-medium">Sign Out</span>}
-          </Button>
-        </div>
+        <SidebarHeader collapsed={isSidebarCollapsed} onToggleCollapse={toggleCollapse} onCloseMobile={() => setSidebarOpen(false)} />
+        <SidebarNavSection navItems={navItems} settingsItems={settingsItems} collapsed={isSidebarCollapsed} onSelect={() => setSidebarOpen(false)} />
+        <SidebarFooter collapsed={isSidebarCollapsed} theme={theme} onToggleTheme={toggleTheme} onLogout={logout} />
       </motion.aside>
     </>
   )
 }
+

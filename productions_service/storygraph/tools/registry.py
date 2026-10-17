@@ -145,11 +145,9 @@ def assert_asset_kind_allowed(role: Role, kind: str) -> None:
             )
 
 
-def tools_for_role(ctx: ToolContext) -> list[Callable[..., Any]]:
-    """Return ADK-compatible bound function tools permitted for `ctx.role`."""
-    from . import read_tools as rt
-    from . import write_tools as wt
-
+def _build_base_read_tools(
+    ctx: ToolContext, rt: Any, wt: Any
+) -> list[Callable[..., Any]]:
     def tool_get_outline_view() -> dict[str, Any]:
         """Return the story outline view (style_guide, entities, scenes, events)."""
         return rt.get_outline_view(ctx)
@@ -179,14 +177,12 @@ def tools_for_role(ctx: ToolContext) -> list[Callable[..., Any]]:
         return rt.get_style_guide(ctx)
 
     def tool_create_change_request(
-        to_role: str,
-        target_node_id: str,
-        reason: str,
+        to_role: str, target_node_id: str, reason: str
     ) -> dict[str, Any]:
         """File a cross-role ChangeRequest when an out-of-scope node needs modification."""
         return wt.create_change_request(ctx, to_role, target_node_id, reason, {})
 
-    base_reads: list[Callable[..., Any]] = [
+    return [
         tool_get_outline_view,
         tool_get_scene_view,
         tool_get_shot_view,
@@ -197,166 +193,164 @@ def tools_for_role(ctx: ToolContext) -> list[Callable[..., Any]]:
         tool_create_change_request,
     ]
 
-    role = ctx.role
-    if role == Role.STORY_ARCHITECT:
 
-        def tool_put_style_guide(
-            visual_medium: str,
-            palette: list[str],
-            lens_language: str,
-            lighting_rules: str,
-            aspect_ratio: str = "16:9",
-            avoid: list[str] | None = None,
-        ) -> dict[str, Any]:
-            """Create or update the global StyleGuide."""
-            return wt.put_style_guide(
-                ctx,
-                visual_medium=visual_medium,
-                palette=palette,
-                lens_language=lens_language,
-                lighting_rules=lighting_rules,
-                aspect_ratio=aspect_ratio,
-                avoid=avoid or [],
-            )
+def _build_architect_tools(ctx: ToolContext, wt: Any) -> list[Callable[..., Any]]:
+    def tool_put_style_guide(
+        visual_medium: str,
+        palette: list[str],
+        lens_language: str,
+        lighting_rules: str,
+        aspect_ratio: str = "16:9",
+        avoid: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Create or update the global StyleGuide."""
+        return wt.put_style_guide(
+            ctx,
+            visual_medium=visual_medium,
+            palette=palette,
+            lens_language=lens_language,
+            lighting_rules=lighting_rules,
+            aspect_ratio=aspect_ratio,
+            avoid=avoid or [],
+        )
 
-        def tool_put_scene(
-            scene_id: str,
-            index: int,
-            heading: str,
-            location_id: str,
-            time_of_day: str,
-            weather: str = "clear",
-            summary: str = "",
-            mood: str = "",
-        ) -> dict[str, Any]:
-            """Create or update a Scene node."""
-            return wt.put_scene(
-                ctx,
-                scene_id=scene_id,
-                index=index,
-                heading=heading,
-                location_id=location_id,
-                time_of_day=time_of_day,
-                weather=weather,
-                summary=summary,
-                mood=mood,
-            )
+    def tool_put_scene(
+        scene_id: str,
+        index: int,
+        heading: str,
+        location_id: str,
+        time_of_day: str,
+        weather: str = "clear",
+        summary: str = "",
+        mood: str = "",
+    ) -> dict[str, Any]:
+        """Create or update a Scene node."""
+        return wt.put_scene(
+            ctx,
+            scene_id=scene_id,
+            index=index,
+            heading=heading,
+            location_id=location_id,
+            time_of_day=time_of_day,
+            weather=weather,
+            summary=summary,
+            mood=mood,
+        )
 
-        def tool_put_event(
-            event_id: str,
-            story_order: int,
-            scene_id: str,
-            summary: str,
-            participants: list[str],
-        ) -> dict[str, Any]:
-            """Create or update a narrative Event node."""
-            return wt.put_event(
-                ctx,
-                event_id=event_id,
-                story_order=story_order,
-                scene_id=scene_id,
-                summary=summary,
-                participants=participants,
-                effects=[],
-            )
+    def tool_put_event(
+        event_id: str,
+        story_order: int,
+        scene_id: str,
+        summary: str,
+        participants: list[str],
+    ) -> dict[str, Any]:
+        """Create or update a narrative Event node."""
+        return wt.put_event(
+            ctx,
+            event_id=event_id,
+            story_order=story_order,
+            scene_id=scene_id,
+            summary=summary,
+            participants=participants,
+            effects=[],
+        )
 
-        return [*base_reads, tool_put_style_guide, tool_put_scene, tool_put_event]
+    return [tool_put_style_guide, tool_put_scene, tool_put_event]
 
-    if role == Role.SCRIPT_SUPERVISOR:
 
-        def tool_put_entity(
-            entity_id: str,
-            entity_type: str,
-            canonical_name: str,
-            aliases: list[str] | None = None,
-        ) -> dict[str, Any]:
-            """Create or update a canonical Entity ('character', 'location', 'object')."""
-            return wt.put_entity(
-                ctx,
-                entity_id=entity_id,
-                entity_type=entity_type,
-                canonical_name=canonical_name,
-                aliases=aliases or [],
-            )
+def _build_supervisor_tools(ctx: ToolContext, wt: Any) -> list[Callable[..., Any]]:
+    def tool_put_entity(
+        entity_id: str,
+        entity_type: str,
+        canonical_name: str,
+        aliases: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Create or update a canonical Entity ('character', 'location', 'object')."""
+        return wt.put_entity(
+            ctx,
+            entity_id=entity_id,
+            entity_type=entity_type,
+            canonical_name=canonical_name,
+            aliases=aliases or [],
+        )
 
-        def tool_propose_entity_merge(
-            keep_id: str, drop_id: str, reason: str
-        ) -> dict[str, Any]:
-            """Merge duplicate entity `drop_id` into `keep_id`."""
-            return wt.propose_entity_merge(ctx, keep_id, drop_id, reason)
+    def tool_propose_entity_merge(
+        keep_id: str, drop_id: str, reason: str
+    ) -> dict[str, Any]:
+        """Merge duplicate entity `drop_id` into `keep_id`."""
+        return wt.propose_entity_merge(ctx, keep_id, drop_id, reason)
 
-        return [*base_reads, tool_put_entity, tool_propose_entity_merge]
+    return [tool_put_entity, tool_propose_entity_merge]
 
-    if role == Role.SCREENWRITER:
 
-        def tool_update_scene_script(
-            scene_id: str, summary: str, mood: str
-        ) -> dict[str, Any]:
-            """Update a scene's dramatic summary and mood."""
-            return wt.update_scene_script(
-                ctx, scene_id=scene_id, summary=summary, mood=mood
-            )
+def _build_screenwriter_tools(ctx: ToolContext, wt: Any) -> list[Callable[..., Any]]:
+    def tool_update_scene_script(
+        scene_id: str, summary: str, mood: str
+    ) -> dict[str, Any]:
+        """Update a scene's dramatic summary and mood."""
+        return wt.update_scene_script(
+            ctx, scene_id=scene_id, summary=summary, mood=mood
+        )
 
-        def tool_put_dialogue(
-            line_id: str,
-            scene_id: str,
-            order_in_scene: int,
-            speaker_id: str,
-            text: str,
-            delivery: str = "natural",
-            addressee_id: str | None = None,
-            language: str = "en",
-        ) -> dict[str, Any]:
-            """Create or update a DialogueLine in a scene."""
-            return wt.put_dialogue(
-                ctx,
-                line_id=line_id,
-                scene_id=scene_id,
-                order_in_scene=order_in_scene,
-                speaker_id=speaker_id,
-                text=text,
-                delivery=delivery,
-                addressee_id=addressee_id,
-                language=language,
-            )
+    def tool_put_dialogue(
+        line_id: str,
+        scene_id: str,
+        order_in_scene: int,
+        speaker_id: str,
+        text: str,
+        delivery: str = "natural",
+        addressee_id: str | None = None,
+        language: str = "en",
+    ) -> dict[str, Any]:
+        """Create or update a DialogueLine in a scene."""
+        return wt.put_dialogue(
+            ctx,
+            line_id=line_id,
+            scene_id=scene_id,
+            order_in_scene=order_in_scene,
+            speaker_id=speaker_id,
+            text=text,
+            delivery=delivery,
+            addressee_id=addressee_id,
+            language=language,
+        )
 
-        return [*base_reads, tool_update_scene_script, tool_put_dialogue]
+    return [tool_update_scene_script, tool_put_dialogue]
 
-    if role in (
-        Role.CHARACTER_DESIGNER,
-        Role.LOCATION_DESIGNER,
-        Role.OBJECT_DESIGNER,
-        Role.DESIGNER,
-    ):
 
-        def tool_set_entity_attributes(
-            entity_id: str, attributes: dict[str, str], provenance: str = "invented"
-        ) -> dict[str, Any]:
-            """Set physical/visual attributes on an entity within the designer's entity-type scope."""
-            return wt.set_entity_attributes(
-                ctx, entity_id=entity_id, attributes=attributes, provenance=provenance
-            )
+def _build_designer_tools(ctx: ToolContext, wt: Any) -> list[Callable[..., Any]]:
+    def tool_set_entity_attributes(
+        entity_id: str, attributes: dict[str, str], provenance: str = "invented"
+    ) -> dict[str, Any]:
+        """Set physical/visual attributes on an entity within the designer's entity-type scope."""
+        return wt.set_entity_attributes(
+            ctx, entity_id=entity_id, attributes=attributes, provenance=provenance
+        )
 
-        def tool_add_appearance(
-            entity_id: str,
-            state_label: str,
-            visual_description: str,
-            wardrobe: str | None = None,
-            condition_tags: list[str] | None = None,
-        ) -> dict[str, Any]:
-            """Create a new versioned Appearance node for an entity."""
-            return wt.add_appearance(
-                ctx,
-                entity_id=entity_id,
-                state_label=state_label,
-                visual_description=visual_description,
-                wardrobe=wardrobe,
-                condition_tags=condition_tags or [],
-            )
+    def tool_add_appearance(
+        entity_id: str,
+        state_label: str,
+        visual_description: str,
+        wardrobe: str | None = None,
+        condition_tags: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Create a new versioned Appearance node for an entity."""
+        return wt.add_appearance(
+            ctx,
+            entity_id=entity_id,
+            state_label=state_label,
+            visual_description=visual_description,
+            wardrobe=wardrobe,
+            condition_tags=condition_tags or [],
+        )
 
-        return [*base_reads, tool_set_entity_attributes, tool_add_appearance]
+    return [tool_set_entity_attributes, tool_add_appearance]
 
-    if role == Role.DIRECTOR:
+
+def _build_director_and_audio_tools(
+    ctx: ToolContext, wt: Any
+) -> list[Callable[..., Any]]:
+    if ctx.role == Role.DIRECTOR:
 
         def tool_put_shot(
             shot_id: str,
@@ -372,6 +366,12 @@ def tools_for_role(ctx: ToolContext) -> list[Callable[..., Any]]:
             continue_from_last_frame: bool = False,
         ) -> dict[str, Any]:
             """Create or update a Shot node in a scene."""
+            cam = {
+                "shot_size": shot_size,
+                "angle": angle,
+                "movement": movement,
+                "lens_mm": lens_mm,
+            }
             return wt.put_shot(
                 ctx,
                 shot_id=shot_id,
@@ -380,18 +380,13 @@ def tools_for_role(ctx: ToolContext) -> list[Callable[..., Any]]:
                 story_order=story_order,
                 duration_s=duration_s,
                 location_id=location_id,
-                camera={
-                    "shot_size": shot_size,
-                    "angle": angle,
-                    "movement": movement,
-                    "lens_mm": lens_mm,
-                },
+                camera=cam,
                 continue_from_last_frame=continue_from_last_frame,
             )
 
-        return [*base_reads, tool_put_shot]
+        return [tool_put_shot]
 
-    if role == Role.MUSIC_DIRECTOR:
+    if ctx.role == Role.MUSIC_DIRECTOR:
 
         def tool_put_music_cue(
             cue_id: str,
@@ -420,9 +415,9 @@ def tools_for_role(ctx: ToolContext) -> list[Callable[..., Any]]:
                 ctx, shot_id=shot_id, music_cue_id=music_cue_id, sfx=sfx
             )
 
-        return [*base_reads, tool_put_music_cue, tool_set_shot_audio]
+        return [tool_put_music_cue, tool_set_shot_audio]
 
-    if role == Role.CRITIC:
+    if ctx.role == Role.CRITIC:
 
         def tool_record_asset_critique(
             asset_id: str, approved: bool, qa_notes: str
@@ -432,6 +427,28 @@ def tools_for_role(ctx: ToolContext) -> list[Callable[..., Any]]:
                 ctx, asset_id=asset_id, approved=approved, qa_notes=qa_notes
             )
 
-        return [*base_reads, tool_record_asset_critique]
+        return [tool_record_asset_critique]
+    return []
 
-    return base_reads
+
+def tools_for_role(ctx: ToolContext) -> list[Callable[..., Any]]:
+    """Return ADK-compatible bound function tools permitted for `ctx.role`."""
+    from . import read_tools as rt
+    from . import write_tools as wt
+
+    base_reads = _build_base_read_tools(ctx, rt, wt)
+    role = ctx.role
+    if role == Role.STORY_ARCHITECT:
+        return [*base_reads, *_build_architect_tools(ctx, wt)]
+    if role == Role.SCRIPT_SUPERVISOR:
+        return [*base_reads, *_build_supervisor_tools(ctx, wt)]
+    if role == Role.SCREENWRITER:
+        return [*base_reads, *_build_screenwriter_tools(ctx, wt)]
+    if role in (
+        Role.CHARACTER_DESIGNER,
+        Role.LOCATION_DESIGNER,
+        Role.OBJECT_DESIGNER,
+        Role.DESIGNER,
+    ):
+        return [*base_reads, *_build_designer_tools(ctx, wt)]
+    return [*base_reads, *_build_director_and_audio_tools(ctx, wt)]

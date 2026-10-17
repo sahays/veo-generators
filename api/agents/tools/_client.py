@@ -68,7 +68,17 @@ async def api_call(
     )
     if response.status_code >= 400:
         logger.error(
-            "API Error %s on %s: %s", response.status_code, path, response.text
+            "API Error %s on %s: %s",
+            response.status_code,
+            path,
+            response.text,
+            extra={
+                "who": "agent_client",
+                "where": "api_call",
+                "what": f"API error {response.status_code} on {path}",
+                "why": response.text[:200],
+                "how": method,
+            },
         )
         detail: Any = response.text
         try:

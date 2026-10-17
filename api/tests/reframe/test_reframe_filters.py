@@ -1,0 +1,270 @@
+"""Unit tests for reframe filter generation — aspect ratios and crop math."""
+
+from typing import Any
+
+import sys
+import os
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+
+from reframe_filters import (
+    build_canvas_filter,
+    build_split_filter,
+    split_panel_geometry,
+    crop_geometry,
+    crop_left_px_at,
+    _crop_x_offset,
+    _to_pixel_keypoints,
+)
+
+CENTER = [(0.0, 0.5, 0.5), (10.0, 0.5, 0.5)]
+
+
+# ---------------------------------------------------------------------------
+# 9:16 crop filter
+# ---------------------------------------------------------------------------
+
+
+class TestCanvasFilter:
+    SRC = (1920, 1080)
+
+    def test_9x16_is_full_bleed_no_bars(self) -> None:
+        f = build_canvas_filter(CENTER, *self.SRC, (9, 16))
+        assert "[bg]" not in f  # foreground covers the canvas
+        assert "overlay" not in f
+        assert f.endswith("[v]")
+        assert "scale=1080:1920" in f
+
+    def test_4x5_letterboxed_over_blur(self) -> None:
+        f = build_canvas_filter(CENTER, *self.SRC, (4, 5))
+        assert "gblur" in f and "[bg]" in f
+        assert "scale=1080:1350" in f
+        assert "overlay=0:285" in f  # (1920-1350)//2
+        assert f.endswith("[v]")
+
+    def test_1x1_geometry(self) -> None:
+        f = build_canvas_filter(CENTER, *self.SRC, (1, 1))
+        assert "scale=1080:1080" in f
+        assert "overlay=0:420" in f  # (1920-1080)//2
+        assert "crop=1080:1080" in f
+
+    def test_16x9_letterbox_full_width(self) -> None:
+        f = build_canvas_filter(CENTER, *self.SRC, (16, 9))
+        assert "scale=1080:608" in f
+        assert "overlay=0:656" in f  # (1920-608)//2
+        assert "crop=1920:1080" in f  # keeps the entire source width
+
+    def test_even_dimensions(self) -> None:
+        # All scale/crop targets must be even for libx264 + yuv420p.
+        for ar in [(9, 16), (4, 5), (1, 1), (16, 9)]:
+            f = build_canvas_filter(CENTER, *self.SRC, ar)
+            import re
+
+            for w, h in re.findall(r"scale=(\d+):(\d+)", f):
+                assert int(w) % 2 == 0 and int(h) % 2 == 0, (ar, w, h)
+
+
+class TestCanvas34:
+    """3:4 output canvas (1080x1440). Full-bleed rung is (3,4); looser rungs bar."""
+
+    SRC = (1920, 1080)
+    OUT = (1080, 1440)
+
+    def test_3x4_is_full_bleed_no_bars(self) -> None:
+        f = build_canvas_filter(CENTER, *self.SRC, (3, 4), *self.OUT)
+        assert "[bg]" not in f and "overlay" not in f  # fills the 3:4 canvas
+        assert "scale=1080:1440" in f
+        assert "crop=810:1080" in f  # 1080*3/4 wide, follows the subject
+        assert f.endswith("[v]")
+
+    def test_16x9_letterboxed_inside_3x4(self) -> None:
+        f = build_canvas_filter(CENTER, *self.SRC, (16, 9), *self.OUT)
+        assert "gblur" in f and "[bg]" in f
+        assert "scale=1080:608" in f
+        assert "overlay=0:416" in f  # (1440-608)//2
+        assert "crop=1920:1080" in f  # entire source width kept
+
+    def test_1x1_letterboxed_inside_3x4(self) -> None:
+        f = build_canvas_filter(CENTER, *self.SRC, (1, 1), *self.OUT)
+        assert "scale=1080:1080" in f
+        assert "overlay=0:180" in f  # (1440-1080)//2
+
+    def test_default_canvas_is_9x16(self) -> None:
+        # Omitting out_w/out_h must reproduce the historical 9:16 output exactly.
+        assert build_canvas_filter(CENTER, *self.SRC, (9, 16)) == build_canvas_filter(
+            CENTER, *self.SRC, (9, 16), 1080, 1920
+        )
+
+
+# ---------------------------------------------------------------------------
+# Vertical-split (stacked two-shot) filter
+# ---------------------------------------------------------------------------
+
+
+class TestSplitFilter:
+    SRC = (1920, 1080)
+    # Single static keypoint per panel → constant crop offset (near-static panels).
+    LEFT = [(0.0, 0.3, 0.5)]
+    RIGHT = [(0.0, 0.7, 0.5)]
+
+    def test_panel_geometry_9x16(self) -> None:
+        # Each panel is 1080x960 (half canvas); slice AR 9:8 → crop_w ~1214 (even).
+        crop_w, panel_h, max_x = split_panel_geometry(*self.SRC)
+        assert panel_h == 960
+        assert crop_w == 1214  # even(1080 * 1080/960 = 1215)
+        assert max_x == 1920 - 1214
+
+    def test_builds_two_panels_vstacked(self) -> None:
+        f = build_split_filter(self.LEFT, self.RIGHT, *self.SRC)
+        assert f.count("crop=1214:1080") == 2  # one slice per subject
+        assert f.count("scale=1080:960") == 2  # each fills a half-canvas panel
+        assert "[top][bot]vstack[v]" in f
+        assert "gblur" not in f  # panels fill the canvas — no blurred bars
+        assert f.endswith("[v]")
+
+    def test_panels_follow_their_own_subject(self) -> None:
+        # Left subject pans toward 0.3, right toward 0.7 → different crop offsets.
+        f = build_split_filter(self.LEFT, self.RIGHT, *self.SRC)
+        top = f.split("[top];")[0]
+        bot = f.split("[top];")[1].split("[bot];")[0]
+        assert "crop=1214:1080:0:0" in top  # 0.3 center clamps left to 0
+        assert "crop=1214:1080:706:0" in bot  # 0.7 center clamps to max_x
+
+    def test_even_dimensions(self) -> None:
+        import re
+
+        f = build_split_filter(self.LEFT, self.RIGHT, *self.SRC)
+        for w, h in re.findall(r"scale=(\d+):(\d+)", f):
+            assert int(w) % 2 == 0 and int(h) % 2 == 0
+
+    def test_3x4_canvas_panels(self) -> None:
+        f = build_split_filter(CENTER, CENTER, *self.SRC, 1080, 1440)
+        assert "scale=1080:720" in f  # half of 1440
+        assert "[top][bot]vstack[v]" in f
+
+
+# ---------------------------------------------------------------------------
+# Render ↔ eval contract: the emitted FFmpeg x(t) expression must equal the
+# Python crop-window model (crop_left_px_at) the reference-free eval relies on,
+# so the eval can never validate a window the renderer doesn't actually produce.
+# ---------------------------------------------------------------------------
+
+
+def _eval_node(node: object, t: float) -> float:
+    import ast as _ast
+
+    if isinstance(node, _ast.Constant) and isinstance(node.value, (int, float)):
+        return float(node.value)
+    if isinstance(node, _ast.Name) and node.id == "t":
+        return float(t)
+    if isinstance(node, _ast.UnaryOp) and isinstance(node.op, _ast.USub):
+        return -_eval_node(node.operand, t)
+    if isinstance(node, _ast.BinOp):
+        left, right = _eval_node(node.left, t), _eval_node(node.right, t)
+        if isinstance(node.op, _ast.Add):
+            return left + right
+        if isinstance(node.op, _ast.Sub):
+            return left - right
+        if isinstance(node.op, _ast.Mult):
+            return left * right
+        if isinstance(node.op, _ast.Div):
+            return left / right
+    if isinstance(node, _ast.Call) and isinstance(node.func, _ast.Name):
+        args = [_eval_node(a, t) for a in node.args]
+        if node.func.id == "_clip":
+            return min(max(args[0], args[1]), args[2])
+        if node.func.id == "_iff":
+            return args[1] if args[0] else args[2]
+        if node.func.id == "_lt":
+            return 1.0 if args[0] < args[1] else 0.0
+    raise ValueError(f"Unsupported AST node: {node}")
+
+
+def _eval_ffmpeg(expr: str, t: float) -> float:
+    """Numerically evaluate an FFmpeg crop-offset expression at time t via safe AST."""
+    import ast as _ast
+
+    e = (
+        expr.replace("\\,", ",")
+        .replace("clip(", "_clip(")
+        .replace("if(", "_iff(")
+        .replace("lt(", "_lt(")
+    )
+    tree = _ast.parse(e, mode="eval")
+    return _eval_node(tree.body, t)
+
+
+class TestRenderEvalContract:
+    SRC = (1920, 1080)
+
+    # (label, keypoints) — fractional (t, x, y) as the planner emits.
+    CASES = [
+        ("static_center", [(2.0, 0.5, 0.5)]),
+        ("pan_in_bounds", [(0.0, 0.3, 0.5), (10.0, 0.7, 0.5)]),
+        # The case the old eval got wrong: keypoints whose pixel left-edge clamps.
+        ("pan_out_of_bounds", [(0.0, 0.0, 0.5), (10.0, 1.0, 0.5)]),
+        (
+            "zigzag",
+            [(0.0, 0.2, 0.5), (3.0, 0.8, 0.5), (6.0, 0.3, 0.5), (9.0, 0.9, 0.5)],
+        ),
+        ("negative_slope", [(0.0, 0.8, 0.5), (5.0, 0.2, 0.5)]),
+    ]
+
+    def _grid(self, kps: Any) -> Any:
+        last = kps[-1][0]
+        # sample the valid render range [t0, t_last] + a little past the end
+        return [i * 0.5 for i in range(0, int((last + 2) / 0.5) + 1)]
+
+    def test_inner_ar_rungs_match_model(self) -> None:
+        for ar in [(9, 16), (4, 5), (1, 1)]:  # (16,9) keeps full width → no pan
+            crop_w, _fg, max_x = crop_geometry(ar, *self.SRC)
+            for label, kps in self.CASES:
+                expr = _crop_x_offset(kps, self.SRC[0], crop_w, max_x)
+                for t in self._grid(kps):
+                    got = _eval_ffmpeg(expr, t)
+                    want = crop_left_px_at(kps, self.SRC[0], crop_w, max_x, t)
+                    assert abs(got - want) < 1e-6, (ar, label, t, got, want)
+
+    def test_split_panels_match_model(self) -> None:
+        crop_w, _ph, max_x = split_panel_geometry(*self.SRC)
+        for label, kps in self.CASES:
+            expr = _crop_x_offset(kps, self.SRC[0], crop_w, max_x)
+            for t in self._grid(kps):
+                got = _eval_ffmpeg(expr, t)
+                want = crop_left_px_at(kps, self.SRC[0], crop_w, max_x, t)
+                assert abs(got - want) < 1e-6, (label, t, got, want)
+
+    def test_out_of_bounds_keypoints_stay_clamped(self) -> None:
+        # Both representations must hold the crop inside [0, max_x] at the extremes.
+        crop_w, _fg, max_x = crop_geometry((9, 16), *self.SRC)
+        kps = [(0.0, 0.0, 0.5), (10.0, 1.0, 0.5)]
+        for t in self._grid(kps):
+            v = crop_left_px_at(kps, self.SRC[0], crop_w, max_x, t)
+            assert 0.0 <= v <= max_x
+
+
+# ---------------------------------------------------------------------------
+# Pixel keypoint conversion
+# ---------------------------------------------------------------------------
+
+
+class TestPixelKeypoints:
+    def test_center(self) -> None:
+        result = _to_pixel_keypoints([(0.0, 0.5, 0.5)], 1920, 607, 1313)
+        assert len(result) == 1
+        _, px = result[0]
+        assert 650 < px < 660  # ~656
+
+    def test_left_edge_clamps_to_zero(self) -> None:
+        result = _to_pixel_keypoints([(0.0, 0.0, 0.5)], 1920, 607, 1313)
+        assert result[0][1] == 0
+
+    def test_right_edge_clamps_to_max(self) -> None:
+        result = _to_pixel_keypoints([(0.0, 1.0, 0.5)], 1920, 607, 1313)
+        assert result[0][1] == 1313
+
+    def test_multiple_keypoints(self) -> None:
+        kps = [(0.0, 0.2, 0.5), (5.0, 0.5, 0.5), (10.0, 0.8, 0.5)]
+        result = _to_pixel_keypoints(kps, 1920, 607, 1313)
+        assert len(result) == 3
+        assert result[0][1] < result[1][1] < result[2][1]

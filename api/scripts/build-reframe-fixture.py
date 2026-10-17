@@ -5,28 +5,17 @@ A fixture bundles one production job's raw pipeline inputs (the
 ``detections.json.gz`` the worker dumps to GCS) with its stored plan/eval from
 Firestore, committed under ``api/tests/fixtures/reframe/`` so
 ``test_reframe_regression.py`` can replay it deterministically in CI.
-
-Usage (run from api/):
-  # Fetch a job's dump + Firestore record → tests/fixtures/reframe/<job>.json.gz
-  python scripts/build-reframe-fixture.py rf-piemrxjm
-
-  # Recompute baselines.json from current code over all committed fixtures
-  # (the PR diff of baselines.json is the review artifact for metric movement)
-  python scripts/build-reframe-fixture.py --rebaseline
-
-  # One-shot gate: does replay reproduce each fixture's stored production plan?
-  python scripts/build-reframe-fixture.py --verify
-
-Auth matches fetch-firestore.py: ADC, else the active gcloud account's token.
 """
 
 import argparse
 import gzip
 import json
+import logging
 import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 API_DIR = Path(__file__).resolve().parent.parent
 FIXTURE_DIR = API_DIR / "tests" / "fixtures" / "reframe"
@@ -35,9 +24,23 @@ sys.path.insert(0, str(API_DIR))
 
 SERVICE = os.getenv("SERVICE_NAME", "veo-generators")
 BUCKET = os.getenv("GCS_BUCKET", "superexam-uploads")
+logger = logging.getLogger("build_reframe_fixture")
 
 
-def _credentials():
+def _log(msg: str, where: str = "build_reframe_fixture") -> None:
+    logger.info(
+        msg,
+        extra={
+            "who": "build_reframe_fixture",
+            "where": where,
+            "what": msg[:120],
+            "why": "Reframe fixture management",
+            "how": "cli",
+        },
+    )
+
+
+def _credentials() -> Any:
     """ADC if available, else a bearer credential from the active gcloud account."""
     try:
         import google.auth
@@ -47,7 +50,7 @@ def _credentials():
         creds.refresh(Request())
         return creds
     except Exception as e:  # noqa: BLE001
-        print(f"[fixture] ADC unusable ({e}); using gcloud token", file=sys.stderr)
+        _log(f"[fixture] ADC unusable ({e}); using gcloud token", "_credentials")
         token = subprocess.run(
             ["gcloud", "auth", "print-access-token"],
             check=True,
@@ -96,7 +99,7 @@ def build(job_id: str) -> Path:
     path = FIXTURE_DIR / f"{job_id}.json.gz"
     with gzip.open(path, "wt", encoding="utf-8") as f:
         json.dump(fixture, f, default=float)
-    print(f"wrote {path} ({path.stat().st_size // 1024} KiB)")
+    _log(f"wrote {path} ({path.stat().st_size // 1024} KiB)", "build")
     return path
 
 
@@ -113,11 +116,11 @@ def rebaseline() -> None:
         job = path.name.split(".")[0]
         result = replay(_load(path))
         baselines[job] = plan_metrics(result["segments"], result["report"])
-        print(f"{job}: {json.dumps(baselines[job])}")
+        _log(f"{job}: {json.dumps(baselines[job])}", "rebaseline")
     if not baselines:
         sys.exit("no fixtures found — build some first")
     BASELINES.write_text(json.dumps(baselines, indent=2, sort_keys=True) + "\n")
-    print(f"wrote {BASELINES}")
+    _log(f"wrote {BASELINES}", "rebaseline")
 
 
 def verify() -> None:
@@ -130,7 +133,7 @@ def verify() -> None:
         fixture = _load(path)
         stored = fixture.get("stored_plan")
         if not stored:
-            print(f"{job}: SKIP (no stored plan in fixture)")
+            _log(f"{job}: SKIP (no stored plan in fixture)", "verify")
             continue
         replayed = compact_plan(replay(fixture)["segments"])
         stored_cmp = [
@@ -138,18 +141,19 @@ def verify() -> None:
             for s in stored
         ]
         if replayed == stored_cmp:
-            print(f"{job}: OK ({len(replayed)} segments byte-equal)")
+            _log(f"{job}: OK ({len(replayed)} segments byte-equal)", "verify")
             continue
         failures += 1
-        print(f"{job}: MISMATCH ({len(replayed)} vs {len(stored_cmp)} segments)")
+        _log(
+            f"{job}: MISMATCH ({len(replayed)} vs {len(stored_cmp)} segments)", "verify"
+        )
         for i, (a, b) in enumerate(zip(replayed, stored_cmp)):
             if a != b:
-                print(f"  seg {i}: replay={a}")
-                print(f"  seg {i}: stored={b}")
+                _log(f"  seg {i}: replay={a} stored={b}", "verify")
     sys.exit(1 if failures else 0)
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("job_ids", nargs="*", help="reframe job id(s) to fetch")
     ap.add_argument("--rebaseline", action="store_true")

@@ -1,6 +1,6 @@
 """Adapts specialist (`adapts_agent`) — multi-platform social image adaptations."""
 
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
@@ -25,53 +25,61 @@ _ADAPTS_ROLE = (
 )
 
 
+async def _format_adapt_options(invite_code: str) -> str:
+    data = await agent_tools.list_aspect_ratios(invite_code)
+    if not isinstance(data, dict):
+        return "Could not fetch adapt options."
+    lines: list[str] = []
+    bundles = data.get("preset_bundles", {})
+    if bundles:
+        lines.append("Preset bundles:")
+        for k, v in bundles.items():
+            lines.append(f"  - {k} ({v['name']}): {', '.join(v['ratios'])}")
+    ratios = data.get("ratios", [])
+    if ratios:
+        lines.append(f"All valid ratios: {', '.join(ratios)}")
+    return "\n".join(lines)
+
+
+async def _do_propose_adapts(
+    invite_code: str, gcs_uri: str, aspect_ratios: List[str], source_filename: str
+) -> str:
+    resolved_uri = await resolve_or_pick(invite_code, gcs_uri, kind="image")
+    if not resolved_uri:
+        return source_picker_fallback("image")
+    data = await agent_tools.list_aspect_ratios(invite_code)
+    valid = data.get("ratios", []) if isinstance(data, dict) else []
+    if valid:
+        invalid = [r for r in aspect_ratios if r not in set(valid)]
+        if invalid:
+            return f"Invalid aspect ratios: {', '.join(invalid)}. Valid options: {', '.join(valid)}"
+    return propose_job(
+        "adapts",
+        f"Adapt for {len(aspect_ratios)} platforms",
+        {
+            "gcs_uri": resolved_uri,
+            "source_filename": source_filename,
+            "aspect_ratios": aspect_ratios,
+        },
+        {"source_name": display_name(source_filename, resolved_uri)},
+    )
+
+
 def _make_adapts_tools(invite_code: str) -> list:
-    async def list_recent_adapts(limit: int = 5):
+    async def list_recent_adapts(limit: int = 5) -> Any:
         """List the most recent social media adaptation jobs."""
         return await agent_tools.list_recent_adapts(invite_code, limit)
 
-    async def list_adapt_options():
+    async def list_adapt_options() -> str:
         """List valid aspect ratios and preset bundles for adapt jobs."""
-        data = await agent_tools.list_aspect_ratios(invite_code)
-        if not isinstance(data, dict):
-            return "Could not fetch adapt options."
-        lines: list[str] = []
-        bundles = data.get("preset_bundles", {})
-        if bundles:
-            lines.append("Preset bundles:")
-            for k, v in bundles.items():
-                lines.append(f"  - {k} ({v['name']}): {', '.join(v['ratios'])}")
-        ratios = data.get("ratios", [])
-        if ratios:
-            lines.append(f"All valid ratios: {', '.join(ratios)}")
-        return "\n".join(lines)
+        return await _format_adapt_options(invite_code)
 
     async def propose_adapts(
         gcs_uri: str, aspect_ratios: List[str], source_filename: str = ""
-    ):
+    ) -> str:
         """Propose adapting an image for multiple platforms. Returns an interactive A2UI confirmation card."""
-        resolved_uri = await resolve_or_pick(invite_code, gcs_uri, kind="image")
-        if not resolved_uri:
-            return source_picker_fallback("image")
-        data = await agent_tools.list_aspect_ratios(invite_code)
-        valid = data.get("ratios", []) if isinstance(data, dict) else []
-        if valid:
-            valid_set = set(valid)
-            invalid = [r for r in aspect_ratios if r not in valid_set]
-            if invalid:
-                return (
-                    f"Invalid aspect ratios: {', '.join(invalid)}. "
-                    f"Valid options: {', '.join(valid)}"
-                )
-        return propose_job(
-            "adapts",
-            f"Adapt for {len(aspect_ratios)} platforms",
-            {
-                "gcs_uri": resolved_uri,
-                "source_filename": source_filename,
-                "aspect_ratios": aspect_ratios,
-            },
-            {"source_name": display_name(source_filename, resolved_uri)},
+        return await _do_propose_adapts(
+            invite_code, gcs_uri, aspect_ratios, source_filename
         )
 
     return [

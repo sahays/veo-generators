@@ -1,5 +1,6 @@
 import os
 import logging
+import sitecustomize  # noqa: F401
 
 from firestore_service import FirestoreService
 from gemini_service import GeminiService
@@ -27,11 +28,20 @@ diarization_svc: DiarizationService | None = None
 ai_svc = None
 
 
-def init_services():
+def init_services() -> None:
     """Instantiate all backend services. Called once during FastAPI startup."""
     global firestore_svc, gemini_svc, ai_svc, video_svc, transcoder_svc
     global storage_svc, diarization_svc
-    logger.info("Initializing services...")
+    logger.info(
+        "Initializing services...",
+        extra={
+            "who": "deps",
+            "where": "init_services",
+            "what": "init_start",
+            "why": "app_startup",
+            "how": "instantiate_services",
+        },
+    )
     firestore_svc = FirestoreService()
     storage_svc = StorageService()
     gemini_svc = GeminiService(storage_svc=storage_svc, firestore_svc=firestore_svc)
@@ -43,7 +53,16 @@ def init_services():
     location = _INFRA_REGION
     transcoder_svc = TranscoderService(project_id, location)
     diarization_svc = DiarizationService(project_id, location)
-    logger.info("Services initialized successfully.")
+    logger.info(
+        "Services initialized successfully.",
+        extra={
+            "who": "deps",
+            "where": "init_services",
+            "what": "init_complete",
+            "why": "app_startup",
+            "how": "services_ready",
+        },
+    )
 
 
 def services_ready() -> bool:

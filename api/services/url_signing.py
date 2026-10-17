@@ -1,0 +1,242 @@
+"""URL signing utilities for GCS resources."""
+
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Callable, Optional
+
+import deps
+from models import Project
+
+# Cap on concurrent signing threads. Each signature is a blocking IAM signBlob
+# round-trip, so parallelism turns a list's N sequential round-trips into ~1.
+_SIGN_MAX_WORKERS = 16
+
+
+async def sign_records_concurrently(
+    records: list[Any], sign_fn: Callable
+) -> list[dict]:
+    """Sign a list of records in parallel, off the event loop.
+
+    `sign_fn(record) -> dict` is a blocking signer (it performs IAM signBlob
+    network calls). Running each in a worker thread parallelizes the round-trips
+    and keeps the asyncio event loop responsive.
+    """
+    return list(await asyncio.gather(*(asyncio.to_thread(sign_fn, r) for r in records)))
+
+
+def sign_values_concurrently(values: list, fn: Callable) -> list:
+    """Apply a blocking signer `fn` to each value concurrently (sync context).
+
+    Preserves input order. Used by the synchronous source-list helpers.
+    """
+    if not values:
+        return []
+    with ThreadPoolExecutor(max_workers=_SIGN_MAX_WORKERS) as ex:
+        return list(ex.map(fn, values))
+
+
+def sign_record_urls(
+    record: Any,
+    uri_fields: dict[str, str],
+    update_fn: Callable[[dict], None],
+) -> dict:
+    """Generic URL signing for records with a signed_urls cache.
+
+    Args:
+        record: Pydantic model with a signed_urls dict field.
+        uri_fields: mapping of record field name to output key
+            (e.g. {"source_gcs_uri": "source_signed_url"}).
+        update_fn: callable to persist updated cache back to Firestore.
+
+    Returns:
+        Record dict with signed URL keys added and signed_urls cache removed.
+    """
+    data = record.dict()
+    if not deps.storage_svc:
+        return data
+
+    cache = data.get("signed_urls") or {}
+    dirty = False
+
+    for field_name, output_key in uri_fields.items():
+        gcs_uri = getattr(record, field_name, None)
+        if not gcs_uri:
+            continue
+        url, changed = deps.storage_svc.resolve_cached_url(gcs_uri, cache)
+        data[output_key] = url
+        if changed:
+            dirty = True
+
+    if dirty and deps.firestore_svc:
+        update_fn(cache)
+
+    data.pop("signed_urls", None)
+    return data
+
+
+def sign_nested_list_uris(
+    data: dict,
+    list_key: str,
+    uri_field: str = "gcs_uri",
+    out_field: str = "signed_url",
+    limit: Optional[int] = None,
+) -> None:
+    """Sign each item's GCS URI inside a nested list, in place.
+
+    Shared by records that embed a list of media items (thumbnail screenshots,
+    key-moment frames). Adds `out_field` to each item that has a `uri_field`.
+    `limit` signs only the first N items (e.g. a preview strip in list views).
+    """
+    if not deps.storage_svc:
+        return
+    cache: dict = {}
+    items = data.get(list_key) or []
+    if limit is not None:
+        items = items[:limit]
+    for item in items:
+        uri = item.get(uri_field)
+        if uri:
+            url, _ = deps.storage_svc.resolve_cached_url(uri, cache)
+            item[out_field] = url
+
+
+def _resolve_with_recovery(gcs_uri: str, cache: dict) -> tuple[str, bool]:
+    """Resolve a possibly-stale signed URL: try to recover the gs:// form if
+    the field already holds an https URL. Returns (resolved_url, dirty)."""
+    if not gcs_uri:
+        return "", False
+    if not gcs_uri.startswith("gs://"):
+        recovered = deps.storage_svc.recover_gcs_uri(gcs_uri)
+        if not recovered:
+            return gcs_uri, False
+        gcs_uri = recovered
+    url, changed = deps.storage_svc.resolve_cached_url(gcs_uri, cache)
+    return url, changed
+
+
+def _sign_scene_urls(scene: dict, cache: dict, thumbnails_only: bool) -> bool:
+    dirty = False
+    for frame_field in ("thumbnail_url", "end_frame_url"):
+        if scene.get(frame_field):
+            scene[frame_field], changed = _resolve_with_recovery(
+                scene[frame_field], cache
+            )
+            dirty = dirty or changed
+    if not thumbnails_only and scene.get("video_url"):
+        scene["video_url"], changed = _resolve_with_recovery(scene["video_url"], cache)
+        dirty = dirty or changed
+    return dirty
+
+
+def sign_production_urls(production: Project, thumbnails_only: bool = False) -> dict:
+    """Return a dict with media URLs resolved from cache.
+
+    When thumbnails_only=True, only sign scene thumbnails (for list views).
+    Persists updated signed URL cache back to Firestore when any URL was refreshed.
+    """
+    if not deps.storage_svc:
+        return production.dict()
+
+    data = production.dict()
+    cache = data.get("signed_urls") or {}
+    dirty = False
+
+    for scene in data.get("scenes", []):
+        dirty = _sign_scene_urls(scene, cache, thumbnails_only) or dirty
+    if not thumbnails_only:
+        for field in ("final_video_url", "draft_video_url", "reference_image_url"):
+            if data.get(field):
+                data[field], changed = _resolve_with_recovery(data[field], cache)
+                dirty = dirty or changed
+
+    if dirty and deps.firestore_svc:
+        deps.firestore_svc.update_production(production.id, {"signed_urls": cache})
+
+    data.pop("signed_urls", None)
+    return data
+
+
+def _sign_gcs_uri(gcs_uri: str) -> str:
+    """Sign a single GCS URI, returning the original if not a gs:// URI."""
+    if not deps.storage_svc or not gcs_uri:
+        return ""
+    if gcs_uri.startswith("gs://"):
+        return deps.storage_svc.get_signed_url(gcs_uri)
+    return gcs_uri
+
+
+def list_upload_sources(
+    file_type: str, url_key: str, extra_fields: Optional[list[str]] = None
+) -> list[dict]:
+    """Return signed upload sources for the given file type.
+
+    Args:
+        file_type: "video" or "image"
+        url_key: output key for signed URL (e.g. "video_signed_url")
+        extra_fields: additional UploadRecord fields to include
+    """
+    from helpers import require_firestore
+
+    require_firestore()
+    uploads = deps.firestore_svc.get_upload_records(file_type=file_type)
+    signed = sign_values_concurrently([u.gcs_uri for u in uploads], _sign_gcs_uri)
+    results = []
+    for u, signed_url in zip(uploads, signed):
+        entry = {
+            "id": u.id,
+            "filename": u.filename,
+            "display_name": u.display_name or "",
+            "gcs_uri": u.gcs_uri,
+            url_key: signed_url,
+            "file_size_bytes": u.file_size_bytes,
+            "createdAt": u.createdAt.isoformat() if u.createdAt else None,
+        }
+        if extra_fields:
+            for field in extra_fields:
+                entry[field] = getattr(u, field, None)
+        results.append(entry)
+    return results
+
+
+def list_video_upload_sources() -> list[dict]:
+    """Return signed upload video sources."""
+    return list_upload_sources("video", "video_signed_url")
+
+
+def list_image_upload_sources() -> list[dict]:
+    """Return signed upload image sources."""
+    return list_upload_sources("image", "image_signed_url", ["mime_type"])
+
+
+def list_completed_production_sources(
+    extra_fields: Optional[dict[str, str]] = None,
+) -> list[dict]:
+    """Return signed completed production sources.
+
+    Args:
+        extra_fields: optional mapping of production attribute name to output key.
+    """
+    from helpers import require_firestore
+
+    require_firestore()
+    productions = deps.firestore_svc.get_productions()
+    completed = [
+        p for p in productions if p.status.value == "completed" and p.final_video_url
+    ]
+    signed = sign_values_concurrently(
+        [p.final_video_url for p in completed], _sign_gcs_uri
+    )
+    results = []
+    for p, signed_url in zip(completed, signed):
+        entry = {
+            "id": p.id,
+            "name": p.name,
+            "final_video_url": p.final_video_url,
+            "video_signed_url": signed_url,
+            "createdAt": p.createdAt.isoformat() if p.createdAt else None,
+        }
+        if extra_fields:
+            for attr, key in extra_fields.items():
+                entry[key] = getattr(p, attr, None)
+        results.append(entry)
+    return results

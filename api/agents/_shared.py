@@ -8,7 +8,7 @@ import contextvars
 import logging
 import os
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from google import genai
 from google.adk.agents import LlmAgent
@@ -158,10 +158,12 @@ def build_specialist(
     )
 
 
-def make_prompt_lister(invite_code: str, category: str, tool_name: str, label: str):
+def make_prompt_lister(
+    invite_code: str, category: str, tool_name: str, label: str
+) -> Callable:
     """Build a tool that lists prompts for a fixed category and opens the picker."""
 
-    async def lister():
+    async def lister() -> str:
         prompts = await agent_tools.list_system_prompts(invite_code, category)
         _request_context.get().update({"prompt_picker": category})
         if not isinstance(prompts, list) or not prompts:
@@ -180,7 +182,7 @@ def make_prompt_lister(invite_code: str, category: str, tool_name: str, label: s
     return lister
 
 
-def _match_source(items, needle: str) -> Optional[str]:
+def _match_source(items: Any, needle: str) -> Optional[str]:
     """Return the gs:// URI of the item whose id/name/filename matches needle."""
     if not isinstance(items, list):
         return None
@@ -242,7 +244,7 @@ async def resolve_or_pick(
 
 def make_prompt_video_proposer(
     invite_code: str, job_type: str, title: str, func_name: str, doc: str
-):
+) -> Callable:
     """Build a propose_* tool for video+prompt analysis features (key_moments, thumbnails)."""
 
     async def proposer(gcs_uri: str, prompt_id: str, source_filename: str = "") -> str:
@@ -268,16 +270,16 @@ def make_prompt_video_proposer(
     return proposer
 
 
-def make_check_job_status(invite_code: str):
-    async def check_job_status(job_type: str, job_id: str):
+def make_check_job_status(invite_code: str) -> Callable:
+    async def check_job_status(job_type: str, job_id: str) -> str:
         """Check the status of a specific job."""
         return str(await agent_tools.get_job_status(invite_code, job_type, job_id))
 
     return check_job_status
 
 
-def make_list_available_videos(_invite_code: str):
-    async def list_available_videos():
+def make_list_available_videos(_invite_code: str) -> Callable:
+    async def list_available_videos() -> str:
         """Show available video sources."""
         _request_context.get().update({"source_picker": True})
         return "I've opened the video selector for you."
@@ -285,8 +287,8 @@ def make_list_available_videos(_invite_code: str):
     return list_available_videos
 
 
-def make_list_available_images(_invite_code: str):
-    async def list_available_images():
+def make_list_available_images(_invite_code: str) -> Callable:
+    async def list_available_images() -> str:
         """Show available image sources (for adapts, which resize an image)."""
         _request_context.get().update({"source_picker": "image"})
         return "I've opened the image selector for you."

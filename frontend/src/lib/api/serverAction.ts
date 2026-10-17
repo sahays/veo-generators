@@ -16,17 +16,10 @@ const AGENTS_SERVICE_ORIGIN =
 const PRODUCTIONS_SERVICE_ORIGIN =
   process.env.PRODUCTIONS_SERVICE_ORIGIN || FASTAPI_INTERNAL_ORIGIN
 
-/**
- * Next.js Server Action that executes all API calls server-to-server
- * from the Next.js Node runtime to the FastAPI backend over internal loopback
- * (or to the dedicated Cloud Run services for `/api/v1/chat` and `/api/v1/productions/*`).
- */
-export async function serverApiRequest(
-  path: string,
-  method: string,
-  headersRecord: Record<string, string>,
-  body?: string | FormData,
-): Promise<ServerApiResponse> {
+function resolveTargetUrl(path: string): string {
+  if (path.startsWith('http')) {
+    return path
+  }
   const fastapiOrigin =
     process.env.FASTAPI_INTERNAL_ORIGIN || FASTAPI_INTERNAL_ORIGIN
   const agentsOrigin = process.env.AGENTS_SERVICE_ORIGIN || fastapiOrigin
@@ -44,10 +37,21 @@ export async function serverApiRequest(
       : isStoryGraphRoute
         ? productionsOrigin
         : fastapiOrigin
-  const url = path.startsWith('http')
-    ? path
-    : `${targetOrigin}${normalizedPath}`
+  return `${targetOrigin}${normalizedPath}`
+}
 
+/**
+ * Next.js Server Action that executes all API calls server-to-server
+ * from the Next.js Node runtime to the FastAPI backend over internal loopback
+ * (or to the dedicated Cloud Run services for `/api/v1/chat` and `/api/v1/productions/*`).
+ */
+export async function serverApiRequest(
+  path: string,
+  method: string,
+  headersRecord: Record<string, string>,
+  body?: string | FormData,
+): Promise<ServerApiResponse> {
+  const url = resolveTargetUrl(path)
   const headers = new Headers(headersRecord)
   if (body instanceof FormData) {
     // Allow Node fetch to generate the multipart/form-data boundary header automatically

@@ -1,27 +1,34 @@
+import asyncio
+import logging
 import os
 import zlib
-import base64
-import asyncio
-from typing import Optional
+from typing import Any, Optional
+
 from google import genai
 from google.genai import types
-from ai_helpers import resolve_model
+
 from helpers import sdk_call_with_retry
-from models import Scene, Project
-from prompt_templates import PHYSICAL_REALISM_DIRECTIVE, VEO_NEGATIVE_PROMPT
+from models import Project, Scene
+from prompt_templates import VEO_NEGATIVE_PROMPT
+from video_prompt_helpers import (  # noqa: F401
+    _build_omni_inputs,
+    _is_omni_model,
+    _log_ctx,
+    _resolve_model_and_resolution,
+    _resolve_ref_urls,
+    build_scene_video_prompt,
+    extract_omni_video_uri,
+)
 
-
-def _is_omni_model(model_id: str) -> bool:
-    return model_id.startswith("gemini-omni")
+logger = logging.getLogger(__name__)
 
 
 class VideoService:
-    def __init__(self, storage_svc=None, firestore_svc=None):
+    def __init__(self, storage_svc: Any = None, firestore_svc: Any = None) -> None:
         self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
         self.veo_location = os.getenv("VEO_REGION", "global")
         self.storage_svc = storage_svc
         self.firestore_svc = firestore_svc
-
         self.video_client = genai.Client(
             vertexai=True, project=self.project_id, location=self.veo_location
         )
@@ -49,310 +56,108 @@ class VideoService:
         self, scene: Scene, project: Optional[Project], duration: int
     ) -> str:
         """Build a video-specific prompt with duration and camera movement."""
-        parts = []
-        parts.append(f"{duration}-second video clip.")
-        orientation = project.orientation if project else None
-        if orientation == "9:16":
-            parts.append("Aspect ratio: 9:16 (portrait/vertical).")
-        elif orientation == "16:9":
-            parts.append("Aspect ratio: 16:9 (landscape/horizontal).")
-        elif orientation:
-            parts.append(f"Aspect ratio: {orientation}.")
-        if scene.metadata:
-            md = scene.metadata
-            if md.camera_angle:
-                parts.append(f"Camera angle: {md.camera_angle}.")
-            if md.camera_movement:
-                parts.append(f"Camera movement: {md.camera_movement}.")
-            if md.cinematic_style:
-                parts.append(f"Cinematic style: {md.cinematic_style}.")
-            pace = md.pace or (
-                project.global_style.pace if project and project.global_style else None
-            )
-            if pace:
-                parts.append(f"Pace: {pace}.")
-        elif project and project.global_style and project.global_style.pace:
-            parts.append(f"Pace: {project.global_style.pace}.")
-        if project and project.global_style:
-            gs = project.global_style
-            parts.append(
-                f"Style: {gs.look}. Mood: {gs.mood}. "
-                f"Colors: {gs.color_grading}. Lighting: {gs.lighting_style}."
-            )
-        if project and project.continuity and project.continuity.characters:
-            char_descs = []
-            for c in project.continuity.characters:
-                char_descs.append(f"{c.id}: {c.description}, wearing {c.wardrobe}")
-            parts.append(f"Characters: {'; '.join(char_descs)}.")
-        if project and project.continuity and project.continuity.setting_notes:
-            parts.append(f"Setting: {project.continuity.setting_notes}.")
-        parts.append(scene.visual_description)
-        if scene.speaker_notes:
-            parts.append(f"Speaker & lip-sync rule: {scene.speaker_notes}.")
-        if scene.eval_feedback:
-            parts.append(f"STRICT CORRECTION FROM VIDEO EVAL: {scene.eval_feedback}.")
-        parts.append(PHYSICAL_REALISM_DIRECTIVE)
+        return build_scene_video_prompt(scene, project, duration)
 
-        # Visual enter/exit transitions are intentionally NOT sent to Veo: it
-        # generates each clip in isolation, so "connecting" language makes it
-        # morph objects in-frame. Transitions are applied at stitch time.
-        if scene.music_transition:
-            parts.append(f"Music transition: {scene.music_transition}")
+    def _extract_omni_video_uri(
+        self, interaction: Any, name_hint: str
+    ) -> Optional[str]:
+        """Extract a gs:// URI from a completed Gemini Omni interaction."""
+        return extract_omni_video_uri(interaction, name_hint, self.storage_svc)
 
-        if scene.narration_enabled and scene.narration:
-            lang = getattr(project, "language", None) or "en-IN"
-            speaker_rule = (
-                f" ({scene.speaker_notes})"
-                if scene.speaker_notes
-                else " (non-speaking on-screen characters must keep their mouths closed and not lip-sync someone else's lines)"
-            )
-            if lang == "hi-IN":
-                parts.append(
-                    f'Voice-over narration in Hindi (hi-IN, native Hindi pronunciation){speaker_rule}: "{scene.narration}"'
-                )
-            elif lang == "en-IN":
-                parts.append(
-                    f'Voice-over narration in English (India, en-IN, natural Indian English accent){speaker_rule}: "{scene.narration}"'
-                )
-            else:
-                parts.append(f'Voice-over narration{speaker_rule}: "{scene.narration}"')
-
-        if scene.music_enabled:
-            music = scene.music_description
-            if (
-                not music
-                and project
-                and project.global_style
-                and project.global_style.soundtrack_style
-            ):
-                music = project.global_style.soundtrack_style
-            if music:
-                parts.append(f"Background music: {music}.")
-
-        return " ".join(parts)
-
-    def _extract_omni_video_uri(self, interaction, name_hint: str) -> Optional[str]:
-        """Extract a gs:// URI from a completed Gemini Omni interaction,
-        uploading inline base64 bytes if needed."""
-        output_video = getattr(interaction, "output_video", None)
-        if output_video is None and isinstance(interaction, dict):
-            output_video = interaction.get("output_video")
-
-        if output_video is None:
-            steps = getattr(interaction, "steps", None)
-            if steps is None and isinstance(interaction, dict):
-                steps = interaction.get("steps")
-            for step in reversed(steps or []):
-                step_type = (
-                    step.get("type")
-                    if isinstance(step, dict)
-                    else getattr(step, "type", None)
-                )
-                if step_type != "model_output":
-                    continue
-                content = (
-                    step.get("content")
-                    if isinstance(step, dict)
-                    else getattr(step, "content", None)
-                )
-                for item in reversed(content or []):
-                    item_type = (
-                        item.get("type")
-                        if isinstance(item, dict)
-                        else getattr(item, "type", None)
-                    )
-                    if item_type == "video":
-                        output_video = item
-                        break
-                if output_video is not None:
-                    break
-
-        if output_video is None:
-            return None
-
-        uri = (
-            output_video.get("uri")
-            if isinstance(output_video, dict)
-            else getattr(output_video, "uri", None)
-        )
-        if uri:
-            return uri
-
-        data = (
-            output_video.get("data")
-            if isinstance(output_video, dict)
-            else getattr(output_video, "data", None)
-        )
-        if data and self.storage_svc:
-            video_bytes = (
-                base64.b64decode(data) if isinstance(data, str) else bytes(data)
-            )
-            safe_name = name_hint.replace("/", "_").replace(":", "_")
-            filename = f"videos/{safe_name}.mp4"
-            return self.storage_svc.upload_bytes(
-                video_bytes, filename, content_type="video/mp4"
-            )
-        return None
-
-    async def generate_scene_video(
-        self,
-        project_id: str,
-        scene: Scene,
-        blocking: bool = True,
-        project: Optional[Project] = None,
-        prompt_override: Optional[str] = None,
-        model_id: Optional[str] = None,
-        region: Optional[str] = None,
-        resolution: Optional[str] = None,
-        render_quality: Optional[str] = None,
-    ):
-        effective_quality = (
-            render_quality
-            or (getattr(project, "render_quality", None) if project else None)
-            or "final"
-        )
-        effective_resolution = (
-            resolution
-            or (
-                "360p"
-                if effective_quality == "draft"
-                else (getattr(project, "video_resolution", None) if project else None)
-            )
-            or "720p"
-        )
-        if effective_quality == "draft" or effective_resolution == "360p":
-            effective_resolution = "360p"
-            model_id = model_id or "gemini-omni-1.1-flash-preview"
-            if not _is_omni_model(model_id):
-                model_id = "gemini-omni-1.1-flash-preview"
-        else:
-            if effective_resolution == "360p":
-                effective_resolution = "720p"
-            model_id = resolve_model(
-                self.firestore_svc,
-                "video",
-                "VIDEO_GEN_MODEL",
-                "gemini-omni-1.1-flash-preview",
-                model_id,
-            )
-
-        is_omni = _is_omni_model(model_id)
-        # Gemini Omni 1.1 Flash is only available on the global endpoint.
-        client = self._get_client("global" if is_omni else region)
-        seed = self._get_project_seed(project_id)
-
+    def _compute_scene_duration(self, scene: Scene, is_omni: bool) -> int:
         supported_durations = list(range(3, 11)) if is_omni else [4, 6, 8]
         try:
             start = self._parse_timestamp(scene.timestamp_start)
             end = self._parse_timestamp(scene.timestamp_end)
             raw = int(end - start)
-            duration = min(supported_durations, key=lambda d: abs(d - raw))
+            return min(supported_durations, key=lambda d: abs(d - raw))
         except (ValueError, IndexError):
-            duration = 8
+            return 8
 
-        enriched_prompt = prompt_override or self._build_video_prompt(
-            scene, project, duration
+    async def _generate_omni_video(
+        self,
+        client: Any,
+        model_id: str,
+        project_id: str,
+        project: Optional[Project],
+        enriched_prompt: str,
+        ref_url: Optional[str],
+        end_ref_url: Optional[str],
+        duration: int,
+        effective_resolution: str,
+        blocking: bool,
+    ) -> dict[str, Any]:
+        input_blocks, video_task, fmt_block = _build_omni_inputs(
+            enriched_prompt,
+            ref_url,
+            end_ref_url,
+            project,
+            effective_resolution,
+            duration,
+            project_id,
         )
-
-        ref_url = None
-        if scene.thumbnail_url and scene.thumbnail_url.startswith("gs://"):
-            ref_url = scene.thumbnail_url
-        elif project and project.reference_image_url:
-            ref_url = project.reference_image_url
-
-        end_ref_url = None
-        if getattr(scene, "end_frame_url", None) and scene.end_frame_url.startswith(
-            "gs://"
-        ):
-            end_ref_url = scene.end_frame_url
-
-        if ref_url and end_ref_url:
-            enriched_prompt = (
-                f"{enriched_prompt} "
-                f"Start-to-End Keyframe Guidance: Begin from the provided START frame (0s) "
-                f"and smoothly progress the continuous action to arrive at the provided END frame ({duration}s)."
+        gen_cfg = {"video_config": {"task": video_task}}
+        try:
+            interaction = await sdk_call_with_retry(
+                client.interactions.create,
+                model=model_id,
+                background=not blocking,
+                input=input_blocks,
+                response_format=[fmt_block],
+                generation_config=gen_cfg,
             )
-
-        if is_omni:
-            input_blocks: list[dict] = [{"type": "text", "text": enriched_prompt}]
-            video_task = "text_to_video"
-            if ref_url and ref_url.startswith("gs://"):
-                input_blocks.append(
-                    {"type": "image", "uri": ref_url, "mime_type": "image/png"}
-                )
-                video_task = "image_to_video"
-            if end_ref_url and end_ref_url.startswith("gs://"):
-                input_blocks.append(
-                    {"type": "image", "uri": end_ref_url, "mime_type": "image/png"}
-                )
-                video_task = "image_to_video"
-
-            response_format_block: dict = {
-                "type": "video",
-                "aspect_ratio": project.orientation
-                if project and project.orientation
-                else "16:9",
-                "resolution": effective_resolution,
-                "duration": f"{duration}s",
+        except Exception:
+            if not (end_ref_url and len(input_blocks) > 2):
+                raise
+            interaction = await sdk_call_with_retry(
+                client.interactions.create,
+                model=model_id,
+                background=not blocking,
+                input=input_blocks[:2],
+                response_format=[fmt_block],
+                generation_config=gen_cfg,
+            )
+        interaction_id = getattr(interaction, "id", None) or (
+            interaction.get("id") if isinstance(interaction, dict) else ""
+        )
+        base_res = {
+            "generated_prompt": enriched_prompt,
+            "model_id": model_id,
+            "duration_seconds": duration,
+            "resolution": effective_resolution,
+        }
+        if not blocking:
+            return {
+                "operation_name": f"interaction:{interaction_id}",
+                "status": "processing",
+                **base_res,
             }
-            bucket = os.getenv("GCS_BUCKET")
-            if bucket:
-                response_format_block["delivery"] = "uri"
-                response_format_block["gcs_uri"] = f"gs://{bucket}/videos/{project_id}/"
-
-            try:
-                interaction = await sdk_call_with_retry(
-                    client.interactions.create,
-                    model=model_id,
-                    background=not blocking,
-                    input=input_blocks,
-                    response_format=[response_format_block],
-                    generation_config={"video_config": {"task": video_task}},
-                )
-            except Exception:
-                if end_ref_url and len(input_blocks) > 2:
-                    single_img_blocks = input_blocks[:2]
-                    interaction = await sdk_call_with_retry(
-                        client.interactions.create,
-                        model=model_id,
-                        background=not blocking,
-                        input=single_img_blocks,
-                        response_format=[response_format_block],
-                        generation_config={"video_config": {"task": video_task}},
-                    )
-                else:
-                    raise
-            interaction_id = getattr(interaction, "id", None) or (
-                interaction.get("id") if isinstance(interaction, dict) else ""
+        while getattr(interaction, "status", None) in ("in_progress", "queued"):
+            await asyncio.sleep(10)
+            interaction = await asyncio.to_thread(
+                client.interactions.get, interaction_id
             )
-
-            if not blocking:
-                return {
-                    "operation_name": f"interaction:{interaction_id}",
-                    "status": "processing",
-                    "generated_prompt": enriched_prompt,
-                    "model_id": model_id,
-                    "duration_seconds": duration,
-                    "resolution": effective_resolution,
-                }
-
-            while getattr(interaction, "status", None) in ("in_progress", "queued"):
-                await asyncio.sleep(10)
-                interaction = await asyncio.to_thread(
-                    client.interactions.get, interaction_id
-                )
-
-            uri = self._extract_omni_video_uri(
+        return {
+            "video_uri": self._extract_omni_video_uri(
                 interaction, interaction_id or project_id
             )
-            return {
-                "video_uri": uri or "",
-                "generated_prompt": enriched_prompt,
-                "model_id": model_id,
-                "duration_seconds": duration,
-                "resolution": effective_resolution,
-            }
+            or "",
+            **base_res,
+        }
 
+    async def _generate_veo_video(
+        self,
+        client: Any,
+        model_id: str,
+        seed: int,
+        project: Optional[Project],
+        enriched_prompt: str,
+        ref_url: Optional[str],
+        end_ref_url: Optional[str],
+        duration: int,
+        effective_resolution: str,
+        blocking: bool,
+    ) -> dict[str, Any]:
         veo_res = (
             effective_resolution
             if effective_resolution in ("720p", "1080p", "4k")
@@ -372,7 +177,7 @@ class VideoService:
             config_kwargs["last_frame"] = types.Image(
                 gcs_uri=end_ref_url, mime_type="image/png"
             )
-        generate_kwargs = {
+        generate_kwargs: dict = {
             "model": model_id,
             "prompt": enriched_prompt,
             "config": types.GenerateVideosConfig(**config_kwargs),
@@ -381,147 +186,203 @@ class VideoService:
             generate_kwargs["image"] = types.Image(
                 gcs_uri=ref_url, mime_type="image/png"
             )
-
         operation = await sdk_call_with_retry(
             client.models.generate_videos, **generate_kwargs
         )
-
-        if not blocking:
-            return {
-                "operation_name": operation.name,
-                "status": "processing",
-                "generated_prompt": enriched_prompt,
-                "model_id": model_id,
-                "duration_seconds": duration,
-                "resolution": veo_res,
-            }
-
-        while not operation.done:
-            await asyncio.sleep(10)
-
-        if operation.result and operation.result.generated_videos:
-            return {
-                "video_uri": operation.result.generated_videos[0].video.uri,
-                "generated_prompt": enriched_prompt,
-                "model_id": model_id,
-                "duration_seconds": duration,
-                "resolution": veo_res,
-            }
-
-        return {
-            "video_uri": "",
+        base_res = {
             "generated_prompt": enriched_prompt,
             "model_id": model_id,
             "duration_seconds": duration,
             "resolution": veo_res,
         }
+        if not blocking:
+            return {
+                "operation_name": operation.name,
+                "status": "processing",
+                **base_res,
+            }
+        while not operation.done:
+            await asyncio.sleep(10)
+        uri = (
+            operation.result.generated_videos[0].video.uri
+            if operation.result and operation.result.generated_videos
+            else ""
+        )
+        return {"video_uri": uri, **base_res}
 
-    async def get_video_generation_status(self, operation_name: str):
-        try:
-            print(f"Checking operation: {operation_name}")
+    async def generate_scene_video(
+        self,
+        project_id: str,
+        scene: Scene,
+        blocking: bool = True,
+        project: Optional[Project] = None,
+        prompt_override: Optional[str] = None,
+        model_id: Optional[str] = None,
+        region: Optional[str] = None,
+        resolution: Optional[str] = None,
+        render_quality: Optional[str] = None,
+    ) -> dict[str, Any]:
+        resolved_model, effective_resolution = _resolve_model_and_resolution(
+            self.firestore_svc, project, model_id, resolution, render_quality
+        )
+        is_omni = _is_omni_model(resolved_model)
+        client = self._get_client("global" if is_omni else region)
+        seed = self._get_project_seed(project_id)
+        duration = self._compute_scene_duration(scene, is_omni)
+        enriched_prompt = prompt_override or self._build_video_prompt(
+            scene, project, duration
+        )
+        ref_url, end_ref_url = _resolve_ref_urls(scene, project)
+        if ref_url and end_ref_url:
+            enriched_prompt = (
+                f"{enriched_prompt} "
+                f"Start-to-End Keyframe Guidance: Begin from the provided START frame (0s) "
+                f"and smoothly progress the continuous action to arrive at the provided END frame ({duration}s)."
+            )
+        if is_omni:
+            return await self._generate_omni_video(
+                client,
+                resolved_model,
+                project_id,
+                project,
+                enriched_prompt,
+                ref_url,
+                end_ref_url,
+                duration,
+                effective_resolution,
+                blocking,
+            )
+        return await self._generate_veo_video(
+            client,
+            resolved_model,
+            seed,
+            project,
+            enriched_prompt,
+            ref_url,
+            end_ref_url,
+            duration,
+            effective_resolution,
+            blocking,
+        )
 
-            if operation_name.startswith("interaction:"):
-                interaction_id = operation_name.split("interaction:", 1)[1]
-                client = self._get_client("global")
-                interaction = await asyncio.to_thread(
-                    client.interactions.get, interaction_id
+    async def _check_omni_interaction_status(
+        self, operation_name: str
+    ) -> dict[str, Any]:
+        interaction_id = operation_name.split("interaction:", 1)[1]
+        client = self._get_client("global")
+        interaction = await asyncio.to_thread(client.interactions.get, interaction_id)
+        status = getattr(interaction, "status", None) or (
+            interaction.get("status") if isinstance(interaction, dict) else None
+        )
+        if status in ("in_progress", "queued", None):
+            return {"status": "processing"}
+        if status in ("failed", "cancelled", "incomplete", "budget_exceeded"):
+            errors = getattr(interaction, "errors", None) or (
+                interaction.get("errors") if isinstance(interaction, dict) else None
+            )
+            return {"status": "failed", "error": str(errors or status)}
+        if status == "completed":
+            uri = self._extract_omni_video_uri(interaction, interaction_id)
+            if uri:
+                logger.info(
+                    f"Video generated (Gemini Omni): {uri}",
+                    extra=_log_ctx("get_video_generation_status", "omni_completed"),
                 )
-                status = getattr(interaction, "status", None) or (
-                    interaction.get("status") if isinstance(interaction, dict) else None
+                return {"status": "completed", "video_uri": uri}
+            logger.warning(
+                "Interaction complete but no video found in result.",
+                extra=_log_ctx("get_video_generation_status", "omni_empty"),
+            )
+            return {"status": "completed", "video_uri": None}
+        return {"status": "processing"}
+
+    def _extract_veo_result_uri(
+        self, first_video: Any, operation_name: str
+    ) -> Optional[str]:
+        uri = (
+            getattr(first_video.video, "uri", None)
+            if hasattr(first_video, "video")
+            else None
+        )
+        if not uri:
+            video_bytes = (
+                getattr(first_video.video, "video_bytes", None)
+                if hasattr(first_video, "video")
+                else None
+            )
+            if video_bytes and self.storage_svc:
+                filename = f"videos/{operation_name.replace('/', '_')}.mp4"
+                logger.info(
+                    f"Uploading raw video bytes to {filename}...",
+                    extra=_log_ctx("_extract_veo_result_uri", "upload_bytes"),
                 )
-                if status in ("in_progress", "queued", None):
-                    return {"status": "processing"}
-                if status in (
-                    "failed",
-                    "cancelled",
-                    "incomplete",
-                    "budget_exceeded",
-                ):
-                    errors = getattr(interaction, "errors", None) or (
-                        interaction.get("errors")
-                        if isinstance(interaction, dict)
-                        else None
+                uri = self.storage_svc.upload_bytes(
+                    video_bytes, filename, content_type="video/mp4"
+                )
+        if uri is None and isinstance(first_video, dict):
+            video_obj = first_video.get("video")
+            uri = (
+                video_obj.get("uri")
+                if isinstance(video_obj, dict)
+                else getattr(video_obj, "uri", None)
+            )
+        return uri
+
+    def _parse_completed_veo_operation(
+        self, operation: Any, operation_name: str
+    ) -> dict[str, Any]:
+        error = getattr(operation, "error", None)
+        if error is None and isinstance(operation, dict):
+            error = operation.get("error")
+        if error:
+            logger.error(
+                f"Operation failed: {error}",
+                extra=_log_ctx("get_video_generation_status", "veo_failed"),
+            )
+            return {"status": "failed", "error": str(error)}
+        result = getattr(operation, "result", None) or (
+            operation.get("result") if isinstance(operation, dict) else None
+        )
+        if result:
+            videos = getattr(result, "generated_videos", None) or (
+                result.get("generated_videos") if isinstance(result, dict) else None
+            )
+            if videos:
+                uri = self._extract_veo_result_uri(videos[0], operation_name)
+                if uri:
+                    logger.info(
+                        f"Video generated: {uri}",
+                        extra=_log_ctx("get_video_generation_status", "veo_completed"),
                     )
-                    return {"status": "failed", "error": str(errors or status)}
-                if status == "completed":
-                    uri = self._extract_omni_video_uri(interaction, interaction_id)
-                    if uri:
-                        print(f"Video generated (Gemini Omni): {uri}")
-                        return {"status": "completed", "video_uri": uri}
-                    print("Interaction complete but no video found in result.")
-                    return {"status": "completed", "video_uri": None}
-                return {"status": "processing"}
+                    return {"status": "completed", "video_uri": uri}
+        logger.warning(
+            "Operation complete but no video found in result.",
+            extra=_log_ctx("get_video_generation_status", "veo_empty"),
+        )
+        return {"status": "completed", "video_uri": None}
 
+    async def get_video_generation_status(self, operation_name: str) -> dict[str, Any]:
+        try:
+            logger.info(
+                f"Checking operation: {operation_name}",
+                extra=_log_ctx("get_video_generation_status", "check_status"),
+            )
+            if operation_name.startswith("interaction:"):
+                return await self._check_omni_interaction_status(operation_name)
             operation_wrapper = types.GenerateVideosOperation(name=operation_name)
             operation = await asyncio.to_thread(
                 self.video_client.operations.get, operation_wrapper
             )
-            print(f"Operation type: {type(operation)}")
-
             is_done = getattr(operation, "done", None)
             if is_done is None and isinstance(operation, dict):
                 is_done = operation.get("done")
-
             if is_done:
-                error = getattr(operation, "error", None)
-                if error is None and isinstance(operation, dict):
-                    error = operation.get("error")
-
-                if error:
-                    print(f"Operation failed: {error}")
-                    return {"status": "failed", "error": str(error)}
-
-                result = getattr(operation, "result", None)
-                if result is None and isinstance(operation, dict):
-                    result = operation.get("result")
-
-                if result:
-                    videos = getattr(result, "generated_videos", None)
-                    if videos is None and isinstance(result, dict):
-                        videos = result.get("generated_videos")
-
-                    if videos:
-                        first_video = videos[0]
-
-                        uri = (
-                            getattr(first_video.video, "uri", None)
-                            if hasattr(first_video, "video")
-                            else None
-                        )
-
-                        if not uri:
-                            video_bytes = (
-                                getattr(first_video.video, "video_bytes", None)
-                                if hasattr(first_video, "video")
-                                else None
-                            )
-                            if video_bytes and self.storage_svc:
-                                safe_name = operation_name.replace("/", "_")
-                                filename = f"videos/{safe_name}.mp4"
-                                print(f"Uploading raw video bytes to {filename}...")
-                                uri = self.storage_svc.upload_bytes(
-                                    video_bytes, filename, content_type="video/mp4"
-                                )
-
-                        if uri is None and isinstance(first_video, dict):
-                            video_obj = first_video.get("video")
-                            uri = (
-                                video_obj.get("uri")
-                                if isinstance(video_obj, dict)
-                                else getattr(video_obj, "uri", None)
-                            )
-
-                        if uri:
-                            print(f"Video generated: {uri}")
-                            return {"status": "completed", "video_uri": uri}
-
-                print("Operation complete but no video found in result.")
-                return {"status": "completed", "video_uri": None}
-
+                return self._parse_completed_veo_operation(operation, operation_name)
             return {"status": "processing"}
         except Exception as e:
-            print(f"Error checking status: {e}")
-            import traceback
-
-            traceback.print_exc()
+            logger.error(
+                f"Error checking status: {e}",
+                exc_info=True,
+                extra=_log_ctx("get_video_generation_status", "status_error"),
+            )
             return {"status": "error", "message": str(e)}

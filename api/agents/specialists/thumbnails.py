@@ -1,6 +1,6 @@
 """Thumbnails specialist (`thumbnails_agent`) — video thumbnail analysis, frame capture, and collage generation."""
 
-from typing import Optional
+from typing import Any, Optional
 
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
@@ -25,7 +25,7 @@ _THUMBNAILS_ROLE = (
 
 
 def _make_thumbnails_tools(invite_code: str) -> list:
-    async def list_recent_thumbnails(limit: int = 5):
+    async def list_recent_thumbnails(limit: int = 5) -> Any:
         """List the most recent thumbnail jobs."""
         return await agent_tools.list_recent_thumbnails(invite_code, limit)
 
@@ -37,7 +37,7 @@ def _make_thumbnails_tools(invite_code: str) -> list:
         "Propose thumbnail generation/analysis. Returns an interactive A2UI confirmation card.",
     )
 
-    async def advance_thumbnail_step(record_id: str, step: str):
+    async def advance_thumbnail_step(record_id: str, step: str) -> Any:
         """Trigger 'capture-frames' or 'generate-collage' on an existing thumbnail record."""
         if step not in ("capture-frames", "generate-collage"):
             return "Invalid step. Choose 'capture-frames' or 'generate-collage'."

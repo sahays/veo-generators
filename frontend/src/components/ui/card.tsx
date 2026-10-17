@@ -125,39 +125,29 @@ export const Card = ({
   actions,
   className,
   interactive = true,
-}: CardProps) => {
-  return (
-    <motion.div
-      id={id}
-      initial={{ opacity: 0, y: 10 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-      className={cn(
-        'glass bg-card rounded-xl shadow-sm transition-all duration-300 flex flex-col',
-        interactive && 'card-interactive',
-        className,
-      )}
-    >
-      {(title || Icon) && (
-        <div className="px-5 pt-5 pb-3 flex items-center gap-2.5 group">
-          {Icon && (
-            <div className="p-1.5 rounded-[5px] bg-gradient-to-br from-orange-500/20 to-amber-500/10 text-accent-dark border border-orange-500/20">
-              <Icon size={18} />
-            </div>
-          )}
-          {title && <h3 className="text-base font-heading font-bold text-foreground">{title}</h3>}
-          {id && <AnchorLink id={id} />}
-        </div>
-      )}
-
-      <div className="px-5 py-4 text-sm text-muted-foreground flex-1">{children}</div>
-
-      {actions && (
-        <div className="px-5 py-4 bg-muted/20 border-t border-border flex justify-end gap-2 rounded-b-xl">
-          {actions}
-        </div>
-      )}
-    </motion.div>
-  )
-}
+}: CardProps) => (
+  <motion.div
+    id={id}
+    initial={{ opacity: 0, y: 10 }}
+    whileInView={{ opacity: 1, y: 0 }}
+    viewport={{ once: true }}
+    transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+    className={cn('glass bg-card rounded-xl shadow-sm transition-all duration-300 flex flex-col', interactive && 'card-interactive', className)}
+  >
+    {(title || Icon) && (
+      <div className="px-5 pt-5 pb-3 flex items-center gap-2.5 group">
+        {Icon && (
+          <div className="p-1.5 rounded-[5px] bg-gradient-to-br from-orange-500/20 to-amber-500/10 text-accent-dark border border-orange-500/20">
+            <Icon size={18} />
+          </div>
+        )}
+        {title && <h3 className="text-base font-heading font-bold text-foreground">{title}</h3>}
+        {id && <AnchorLink id={id} />}
+      </div>
+    )}
+    <div className="px-5 py-4 text-sm text-muted-foreground flex-1">{children}</div>
+    {actions && (
+      <div className="px-5 py-4 bg-muted/20 border-t border-border flex justify-end gap-2 rounded-b-xl">{actions}</div>
+    )}
+  </motion.div>
+)

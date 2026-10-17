@@ -1,7 +1,8 @@
 import os
 import logging
 import warnings
-from fastapi import FastAPI, Request
+from typing import Any, Callable
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
@@ -62,16 +63,16 @@ READ_ONLY_WRITES = {
 }
 
 # Path prefixes that require a privileged user (master OR power) on every
-# method, including reads. (Avatars are gated end-to-end while the Vertex Live
-# preview is allowlist-pending; power users share the same allowlist as master.)
+# method, including reads.
 PRIVILEGED_ONLY_PREFIXES = ("/api/v1/avatars",)
+PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/api/v1/auth/validate"}
 
 
-# Bot protection middleware
 class BotProtectionMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(
+        self, request: Request, call_next: Callable[..., Any]
+    ) -> Response:
         user_agent = request.headers.get("user-agent", "").lower()
-        # Allow our own internal agent
         if "veoagent" in user_agent:
             return await call_next(request)
 
@@ -94,62 +95,32 @@ app.add_middleware(
 )
 
 
-# Invite code validation middleware
-@app.middleware("http")
-async def validate_invite_code(request: Request, call_next):
-    # Skip validation for health check, docs, public shared chats, and static files
+def _is_exempt_path(request: Request) -> bool:
+    """Return True if the request path bypasses invite-code validation."""
     path = request.url.path
     if (
-        path
-        in [
-            "/health",
-            "/docs",
-            "/openapi.json",
-            "/api/v1/auth/validate",
-        ]
+        path in PUBLIC_PATHS
         or (path.startswith("/api/v1/chat/share/") and request.method == "GET")
         or path.startswith("/static")
         or path.startswith("/_next")
     ):
-        return await call_next(request)
-
-    # Skip for direct asset access
+        return True
     if "." in path.split("/")[-1] and not path.startswith("/api"):
-        return await call_next(request)
+        return True
+    return False
 
-    invite_code = request.headers.get("X-Invite-Code")
-    if not invite_code:
-        # Check if it's a browser request for a page (not API)
-        if "text/html" in request.headers.get("accept", "") and not path.startswith(
-            "/api"
-        ):
-            return await call_next(request)
-        return JSONResponse(status_code=401, content={"detail": "Invite code required"})
 
-    # Validate via the auth module (handles master code + Firestore + is_active)
-    from routers.auth import validate_code
-
-    result = validate_code(invite_code)
-    if not result["valid"]:
-        return JSONResponse(status_code=401, content={"detail": "Invalid invite code"})
-    request.state.invite_code = invite_code
-    request.state.is_master = result.get("is_master", False)
-    request.state.is_power = result.get("is_power", False)
-    # Power users share every privilege with master users except invite-code
-    # management (which the auth router gates on master directly).
-    is_privileged = request.state.is_master or request.state.is_power
-
-    # Privileged-only path prefixes: every method (including GETs) requires a
-    # master or power user.
+def _check_access_permissions(
+    request: Request, is_privileged: bool
+) -> JSONResponse | None:
+    """Return a 403 JSONResponse if the user lacks privilege for the path/method."""
+    path = request.url.path
     if not is_privileged and any(
         path.startswith(prefix) for prefix in PRIVILEGED_ONLY_PREFIXES
     ):
         return JSONResponse(
             status_code=403, content={"detail": "Privileged access required"}
         )
-
-    # Only master/power users can mutate state. Allowlisted POSTs (login,
-    # pricing estimates) are read-only computations and remain open to guests.
     if (
         request.method in WRITE_METHODS
         and path not in READ_ONLY_WRITES
@@ -158,9 +129,38 @@ async def validate_invite_code(request: Request, call_next):
         return JSONResponse(
             status_code=403, content={"detail": "Privileged access required"}
         )
+    return None
 
-    response = await call_next(request)
-    return response
+
+@app.middleware("http")
+async def validate_invite_code(
+    request: Request, call_next: Callable[..., Any]
+) -> Response:
+    if _is_exempt_path(request):
+        return await call_next(request)
+
+    path = request.url.path
+    invite_code = request.headers.get("X-Invite-Code")
+    if not invite_code:
+        if "text/html" in request.headers.get("accept", "") and not path.startswith(
+            "/api"
+        ):
+            return await call_next(request)
+        return JSONResponse(status_code=401, content={"detail": "Invite code required"})
+
+    from routers.auth import validate_code
+
+    result = validate_code(invite_code)
+    if not result["valid"]:
+        return JSONResponse(status_code=401, content={"detail": "Invalid invite code"})
+    request.state.invite_code = invite_code
+    request.state.is_master = result.get("is_master", False)
+    request.state.is_power = result.get("is_power", False)
+    is_privileged = request.state.is_master or request.state.is_power
+    denied = _check_access_permissions(request, is_privileged)
+    if denied is not None:
+        return denied
+    return await call_next(request)
 
 
 # Include all routers
@@ -188,19 +188,19 @@ for r in [
 
 
 @app.on_event("startup")
-async def startup_event():
+async def startup_event() -> None:
     deps.init_services()
 
 
 @app.on_event("shutdown")
-async def shutdown_event():
+async def shutdown_event() -> None:
     from agents.tools import close_client
 
     await close_client()
 
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict[str, Any]:
     return {"status": "ok", "services": deps.services_ready()}
 
 
@@ -209,17 +209,12 @@ if os.path.exists("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
     @app.get("/{full_path:path}")
-    async def serve_frontend(full_path: str):
-        # If it's an API call that wasn't caught by a router, it's a 404
+    async def serve_frontend(full_path: str) -> Response:
         if full_path.startswith("api/"):
             return JSONResponse(status_code=404, content={"detail": "Not found"})
-
-        # Check if the file exists in static
         file_path = os.path.join("static", full_path)
         if os.path.isfile(file_path):
             return FileResponse(file_path)
-
-        # Otherwise, serve index.html for client-side routing
         return FileResponse("static/index.html")
 
 

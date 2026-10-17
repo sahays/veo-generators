@@ -10,39 +10,98 @@ from pathlib import Path
 
 from .errors import ValidationFailed
 from .repo import Repo
-from .schema import Status
+from .schema import GenerationRun, Status
 
 
-def assemble(repo: Repo, out_rel_path: str = "out/final.mp4") -> str:
-    """Stitch the winning APPROVED `GenerationRun` clip for each Shot in `story_order`."""
-    shots = sorted(
-        repo.list_shots(), key=lambda s: (s.story_order, s.scene_id, s.index_in_scene)
+def _is_run_style_drifted(r: GenerationRun) -> bool:
+    if r.qa_scores is None:
+        return False
+    return (
+        "style_drift" in r.qa_scores.artifact_flags
+        or "frozen_frame" in r.qa_scores.artifact_flags
+        or (r.qa_scores.action_achieved <= 0.05 and r.qa_scores.setting_match <= 0.2)
     )
-    if not shots:
-        raise ValidationFailed(["Cannot assemble final video: no shots exist"])
 
-    clip_bytes_list: list[bytes] = []
-    for shot in shots:
-        runs = repo.list_generation_runs(shot_id=shot.id)
-        approved_runs = [
-            r for r in runs if r.status == Status.APPROVED and r.output_video_uri
+
+def _select_winning_clip_bytes(repo: Repo, shot_id: str) -> bytes:
+    runs = repo.list_generation_runs(shot_id=shot_id)
+    approved = [r for r in runs if r.status == Status.APPROVED and r.output_video_uri]
+    if not approved:
+        fallbacks = [
+            r for r in runs if r.output_video_uri and not _is_run_style_drifted(r)
         ]
-        if not approved_runs:
-            approved_runs = [r for r in runs if r.output_video_uri]
-        if not approved_runs:
-            raise ValidationFailed(
-                [f"Shot '{shot.id}' has no rendered video clip to assemble"]
+        if fallbacks:
+            fallbacks.sort(
+                key=lambda r: (
+                    (
+                        r.qa_scores.wardrobe_match
+                        + r.qa_scores.setting_match
+                        + r.qa_scores.action_achieved
+                    )
+                    if r.qa_scores
+                    else 0.0,
+                    r.attempt,
+                )
             )
-        winner = approved_runs[-1]
-        assert winner.output_video_uri is not None
-        clip_bytes_list.append(repo.blobs.get_bytes(winner.output_video_uri))
+            approved = fallbacks
+    if not approved:
+        raise ValidationFailed(
+            [
+                f"Shot '{shot_id}' has no approved or style-consistent video clip to assemble (failed QA / style drift)"
+            ]
+        )
+    winner = approved[-1]
+    assert winner.output_video_uri is not None
+    return repo.blobs.get_bytes(winner.output_video_uri)
 
-    # Try real FFmpeg concat if ffmpeg is available and clips are real video streams;
-    # fall back to deterministic binary concat for synthetic test containers.
-    merged_bytes: bytes | None = None
+
+def _run_ffmpeg_concat(concat_txt: Path, out_file: Path) -> bool:
+    cmd_copy = [
+        "ffmpeg",
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(concat_txt),
+        "-c",
+        "copy",
+        "-movflags",
+        "+faststart",
+        str(out_file),
+    ]
+    proc = subprocess.run(cmd_copy, capture_output=True, timeout=60, check=False)
+    if proc.returncode != 0 or not out_file.is_file() or out_file.stat().st_size == 0:
+        cmd_reencode = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_txt),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            str(out_file),
+        ]
+        proc = subprocess.run(
+            cmd_reencode, capture_output=True, timeout=60, check=False
+        )
+    return proc.returncode == 0 and out_file.is_file() and out_file.stat().st_size > 256
+
+
+def _stitch_clips(clip_bytes_list: list[bytes]) -> bytes:
     if len(clip_bytes_list) == 1 and len(clip_bytes_list[0]) > 256:
-        merged_bytes = clip_bytes_list[0]
-    elif shutil.which("ffmpeg") and len(clip_bytes_list) > 1:
+        return clip_bytes_list[0]
+    if shutil.which("ffmpeg") and len(clip_bytes_list) > 1:
         try:
             with tempfile.TemporaryDirectory() as tmpdir:
                 tmp_path = Path(tmpdir)
@@ -54,73 +113,28 @@ def assemble(repo: Repo, out_rel_path: str = "out/final.mp4") -> str:
                 concat_txt = tmp_path / "concat.txt"
                 concat_txt.write_text("\n".join(list_lines), encoding="utf-8")
                 out_file = tmp_path / "final.mp4"
-                proc = subprocess.run(
-                    [
-                        "ffmpeg",
-                        "-y",
-                        "-f",
-                        "concat",
-                        "-safe",
-                        "0",
-                        "-i",
-                        str(concat_txt),
-                        "-c",
-                        "copy",
-                        "-movflags",
-                        "+faststart",
-                        str(out_file),
-                    ],
-                    capture_output=True,
-                    timeout=60,
-                    check=False,
-                )
-                if (
-                    proc.returncode != 0
-                    or not out_file.is_file()
-                    or out_file.stat().st_size == 0
-                ):
-                    proc = subprocess.run(
-                        [
-                            "ffmpeg",
-                            "-y",
-                            "-f",
-                            "concat",
-                            "-safe",
-                            "0",
-                            "-i",
-                            str(concat_txt),
-                            "-c:v",
-                            "libx264",
-                            "-preset",
-                            "ultrafast",
-                            "-pix_fmt",
-                            "yuv420p",
-                            "-movflags",
-                            "+faststart",
-                            str(out_file),
-                        ],
-                        capture_output=True,
-                        timeout=60,
-                        check=False,
-                    )
-                if (
-                    proc.returncode == 0
-                    and out_file.is_file()
-                    and out_file.stat().st_size > 256
-                ):
-                    merged_bytes = out_file.read_bytes()
+                if _run_ffmpeg_concat(concat_txt, out_file):
+                    return out_file.read_bytes()
         except Exception:
-            merged_bytes = None
+            pass
+    digest = hashlib.sha256(b"".join(clip_bytes_list)).digest()
+    return (
+        b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom"
+        + b"\x00\x00\x00\x28mdat"
+        + digest
+        + b"".join(clip_bytes_list)
+    )
 
-    if merged_bytes is None:
-        digest = hashlib.sha256(b"".join(clip_bytes_list)).digest()
-        merged_bytes = (
-            b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom"
-            + b"\x00\x00\x00\x28mdat"
-            + digest
-            + b"".join(clip_bytes_list)
-        )
 
+def assemble(repo: Repo, out_rel_path: str = "out/final.mp4") -> str:
+    """Stitch the winning APPROVED `GenerationRun` clip for each Shot in `story_order`."""
+    shots = sorted(
+        repo.list_shots(), key=lambda s: (s.story_order, s.scene_id, s.index_in_scene)
+    )
+    if not shots:
+        raise ValidationFailed(["Cannot assemble final video: no shots exist"])
+    clip_bytes_list = [_select_winning_clip_bytes(repo, s.id) for s in shots]
+    merged_bytes = _stitch_clips(clip_bytes_list)
     final_uri = repo.blobs.put_bytes(
         out_rel_path, merged_bytes, content_type="video/mp4"
     )

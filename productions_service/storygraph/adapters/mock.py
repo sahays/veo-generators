@@ -61,6 +61,75 @@ class MockImageGenerator:
         return buf.getvalue()
 
 
+def _render_slate_image(package: Package, digest: bytes) -> Image.Image:
+    """Render a deterministic storyboard slate image for `package`."""
+    w, h = (360, 640) if package.aspect_ratio == "9:16" else (640, 360)
+    bg = (20 + (digest[0] % 80), 28 + (digest[1] % 80), 45 + (digest[2] % 90))
+    img = Image.new("RGB", (w, h), color=bg)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([(8, 8), (w - 8, h - 8)], outline=(16, 185, 129), width=3)
+    draw.rectangle([(8, 8), (w - 8, 44)], fill=(15, 23, 42))
+    header = (
+        f"SHOT: {package.shot_id}  |  {package.duration_s:.1f}s  |  SEED {package.seed}"
+    )
+    draw.text((18, 20), header[:72], fill=(52, 211, 153))
+
+    y = 58
+    max_chars = 42 if w < h else 78
+    for raw_line in package.compiled_prompt.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        for wrapped in textwrap.wrap(line, width=max_chars)[:2]:
+            if y <= h - 28:
+                draw.text((20, y), wrapped, fill=(241, 245, 249))
+                y += 18
+        if y > h - 28:
+            break
+    return img
+
+
+def _encode_slate_mp4(img: Image.Image, duration_s: float) -> bytes | None:
+    """Encode `img` into a short H.264 MP4 clip using ffmpeg if available."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        frame_path = tmp_path / "slate.png"
+        out_path = tmp_path / "clip.mp4"
+        img.save(frame_path, format="PNG")
+        clip_dur = max(1.0, min(float(duration_s or 2.0), 4.0))
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-loop",
+            "1",
+            "-framerate",
+            "5",
+            "-i",
+            str(frame_path),
+            "-t",
+            f"{clip_dur:.1f}",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-tune",
+            "stillimage",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            str(out_path),
+        ]
+        proc = subprocess.run(cmd, capture_output=True, timeout=15, check=False)
+        if (
+            proc.returncode == 0
+            and out_path.is_file()
+            and out_path.stat().st_size > 256
+        ):
+            return out_path.read_bytes()
+    return None
+
+
 class MockVideoGenerator:
     """Generates deterministic browser-playable H.264 MP4 storyboard clips (or minimal ISO container if ffmpeg unavailable)."""
 
@@ -76,88 +145,20 @@ class MockVideoGenerator:
     def generate(self, package: Package) -> bytes:
         self.calls.append(package)
         digest = hashlib.sha256(package.package_hash.encode("utf-8")).digest()
-
         if shutil.which("ffmpeg"):
             try:
-                w, h = (360, 640) if package.aspect_ratio == "9:16" else (640, 360)
-                bg = (
-                    20 + (digest[0] % 80),
-                    28 + (digest[1] % 80),
-                    45 + (digest[2] % 90),
-                )
-                img = Image.new("RGB", (w, h), color=bg)
-                draw = ImageDraw.Draw(img)
-                draw.rectangle(
-                    [(8, 8), (w - 8, h - 8)], outline=(16, 185, 129), width=3
-                )
-                draw.rectangle([(8, 8), (w - 8, 44)], fill=(15, 23, 42))
-                header = f"SHOT: {package.shot_id}  |  {package.duration_s:.1f}s  |  SEED {package.seed}"
-                draw.text((18, 20), header[:72], fill=(52, 211, 153))
+                img = _render_slate_image(package, digest)
+                mp4_bytes = _encode_slate_mp4(img, package.duration_s)
+                if mp4_bytes is not None:
+                    return mp4_bytes
+            except (OSError, subprocess.SubprocessError):
+                mp4_bytes = None
 
-                y = 58
-                max_chars = 42 if w < h else 78
-                for raw_line in package.compiled_prompt.splitlines():
-                    line = raw_line.strip()
-                    if not line:
-                        continue
-                    for wrapped in textwrap.wrap(line, width=max_chars)[:2]:
-                        if y > h - 28:
-                            break
-                        draw.text((20, y), wrapped, fill=(241, 245, 249))
-                        y += 18
-                    if y > h - 28:
-                        break
-
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    tmp_path = Path(tmpdir)
-                    frame_path = tmp_path / "slate.png"
-                    out_path = tmp_path / "clip.mp4"
-                    img.save(frame_path, format="PNG")
-                    clip_dur = max(1.0, min(float(package.duration_s or 2.0), 4.0))
-                    proc = subprocess.run(
-                        [
-                            "ffmpeg",
-                            "-y",
-                            "-loop",
-                            "1",
-                            "-framerate",
-                            "5",
-                            "-i",
-                            str(frame_path),
-                            "-t",
-                            f"{clip_dur:.1f}",
-                            "-c:v",
-                            "libx264",
-                            "-preset",
-                            "ultrafast",
-                            "-tune",
-                            "stillimage",
-                            "-pix_fmt",
-                            "yuv420p",
-                            "-movflags",
-                            "+faststart",
-                            str(out_path),
-                        ],
-                        capture_output=True,
-                        timeout=15,
-                        check=False,
-                    )
-                    if (
-                        proc.returncode == 0
-                        and out_path.is_file()
-                        and out_path.stat().st_size > 256
-                    ):
-                        return out_path.read_bytes()
-            except Exception:
-                pass
-
-        # Deterministic minimal ISO BMFF / MP4 fallback when ffmpeg is absent
-        ftyp = (
+        return (
             b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom"
             + b"\x00\x00\x00\x28mdat"
             + digest
         )
-        return ftyp
 
 
 class MockVLMProvider:
@@ -174,6 +175,40 @@ class MockVLMProvider:
         self._seen_shots: set[str] = set()
         self.calls: list[dict[str, Any]] = []
 
+    def _build_qa_report(self, prompt: str) -> QAReport:
+        shot_match = re.search(r"shot_id=([A-Za-z0-9_]+)", prompt)
+        shot_id = shot_match.group(1) if shot_match else ""
+        if (
+            shot_id
+            and shot_id in self.fail_shots_once
+            and shot_id not in self._seen_shots
+        ):
+            self._seen_shots.add(shot_id)
+            return QAReport(
+                face_similarity={"default": 0.55},
+                wardrobe_match=0.60,
+                setting_match=0.85,
+                action_achieved=0.60,
+                continuity_prev_shot=0.80,
+                dialogue_wer=0.05,
+                artifact_flags=["wardrobe_mismatch_on_attempt_1"],
+                passed=False,
+                failure_reasons=["Wardrobe match below threshold on first attempt"],
+                suggested_fix="retry_seed",
+            )
+        return QAReport(
+            face_similarity={"default": 0.91},
+            wardrobe_match=0.92,
+            setting_match=0.94,
+            action_achieved=0.90,
+            continuity_prev_shot=0.92,
+            dialogue_wer=0.02,
+            artifact_flags=[],
+            passed=True,
+            failure_reasons=[],
+            suggested_fix="none",
+        )
+
     def review(
         self,
         images: list[bytes],
@@ -187,40 +222,8 @@ class MockVLMProvider:
             return self.custom_responder(images, prompt, schema)  # type: ignore[return-value]
 
         if schema is QAReport or schema.__name__ == "QAReport":
-            shot_match = re.search(r"shot_id=([A-Za-z0-9_]+)", prompt)
-            shot_id = shot_match.group(1) if shot_match else ""
-            if (
-                shot_id
-                and shot_id in self.fail_shots_once
-                and shot_id not in self._seen_shots
-            ):
-                self._seen_shots.add(shot_id)
-                return QAReport(
-                    face_similarity={"default": 0.55},
-                    wardrobe_match=0.60,
-                    setting_match=0.85,
-                    action_achieved=0.60,
-                    continuity_prev_shot=0.80,
-                    dialogue_wer=0.05,
-                    artifact_flags=["wardrobe_mismatch_on_attempt_1"],
-                    passed=False,
-                    failure_reasons=["Wardrobe match below threshold on first attempt"],
-                    suggested_fix="retry_seed",
-                )  # type: ignore[return-value]
-            return QAReport(
-                face_similarity={"default": 0.91},
-                wardrobe_match=0.92,
-                setting_match=0.94,
-                action_achieved=0.90,
-                continuity_prev_shot=0.92,
-                dialogue_wer=0.02,
-                artifact_flags=[],
-                passed=True,
-                failure_reasons=[],
-                suggested_fix="none",
-            )  # type: ignore[return-value]
+            return self._build_qa_report(prompt)  # type: ignore[return-value]
 
-        # Default construction for any other Pydantic schema (e.g. AssetCritiqueOutput)
         if "approved" in schema.model_fields:
             return schema.model_validate(
                 {

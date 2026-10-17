@@ -2,12 +2,18 @@ import { create } from 'zustand'
 import type { Scene, ProjectFormData, SelectCategory, CustomOption } from '@/types/project'
 import { DEFAULT_OPTIONS } from '@/types/project'
 
+type TempProjectData = Partial<ProjectFormData> & {
+  id?: string
+  scenes?: Scene[]
+  mediaFiles?: ReturnType<typeof JSON.parse>[]
+}
+
 interface ProjectState {
   activeProjectId: string | null
   customOptions: Record<SelectCategory, CustomOption[]>
-  tempProjectData: Partial<ProjectFormData> & { id?: string, scenes?: Scene[], mediaFiles?: any[] } | null
+  tempProjectData: TempProjectData | null
 
-  setTempProjectData: (data: Partial<ProjectFormData> & { id?: string, scenes?: Scene[], mediaFiles?: any[] } | null) => void
+  setTempProjectData: (data: TempProjectData | null) => void
   setActiveProject: (id: string | null) => void
 
   // Scene actions

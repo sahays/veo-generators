@@ -122,23 +122,13 @@ def create_orchestrator(invite_code: str) -> LlmAgent:
     )
 
 
-async def run_agent_chat(
-    invite_code: str, message: str, history: list[tuple[str, str]]
-) -> dict:
-    """Execute a turn of the Aanya ADK multi-agent hierarchy and return the chat response."""
-    t0 = time.perf_counter()
-    orchestrator = create_orchestrator(invite_code)
-    session_service = InMemorySessionService()
-    runner = Runner(
-        app_name="VeoGen",
-        agent=orchestrator,
-        session_service=session_service,
-    )
-
+async def _seed_session_history(
+    session_service: InMemorySessionService,
+    invite_code: str,
+    history: list[tuple[str, str]],
+) -> None:
     session = await session_service.create_session(
-        app_name="VeoGen",
-        user_id=invite_code,
-        session_id=invite_code,
+        app_name="VeoGen", user_id=invite_code, session_id=invite_code
     )
     for role, content in history:
         await session_service.append_event(
@@ -151,10 +141,22 @@ async def run_agent_chat(
             ),
         )
 
+
+async def run_agent_chat(
+    invite_code: str, message: str, history: list[tuple[str, str]]
+) -> dict:
+    """Execute a turn of the Aanya ADK multi-agent hierarchy and return the chat response."""
+    t0 = time.perf_counter()
+    orchestrator = create_orchestrator(invite_code)
+    session_service = InMemorySessionService()
+    runner = Runner(
+        app_name="VeoGen", agent=orchestrator, session_service=session_service
+    )
+    await _seed_session_history(session_service, invite_code, history)
+
     msg = types.Content(role="user", parts=[types.Part(text=message)])
     full_response = ""
     last_agent = "Aanya"
-
     async for event in runner.run_async(
         user_id=invite_code, session_id=invite_code, new_message=msg
     ):

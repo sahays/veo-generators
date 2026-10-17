@@ -13,6 +13,28 @@ export type LiveMessage =
   | { type: 'transcript'; role: 'user' | 'model'; text: string; isFinal: boolean }
   | { type: 'error'; error: Error }
 
+interface GeminiServerPart {
+  inlineData?: {
+    mimeType?: string
+    data?: string
+  }
+}
+
+interface GeminiTranscription {
+  text?: string
+  finished?: boolean
+}
+
+interface GeminiServerFrame {
+  setupComplete?: boolean
+  serverContent?: {
+    modelTurn?: { parts?: GeminiServerPart[] }
+    outputTranscription?: GeminiTranscription
+    inputTranscription?: GeminiTranscription
+  }
+  goAway?: { reason?: string }
+}
+
 export class GeminiLiveSession extends EventTarget {
   private ws: WebSocket | null = null
   private connected = false
@@ -94,9 +116,9 @@ export class GeminiLiveSession extends EventTarget {
       typeof raw === 'string'
         ? raw
         : new TextDecoder().decode(raw as ArrayBuffer)
-    let msg: any
+    let msg: GeminiServerFrame
     try {
-      msg = JSON.parse(text)
+      msg = JSON.parse(text) as GeminiServerFrame
     } catch {
       return
     }
@@ -110,19 +132,19 @@ export class GeminiLiveSession extends EventTarget {
 
     if (msg.serverContent) {
       const sc = msg.serverContent
-      const parts = sc.modelTurn?.parts as Array<any> | undefined
+      const parts = sc.modelTurn?.parts
       if (parts) {
         for (const part of parts) {
           const inline = part.inlineData
           if (!inline?.data || !inline?.mimeType) continue
           const bytes = base64ToBytes(inline.data)
-          if ((inline.mimeType as string).startsWith('video/')) {
+          if (inline.mimeType.startsWith('video/')) {
             this._dispatch({
               type: 'video-chunk',
               mimeType: inline.mimeType,
               data: bytes,
             })
-          } else if ((inline.mimeType as string).startsWith('audio/')) {
+          } else if (inline.mimeType.startsWith('audio/')) {
             this._dispatch({
               type: 'audio-chunk',
               mimeType: inline.mimeType,

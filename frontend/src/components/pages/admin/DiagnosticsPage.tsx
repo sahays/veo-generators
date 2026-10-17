@@ -1,0 +1,279 @@
+import { useState } from 'react'
+import { Upload, Sparkles, ImageIcon, Video, Loader2, ExternalLink, Cpu, DollarSign } from 'lucide-react'
+import { Button, Card } from '@/components/Common'
+import { Textarea } from '@/components/ui/textarea'
+import { api } from '@/hooks/useApiClient'
+
+interface DiagnosticUsage {
+  model_name: string
+  cost_usd: number
+}
+
+interface StorageUploadResult {
+  gcs_uri: string
+  signed_url: string
+}
+
+interface OptimizationResult {
+  data: unknown
+  usage: DiagnosticUsage
+}
+
+interface ImageResult {
+  data: string
+  usage: DiagnosticUsage
+}
+
+interface VideoResult {
+  video_uri?: string
+  signed_url?: string
+  operation_name?: string
+}
+
+const UsageBadge = ({ usage }: { usage: DiagnosticUsage }) => (
+  <div className="flex items-center gap-4 p-2 px-3 bg-muted rounded-full w-fit border border-border">
+    <div className="flex items-center gap-1.5 text-[9px] font-bold text-muted-foreground uppercase tracking-widest">
+      <Cpu size={10} /> {usage.model_name}
+    </div>
+    <div className="w-px h-3 bg-border" />
+    <div className="flex items-center gap-1 text-[10px] font-mono font-bold text-accent-dark">
+      <DollarSign size={10} /> {usage.cost_usd.toFixed(4)}
+    </div>
+  </div>
+)
+
+export const DiagnosticsPage = () => (
+  <div className="max-w-5xl mx-auto space-y-8 pb-20">
+    <div className="space-y-1">
+      <h2 className="text-2xl font-heading text-foreground tracking-tight">System Diagnostics</h2>
+      <p className="text-sm text-muted-foreground">
+        Test core infrastructure: GCS Storage and Generative AI Models.
+      </p>
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <StorageTest />
+      <PromptOptimizationTest />
+      <ImageGenerationTest />
+      <VideoGenerationTest />
+    </div>
+  </div>
+)
+
+const StorageSuccessBox = ({ result }: { result: StorageUploadResult }) => (
+  <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg space-y-3">
+    <div className="flex items-center gap-2 text-green-600 dark:text-green-400 font-bold text-xs">
+      <Sparkles size={14} /> Upload Successful!
+    </div>
+    <div className="space-y-1">
+      <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">GCS URI</p>
+      <p className="text-[10px] font-mono break-all bg-background/50 p-1.5 rounded border border-border/50 select-all">
+        {result.gcs_uri}
+      </p>
+    </div>
+    <div className="pt-2">
+      <Button href={result.signed_url} target="_blank" rel="noreferrer" size="sm" icon={ExternalLink}>
+        Download / View File
+      </Button>
+    </div>
+  </div>
+)
+
+const StorageTestBody = ({
+  file,
+  isLoading,
+  uploadSuccess,
+  result,
+  onSelectFile,
+}: {
+  file: File | null
+  isLoading: boolean
+  uploadSuccess: boolean
+  result: StorageUploadResult | null
+  onSelectFile: (f: File | null) => void
+}) => (
+  <div className="space-y-4">
+    <div className="space-y-2">
+      <input
+        type="file"
+        onChange={(e) => onSelectFile(e.target.files?.[0] || null)}
+        className="text-xs file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-semibold file:bg-accent/10 file:text-accent-dark hover:file:bg-accent/20 transition-all cursor-pointer"
+      />
+      {file && (
+        <p className="text-[10px] text-muted-foreground italic px-1">
+          Selected: <span className="font-bold text-foreground">{file.name}</span>
+        </p>
+      )}
+    </div>
+    {isLoading && (
+      <div className="flex items-center gap-2 p-3 bg-muted/30 rounded-lg">
+        <Loader2 className="animate-spin text-accent-dark" size={16} />
+        <span className="text-xs text-muted-foreground">Uploading to Google Cloud Storage...</span>
+      </div>
+    )}
+    {uploadSuccess && result && <StorageSuccessBox result={result} />}
+  </div>
+)
+
+const StorageTest = () => {
+  const [file, setFile] = useState<File | null>(null)
+  const [result, setResult] = useState<StorageUploadResult | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [uploadSuccess, setUploadSuccess] = useState(false)
+  const handleUpload = async () => {
+    if (!file) return
+    setIsLoading(true)
+    setUploadSuccess(false)
+    setResult(null)
+    try {
+      setResult(await api.assets.upload(file))
+      setUploadSuccess(true)
+    } catch {
+      // ignore error
+    } finally {
+      setIsLoading(false)
+    }
+  }
+  return (
+    <Card title="GCS Storage Test" icon={Upload} actions={<Button onClick={handleUpload} disabled={!file || isLoading} icon={Upload}>{isLoading ? 'Uploading...' : 'Upload Asset'}</Button>}>
+      <StorageTestBody file={file} isLoading={isLoading} uploadSuccess={uploadSuccess} result={result} onSelectFile={(f) => { setFile(f); setUploadSuccess(false); setResult(null) }} />
+    </Card>
+  )
+}
+
+const PromptOptimizationTest = () => {
+  const [concept, setConcept] = useState('A futuristic car driving through a neon city.')
+  const [result, setResult] = useState<OptimizationResult | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const handleTest = async () => {
+    setIsLoading(true)
+    try {
+      setResult((await api.diagnostics.optimizePrompt({ concept, length: '16', orientation: '16:9' })) as OptimizationResult)
+    } catch {
+      // ignore error
+    } finally {
+      setIsLoading(false)
+    }
+  }
+  return (
+    <Card title="Gemini 3 Pro: Script Analysis" icon={Sparkles} actions={<Button onClick={handleTest} disabled={isLoading} icon={Sparkles}>{isLoading ? 'Analyzing...' : 'Optimize Script (1 credit)'}</Button>}>
+      <div className="space-y-4">
+        <Textarea value={concept} onChange={(e) => setConcept(e.target.value)} className="h-24 text-xs" />
+        {result && (
+          <div className="space-y-3">
+            <div className="p-3 bg-muted/50 border border-border rounded-lg max-h-40 overflow-auto"><pre className="text-[9px] font-mono">{JSON.stringify(result.data, null, 2)}</pre></div>
+            <UsageBadge usage={result.usage} />
+          </div>
+        )}
+      </div>
+    </Card>
+  )
+}
+
+const ImageGenerationTest = () => {
+  const [prompt, setPrompt] = useState('Cinematic wide shot of Tokyo at night, neon lights.')
+  const [result, setResult] = useState<ImageResult | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const handleTest = async () => {
+    setIsLoading(true)
+    try {
+      setResult((await api.diagnostics.generateImage({ prompt, orientation: '16:9' })) as ImageResult)
+    } catch {
+      // ignore error
+    } finally {
+      setIsLoading(false)
+    }
+  }
+  return (
+    <Card title="Gemini 3.1: Storyboard Frame" icon={ImageIcon} actions={<Button onClick={handleTest} disabled={isLoading} icon={ImageIcon}>{isLoading ? 'Painting...' : 'Generate Frame (2 credits)'}</Button>}>
+      <div className="space-y-4">
+        <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} className="h-20 text-xs" />
+        {result && (
+          <div className="space-y-3">
+            <div className="aspect-video rounded-lg overflow-hidden border border-border"><img src={result.data} className="w-full h-full object-cover" alt="Generated" /></div>
+            <UsageBadge usage={result.usage} />
+          </div>
+        )}
+      </div>
+    </Card>
+  )
+}
+
+function startVideoOperationPoller(
+  operationName: string,
+  setResult: (r: VideoResult | null) => void,
+  setStatus: (s: string) => void,
+  setIsLoading: (v: boolean) => void,
+) {
+  const interval = setInterval(async () => {
+    try {
+      const data = await api.diagnostics.getOperation(operationName)
+      if (data.status === 'completed') {
+        setResult({ video_uri: data.video_uri, signed_url: data.signed_url })
+        setStatus('completed')
+        setIsLoading(false)
+        clearInterval(interval)
+      } else if (data.status === 'failed' || data.status === 'error') {
+        setStatus('failed')
+        setIsLoading(false)
+        clearInterval(interval)
+      }
+    } catch {
+      // Continue polling on transient errors
+    }
+  }, 5000)
+}
+
+const VideoResultBox = ({ result }: { result: VideoResult }) => (
+  <div className="p-3 bg-accent/5 border border-accent/20 rounded-lg">
+    {result.signed_url && <video src={result.signed_url} controls className="w-full rounded-lg mb-2 shadow-sm aspect-video bg-black" />}
+    <p className="text-[10px] font-mono break-all mb-2 opacity-70">{result.video_uri}</p>
+    <Button variant="link" size="xs" href={result.signed_url} target="_blank" rel="noreferrer" className="text-accent-dark text-[10px] font-bold flex items-center gap-1 hover:underline px-0 h-auto">
+      Download Scene <ExternalLink size={10} />
+    </Button>
+  </div>
+)
+
+const VideoTestStatusContent = ({ status, result }: { status: string; result: VideoResult | null }) => (
+  <>
+    {status === 'processing' && (
+      <div className="flex items-center gap-2 p-3 bg-muted/30 rounded-lg">
+        <Loader2 className="animate-spin text-accent-dark" size={16} />
+        <span className="text-xs text-muted-foreground">Generating video... this may take a minute.</span>
+      </div>
+    )}
+    {result && status === 'completed' && <VideoResultBox result={result} />}
+    {status === 'failed' && <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-500">Video generation failed. Check console/logs.</div>}
+  </>
+)
+
+const VideoGenerationTest = () => {
+  const [prompt, setPrompt] = useState('A slow tracking shot of coffee being poured.')
+  const [result, setResult] = useState<VideoResult | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [status, setStatus] = useState<string>('idle')
+  const handleTest = async () => {
+    setIsLoading(true)
+    setStatus('starting')
+    setResult(null)
+    try {
+      const data = (await api.diagnostics.generateVideo({ prompt })) as VideoResult
+      if (data.operation_name) {
+        setStatus('processing')
+        startVideoOperationPoller(data.operation_name, setResult, setStatus, setIsLoading)
+      } else if (data.video_uri) {
+        setResult(data); setStatus('completed'); setIsLoading(false)
+      }
+    } catch {
+      setStatus('failed'); setIsLoading(false)
+    }
+  }
+  return (
+    <Card title="Veo 3.1: Video Scene (8s)" icon={Video} actions={<Button onClick={handleTest} disabled={isLoading} icon={Video}>{isLoading ? 'Processing...' : 'Render Scene (5 credits)'}</Button>}>
+      <div className="space-y-4">
+        <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} className="h-20 text-xs" />
+        <VideoTestStatusContent status={status} result={result} />
+      </div>
+    </Card>
+  )
+}
+

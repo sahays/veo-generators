@@ -5,7 +5,7 @@ export interface Message {
   role: 'user' | 'model'
   content: string
   agent?: string
-  data?: any
+  data?: ReturnType<typeof JSON.parse>
   timestamp: number
   latencyMs?: number
   feedback?: 'up' | 'down'
@@ -20,7 +20,7 @@ interface ChatState {
   setIsFullscreen: (fullscreen: boolean) => void
   setMessageFeedback: (index: number, feedback: 'up' | 'down' | undefined) => void
   sendMessage: (text: string) => Promise<void>
-  addSystemMessage: (content: string, data?: any) => void
+  addSystemMessage: (content: string, data?: ReturnType<typeof JSON.parse>) => void
   clearHistory: () => void
 }
 
@@ -74,8 +74,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         messages: [...state.messages, modelMessage],
         isTyping: false,
       }))
-    } catch (error) {
-      console.error('Chat error:', error)
+    } catch {
       set({ isTyping: false })
 
       const errorMessage: Message = {

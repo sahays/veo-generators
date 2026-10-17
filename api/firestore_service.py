@@ -1,5 +1,5 @@
 import os
-from typing import List, Optional
+from typing import Any, List, Optional
 from google.cloud import firestore
 from datetime import datetime
 from models import (
@@ -21,7 +21,7 @@ from models import (
 
 
 class FirestoreService:
-    def __init__(self):
+    def __init__(self) -> None:
         project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
         service_name = os.getenv("SERVICE_NAME", "veo-generators")
         prefix = service_name.replace("-", "_")
@@ -43,7 +43,9 @@ class FirestoreService:
 
     # --- Generic CRUD helpers ---
 
-    def _get_records(self, collection, model_cls, include_archived=False):
+    def _get_records(
+        self, collection: Any, model_cls: Any, include_archived: bool = False
+    ) -> list[Any]:
         docs = collection.stream()
         records = [model_cls(**doc.to_dict()) for doc in docs]
         records.sort(key=lambda r: r.createdAt or "", reverse=True)
@@ -51,19 +53,19 @@ class FirestoreService:
             records = [r for r in records if not getattr(r, "archived", False)]
         return records
 
-    def _get_record(self, collection, model_cls, record_id):
+    def _get_record(self, collection: Any, model_cls: Any, record_id: str) -> Any:
         doc = collection.document(record_id).get()
         if doc.exists:
             return model_cls(**doc.to_dict())
         return None
 
-    def _create_record(self, collection, record):
+    def _create_record(self, collection: Any, record: Any) -> None:
         collection.document(record.id).set(record.dict())
 
-    def _update_record(self, collection, record_id, updates):
+    def _update_record(self, collection: Any, record_id: str, updates: dict) -> None:
         collection.document(record_id).update(updates)
 
-    def _delete_record(self, collection, record_id):
+    def _delete_record(self, collection: Any, record_id: str) -> None:
         collection.document(record_id).delete()
 
     def _all_resources(self) -> List[SystemResource]:
@@ -74,8 +76,6 @@ class FirestoreService:
     def list_resources(
         self, resource_type: Optional[str] = None, category: Optional[str] = None
     ) -> List[SystemResource]:
-        # Push the type filter to Firestore (single-field indexes are auto).
-        # Category stays Python-side to avoid forcing a composite index.
         query = self.resources_collection
         if resource_type:
             query = query.where("type", "==", resource_type)
@@ -98,15 +98,14 @@ class FirestoreService:
                 return r
         return None
 
-    def create_resource(self, resource: SystemResource):
+    def create_resource(self, resource: SystemResource) -> None:
         self._create_record(self.resources_collection, resource)
 
-    def set_resource_active(self, resource_id: str):
+    def set_resource_active(self, resource_id: str) -> None:
         resource = self.get_resource(resource_id)
         if not resource:
             return
 
-        # Deactivate current active in same type/category, activate target
         all_resources = self._all_resources()
         batch = self.db.batch()
         for r in all_resources:
@@ -129,19 +128,19 @@ class FirestoreService:
     def get_production(self, production_id: str) -> Optional[Project]:
         return self._get_record(self.collection, Project, production_id)
 
-    def create_production(self, production: Project):
+    def create_production(self, production: Project) -> None:
         self._create_record(self.collection, production)
 
-    def update_production(self, production_id: str, updates: dict):
+    def update_production(self, production_id: str, updates: dict) -> None:
         updates["updatedAt"] = datetime.utcnow()
         if "status" in updates and isinstance(updates["status"], ProjectStatus):
             updates["status"] = updates["status"].value
         self._update_record(self.collection, production_id, updates)
 
-    def delete_production(self, production_id: str):
+    def delete_production(self, production_id: str) -> None:
         self._delete_record(self.collection, production_id)
 
-    def update_scene(self, production_id: str, scene_id: str, updates: dict):
+    def update_scene(self, production_id: str, scene_id: str, updates: dict) -> None:
         import threading
 
         lock = getattr(self, "_scene_lock", None)
@@ -152,7 +151,6 @@ class FirestoreService:
             production = self.get_production(production_id)
             if not production:
                 return
-            # Dict-by-id mutation: O(n) once instead of branching per scene.
             scenes_by_id = {s.id: s.dict() for s in production.scenes}
             target = scenes_by_id.get(scene_id)
             if not target:
@@ -176,13 +174,13 @@ class FirestoreService:
             self.key_moments_collection, KeyMomentsRecord, record_id
         )
 
-    def create_key_moments_analysis(self, record: KeyMomentsRecord):
+    def create_key_moments_analysis(self, record: KeyMomentsRecord) -> None:
         self._create_record(self.key_moments_collection, record)
 
-    def update_key_moments_analysis(self, record_id: str, updates: dict):
+    def update_key_moments_analysis(self, record_id: str, updates: dict) -> None:
         self._update_record(self.key_moments_collection, record_id, updates)
 
-    def delete_key_moments_analysis(self, record_id: str):
+    def delete_key_moments_analysis(self, record_id: str) -> None:
         self._delete_record(self.key_moments_collection, record_id)
 
     # --- Thumbnails ---
@@ -197,13 +195,13 @@ class FirestoreService:
     def get_thumbnail_record(self, record_id: str) -> Optional[ThumbnailRecord]:
         return self._get_record(self.thumbnails_collection, ThumbnailRecord, record_id)
 
-    def create_thumbnail_record(self, record: ThumbnailRecord):
+    def create_thumbnail_record(self, record: ThumbnailRecord) -> None:
         self._create_record(self.thumbnails_collection, record)
 
-    def update_thumbnail_record(self, record_id: str, updates: dict):
+    def update_thumbnail_record(self, record_id: str, updates: dict) -> None:
         self._update_record(self.thumbnails_collection, record_id, updates)
 
-    def delete_thumbnail_record(self, record_id: str):
+    def delete_thumbnail_record(self, record_id: str) -> None:
         self._delete_record(self.thumbnails_collection, record_id)
 
     # --- Reframes ---
@@ -218,13 +216,13 @@ class FirestoreService:
     def get_reframe_record(self, record_id: str) -> Optional[ReframeRecord]:
         return self._get_record(self.reframe_collection, ReframeRecord, record_id)
 
-    def create_reframe_record(self, record: ReframeRecord):
+    def create_reframe_record(self, record: ReframeRecord) -> None:
         self._create_record(self.reframe_collection, record)
 
-    def update_reframe_record(self, record_id: str, updates: dict):
+    def update_reframe_record(self, record_id: str, updates: dict) -> None:
         self._update_record(self.reframe_collection, record_id, updates)
 
-    def delete_reframe_record(self, record_id: str):
+    def delete_reframe_record(self, record_id: str) -> None:
         self._delete_record(self.reframe_collection, record_id)
 
     # --- Promos ---
@@ -235,13 +233,13 @@ class FirestoreService:
     def get_promo_record(self, record_id: str) -> Optional[PromoRecord]:
         return self._get_record(self.promo_collection, PromoRecord, record_id)
 
-    def create_promo_record(self, record: PromoRecord):
+    def create_promo_record(self, record: PromoRecord) -> None:
         self._create_record(self.promo_collection, record)
 
-    def update_promo_record(self, record_id: str, updates: dict):
+    def update_promo_record(self, record_id: str, updates: dict) -> None:
         self._update_record(self.promo_collection, record_id, updates)
 
-    def delete_promo_record(self, record_id: str):
+    def delete_promo_record(self, record_id: str) -> None:
         self._delete_record(self.promo_collection, record_id)
 
     # --- Adapts ---
@@ -252,13 +250,13 @@ class FirestoreService:
     def get_adapt_record(self, record_id: str) -> Optional[AdaptRecord]:
         return self._get_record(self.adapts_collection, AdaptRecord, record_id)
 
-    def create_adapt_record(self, record: AdaptRecord):
+    def create_adapt_record(self, record: AdaptRecord) -> None:
         self._create_record(self.adapts_collection, record)
 
-    def update_adapt_record(self, record_id: str, updates: dict):
+    def update_adapt_record(self, record_id: str, updates: dict) -> None:
         self._update_record(self.adapts_collection, record_id, updates)
 
-    def delete_adapt_record(self, record_id: str):
+    def delete_adapt_record(self, record_id: str) -> None:
         self._delete_record(self.adapts_collection, record_id)
 
     # --- Dubs ---
@@ -269,13 +267,13 @@ class FirestoreService:
     def get_dub_record(self, record_id: str) -> Optional[DubRecord]:
         return self._get_record(self.dubs_collection, DubRecord, record_id)
 
-    def create_dub_record(self, record: DubRecord):
+    def create_dub_record(self, record: DubRecord) -> None:
         self._create_record(self.dubs_collection, record)
 
-    def update_dub_record(self, record_id: str, updates: dict):
+    def update_dub_record(self, record_id: str, updates: dict) -> None:
         self._update_record(self.dubs_collection, record_id, updates)
 
-    def delete_dub_record(self, record_id: str):
+    def delete_dub_record(self, record_id: str) -> None:
         self._delete_record(self.dubs_collection, record_id)
 
     # --- Uploads ---
@@ -298,13 +296,13 @@ class FirestoreService:
     def get_upload_record(self, record_id: str) -> Optional[UploadRecord]:
         return self._get_record(self.uploads_collection, UploadRecord, record_id)
 
-    def create_upload_record(self, record: UploadRecord):
+    def create_upload_record(self, record: UploadRecord) -> None:
         self._create_record(self.uploads_collection, record)
 
-    def update_upload_record(self, record_id: str, updates: dict):
+    def update_upload_record(self, record_id: str, updates: dict) -> None:
         self._update_record(self.uploads_collection, record_id, updates)
 
-    def delete_upload_record(self, record_id: str):
+    def delete_upload_record(self, record_id: str) -> None:
         self._delete_record(self.uploads_collection, record_id)
 
     # --- Invite Codes ---
@@ -327,13 +325,13 @@ class FirestoreService:
             return InviteCode(**doc.to_dict())
         return None
 
-    def create_invite_code(self, invite_code: InviteCode):
+    def create_invite_code(self, invite_code: InviteCode) -> None:
         self._create_record(self.invite_codes_collection, invite_code)
 
-    def update_invite_code(self, code_id: str, updates: dict):
+    def update_invite_code(self, code_id: str, updates: dict) -> None:
         self._update_record(self.invite_codes_collection, code_id, updates)
 
-    def delete_invite_code(self, code_id: str):
+    def delete_invite_code(self, code_id: str) -> None:
         self._delete_record(self.invite_codes_collection, code_id)
 
     # --- AI Models ---
@@ -344,13 +342,13 @@ class FirestoreService:
     def get_ai_model(self, model_id: str) -> Optional[AIModel]:
         return self._get_record(self.models_collection, AIModel, model_id)
 
-    def create_ai_model(self, model: AIModel):
+    def create_ai_model(self, model: AIModel) -> None:
         self._create_record(self.models_collection, model)
 
-    def update_ai_model(self, model_id: str, updates: dict):
+    def update_ai_model(self, model_id: str, updates: dict) -> None:
         self._update_record(self.models_collection, model_id, updates)
 
-    def delete_ai_model(self, model_id: str):
+    def delete_ai_model(self, model_id: str) -> None:
         self._delete_record(self.models_collection, model_id)
 
     def get_default_model(self, capability: str) -> Optional[AIModel]:
@@ -360,7 +358,7 @@ class FirestoreService:
                 return m
         return None
 
-    def set_model_default(self, model_id: str):
+    def set_model_default(self, model_id: str) -> None:
         model = self.get_ai_model(model_id)
         if not model:
             return
@@ -382,13 +380,13 @@ class FirestoreService:
     def get_avatar(self, avatar_id: str) -> Optional[Avatar]:
         return self._get_record(self.avatars_collection, Avatar, avatar_id)
 
-    def create_avatar(self, avatar: Avatar):
+    def create_avatar(self, avatar: Avatar) -> None:
         self._create_record(self.avatars_collection, avatar)
 
-    def update_avatar(self, avatar_id: str, updates: dict):
+    def update_avatar(self, avatar_id: str, updates: dict) -> None:
         self._update_record(self.avatars_collection, avatar_id, updates)
 
-    def delete_avatar(self, avatar_id: str):
+    def delete_avatar(self, avatar_id: str) -> None:
         self._delete_record(self.avatars_collection, avatar_id)
 
     # --- Avatar Turns ---
@@ -410,13 +408,7 @@ class FirestoreService:
         return [r for r in records if r.status == "pending"]
 
     def reclaim_orphan_avatar_turns(self) -> int:
-        """Flip any `generating` avatar turns back to `pending`.
-
-        Called on worker startup so a turn that was being rendered when the
-        previous worker died can be re-picked. Safe under single-instance
-        worker config (only one worker ever processes turns).
-        Returns the count of reclaimed turns.
-        """
+        """Flip any `generating` avatar turns back to `pending`."""
         records = self._get_records(
             self.avatar_turns_collection, AvatarTurn, include_archived=False
         )
@@ -432,18 +424,18 @@ class FirestoreService:
     def get_avatar_turn(self, turn_id: str) -> Optional[AvatarTurn]:
         return self._get_record(self.avatar_turns_collection, AvatarTurn, turn_id)
 
-    def create_avatar_turn(self, turn: AvatarTurn):
+    def create_avatar_turn(self, turn: AvatarTurn) -> None:
         self._create_record(self.avatar_turns_collection, turn)
 
-    def update_avatar_turn(self, turn_id: str, updates: dict):
+    def update_avatar_turn(self, turn_id: str, updates: dict) -> None:
         self._update_record(self.avatar_turns_collection, turn_id, updates)
 
-    def delete_avatar_turn(self, turn_id: str):
+    def delete_avatar_turn(self, turn_id: str) -> None:
         self._delete_record(self.avatar_turns_collection, turn_id)
 
     # --- Shared Chats ---
 
-    def create_shared_chat(self, share_id: str, record: dict):
+    def create_shared_chat(self, share_id: str, record: dict) -> None:
         self.shared_chats_collection.document(share_id).set(record)
 
     def get_shared_chat(self, share_id: str) -> Optional[dict]:

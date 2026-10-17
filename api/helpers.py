@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Optional
+from typing import Any, Callable, Optional
 
 from fastapi import HTTPException
 
@@ -25,13 +25,20 @@ logger = logging.getLogger(__name__)
 # --- Shared Utilities ---
 
 
-def require_firestore():
+def require_firestore() -> None:
     """Raise 503 if Firestore service is not initialized."""
     if not deps.firestore_svc:
         raise HTTPException(status_code=503, detail="Service not initialized")
 
 
-def get_or_404(get_fn, record_id: str, name: str = "Record"):
+def ensure_services_ready() -> None:
+    """Ensure core persistence services are initialized (router-facing helper)."""
+    require_firestore()
+
+
+def get_or_404(
+    get_fn: Callable[[str], Any], record_id: str, name: str = "Record"
+) -> Any:
     """Fetch a record by ID or raise 404 if not found."""
     record = get_fn(record_id)
     if not record:
@@ -60,12 +67,12 @@ def apply_indexed_uris(
 
 
 async def sdk_call_with_retry(
-    fn,
-    *args,
+    fn: Callable[..., Any],
+    *args: Any,
     max_retries: int = 4,
     initial_backoff: int = 2,
-    **kwargs,
-):
+    **kwargs: Any,
+) -> Any:
     """Run a blocking SDK call in a worker thread with exponential backoff on 429s."""
     last_error = None
     for attempt in range(max_retries + 1):
@@ -78,8 +85,14 @@ async def sdk_call_with_retry(
             if is_rate_limit and attempt < max_retries:
                 wait = initial_backoff * (2**attempt)
                 logger.warning(
-                    f"Rate-limited (attempt {attempt + 1}/{max_retries + 1}), "
-                    f"retrying in {wait}s: {err_str[:200]}"
+                    f"Rate-limited (attempt {attempt + 1}/{max_retries + 1}), retrying in {wait}s: {err_str[:200]}",
+                    extra={
+                        "who": "helpers",
+                        "where": "sdk_call_with_retry",
+                        "what": "rate_limit_backoff",
+                        "why": err_str[:120],
+                        "how": f"sleep_{wait}s",
+                    },
                 )
                 await asyncio.sleep(wait)
             else:
@@ -88,13 +101,13 @@ async def sdk_call_with_retry(
 
 
 async def gemini_call_with_retry(
-    client,
+    client: Any,
     model: str,
     contents: list,
-    config,
+    config: Any,
     max_retries: int = 4,
     initial_backoff: int = 2,
-):
+) -> Any:
     """Call Gemini with exponential backoff on rate limits."""
     return await sdk_call_with_retry(
         client.models.generate_content,
@@ -128,9 +141,23 @@ def orientation_directive(orientation: Optional[str]) -> str:
     return ""
 
 
+def _append_continuity_parts(parts: list[str], cont: Optional[dict]) -> None:
+    """Append character and setting continuity notes onto prompt parts."""
+    if not cont:
+        return
+    if cont.get("characters"):
+        char_descs = [
+            f"{c['id']}: {c['description']}, wearing {c.get('wardrobe', '')}"
+            for c in cont["characters"]
+        ]
+        parts.append(f"Characters: {'; '.join(char_descs)}.")
+    if cont.get("setting_notes"):
+        parts.append(f"Setting: {cont['setting_notes']}.")
+
+
 def build_flat_image_prompt(data: dict) -> str:
     """Build a flat text prompt for image generation."""
-    parts = []
+    parts: list[str] = []
     od = orientation_directive(data.get("orientation"))
     if od:
         parts.append(od)
@@ -138,18 +165,9 @@ def build_flat_image_prompt(data: dict) -> str:
     if gs:
         parts.append(
             f"Style: {gs.get('look', '')}. Mood: {gs.get('mood', '')}. "
-            f"Colors: {gs.get('color_grading', '')}. "
-            f"Lighting: {gs.get('lighting_style', '')}."
+            f"Colors: {gs.get('color_grading', '')}. Lighting: {gs.get('lighting_style', '')}."
         )
-    cont = data.get("continuity")
-    if cont and cont.get("characters"):
-        char_descs = [
-            f"{c['id']}: {c['description']}, wearing {c.get('wardrobe', '')}"
-            for c in cont["characters"]
-        ]
-        parts.append(f"Characters: {'; '.join(char_descs)}.")
-    if cont and cont.get("setting_notes"):
-        parts.append(f"Setting: {cont['setting_notes']}.")
+    _append_continuity_parts(parts, data.get("continuity"))
     parts.append(data.get("visual_description", ""))
     return " ".join(parts)
 
@@ -171,11 +189,11 @@ def _build_video_base_parts(data: dict) -> list[str]:
     if od:
         parts.append(od)
     md = data.get("metadata", {})
-    for key, label in [
+    for key, label in (
         ("camera_angle", "Camera angle"),
         ("camera_movement", "Camera movement"),
         ("cinematic_style", "Cinematic style"),
-    ]:
+    ):
         if md.get(key):
             parts.append(f"{label}: {md[key]}.")
     gs = data.get("global_style")
@@ -185,35 +203,20 @@ def _build_video_base_parts(data: dict) -> list[str]:
     if gs:
         parts.append(
             f"Style: {gs.get('look', '')}. Mood: {gs.get('mood', '')}. "
-            f"Colors: {gs.get('color_grading', '')}. "
-            f"Lighting: {gs.get('lighting_style', '')}."
+            f"Colors: {gs.get('color_grading', '')}. Lighting: {gs.get('lighting_style', '')}."
         )
-    cont = data.get("continuity")
-    if cont and cont.get("characters"):
-        char_descs = [
-            f"{c['id']}: {c['description']}, wearing {c.get('wardrobe', '')}"
-            for c in cont["characters"]
-        ]
-        parts.append(f"Characters: {'; '.join(char_descs)}.")
-    if cont and cont.get("setting_notes"):
-        parts.append(f"Setting: {cont['setting_notes']}.")
+    _append_continuity_parts(parts, data.get("continuity"))
     parts.append(data.get("visual_description", ""))
     return parts
 
 
-def _append_transitions(parts: list[str], data: dict):
-    """Append transition directives to prompt parts.
-
-    Visual enter/exit transitions are intentionally NOT sent to Veo: it
-    generates each clip in isolation, so "connecting" language makes it morph
-    objects in-frame. Transitions are applied at stitch time. Only the audio
-    (music) transition is kept here.
-    """
+def _append_transitions(parts: list[str], data: dict) -> None:
+    """Append transition directives to prompt parts."""
     if data.get("music_transition"):
         parts.append(f"Music transition: {data['music_transition']}")
 
 
-def _append_narration(parts: list[str], data: dict):
+def _append_narration(parts: list[str], data: dict) -> None:
     """Append narration directive if enabled."""
     if data.get("narration_enabled"):
         narration = data.get("narration")
@@ -221,7 +224,7 @@ def _append_narration(parts: list[str], data: dict):
             parts.append(f'Voice-over narration: "{narration}"')
 
 
-def _append_music(parts: list[str], data: dict):
+def _append_music(parts: list[str], data: dict) -> None:
     """Append music directive if enabled."""
     if not data.get("music_enabled"):
         return

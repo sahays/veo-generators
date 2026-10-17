@@ -1,0 +1,520 @@
+"""Unit tests for the reference-free reframe eval (api/reframe_eval.py).
+
+Pure geometry/stats over synthetic plans + detections — no cv2/ffmpeg, runs on
+the host venv. SRC is 1920x1080 throughout (landscape → 9:16 canvas).
+"""
+
+from typing import Any
+
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+
+from reframe_filters import crop_geometry
+from reframe_eval import evaluate, _crop_window, _must_keep_width
+
+SRC_W, SRC_H = 1920, 1080
+
+
+def _tr(tid: Any, x: Any, w: Any = 0.1, mouth: Any = None) -> Any:
+    t = {"track_id": tid, "x": x, "y": 0.45, "w": w, "h": 0.2, "confidence": 0.9}
+    if mouth is not None:
+        t["mouth"] = mouth
+    return t
+
+
+def _seg(start: Any, end: Any, ar: Any, tid: Any, x: Any, trace: Any = None) -> Any:
+    seg = {
+        "start": start,
+        "end": end,
+        "inner_ar": ar,
+        "crops": [{"track_id": tid, "keypoints": [(start, x, 0.5), (end, x, 0.5)]}],
+        "reason": f"{ar[0]}:{ar[1]}",
+    }
+    if trace is not None:
+        seg["trace"] = trace
+    return seg
+
+
+def _frames(rows: Any) -> Any:
+    """rows: list of (t, [track,...]) → tracked_frames."""
+    return [{"time_sec": t, "tracks": tracks} for t, tracks in rows]
+
+
+# ---------------------------------------------------------------------------
+# Geometry — eval must reconstruct the renderer's exact crop window
+# ---------------------------------------------------------------------------
+def test_crop_geometry_matches_renderer() -> None:
+    assert crop_geometry((9, 16), SRC_W, SRC_H) == (606, 1920, 1314)
+    assert crop_geometry((1, 1), SRC_W, SRC_H) == (1080, 1080, 840)
+    # 16:9 keeps the full width → no horizontal crop possible.
+    assert crop_geometry((16, 9), SRC_W, SRC_H)[2] == 0
+
+
+def test_crop_window_centered() -> None:
+    seg = _seg(0, 10, (9, 16), 1, 0.5)
+    left, right = _crop_window(seg, SRC_W, SRC_H, 5.0)
+    assert abs(left - 657 / 1920) < 1e-6
+    assert abs(right - 1263 / 1920) < 1e-6
+
+
+def test_crop_window_full_width_when_no_crop() -> None:
+    seg = _seg(0, 10, (16, 9), 1, 0.5)
+    assert _crop_window(seg, SRC_W, SRC_H, 5.0) == (0.0, 1.0)
+
+
+# ---------------------------------------------------------------------------
+# Goal 1 — letterboxing / framing
+# ---------------------------------------------------------------------------
+def test_no_cut_full_containment() -> None:
+    plan = [_seg(0, 10, (9, 16), 1, 0.5)]
+    frames = _frames([(t, [_tr(1, 0.5)]) for t in range(11)])
+    rep = evaluate(plan, frames, [], [], SRC_W, SRC_H, 10.0)
+    assert rep["letterbox"]["face_cut_rate"] == 0.0
+    assert rep["letterbox"]["subject_containment"] == 1.0
+    assert rep["letterbox"]["flag"] == "ok"
+
+
+def test_face_cut_detected() -> None:
+    # Framed face centered; a second detected face sits far right, outside the
+    # 9:16 window (~[0.34, 0.66]) → it is cut.
+    plan = [_seg(0, 10, (9, 16), 1, 0.5)]
+    frames = _frames([(t, [_tr(1, 0.5), _tr(2, 0.95)]) for t in range(11)])
+    rep = evaluate(plan, frames, [], [], SRC_W, SRC_H, 10.0)
+    assert rep["letterbox"]["face_cut_rate"] == 1.0
+    assert any(w["metric"] == "face_cut_rate" for w in rep["worst"])
+
+
+def test_over_letterbox_flags_unneeded_bars() -> None:
+    # Narrow subject but the plan letterboxed to 16:9 — a tighter rung (1:1)
+    # would still have contained it.
+    plan = [_seg(0, 10, (16, 9), 1, 0.5)]
+    frames = _frames([(t, [_tr(1, 0.5, w=0.1)]) for t in range(11)])
+    rep = evaluate(plan, frames, [], [], SRC_W, SRC_H, 10.0)
+    assert rep["letterbox"]["over_letterbox_rate"] == 1.0
+    assert any(w["metric"] == "over_letterbox_rate" for w in rep["worst"])
+
+
+def test_not_over_letterbox_when_bars_needed() -> None:
+    # Wide subject (span 0.5): the tighter 4:5 rung (cov 0.45) can't contain it,
+    # so 1:1 letterbox is justified.
+    plan = [_seg(0, 10, (1, 1), 1, 0.5)]
+    frames = _frames([(t, [_tr(1, 0.5, w=0.5)]) for t in range(11)])
+    rep = evaluate(plan, frames, [], [], SRC_W, SRC_H, 10.0)
+    assert rep["letterbox"]["over_letterbox_rate"] == 0.0
+
+
+def test_gemini_letterbox_justified_by_band_not_over() -> None:
+    # Narrow subject in a 16:9 letterbox — geometrically a tighter rung fits, BUT
+    # the verdict carries a measured text band that genuinely needs the width
+    # (band far edge from the crop center → requirement ≈ 0.9). Justified.
+    frames = _frames([(t, [_tr(1, 0.5, w=0.1)]) for t in range(11)])
+    justified = _seg(0, 10, (16, 9), 1, 0.5, trace={"source": "gemini_text"})
+    justified["crops"][0]["x_target"] = 0.5
+    justified["escalate"] = {
+        "verdict": {"action": "letterbox"},
+        "facts": {"band": (0.05, 0.95)},
+    }
+    assert (
+        evaluate([justified], frames, [], [], SRC_W, SRC_H, 10.0)["letterbox"][
+            "over_letterbox_rate"
+        ]
+        == 0.0
+    )
+
+
+def test_gemini_letterbox_wider_than_its_band_is_over() -> None:
+    # A letterbox verdict is exempt only up to its own evidence. A 16:9 rung
+    # granted for a narrow band (or for no band/coverage at all) that a tighter
+    # rung could keep IS over-letterbox — the pre-Phase-0 blanket exemption made
+    # exactly this failure class invisible (rf-e70yrxvz: 5/5 segments 16:9).
+    frames = _frames([(t, [_tr(1, 0.5, w=0.1)]) for t in range(11)])
+    narrow_band = _seg(0, 10, (16, 9), 1, 0.5, trace={"source": "gemini_text"})
+    narrow_band["crops"][0]["x_target"] = 0.5
+    narrow_band["escalate"] = {
+        "verdict": {"action": "letterbox"},
+        "facts": {"band": (0.4, 0.6)},  # requirement ~0.28 — 1:1 would keep it
+    }
+    assert (
+        evaluate([narrow_band], frames, [], [], SRC_W, SRC_H, 10.0)["letterbox"][
+            "over_letterbox_rate"
+        ]
+        == 1.0
+    )
+    # Unsubstantiated verdict: no band, no stated coverage → adds nothing.
+    bare = _seg(0, 10, (16, 9), 1, 0.5)
+    bare["escalate"] = {"verdict": {"action": "letterbox"}}
+    assert (
+        evaluate([bare], frames, [], [], SRC_W, SRC_H, 10.0)["letterbox"][
+            "over_letterbox_rate"
+        ]
+        == 1.0
+    )
+    # But a stated coverage that maps to the chosen rung justifies it.
+    stated = _seg(0, 10, (16, 9), 1, 0.5)
+    stated["escalate"] = {"verdict": {"action": "letterbox", "coverage": 0.9}}
+    assert (
+        evaluate([stated], frames, [], [], SRC_W, SRC_H, 10.0)["letterbox"][
+            "over_letterbox_rate"
+        ]
+        == 0.0
+    )
+
+
+def test_mean_letterbox_pct() -> None:
+    plan = [_seg(0, 10, (1, 1), 1, 0.5)]
+    frames = _frames([(t, [_tr(1, 0.5)]) for t in range(11)])
+    rep = evaluate(plan, frames, [], [], SRC_W, SRC_H, 10.0)
+    assert abs(rep["letterbox"]["mean_letterbox_pct"] - (1 - 1080 / 1920)) < 0.005
+
+
+# ---------------------------------------------------------------------------
+# Goal 2 — talker (audio ↔ video)
+# ---------------------------------------------------------------------------
+def test_av_sync_positive_when_framed_mouth_moves_with_speech() -> None:
+    # Framed face's mouth oscillates during speech [0,5] and is still after;
+    # a second face is present (→ dialogue) with a constant mouth.
+    rows = []
+    for t in range(12):
+        if t <= 5:
+            m1 = 0.1 if t % 2 == 0 else 0.5  # moving
+        else:
+            m1 = 0.3  # still
+        rows.append((t, [_tr(1, 0.5, mouth=m1), _tr(2, 0.55, mouth=0.2)]))
+    plan = [_seg(0, 11, (1, 1), 1, 0.5)]
+    rep = evaluate(
+        plan, _frames(rows), [], [{"start_sec": 0, "end_sec": 5}], SRC_W, SRC_H, 11.0
+    )
+    assert rep["talker"] is not None
+    assert rep["talker"]["av_sync_score"] > 0.3
+    assert rep["talker"]["framed_speaker_active_rate"] > 0.0
+
+
+def test_activity_window_is_time_based_not_frame_count() -> None:
+    # The same physical motion sampled at 1fps vs 8fps must yield the same
+    # "talking" verdict. Mouth changes on a 2-second TIME grid. The old ±2-SAMPLE
+    # window spans 4s at 1fps (catches the change) but only 0.5s at 8fps (sits
+    # inside one flat level mid-period → reads "not talking"), so the two rates
+    # disagree. The ±2s TIME window sees the change at both rates.
+    def run(fps: Any) -> Any:
+        period = 1.0 / fps
+        rows = []
+        n = int(round(10 * fps)) + 1
+        for k in range(n):
+            t = round(k * period, 4)
+            m1 = 0.1 if int(t / 2) % 2 == 0 else 0.5  # flips every 2s
+            rows.append((t, [_tr(1, 0.5, mouth=m1), _tr(2, 0.55, mouth=0.2)]))
+        plan = [_seg(0, 10, (1, 1), 1, 0.5)]
+        rep = evaluate(
+            plan,
+            _frames(rows),
+            [],
+            [{"start_sec": 0, "end_sec": 10}],
+            SRC_W,
+            SRC_H,
+            10.0,
+            sample_fps=fps,
+        )
+        return rep["talker"]["framed_speaker_active_rate"]
+
+    slow, fast = run(1.0), run(8.0)
+    # The time-based window makes both rates agree that the face is mostly active.
+    assert slow > 0.8 and fast > 0.8
+    assert abs(slow - fast) < 0.15
+
+
+def test_speaker_miss_when_off_frame_face_talks() -> None:
+    # We frame a silent listener (track 1, left); the talker (track 2) is off to
+    # the right, outside the 9:16 window, with a moving mouth, during speech.
+    rows = []
+    for t in range(11):
+        m2 = 0.1 if t % 2 == 0 else 0.6  # off-frame talker moving
+        rows.append((t, [_tr(1, 0.3, mouth=0.3), _tr(2, 0.92, mouth=m2)]))
+    plan = [_seg(0, 10, (9, 16), 1, 0.3)]
+    rep = evaluate(
+        plan, _frames(rows), [], [{"start_sec": 0, "end_sec": 10}], SRC_W, SRC_H, 10.0
+    )
+    assert rep["talker"]["speaker_miss_rate"] > 0.0
+    assert any(w["metric"] == "speaker_miss_rate" for w in rep["worst"])
+
+
+# ---------------------------------------------------------------------------
+# Edge cases
+# ---------------------------------------------------------------------------
+def test_empty_plan_returns_empty() -> None:
+    assert evaluate([], [], [], [], SRC_W, SRC_H, 0.0) == {}
+
+
+def test_no_audio_or_dialogue_nulls_talker() -> None:
+    plan = [_seg(0, 10, (9, 16), 1, 0.5)]
+    frames = _frames([(t, [_tr(1, 0.5)]) for t in range(11)])
+    rep = evaluate(plan, frames, [], [], SRC_W, SRC_H, 10.0)
+    assert rep["talker"] is None
+    assert "letterbox" in rep and rep["meta"]["has_speech"] is False
+
+
+def test_tiny_background_face_not_counted_as_cut() -> None:
+    # Framed subject centered; a *tiny* (w=0.03) face off-frame must NOT count —
+    # it's a bystander, not a cut subject.
+    plan = [_seg(0, 10, (9, 16), 1, 0.5)]
+    frames = _frames([(t, [_tr(1, 0.5), _tr(2, 0.95, w=0.03)]) for t in range(11)])
+    rep = evaluate(plan, frames, [], [], SRC_W, SRC_H, 10.0)
+    assert rep["letterbox"]["face_cut_rate"] == 0.0
+    # A prominent off-frame face (w=0.12) at the same spot *is* a cut.
+    frames2 = _frames([(t, [_tr(1, 0.5), _tr(2, 0.95, w=0.12)]) for t in range(11)])
+    rep2 = evaluate(plan, frames2, [], [], SRC_W, SRC_H, 10.0)
+    assert rep2["letterbox"]["face_cut_rate"] == 1.0
+
+
+def test_talker_null_below_min_dialogue_frames() -> None:
+    # Only 3 multi-face frames → not enough signal → talker is null, not a verdict.
+    rows = [(t, [_tr(1, 0.5, mouth=0.3), _tr(2, 0.55, mouth=0.2)]) for t in range(3)]
+    plan = [_seg(0, 3, (1, 1), 1, 0.5)]
+    rep = evaluate(
+        plan, _frames(rows), [], [{"start_sec": 0, "end_sec": 3}], SRC_W, SRC_H, 3.0
+    )
+    assert rep["talker"] is None
+
+
+def test_3x4_canvas_full_bleed_has_no_letterbox() -> None:
+    # On a 3:4 canvas (1440 tall), a (3,4) plan is full-bleed → 0% letterbox.
+    from reframe_plan import RUNGS_BY_CANVAS
+
+    plan = [_seg(0, 10, (3, 4), 1, 0.5)]
+    frames = _frames([(t, [_tr(1, 0.5)]) for t in range(11)])
+    rep = evaluate(
+        plan,
+        frames,
+        [],
+        [],
+        SRC_W,
+        SRC_H,
+        10.0,
+        canvas_h=1440,
+        rungs=RUNGS_BY_CANVAS["3:4"],
+    )
+    assert rep["letterbox"]["mean_letterbox_pct"] == 0.0
+    assert all(s["letterbox_pct"] == 0.0 for s in rep["segments"])
+
+
+def test_3x4_canvas_wide_rung_letterboxes() -> None:
+    # The adaptive 3:4 ladder letterboxes wide content: a (16,9) plan on the
+    # 1440-tall canvas keeps ~0.42 of the height → ~0.58 bars (mirrors 9:16's
+    # letterbox behaviour, just on the shorter canvas).
+    from reframe_plan import RUNGS_BY_CANVAS
+
+    plan = [_seg(0, 10, (16, 9), 1, 0.5)]
+    frames = _frames([(t, [_tr(1, 0.5)]) for t in range(11)])
+    rep = evaluate(
+        plan,
+        frames,
+        [],
+        [],
+        SRC_W,
+        SRC_H,
+        10.0,
+        canvas_h=1440,
+        rungs=RUNGS_BY_CANVAS["3:4"],
+    )
+    assert rep["segments"][0]["letterbox_pct"] > 0.5
+    assert rep["letterbox"]["mean_letterbox_pct"] > 0.5
+
+
+def test_must_keep_width_from_detections() -> None:
+    seg = _seg(0, 10, (1, 1), 1, 0.5)
+    frames = _frames([(t, [_tr(1, 0.5, w=0.2)]) for t in range(11)])
+    # span 0.2 + COVERAGE_MARGIN 0.04 = 0.24
+    assert abs(_must_keep_width(seg, frames) - 0.24) < 1e-9
+
+
+# ---------------------------------------------------------------------------
+# Split layout (Phase 3): two stacked panels — both subjects framed
+# ---------------------------------------------------------------------------
+
+
+def _split_seg(start: Any, end: Any, t1: Any, x1: Any, t2: Any, x2: Any) -> Any:
+    return {
+        "start": start,
+        "end": end,
+        "layout": "split",
+        "inner_ar": None,
+        "crops": [
+            {
+                "track_id": t1,
+                "source": "split_top",
+                "keypoints": [(start, x1, 0.5), (end, x1, 0.5)],
+            },
+            {
+                "track_id": t2,
+                "source": "split_bottom",
+                "keypoints": [(start, x2, 0.5), (end, x2, 0.5)],
+            },
+        ],
+        "reason": "split",
+        "trace": {"trigger": "split", "source": "split"},
+    }
+
+
+class TestSplitEval:
+    def _run(self, speech: Any = None) -> Any:
+        plan = [_split_seg(0, 10, 1, 0.25, 2, 0.75)]
+        osc = [0.1, 0.45, 0.1, 0.5][:]  # oscillating mouth → talking
+        frames = []
+        for t in range(10):
+            m1 = osc[t % 4]
+            frames.append(
+                {
+                    "time_sec": float(t),
+                    "tracks": [_tr(1, 0.25, mouth=m1), _tr(2, 0.75, mouth=0.2)],
+                }
+            )
+        return evaluate(plan, frames, [], speech or [], SRC_W, SRC_H, 10.0)
+
+    def test_split_does_not_crash_and_has_no_letterbox(self) -> None:
+        rep = self._run()
+        assert rep["segments"][0]["inner_ar"] is None
+        assert rep["segments"][0]["letterbox_pct"] == 0.0
+        assert rep["segments"][0]["over_letterbox"] is False
+        assert rep["letterbox"]["mean_letterbox_pct"] == 0.0
+
+    def test_split_frames_both_subjects(self) -> None:
+        rep = self._run()
+        # Both panels contain their subject → nothing cut, full containment.
+        assert rep["letterbox"]["face_cut_rate"] == 0.0
+        assert rep["letterbox"]["subject_containment"] == 1.0
+
+    def test_split_talker_active_and_no_miss(self) -> None:
+        # Both speakers are on screen, so whoever talks is shown — never a "miss".
+        rep = self._run(speech=[{"start_sec": 0, "end_sec": 10}])
+        talker = rep["talker"]
+        assert talker is not None
+        assert talker["framed_speaker_active_rate"] > 0.5
+        assert talker["speaker_miss_rate"] in (None, 0.0)
+
+
+# ---------------------------------------------------------------------------
+# Stability — crop jumps are near-instant repositions, not deliberate pans
+# ---------------------------------------------------------------------------
+class TestCropJumps:
+    def _run(self, segs: Any) -> Any:
+        frames = _frames([(float(t), [_tr(1, 0.5)]) for t in range(10)])
+        return evaluate(segs, frames, [], [], SRC_W, SRC_H, 10.0)
+
+    def _seg_kps(self, start: Any, end: Any, kps: Any, at_cut: Any = True) -> Any:
+        return {
+            "start": start,
+            "end": end,
+            "inner_ar": (9, 16),
+            "crops": [{"track_id": 1, "keypoints": kps}],
+            "reason": "9:16",
+            "starts_at_cut": at_cut,
+        }
+
+    def test_slow_pan_is_not_a_jump(self) -> None:
+        # A 0.4s eased re-frame (attach_keypoints PAN_IN) is a pan, not a jump.
+        segs = [
+            self._seg_kps(0, 10, [(0.0, 0.3, 0.5), (0.4, 0.7, 0.5), (10.0, 0.7, 0.5)])
+        ]
+        rep = self._run(segs)
+        assert rep["stability"]["crop_jumps_per_min"] == 0.0
+
+    def test_instant_move_is_a_jump(self) -> None:
+        segs = [
+            self._seg_kps(0, 10, [(0.0, 0.3, 0.5), (0.1, 0.7, 0.5), (10.0, 0.7, 0.5)])
+        ]
+        rep = self._run(segs)
+        assert rep["stability"]["crop_jumps_per_min"] > 0.0
+
+    def test_mid_shot_boundary_discontinuity_is_a_jump(self) -> None:
+        # The renderer hard-cuts between segments; a big delta at a non-cut
+        # boundary is visible verbatim.
+        segs = [
+            self._seg_kps(0, 5, [(0.0, 0.2, 0.5), (5.0, 0.2, 0.5)]),
+            self._seg_kps(5, 10, [(5.0, 0.8, 0.5), (10.0, 0.8, 0.5)], at_cut=False),
+        ]
+        rep = self._run(segs)
+        assert rep["stability"]["crop_jumps_per_min"] > 0.0
+
+    def test_cut_boundary_discontinuity_is_fine(self) -> None:
+        # A re-frame AT a scene cut is hidden by the cut.
+        segs = [
+            self._seg_kps(0, 5, [(0.0, 0.2, 0.5), (5.0, 0.2, 0.5)]),
+            self._seg_kps(5, 10, [(5.0, 0.8, 0.5), (10.0, 0.8, 0.5)], at_cut=True),
+        ]
+        rep = self._run(segs)
+        assert rep["stability"]["crop_jumps_per_min"] == 0.0
+
+
+class TestCenterOffsetFreedom:
+    def test_full_width_crop_not_graded_for_centering(self) -> None:
+        # A 16:9 (full-width) window can't slide — an off-center face there is
+        # the source's composition, not a framing miss.
+        frames = _frames([(float(t), [_tr(1, 0.85)]) for t in range(10)])
+        seg = {
+            "start": 0,
+            "end": 10,
+            "inner_ar": (16, 9),
+            "crops": [
+                {"track_id": 1, "keypoints": [(0.0, 0.5, 0.5), (10.0, 0.5, 0.5)]}
+            ],
+            "reason": "16:9",
+        }
+        rep = evaluate([seg], frames, [], [], SRC_W, SRC_H, 10.0)
+        assert rep["stability"]["center_offset_p90"] == 0.0  # nothing gradable
+
+    def test_slidable_crop_still_graded(self) -> None:
+        # A 9:16 crop CAN center its subject — off-center is a real miss.
+        frames = _frames([(float(t), [_tr(1, 0.62)]) for t in range(10)])
+        seg = {
+            "start": 0,
+            "end": 10,
+            "inner_ar": (9, 16),
+            "crops": [
+                {"track_id": 1, "keypoints": [(0.0, 0.5, 0.5), (10.0, 0.5, 0.5)]}
+            ],
+            "reason": "9:16",
+        }
+        rep = evaluate([seg], frames, [], [], SRC_W, SRC_H, 10.0)
+        assert rep["stability"]["center_offset_p90"] > 0.1
+
+
+# ---------------------------------------------------------------------------
+# Semantic subject-mismatch tripwire (Step 4, 2026-07-11)
+# ---------------------------------------------------------------------------
+# A person/center crop whose window entirely excludes the third Gemini placed
+# the subject in framed the wrong thing (rf-yw9w9uk5: guard's back framed,
+# Spider-Man cropped out). Containment can't see it — it grades the box the
+# picker chose.
+class TestSubjectMismatch:
+    def _person_seg(self, x: Any, bucket: Any, source: Any = "person") -> Any:
+        return {
+            "start": 0,
+            "end": 10,
+            "inner_ar": (9, 16),
+            "crops": [{"track_id": None, "keypoints": [(0.0, x, 0.5), (10.0, x, 0.5)]}],
+            "reason": "9:16",
+            "trace": {"source": source, "scene": {"active_subject": bucket}},
+        }
+
+    def test_flags_crop_outside_subject_third(self) -> None:
+        # crop pinned right (x=0.85 → window ≈ [0.69, 1.0]), subject on the left
+        seg = self._person_seg(0.85, "left")
+        rep = evaluate([seg], _frames([(5.0, [])]), [], [], SRC_W, SRC_H, 10.0)
+        assert rep["meta"]["subject_mismatch_segments"] == 1
+        assert rep["segments"][0].get("subject_mismatch") is True
+        assert any(f["metric"] == "subject_mismatch_segments" for f in rep["failing"])
+
+    def test_ok_when_crop_overlaps_subject_third(self) -> None:
+        seg = self._person_seg(0.4, "center")
+        rep = evaluate([seg], _frames([(5.0, [])]), [], [], SRC_W, SRC_H, 10.0)
+        assert rep["meta"]["subject_mismatch_segments"] == 0
+        assert "subject_mismatch" not in rep["segments"][0]
+
+    def test_face_crops_and_bucketless_scenes_exempt(self) -> None:
+        seg = self._person_seg(0.85, "left", source="face")
+        rep = evaluate([seg], _frames([(5.0, [])]), [], [], SRC_W, SRC_H, 10.0)
+        assert rep["meta"]["subject_mismatch_segments"] == 0
+        seg2 = self._person_seg(0.85, "")
+        rep2 = evaluate([seg2], _frames([(5.0, [])]), [], [], SRC_W, SRC_H, 10.0)
+        assert rep2["meta"]["subject_mismatch_segments"] == 0

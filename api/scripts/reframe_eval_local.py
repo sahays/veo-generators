@@ -2,31 +2,37 @@
 """Local harness to run the reframe pipeline + reference-free eval on a clip.
 
 Mirrors workers/reframe_processor._run_ai_reframe end-to-end, but on a LOCAL
-file, and prints/saves the eval report (api/reframe_eval.evaluate). Meant to be
+file, and saves the eval report (api/reframe_eval.evaluate). Meant to be
 run inside the worker Docker image (ffmpeg + libGL/EGL + mediapipe present).
-
-Detection + plan + eval run with no cloud. Gemini scene labels and Chirp speech
-turns (which power the talker metrics) are OPTIONAL:
-  --gcs-uri gs://...   enable Gemini scene analysis (richer plan)
-  --diarize            enable Chirp diarization for speech intervals (needs
-                       --gcs-uri for the source and a writable GCS_BUCKET)
-  --speech-json FILE   inject speech intervals [{start_sec,end_sec}] instead
-
-Usage (inside container):
-  python api/scripts/reframe_eval_local.py /tmp/ashley.mp4 --outdir /tmp/eval
 """
 
 import argparse
 import asyncio
 import json
+import logging
 import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "workers"))
 
+logger = logging.getLogger("reframe_eval_local")
 
-def _gemini_scenes(gcs_uri, track_summary, chirp_context):
+
+def _log(msg: str, where: str = "reframe_eval_local") -> None:
+    logger.info(
+        msg,
+        extra={
+            "who": "reframe_eval_local",
+            "where": where,
+            "what": msg[:120],
+            "why": "Local reframe evaluation harness",
+            "how": "cli",
+        },
+    )
+
+
+def _gemini_scenes(gcs_uri: str, track_summary: str, chirp_context: str) -> list:
     if not gcs_uri:
         return []
     try:
@@ -41,16 +47,12 @@ def _gemini_scenes(gcs_uri, track_summary, chirp_context):
         )
         return result.data.get("scenes", [])
     except Exception as e:  # noqa: BLE001 — degrade to face-only
-        print(f"[eval-local] Gemini unavailable ({e}); face-only plan")
+        _log(f"[eval-local] Gemini unavailable ({e}); face-only plan", "_gemini_scenes")
         return []
 
 
-def _chirp_speech(video, name, duration):
-    """Run Chirp diarization → [{start_sec,end_sec}] speech intervals.
-
-    Builds only Storage + Diarization (not the full deps graph) so a missing
-    Gemini/Vertex cred doesn't block the talker signal.
-    """
+def _chirp_speech(video: str, name: str, duration: float) -> list:
+    """Run Chirp diarization → [{start_sec,end_sec}] speech intervals."""
     try:
         from diarization_service import DiarizationService, extract_audio
         from storage_service import StorageService
@@ -59,7 +61,10 @@ def _chirp_speech(video, name, duration):
         project = os.getenv("GOOGLE_CLOUD_PROJECT")
         location = os.getenv("GOOGLE_CLOUD_LOCATION", "asia-south1")
         if not (bucket and project):
-            print("[eval-local] need GCS_BUCKET + GOOGLE_CLOUD_PROJECT for Chirp")
+            _log(
+                "[eval-local] need GCS_BUCKET + GOOGLE_CLOUD_PROJECT for Chirp",
+                "_chirp_speech",
+            )
             return []
         storage = StorageService()
         diar = DiarizationService(project, location)
@@ -74,14 +79,17 @@ def _chirp_speech(video, name, duration):
             audio_duration=duration,
         )
         segs = result.get("speaker_segments", [])
-        print(f"[eval-local] Chirp: {len(segs)} speaker turns")
+        _log(f"[eval-local] Chirp: {len(segs)} speaker turns", "_chirp_speech")
         return [{"start_sec": s["start_sec"], "end_sec": s["end_sec"]} for s in segs]
     except Exception as e:  # noqa: BLE001
-        print(f"[eval-local] Chirp unavailable ({e}); talker av-sync will be null")
+        _log(
+            f"[eval-local] Chirp unavailable ({e}); talker av-sync will be null",
+            "_chirp_speech",
+        )
         return []
 
 
-def main():
+def _parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser()
     ap.add_argument("video", help="local landscape video file")
     ap.add_argument("--gcs-uri", default="", help="gs:// URI to enable Gemini labels")
@@ -89,23 +97,34 @@ def main():
     ap.add_argument("--speech-json", default="", help="speech intervals JSON file")
     ap.add_argument("--outdir", default="/tmp/eval")
     ap.add_argument("--sample-fps", type=float, default=1.0)
-    args = ap.parse_args()
+    return ap.parse_args()
 
+
+def _resolve_speech(args: argparse.Namespace, name: str, dur: float) -> list:
+    if args.speech_json:
+        with open(args.speech_json) as f:
+            return json.load(f)
+    if args.diarize:
+        return _chirp_speech(args.video, name, dur)
+    return []
+
+
+def main() -> None:
+    args = _parse_args()
+    from _reframe_helpers import format_track_summary
     from mediapipe_detection import scan_video_detections, track_faces
     from reframe_eval import evaluate
     from reframe_plan import attach_keypoints, reconcile
     from reframe_service import ffprobe_video
     from scene_detect import detect_cuts
 
-    from _reframe_helpers import format_track_summary
-
     os.makedirs(args.outdir, exist_ok=True)
     name = os.path.splitext(os.path.basename(args.video))[0]
-
     probe = ffprobe_video(args.video)
     w, h, dur = probe["width"], probe["height"], probe["duration"]
-    print(
-        f"[eval-local] {name}: {w}x{h} {dur:.1f}s audio={probe.get('has_audio', True)}"
+    _log(
+        f"[eval-local] {name}: {w}x{h} {dur:.1f}s audio={probe.get('has_audio', True)}",
+        "main",
     )
 
     cuts = detect_cuts(args.video)
@@ -115,29 +134,20 @@ def main():
     )
     persons = [{"time_sec": f["time_sec"], "persons": f["persons"]} for f in det]
     track_summary = format_track_summary(tracked)
-    print(f"[eval-local] {len(cuts)} cuts, {len(tracked)} sampled frames")
+    _log(f"[eval-local] {len(cuts)} cuts, {len(tracked)} sampled frames", "main")
 
-    # Optional cloud signals.
-    speech = []
-    if args.speech_json:
-        speech = json.load(open(args.speech_json))
-    elif args.diarize:
-        speech = _chirp_speech(args.video, name, dur)
+    speech = _resolve_speech(args, name, dur)
     scenes = _gemini_scenes(args.gcs_uri, track_summary, "")
-
     plan = reconcile(scenes, tracked, cuts, w, h, dur, person_frames=persons)
     attach_keypoints(plan, probe["fps"])
-    print("\n[eval-local] === DECISION LOG ===")
     for s in plan:
-        print(f"  [{s['start']:6.2f}-{s['end']:6.2f}] {s['reason']}")
+        _log(f"  [{s['start']:6.2f}-{s['end']:6.2f}] {s['reason']}", "main")
 
     report = evaluate(plan, tracked, persons, speech, w, h, dur)
     out = os.path.join(args.outdir, f"{name}.eval.json")
-    json.dump(report, open(out, "w"), indent=2)
-
-    print("\n[eval-local] === EVAL REPORT ===")
-    print(json.dumps(report, indent=2))
-    print(f"\n[eval-local] wrote {out}")
+    with open(out, "w") as f:
+        json.dump(report, f, indent=2)
+    _log(f"[eval-local] wrote {out}: {json.dumps(report)}", "main")
 
 
 if __name__ == "__main__":

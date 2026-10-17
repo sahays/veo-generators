@@ -3,265 +3,57 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   FileText, Code, Plus,
-  Copy, Loader2, Eye, ExternalLink
+  Copy, Loader2, Eye, ExternalLink,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/Common'
-import { api } from '@/lib/api'
+import { api } from '@/hooks/useApiClient'
 import { useAuthStore } from '@/store/useAuthStore'
 import { ResourceModal } from '@/components/ads/ResourceModal'
 import type { SystemResource } from '@/types/project'
 
 const RESPONSE_SCHEMA = {
-  type: "object",
+  type: 'object',
   properties: {
     scenes: {
-      type: "array",
+      type: 'array',
       items: {
-        type: "object",
+        type: 'object',
         properties: {
-          visual_description: { type: "string" },
-          timestamp_start: { type: "string" },
-          timestamp_end: { type: "string" },
+          visual_description: { type: 'string' },
+          timestamp_start: { type: 'string' },
+          timestamp_end: { type: 'string' },
           metadata: {
-            type: "object",
+            type: 'object',
             properties: {
-              location: { type: "string" },
+              location: { type: 'string' },
               characters: {
-                type: "array",
-                items: { type: "string" },
-                description: "List of all characters, including main actors and background NPCs",
+                type: 'array',
+                items: { type: 'string' },
+                description: 'List of all characters, including main actors and background NPCs',
               },
-              camera_angle: { type: "string" },
-              lighting: { type: "string" },
-              style: { type: "string" },
-              mood: { type: "string" },
+              camera_angle: { type: 'string' },
+              lighting: { type: 'string' },
+              style: { type: 'string' },
+              mood: { type: 'string' },
             },
           },
         },
-        required: ["visual_description", "timestamp_start", "timestamp_end"],
+        required: ['visual_description', 'timestamp_start', 'timestamp_end'],
       },
     },
   },
-  required: ["scenes"],
+  required: ['scenes'],
 }
 
-export const PromptsPage = () => {
-  const [resources, setResources] = useState<SystemResource[]>([])
-  const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'prompt' | 'schema'>('prompt')
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [selectedInitialData, setSelectedInitialData] = useState<Partial<SystemResource> | undefined>()
-  const [isReadOnly, setIsReadOnly] = useState(false)
-  const navigate = useNavigate()
-  const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
-
-  const fetchResources = async () => {
-    setLoading(true)
-    try {
-      const data = await api.system.listResources()
-      setResources(data)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchResources()
-  }, [])
-
-  const filteredResources = resources.filter(r => r.type === 'prompt')
-
-  const handleCreateNew = () => {
-    setSelectedInitialData(undefined)
-    setIsReadOnly(false)
-    setIsModalOpen(true)
-  }
-
-  const handleIterate = (res: SystemResource) => {
-    setSelectedInitialData({
-      ...res,
-      name: `${res.name} (v${res.version + 1} Draft)`
-    })
-    setIsReadOnly(false)
-    setIsModalOpen(true)
-  }
-
-  const handleView = (res: SystemResource) => {
-    setSelectedInitialData(res)
-    setIsReadOnly(true)
-    setIsModalOpen(true)
-  }
-
-  return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div className="space-y-1">
-          <h2 className="text-xl font-heading font-bold tracking-tight text-foreground">System Prompts</h2>
-          <p className="text-xs text-muted-foreground max-w-lg">
-            Manage the prompts and schemas that power the video generation pipeline.
-          </p>
-        </div>
-        <div className="flex bg-muted/50 p-1 rounded-xl border border-border">
-          <TabButton
-            active={activeTab === 'prompt'}
-            onClick={() => setActiveTab('prompt')}
-            icon={FileText}
-            label="Prompts"
-          />
-          <TabButton
-            active={activeTab === 'schema'}
-            onClick={() => setActiveTab('schema')}
-            icon={Code}
-            label="Response Schema"
-          />
-        </div>
-      </div>
-
-      {activeTab === 'prompt' && (
-        <>
-          {/* Create button (master only) */}
-          {canWrite && (
-            <div className="flex justify-end">
-              <Button icon={Plus} onClick={handleCreateNew}>
-                Create New Prompt
-              </Button>
-            </div>
-          )}
-
-          {/* Prompt grid */}
-          {loading ? (
-            <div className="flex flex-col items-center justify-center py-24 gap-4">
-              <Loader2 className="animate-spin text-accent" size={32} />
-              <p className="text-xs font-medium text-muted-foreground animate-pulse">Loading prompts...</p>
-            </div>
-          ) : filteredResources.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-24 gap-4">
-              <FileText className="text-muted-foreground/30" size={40} />
-              <p className="text-sm text-muted-foreground">No prompts yet. Create one to get started.</p>
-            </div>
-          ) : (
-            <div className="border border-border rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-muted/30">
-                    <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Name</th>
-                    <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Category</th>
-                    <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Version</th>
-                    <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Created</th>
-                    <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredResources.map((res) => (
-                    <motion.tr
-                      key={res.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="border-b border-border/50 last:border-b-0 hover:bg-muted/20 transition-colors"
-                    >
-                      <td className="px-4 py-3">
-                        <Button
-                          variant="link"
-                          onClick={() => navigate(`/prompts/${res.id}`)}
-                          className="font-medium text-foreground hover:text-accent-dark text-left"
-                        >
-                          {res.name}
-                        </Button>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="bg-muted px-2 py-0.5 rounded text-[10px] font-mono text-muted-foreground capitalize">
-                          {res.category}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="bg-muted px-2 py-0.5 rounded text-[10px] font-mono text-muted-foreground">
-                          v{res.version}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">
-                        {new Date(res.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => navigate(`/prompts/${res.id}`)}
-                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                            title="Open page"
-                          >
-                            <ExternalLink size={15} />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleView(res)}
-                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                            title="Quick view"
-                          >
-                            <Eye size={15} />
-                          </Button>
-                          {canWrite && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleIterate(res)}
-                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                              title="Iterate"
-                            >
-                              <Copy size={15} />
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </motion.tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </>
-      )}
-
-      {activeTab === 'schema' && (
-        <div className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            The response schema used by Gemini to structure scene analysis output. This schema is fixed to ensure UI compatibility.
-          </p>
-          <div className="relative border border-border rounded-xl overflow-hidden bg-muted/20">
-            <div className="absolute top-3 right-3 z-10">
-              <span className="px-2 py-1 rounded bg-muted text-[10px] font-mono text-accent-dark font-medium border border-border">
-                JSON Schema
-              </span>
-            </div>
-            <pre className="p-6 font-mono text-xs text-foreground/80 leading-relaxed overflow-x-auto">
-{JSON.stringify(RESPONSE_SCHEMA, null, 2)}
-            </pre>
-          </div>
-        </div>
-      )}
-
-      {/* Modal — only used for prompts */}
-      <ResourceModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSuccess={fetchResources}
-        type="prompt"
-        initialData={selectedInitialData}
-        existingResources={resources}
-        readOnly={isReadOnly}
-      />
-    </div>
-  )
+interface TabButtonProps {
+  active: boolean
+  onClick: () => void
+  icon: typeof FileText
+  label: string
 }
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
-
-const TabButton = ({ active, onClick, icon: Icon, label }: any) => (
+const TabButton = ({ active, onClick, icon: Icon, label }: TabButtonProps) => (
   <Button
     variant="unstyled"
     onClick={onClick}
@@ -274,3 +66,201 @@ const TabButton = ({ active, onClick, icon: Icon, label }: any) => (
     {label}
   </Button>
 )
+
+const PromptsTable = ({
+  resources,
+  canWrite,
+  onOpen,
+  onView,
+  onIterate,
+}: {
+  resources: SystemResource[]
+  canWrite: boolean
+  onOpen: (id: string) => void
+  onView: (res: SystemResource) => void
+  onIterate: (res: SystemResource) => void
+}) => (
+  <div className="border border-border rounded-xl overflow-hidden">
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="border-b border-border bg-muted/30">
+          <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Name</th>
+          <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Category</th>
+          <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Version</th>
+          <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Created</th>
+          <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {resources.map((res) => (
+          <motion.tr
+            key={res.id}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="border-b border-border/50 last:border-b-0 hover:bg-muted/20 transition-colors"
+          >
+            <td className="px-4 py-3">
+              <Button variant="link" onClick={() => onOpen(res.id)} className="font-medium text-foreground hover:text-accent-dark text-left">
+                {res.name}
+              </Button>
+            </td>
+            <td className="px-4 py-3">
+              <span className="bg-muted px-2 py-0.5 rounded text-[10px] font-mono text-muted-foreground capitalize">
+                {res.category}
+              </span>
+            </td>
+            <td className="px-4 py-3">
+              <span className="bg-muted px-2 py-0.5 rounded text-[10px] font-mono text-muted-foreground">
+                v{res.version}
+              </span>
+            </td>
+            <td className="px-4 py-3 text-xs text-muted-foreground">
+              {new Date(res.createdAt).toLocaleDateString()}
+            </td>
+            <td className="px-4 py-3">
+              <div className="flex justify-end gap-1">
+                <Button variant="ghost" size="icon" onClick={() => onOpen(res.id)} className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Open page">
+                  <ExternalLink size={15} />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => onView(res)} className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Quick view">
+                  <Eye size={15} />
+                </Button>
+                {canWrite && (
+                  <Button variant="ghost" size="icon" onClick={() => onIterate(res)} className="h-7 w-7 text-muted-foreground hover:text-foreground" title="Iterate">
+                    <Copy size={15} />
+                  </Button>
+                )}
+              </div>
+            </td>
+          </motion.tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+)
+
+const PromptsTabSection = ({
+  loading,
+  filteredResources,
+  canWrite,
+  onCreateNew,
+  onOpen,
+  onView,
+  onIterate,
+}: {
+  loading: boolean
+  filteredResources: SystemResource[]
+  canWrite: boolean
+  onCreateNew: () => void
+  onOpen: (id: string) => void
+  onView: (res: SystemResource) => void
+  onIterate: (res: SystemResource) => void
+}) => (
+  <>
+    {canWrite && (
+      <div className="flex justify-end">
+        <Button icon={Plus} onClick={onCreateNew}>
+          Create New Prompt
+        </Button>
+      </div>
+    )}
+    {loading ? (
+      <div className="flex flex-col items-center justify-center py-24 gap-4">
+        <Loader2 className="animate-spin text-accent" size={32} />
+        <p className="text-xs font-medium text-muted-foreground animate-pulse">Loading prompts...</p>
+      </div>
+    ) : filteredResources.length === 0 ? (
+      <div className="flex flex-col items-center justify-center py-24 gap-4">
+        <FileText className="text-muted-foreground/30" size={40} />
+        <p className="text-sm text-muted-foreground">No prompts yet. Create one to get started.</p>
+      </div>
+    ) : (
+      <PromptsTable
+        resources={filteredResources}
+        canWrite={canWrite}
+        onOpen={onOpen}
+        onView={onView}
+        onIterate={onIterate}
+      />
+    )}
+  </>
+)
+
+const SchemaTabSection = () => (
+  <div className="space-y-3">
+    <p className="text-xs text-muted-foreground">
+      The response schema used by Gemini to structure scene analysis output. This schema is fixed to ensure UI compatibility.
+    </p>
+    <div className="relative border border-border rounded-xl overflow-hidden bg-muted/20">
+      <div className="absolute top-3 right-3 z-10">
+        <span className="px-2 py-1 rounded bg-muted text-[10px] font-mono text-accent-dark font-medium border border-border">
+          JSON Schema
+        </span>
+      </div>
+      <pre className="p-6 font-mono text-xs text-foreground/80 leading-relaxed overflow-x-auto">
+        {JSON.stringify(RESPONSE_SCHEMA, null, 2)}
+      </pre>
+    </div>
+  </div>
+)
+
+function usePromptsResources() {
+  const [resources, setResources] = useState<SystemResource[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const fetchResources = async () => {
+    setLoading(true)
+    try {
+      setResources(await api.system.listResources())
+    } catch {
+      // ignore error
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchResources()
+  }, [])
+
+  return { resources, loading, fetchResources }
+}
+
+const PromptsHeader = ({ activeTab, setActiveTab }: { activeTab: 'prompt' | 'schema'; setActiveTab: (t: 'prompt' | 'schema') => void }) => (
+  <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+    <div className="space-y-1">
+      <h2 className="text-xl font-heading font-bold tracking-tight text-foreground">System Prompts</h2>
+      <p className="text-xs text-muted-foreground max-w-lg">Manage the prompts and schemas that power the video generation pipeline.</p>
+    </div>
+    <div className="flex bg-muted/50 p-1 rounded-xl border border-border">
+      <TabButton active={activeTab === 'prompt'} onClick={() => setActiveTab('prompt')} icon={FileText} label="Prompts" />
+      <TabButton active={activeTab === 'schema'} onClick={() => setActiveTab('schema')} icon={Code} label="Response Schema" />
+    </div>
+  </div>
+)
+
+export const PromptsPage = () => {
+  const { resources, loading, fetchResources } = usePromptsResources()
+  const [activeTab, setActiveTab] = useState<'prompt' | 'schema'>('prompt')
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [selectedInitialData, setSelectedInitialData] = useState<Partial<SystemResource> | undefined>()
+  const [isReadOnly, setIsReadOnly] = useState(false)
+  const navigate = useNavigate()
+  const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
+  const openModal = (initialData: Partial<SystemResource> | undefined, readOnly: boolean) => {
+    setSelectedInitialData(initialData)
+    setIsReadOnly(readOnly)
+    setIsModalOpen(true)
+  }
+  return (
+    <div className="space-y-8">
+      <PromptsHeader activeTab={activeTab} setActiveTab={setActiveTab} />
+      {activeTab === 'prompt' ? (
+        <PromptsTabSection loading={loading} filteredResources={resources.filter((r) => r.type === 'prompt')} canWrite={canWrite} onCreateNew={() => openModal(undefined, false)} onOpen={(id) => navigate(`/prompts/${id}`)} onView={(res) => openModal(res, true)} onIterate={(res) => openModal({ ...res, name: `${res.name} (v${res.version + 1} Draft)` }, false)} />
+      ) : (
+        <SchemaTabSection />
+      )}
+      <ResourceModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSuccess={fetchResources} type="prompt" initialData={selectedInitialData} existingResources={resources} readOnly={isReadOnly} />
+    </div>
+  )
+}

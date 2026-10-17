@@ -1,14 +1,16 @@
+import logging
 import os
 import threading
 import google.auth
 from datetime import datetime, timedelta, timezone
 from google.cloud import storage
 
+logger = logging.getLogger(__name__)
 SIGN_DURATION = timedelta(hours=48)
 
 
 class StorageService:
-    def __init__(self):
+    def __init__(self) -> None:
         self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
         self.bucket_name = os.getenv("GCS_BUCKET", f"{self.project_id}-veogen-assets")
         self.client = storage.Client(project=self.project_id)
@@ -24,12 +26,28 @@ class StorageService:
                 try:
                     self.bucket = self.client.create_bucket(self.bucket_name)
                 except Exception as create_error:
-                    print(
-                        f"Failed to create bucket '{self.bucket_name}': {create_error}"
+                    logger.error(
+                        f"Failed to create bucket '{self.bucket_name}': {create_error}",
+                        extra={
+                            "who": "storage_service",
+                            "where": "__init__",
+                            "what": "create_bucket_failed",
+                            "why": str(create_error),
+                            "how": "gcs_client",
+                        },
                     )
                     raise
             else:
-                print(f"Failed to access bucket '{self.bucket_name}': {e}")
+                logger.error(
+                    f"Failed to access bucket '{self.bucket_name}': {e}",
+                    extra={
+                        "who": "storage_service",
+                        "where": "__init__",
+                        "what": "get_bucket_failed",
+                        "why": str(e),
+                        "how": "gcs_client",
+                    },
+                )
                 raise
 
     def upload_file(
@@ -46,7 +64,7 @@ class StorageService:
         blob.upload_from_string(data, content_type=content_type)
         return f"gs://{self.bucket_name}/{destination_path}"
 
-    def download_to_file(self, gcs_uri: str, local_path: str):
+    def download_to_file(self, gcs_uri: str, local_path: str) -> None:
         """Download a GCS object to a local file path."""
         path = gcs_uri.replace(f"gs://{self.bucket_name}/", "")
         blob = self.bucket.blob(path)

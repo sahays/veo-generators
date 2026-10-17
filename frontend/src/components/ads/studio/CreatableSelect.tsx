@@ -1,0 +1,261 @@
+import { useState, useRef, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { ChevronDown, Plus, Check, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
+import type { SelectCategory } from '@/types/project'
+import { useProjectStore } from '@/store/useProjectStore'
+
+interface CreatableSelectProps {
+  category: SelectCategory
+  label: string
+  value?: string
+  onChange: (value: string) => void
+  placeholder?: string
+}
+
+const DropdownList = ({
+  options,
+  value,
+  onSelect,
+  onCreateNew,
+}: {
+  options: string[]
+  value?: string
+  onSelect: (opt: string) => void
+  onCreateNew: () => void
+}) => (
+  <motion.div
+    initial={{ opacity: 0, y: -4, scale: 0.98 }}
+    animate={{ opacity: 1, y: 0, scale: 1 }}
+    exit={{ opacity: 0, y: -4, scale: 0.98 }}
+    transition={{ duration: 0.15 }}
+    className="absolute z-50 mt-1 w-full rounded-lg bg-background border border-border shadow-xl overflow-hidden"
+  >
+    <div className="max-h-52 overflow-y-auto py-1">
+      {options.map((option: string) => (
+        <Button
+          variant="unstyled"
+          key={option}
+          type="button"
+          onClick={() => onSelect(option)}
+          className={cn(
+            'flex items-center justify-between w-full px-3 py-2 text-sm transition-colors',
+            'hover:bg-accent/20 hover:text-foreground',
+            value === option ? 'text-accent-dark font-medium bg-accent/10' : 'text-foreground',
+          )}
+        >
+          <span>{option}</span>
+          {value === option && <Check size={14} className="text-accent-dark" />}
+        </Button>
+      ))}
+    </div>
+    <div className="border-t border-border">
+      <Button
+        variant="unstyled"
+        type="button"
+        onClick={onCreateNew}
+        className="flex items-center gap-2 w-full px-3 py-2.5 text-sm text-accent-dark hover:bg-accent/10 transition-colors font-medium"
+      >
+        <Plus size={14} />
+        <span>Create New</span>
+      </Button>
+    </div>
+  </motion.div>
+)
+
+const SelectTriggerAndMenu = ({
+  label,
+  value,
+  placeholder,
+  isOpen,
+  options,
+  containerRef,
+  onToggle,
+  onSelect,
+  onCreateNew,
+}: {
+  label: string
+  value?: string
+  placeholder: string
+  isOpen: boolean
+  options: string[]
+  containerRef: React.RefObject<HTMLDivElement>
+  onToggle: () => void
+  onSelect: (opt: string) => void
+  onCreateNew: () => void
+}) => (
+  <div className="space-y-1.5">
+    <label className="text-xs font-medium text-muted-foreground">{label}</label>
+    <div ref={containerRef} className="relative">
+      <Button
+        variant="unstyled"
+        type="button"
+        onClick={onToggle}
+        className={cn(
+          'flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm transition-all duration-200',
+          'glass bg-card border border-border hover:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/30',
+          isOpen && 'ring-2 ring-accent/30 border-accent/50',
+        )}
+      >
+        <span className={cn(value ? 'text-foreground' : 'text-muted-foreground')}>{value || placeholder}</span>
+        <ChevronDown size={14} className={cn('text-muted-foreground transition-transform duration-200', isOpen && 'rotate-180')} />
+      </Button>
+      <AnimatePresence>
+        {isOpen && (
+          <DropdownList
+            options={options}
+            value={value}
+            onSelect={onSelect}
+            onCreateNew={onCreateNew}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  </div>
+)
+
+export const CreatableSelect = ({ category, label, value, onChange, placeholder = 'Select...' }: CreatableSelectProps) => {
+  const [isOpen, setIsOpen] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const { getOptions, addCustomOption } = useProjectStore()
+  const options = getOptions(category)
+
+  useEffect(() => {
+    const onDocDown = (e: MouseEvent) => { if (containerRef.current && !containerRef.current.contains(e.target as Node) && !isModalOpen) setIsOpen(false) }
+    document.addEventListener('mousedown', onDocDown)
+    return () => document.removeEventListener('mousedown', onDocDown)
+  }, [isModalOpen])
+
+  const handleCreateConfirm = (name: string, prompt: string) => {
+    if (name.trim() && !options.includes(name.trim())) { addCustomOption(category, name.trim(), prompt.trim()); onChange(name.trim()) }
+    setIsModalOpen(false); setIsOpen(false)
+  }
+
+  return (
+    <>
+      <SelectTriggerAndMenu label={label} value={value} placeholder={placeholder} isOpen={isOpen} options={options} containerRef={containerRef} onToggle={() => setIsOpen(!isOpen)} onSelect={(opt) => { onChange(opt); setIsOpen(false) }} onCreateNew={() => { setIsModalOpen(true); setIsOpen(false) }} />
+      <AnimatePresence>{isModalOpen && <CreateOptionModal label={label} onConfirm={handleCreateConfirm} onClose={() => setIsModalOpen(false)} />}</AnimatePresence>
+    </>
+  )
+}
+
+interface CreateOptionModalProps {
+  label: string
+  onConfirm: (name: string, prompt: string) => void
+  onClose: () => void
+}
+
+const CreateOptionDialogBody = ({
+  label,
+  name,
+  setName,
+  prompt,
+  setPrompt,
+  nameRef,
+  onSubmit,
+  onClose,
+}: {
+  label: string
+  name: string
+  setName: (v: string) => void
+  prompt: string
+  setPrompt: (v: string) => void
+  nameRef: React.RefObject<HTMLInputElement>
+  onSubmit: () => void
+  onClose: () => void
+}) => (
+  <motion.div
+    initial={{ opacity: 0, scale: 0.95, y: 10 }}
+    animate={{ opacity: 1, scale: 1, y: 0 }}
+    exit={{ opacity: 0, scale: 0.95, y: 10 }}
+    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+    className="relative w-full max-w-md glass bg-card rounded-xl shadow-2xl border border-border overflow-hidden"
+  >
+    <div className="flex items-center justify-between px-5 pt-5 pb-3">
+      <div>
+        <h3 className="text-base font-heading font-bold text-foreground">New {label}</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">This will be saved and available in future projects.</p>
+      </div>
+      <Button variant="ghost" size="icon" type="button" onClick={onClose} className="h-7 w-7 text-muted-foreground hover:text-foreground">
+        <X size={16} />
+      </Button>
+    </div>
+    <div className="px-5 pb-2 space-y-4">
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-muted-foreground">Name</label>
+        <Input
+          ref={nameRef}
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && name.trim()) {
+              e.preventDefault()
+              onSubmit()
+            }
+          }}
+          placeholder={`e.g. My custom ${label.toLowerCase()}`}
+          className="w-full px-3 py-2 rounded-lg text-sm bg-muted border border-border"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-muted-foreground">Prompt / Description</label>
+        <Textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          rows={3}
+          placeholder="Describe the style, behavior, or details for this option..."
+          className="w-full px-3 py-2 rounded-lg text-sm resize-none bg-muted border border-border"
+        />
+      </div>
+    </div>
+    <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border mt-2">
+      <Button variant="ghost" type="button" onClick={onClose}>
+        Cancel
+      </Button>
+      <Button type="button" onClick={onSubmit} disabled={!name.trim()}>
+        Create
+      </Button>
+    </div>
+  </motion.div>
+)
+
+const CreateOptionModal = ({ label, onConfirm, onClose }: CreateOptionModalProps) => {
+  const [name, setName] = useState('')
+  const [prompt, setPrompt] = useState('')
+  const nameRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    nameRef.current?.focus()
+  }, [])
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleEsc)
+    return () => window.removeEventListener('keydown', handleEsc)
+  }, [onClose])
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <CreateOptionDialogBody
+        label={label}
+        name={name}
+        setName={setName}
+        prompt={prompt}
+        setPrompt={setPrompt}
+        nameRef={nameRef}
+        onSubmit={() => {
+          if (name.trim()) onConfirm(name, prompt)
+        }}
+        onClose={onClose}
+      />
+    </motion.div>
+  )
+}

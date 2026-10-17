@@ -1,0 +1,6222 @@
+{
+  "total_files": 411,
+  "domain_packages": {
+    "agents_service": 1,
+    "api": 9,
+    "api/agents": 16,
+    "api/dubbing": 5,
+    "api/media": 7,
+    "api/models": 5,
+    "api/pricing": 4,
+    "api/reframe": 15,
+    "api/reframe_core": 6,
+    "api/render_pipeline": 7,
+    "api/routers": 21,
+    "api/scripts": 6,
+    "api/services": 13,
+    "api/tests": 40,
+    "frontend/src": 1,
+    "frontend/src/app": 3,
+    "frontend/src/components": 130,
+    "frontend/src/hooks": 6,
+    "frontend/src/lib": 26,
+    "frontend/src/store": 5,
+    "frontend/src/types": 5,
+    "productions_service": 1,
+    "productions_service/routers": 1,
+    "productions_service/services": 3,
+    "productions_service/storygraph": 44,
+    "productions_service/tests": 5,
+    "scripts": 4,
+    "scripts/checkers": 9,
+    "workers": 13
+  },
+  "directory_tree": [
+    "agents_service",
+    "api",
+    "api/agents",
+    "api/agents/specialists",
+    "api/agents/tools",
+    "api/dubbing",
+    "api/dubbing/live",
+    "api/media",
+    "api/models",
+    "api/models/domains",
+    "api/pricing",
+    "api/reframe",
+    "api/reframe_core",
+    "api/render_pipeline",
+    "api/routers",
+    "api/routers/core",
+    "api/routers/media",
+    "api/routers/studio",
+    "api/scripts",
+    "api/services",
+    "api/tests",
+    "api/tests/reframe",
+    "api/tests/reframe_plan",
+    "api/tests/routers",
+    "api/tests/services",
+    "frontend/src",
+    "frontend/src/app",
+    "frontend/src/app/[[...slug]]",
+    "frontend/src/components",
+    "frontend/src/components/ads",
+    "frontend/src/components/ads/projects",
+    "frontend/src/components/ads/storygraph",
+    "frontend/src/components/ads/studio",
+    "frontend/src/components/avatar",
+    "frontend/src/components/avatar/chat",
+    "frontend/src/components/avatar/live",
+    "frontend/src/components/chat",
+    "frontend/src/components/chat/widgets",
+    "frontend/src/components/pages",
+    "frontend/src/components/pages/adapts",
+    "frontend/src/components/pages/adapts/components",
+    "frontend/src/components/pages/admin",
+    "frontend/src/components/pages/avatar",
+    "frontend/src/components/pages/avatar/components",
+    "frontend/src/components/pages/chat",
+    "frontend/src/components/pages/dubbing",
+    "frontend/src/components/pages/keyMoments",
+    "frontend/src/components/pages/keyMoments/components",
+    "frontend/src/components/pages/promo",
+    "frontend/src/components/pages/reframe",
+    "frontend/src/components/pages/reframe/components",
+    "frontend/src/components/pages/thumbnails",
+    "frontend/src/components/pages/thumbnails/components",
+    "frontend/src/components/pages/tools",
+    "frontend/src/components/pages/uploads",
+    "frontend/src/components/pages/uploads/components",
+    "frontend/src/components/pricing",
+    "frontend/src/components/shared",
+    "frontend/src/components/shared/media",
+    "frontend/src/components/ui",
+    "frontend/src/hooks",
+    "frontend/src/lib",
+    "frontend/src/lib/api",
+    "frontend/src/lib/api/core",
+    "frontend/src/lib/api/endpoints",
+    "frontend/src/store",
+    "frontend/src/types",
+    "productions_service",
+    "productions_service/routers",
+    "productions_service/services",
+    "productions_service/storygraph",
+    "productions_service/storygraph/adapters",
+    "productions_service/storygraph/agents",
+    "productions_service/storygraph/agents/role",
+    "productions_service/storygraph/pipeline",
+    "productions_service/storygraph/repo",
+    "productions_service/storygraph/store",
+    "productions_service/storygraph/tools",
+    "productions_service/storygraph/tools/role_helpers",
+    "productions_service/storygraph/tools/write_tools",
+    "productions_service/tests",
+    "scripts",
+    "scripts/checkers",
+    "workers"
+  ],
+  "files": [
+    {
+      "path": "agents_service/main.py",
+      "language": "python",
+      "domain_package": "agents_service",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 71,
+      "classes": [
+        "ChatMessage",
+        "ChatRequest"
+      ],
+      "functions": [
+        "lifespan",
+        "health_check",
+        "chat_endpoint"
+      ],
+      "endpoints": [
+        "GET /health",
+        "POST /api/v1/chat"
+      ]
+    },
+    {
+      "path": "api/agents/_shared.py",
+      "language": "python",
+      "domain_package": "api/agents",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 245,
+      "classes": [],
+      "functions": [
+        "sanitize_markdown_response",
+        "resolve_tier_model_id",
+        "create_model",
+        "propose_job",
+        "get_agent_context",
+        "reset_agent_context",
+        "display_name",
+        "resolve_prompt_name",
+        "build_specialist",
+        "make_prompt_lister",
+        "resolve_source_uri",
+        "source_picker_fallback",
+        "resolve_or_pick",
+        "make_prompt_video_proposer",
+        "make_check_job_status",
+        "make_list_available_videos",
+        "make_list_available_images"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/agents/factory.py",
+      "language": "python",
+      "domain_package": "api/agents",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 143,
+      "classes": [],
+      "functions": [
+        "create_orchestrator",
+        "run_agent_chat"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/agents/specialists/adapts.py",
+      "language": "python",
+      "domain_package": "api/agents",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 82,
+      "classes": [],
+      "functions": [
+        "create_adapts_agent"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/agents/specialists/director.py",
+      "language": "python",
+      "domain_package": "api/agents",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 145,
+      "classes": [],
+      "functions": [
+        "create_productions_agent",
+        "create_director_agent"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/agents/specialists/dubbing.py",
+      "language": "python",
+      "domain_package": "api/agents",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 90,
+      "classes": [],
+      "functions": [
+        "create_dubbing_agent"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/agents/specialists/editor.py",
+      "language": "python",
+      "domain_package": "api/agents",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 30,
+      "classes": [],
+      "functions": [
+        "create_editor_agent"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/agents/specialists/finops.py",
+      "language": "python",
+      "domain_package": "api/agents",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 83,
+      "classes": [],
+      "functions": [
+        "make_finops_tools",
+        "create_finops_agent"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/agents/specialists/key_moments.py",
+      "language": "python",
+      "domain_package": "api/agents",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 47,
+      "classes": [],
+      "functions": [
+        "create_key_moments_agent"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/agents/specialists/marketer.py",
+      "language": "python",
+      "domain_package": "api/agents",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 25,
+      "classes": [],
+      "functions": [
+        "create_marketer_agent"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/agents/specialists/promo.py",
+      "language": "python",
+      "domain_package": "api/agents",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 67,
+      "classes": [],
+      "functions": [
+        "create_promo_agent"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/agents/specialists/reframe.py",
+      "language": "python",
+      "domain_package": "api/agents",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 89,
+      "classes": [],
+      "functions": [
+        "content_type_index",
+        "create_reframe_agent"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/agents/specialists/thumbnails.py",
+      "language": "python",
+      "domain_package": "api/agents",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 53,
+      "classes": [],
+      "functions": [
+        "create_thumbnails_agent"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/agents/tools/_client.py",
+      "language": "python",
+      "domain_package": "api/agents",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 74,
+      "classes": [],
+      "functions": [
+        "close_client",
+        "api_call",
+        "list_recent",
+        "create_job"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/agents/tools/jobs.py",
+      "language": "python",
+      "domain_package": "api/agents",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 224,
+      "classes": [],
+      "functions": [
+        "normalize_feature",
+        "list_recent_productions",
+        "create_production",
+        "trigger_production_step",
+        "list_recent_promos",
+        "create_promo",
+        "list_uploaded_videos",
+        "list_recent_reframes",
+        "create_reframe",
+        "list_recent_key_moments",
+        "create_key_moments_analysis",
+        "list_recent_thumbnails",
+        "create_thumbnails",
+        "trigger_thumbnail_step",
+        "list_recent_adapts",
+        "create_adapt",
+        "list_dubbing_languages",
+        "list_recent_dubbing",
+        "create_dubbing",
+        "retry_dubbing",
+        "list_ai_models",
+        "list_uploads",
+        "get_job_status",
+        "list_recent_jobs"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/agents/tools/pricing.py",
+      "language": "python",
+      "domain_package": "api/agents",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 18,
+      "classes": [],
+      "functions": [
+        "get_pricing_rates",
+        "get_feature_services",
+        "estimate_cost",
+        "get_job_cost"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/agents/tools/system.py",
+      "language": "python",
+      "domain_package": "api/agents",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 17,
+      "classes": [],
+      "functions": [
+        "list_content_types",
+        "list_aspect_ratios",
+        "list_prompt_categories",
+        "list_system_prompts"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/deps.py",
+      "language": "python",
+      "domain_package": "api",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 52,
+      "classes": [],
+      "functions": [
+        "init_services",
+        "services_ready"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/dubbing/dubbing_config.py",
+      "language": "python",
+      "domain_package": "api/dubbing",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 43,
+      "classes": [],
+      "functions": [
+        "live_model",
+        "live_surface",
+        "api_key",
+        "supported_languages",
+        "language_regions",
+        "window_sec",
+        "pace",
+        "silence_stop_sec",
+        "silence_floor_db",
+        "max_source_minutes",
+        "max_languages"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/dubbing/dubbing_service.py",
+      "language": "python",
+      "domain_package": "api/dubbing",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 113,
+      "classes": [],
+      "functions": [
+        "variant_tag",
+        "output_blob_paths",
+        "dub_language"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/dubbing/dubbing_timeline.py",
+      "language": "python",
+      "domain_package": "api/dubbing",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 84,
+      "classes": [],
+      "functions": [
+        "measure_lag",
+        "assemble_track",
+        "is_silent",
+        "build_srt"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/dubbing/live/dubbing_audio.py",
+      "language": "python",
+      "domain_package": "api/dubbing",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 106,
+      "classes": [],
+      "functions": [
+        "extract_source_pcm",
+        "first_speech_onset",
+        "write_wav",
+        "mux_dub"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/dubbing/live/dubbing_live.py",
+      "language": "python",
+      "domain_package": "api/dubbing",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 244,
+      "classes": [
+        "TranslationResult",
+        "_WindowSession"
+      ],
+      "functions": [
+        "build_setup_frame",
+        "split_windows",
+        "translate_audio"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/firestore_service.py",
+      "language": "python",
+      "domain_package": "api",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 332,
+      "classes": [
+        "FirestoreService"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/gcp_auth.py",
+      "language": "python",
+      "domain_package": "api",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 9,
+      "classes": [],
+      "functions": [
+        "vertex_access_token"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/gemini_service.py",
+      "language": "python",
+      "domain_package": "api",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 216,
+      "classes": [
+        "GeminiService"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/helpers.py",
+      "language": "python",
+      "domain_package": "api",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 200,
+      "classes": [],
+      "functions": [
+        "require_firestore",
+        "ensure_services_ready",
+        "get_or_404",
+        "apply_indexed_uris",
+        "sdk_call_with_retry",
+        "gemini_call_with_retry",
+        "parse_timestamp",
+        "orientation_directive",
+        "build_flat_image_prompt",
+        "build_flat_video_prompt",
+        "build_prompt_data"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/main.py",
+      "language": "python",
+      "domain_package": "api",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 171,
+      "classes": [
+        "BotProtectionMiddleware"
+      ],
+      "functions": [
+        "validate_invite_code",
+        "startup_event",
+        "shutdown_event",
+        "health_check"
+      ],
+      "endpoints": [
+        "GET /health"
+      ]
+    },
+    {
+      "path": "api/media/active_speaker.py",
+      "language": "python",
+      "domain_package": "api/media",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 102,
+      "classes": [],
+      "functions": [
+        "mouth_aspect_ratio"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/media/ffmpeg_runner.py",
+      "language": "python",
+      "domain_package": "api/media",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 153,
+      "classes": [],
+      "functions": [
+        "run_ffmpeg",
+        "run_ffmpeg_probe",
+        "run_ffmpeg_with_filter",
+        "ffprobe_json",
+        "ffprobe_video",
+        "ffprobe_duration",
+        "ffprobe_has_audio",
+        "ffprobe_video_width"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/media/focal_path.py",
+      "language": "python",
+      "domain_package": "api/media",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 99,
+      "classes": [],
+      "functions": [
+        "l1_pan_path"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/media/mediapipe_detection.py",
+      "language": "python",
+      "domain_package": "api/media",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 361,
+      "classes": [],
+      "functions": [
+        "detect_faces",
+        "detection_backend",
+        "detect_persons",
+        "scan_video_faces",
+        "scan_video_detections"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/media/mediapipe_tracking.py",
+      "language": "python",
+      "domain_package": "api/media",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 272,
+      "classes": [],
+      "functions": [
+        "track_faces",
+        "merge_scenes_with_tracks"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/media/scene_detect.py",
+      "language": "python",
+      "domain_package": "api/media",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 51,
+      "classes": [],
+      "functions": [
+        "detect_cuts"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/media/text_detect.py",
+      "language": "python",
+      "domain_package": "api/media",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 199,
+      "classes": [],
+      "functions": [
+        "detect_text_lines",
+        "detect_text_coverage",
+        "scan_video_text",
+        "persistent_text_regions"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/models/domains/models_avatar.py",
+      "language": "python",
+      "domain_package": "api/models",
+      "tier": "Tier 1 (Models & Pure Config)",
+      "non_comment_lines": 106,
+      "classes": [
+        "AvatarStyle",
+        "AvatarVoice",
+        "Avatar",
+        "AvatarTurn",
+        "CreateAvatarRequest",
+        "AskAvatarRequest"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/models/domains/models_projects.py",
+      "language": "python",
+      "domain_package": "api/models",
+      "tier": "Tier 1 (Models & Pure Config)",
+      "non_comment_lines": 135,
+      "classes": [
+        "GlobalStyle",
+        "CharacterProfile",
+        "Continuity",
+        "SceneMetadata",
+        "PipelineStepLog",
+        "StoryboardReviewIssue",
+        "StoryboardReviewReport",
+        "SceneEvalFinding",
+        "VideoEvalReport",
+        "Scene",
+        "Project"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/models/models_core.py",
+      "language": "python",
+      "domain_package": "api/models",
+      "tier": "Tier 1 (Models & Pure Config)",
+      "non_comment_lines": 88,
+      "classes": [
+        "ProjectStatus",
+        "SystemResourceType",
+        "SystemResourceInfo",
+        "SystemResource",
+        "UsageMetrics",
+        "ServiceLineItem",
+        "FeaturePricing",
+        "PricingEstimateRequest",
+        "AIResponseWrapper"
+      ],
+      "functions": [
+        "generate_id"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/models/models_infra.py",
+      "language": "python",
+      "domain_package": "api/models",
+      "tier": "Tier 1 (Models & Pure Config)",
+      "non_comment_lines": 101,
+      "classes": [
+        "CompressedVariant",
+        "UploadRecord",
+        "UploadInitRequest",
+        "UploadCompleteRequest",
+        "InviteCode",
+        "CreateInviteCodeRequest",
+        "ValidateCodeRequest",
+        "ModelCapability",
+        "AIModel",
+        "CreateAIModelRequest"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/models/models_records.py",
+      "language": "python",
+      "domain_package": "api/models",
+      "tier": "Tier 1 (Models & Pure Config)",
+      "non_comment_lines": 210,
+      "classes": [
+        "KeyMomentModel",
+        "KeyMomentsRecord",
+        "ThumbnailScreenshot",
+        "ThumbnailRecord",
+        "FocalPoint",
+        "SceneChange",
+        "SpeakerPosition",
+        "SpeakerSegment",
+        "ReframeRecord",
+        "PromoSegment",
+        "PromoRecord",
+        "AdaptVariant",
+        "AdaptRecord",
+        "DubVariant",
+        "DubRecord"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/pricing/cost_tracking.py",
+      "language": "python",
+      "domain_package": "api/pricing",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 136,
+      "classes": [],
+      "functions": [
+        "accumulate_image_cost_on",
+        "accumulate_text_cost_on",
+        "accumulate_veo_cost_on",
+        "accumulate_transcoder_cost",
+        "accumulate_diarization_cost"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/pricing/pricing_config.py",
+      "language": "python",
+      "domain_package": "api/pricing",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 276,
+      "classes": [
+        "TokenTier",
+        "TextModelRate",
+        "ImageModelRate",
+        "FlatRate",
+        "EstimatorHints"
+      ],
+      "functions": [
+        "cost_for_text",
+        "cost_for_image",
+        "cost_for_veo",
+        "veo_rate_for",
+        "cost_for_flat"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/pricing/pricing_estimator.py",
+      "language": "python",
+      "domain_package": "api/pricing",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 119,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/pricing/pricing_usage.py",
+      "language": "python",
+      "domain_package": "api/pricing",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 116,
+      "classes": [],
+      "functions": [
+        "usage_of",
+        "usage_to_line_items"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe/_reframe_active_area.py",
+      "language": "python",
+      "domain_package": "api/reframe",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 167,
+      "classes": [],
+      "functions": [
+        "active_area_from_frames",
+        "detect_active_area",
+        "outlier_shot_ranges",
+        "rect_px",
+        "crop_prefilter",
+        "slice_frame",
+        "summarize"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe/_reframe_decide.py",
+      "language": "python",
+      "domain_package": "api/reframe",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 316,
+      "classes": [],
+      "functions": [
+        "render_decision_thumbs",
+        "apply_verdicts",
+        "harmonize_letterbox"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe/_reframe_diagnostic.py",
+      "language": "python",
+      "domain_package": "api/reframe",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 279,
+      "classes": [],
+      "functions": [
+        "track_label_map",
+        "render_diagnostic"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe/_reframe_escalation.py",
+      "language": "python",
+      "domain_package": "api/reframe",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 103,
+      "classes": [],
+      "functions": [
+        "make_point",
+        "cluster_escalations",
+        "plan_batches",
+        "summarize"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe/_reframe_eval.py",
+      "language": "python",
+      "domain_package": "api/reframe",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 363,
+      "classes": [],
+      "functions": [
+        "evaluate"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe/_reframe_filters.py",
+      "language": "python",
+      "domain_package": "api/reframe",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 144,
+      "classes": [],
+      "functions": [
+        "crop_geometry",
+        "crop_left_px_at",
+        "build_canvas_filter",
+        "split_panel_geometry",
+        "build_split_filter"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe/_reframe_pan.py",
+      "language": "python",
+      "domain_package": "api/reframe",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 76,
+      "classes": [],
+      "functions": [
+        "attach_keypoints"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe/_reframe_plan.py",
+      "language": "python",
+      "domain_package": "api/reframe",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 375,
+      "classes": [],
+      "functions": [
+        "reconcile",
+        "collect_escalation_points"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe/_reframe_plan_model.py",
+      "language": "python",
+      "domain_package": "api/reframe",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 243,
+      "classes": [
+        "Layout",
+        "CropSource",
+        "EscalationKind",
+        "DecisionStatus",
+        "Crop",
+        "Escalation",
+        "Segment",
+        "ReframePlan"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe/_reframe_points.py",
+      "language": "python",
+      "domain_package": "api/reframe",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 244,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe/_reframe_render_check.py",
+      "language": "python",
+      "domain_package": "api/reframe",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 178,
+      "classes": [],
+      "functions": [
+        "check_render"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe/_reframe_replay.py",
+      "language": "python",
+      "domain_package": "api/reframe",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 97,
+      "classes": [],
+      "functions": [
+        "recorded_verdicts",
+        "replay",
+        "plan_metrics",
+        "compact_plan"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe/_reframe_rungs.py",
+      "language": "python",
+      "domain_package": "api/reframe",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 105,
+      "classes": [],
+      "functions": [
+        "rung_coverage",
+        "pick_rung",
+        "assign_rungs"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe/_reframe_segments.py",
+      "language": "python",
+      "domain_package": "api/reframe",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 191,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe/_reframe_semantic.py",
+      "language": "python",
+      "domain_package": "api/reframe",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 167,
+      "classes": [],
+      "functions": [
+        "semantic_pass_enabled",
+        "build_semantic_prompt",
+        "validate",
+        "reconcile_semantics"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe_core/_reframe_decide_helpers.py",
+      "language": "python",
+      "domain_package": "api/reframe_core",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 214,
+      "classes": [],
+      "functions": [
+        "build_decision_intro",
+        "build_cluster_block"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe_core/_reframe_eval_helpers.py",
+      "language": "python",
+      "domain_package": "api/reframe_core",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 308,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe_core/_reframe_plan_helpers.py",
+      "language": "python",
+      "domain_package": "api/reframe_core",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 386,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe_core/_reframe_service.py",
+      "language": "python",
+      "domain_package": "api/reframe_core",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 181,
+      "classes": [],
+      "functions": [
+        "render_plan"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe_core/_reframe_signals.py",
+      "language": "python",
+      "domain_package": "api/reframe_core",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 323,
+      "classes": [],
+      "functions": [
+        "prominence",
+        "pick_active_speaker"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/reframe_core/_reframe_strategies.py",
+      "language": "python",
+      "domain_package": "api/reframe_core",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 260,
+      "classes": [],
+      "functions": [
+        "get_strategy",
+        "get_variables",
+        "resolve_prompt"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/render_pipeline/eval_regen.py",
+      "language": "python",
+      "domain_package": "api/render_pipeline",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 331,
+      "classes": [],
+      "functions": [
+        "run_selective_regenerate_step",
+        "run_standalone_regenerate_flagged"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/render_pipeline/frames.py",
+      "language": "python",
+      "domain_package": "api/render_pipeline",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 227,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/render_pipeline/orchestrator.py",
+      "language": "python",
+      "domain_package": "api/render_pipeline",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 337,
+      "classes": [],
+      "functions": [
+        "process_render"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/render_pipeline/review_eval.py",
+      "language": "python",
+      "domain_package": "api/render_pipeline",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 136,
+      "classes": [],
+      "functions": [
+        "run_storyboard_review_step",
+        "run_video_eval_step"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/render_pipeline/state.py",
+      "language": "python",
+      "domain_package": "api/render_pipeline",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 207,
+      "classes": [],
+      "functions": [
+        "get_hook",
+        "log_extra",
+        "build_initial_pipeline_steps"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/render_pipeline/stitch.py",
+      "language": "python",
+      "domain_package": "api/render_pipeline",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 350,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/render_pipeline/videos.py",
+      "language": "python",
+      "domain_package": "api/render_pipeline",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 330,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/routers/_crud.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 164,
+      "classes": [],
+      "functions": [
+        "register_crud_routes"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/routers/core/auth.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 175,
+      "classes": [],
+      "functions": [
+        "validate_code",
+        "validate",
+        "list_codes",
+        "create_code",
+        "update_code",
+        "revoke_code",
+        "activate_code",
+        "promote_code",
+        "demote_code",
+        "delete_code"
+      ],
+      "endpoints": [
+        "POST /validate",
+        "GET /codes",
+        "POST /codes",
+        "PATCH /codes/{code_id}",
+        "POST /codes/{code_id}/revoke",
+        "POST /codes/{code_id}/activate",
+        "POST /codes/{code_id}/promote",
+        "POST /codes/{code_id}/demote",
+        "DELETE /codes/{code_id}"
+      ]
+    },
+    {
+      "path": "api/routers/core/chat.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 94,
+      "classes": [
+        "ChatMessage",
+        "ChatRequest",
+        "SharedChatItem",
+        "ShareChatRequest"
+      ],
+      "functions": [
+        "chat_endpoint",
+        "create_shared_chat",
+        "get_shared_chat"
+      ],
+      "endpoints": [
+        "POST ",
+        "POST /share",
+        "GET /share/{share_id}"
+      ]
+    },
+    {
+      "path": "api/routers/core/diagnostics.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 92,
+      "classes": [],
+      "functions": [
+        "diagnostic_optimize",
+        "diagnostic_image",
+        "diagnostic_video",
+        "check_operation_status"
+      ],
+      "endpoints": [
+        "POST /optimize-prompt",
+        "POST /generate-image",
+        "POST /generate-video",
+        "GET /operations/{name:path}"
+      ]
+    },
+    {
+      "path": "api/routers/core/models.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 237,
+      "classes": [],
+      "functions": [
+        "list_models",
+        "get_model_defaults",
+        "list_regions",
+        "create_model",
+        "set_model_default",
+        "update_model",
+        "delete_model",
+        "seed_models"
+      ],
+      "endpoints": [
+        "GET ",
+        "GET /defaults",
+        "GET /regions",
+        "POST ",
+        "POST /{model_id}/set-default",
+        "PATCH /{model_id}",
+        "DELETE /{model_id}",
+        "POST /seed"
+      ]
+    },
+    {
+      "path": "api/routers/core/pricing.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 148,
+      "classes": [],
+      "functions": [
+        "get_rates",
+        "get_features",
+        "estimate",
+        "get_usage"
+      ],
+      "endpoints": [
+        "GET /rates",
+        "GET /features",
+        "POST /estimate",
+        "GET /usage/{feature}/{record_id}"
+      ]
+    },
+    {
+      "path": "api/routers/core/system.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 76,
+      "classes": [],
+      "functions": [
+        "list_system_resources",
+        "create_system_resource",
+        "get_system_resource",
+        "activate_system_resource",
+        "get_default_schema",
+        "list_content_types",
+        "list_aspect_ratios",
+        "list_prompt_categories"
+      ],
+      "endpoints": [
+        "GET /resources",
+        "POST /resources",
+        "GET /resources/{id}",
+        "POST /resources/{id}/activate",
+        "GET /default-schema",
+        "GET /lookups/content-types",
+        "GET /lookups/aspect-ratios",
+        "GET /lookups/prompt-categories"
+      ]
+    },
+    {
+      "path": "api/routers/media/adapts.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 132,
+      "classes": [
+        "AdaptRequest"
+      ],
+      "functions": [
+        "list_preset_bundles",
+        "list_adapt_upload_sources",
+        "create_adapt"
+      ],
+      "endpoints": [
+        "GET /presets",
+        "GET /sources/uploads",
+        "POST "
+      ]
+    },
+    {
+      "path": "api/routers/media/dubbing.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 129,
+      "classes": [
+        "DubRequest"
+      ],
+      "functions": [
+        "list_languages",
+        "list_dub_upload_sources",
+        "list_dub_production_sources",
+        "create_dub"
+      ],
+      "endpoints": [
+        "GET /languages",
+        "GET /sources/uploads",
+        "GET /sources/productions",
+        "POST "
+      ]
+    },
+    {
+      "path": "api/routers/media/key_moments.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 127,
+      "classes": [],
+      "functions": [
+        "list_production_sources",
+        "analyze_key_moments",
+        "save_key_moment_frames"
+      ],
+      "endpoints": [
+        "GET /sources/productions",
+        "POST /analyze",
+        "POST /{record_id}/frames"
+      ]
+    },
+    {
+      "path": "api/routers/media/promo.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 87,
+      "classes": [
+        "PromoRequest"
+      ],
+      "functions": [
+        "list_promo_upload_sources",
+        "list_promo_production_sources",
+        "create_promo"
+      ],
+      "endpoints": [
+        "GET /sources/uploads",
+        "GET /sources/productions",
+        "POST "
+      ]
+    },
+    {
+      "path": "api/routers/media/reframe.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 86,
+      "classes": [
+        "ReframeRequest"
+      ],
+      "functions": [
+        "list_reframe_upload_sources",
+        "list_reframe_production_sources",
+        "create_reframe"
+      ],
+      "endpoints": [
+        "GET /sources/uploads",
+        "GET /sources/productions",
+        "POST "
+      ]
+    },
+    {
+      "path": "api/routers/media/thumbnails.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 211,
+      "classes": [],
+      "functions": [
+        "list_thumbnail_production_sources",
+        "analyze_video_for_thumbnails",
+        "save_thumbnail_screenshots",
+        "generate_thumbnail_collage"
+      ],
+      "endpoints": [
+        "GET /sources/productions",
+        "POST /analyze",
+        "POST /{record_id}/screenshots",
+        "POST /{record_id}/collage"
+      ]
+    },
+    {
+      "path": "api/routers/media/uploads.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 239,
+      "classes": [],
+      "functions": [
+        "list_uploads",
+        "upload_init",
+        "upload_complete",
+        "upload_asset",
+        "compress_upload",
+        "get_compress_status"
+      ],
+      "endpoints": [
+        "GET ",
+        "POST /assets/upload/init",
+        "POST /assets/upload/complete",
+        "POST /assets/upload",
+        "POST /{record_id}/compress",
+        "GET /{record_id}/compress-status"
+      ]
+    },
+    {
+      "path": "api/routers/render_helpers.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 97,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/routers/studio/_avatars_live_helpers.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 137,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/routers/studio/avatars.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 212,
+      "classes": [
+        "UpdateAvatarRequest"
+      ],
+      "functions": [
+        "update_avatar",
+        "create_avatar",
+        "ask_avatar",
+        "ask_avatar_audio",
+        "list_avatar_turns",
+        "get_avatar_turn"
+      ],
+      "endpoints": [
+        "PATCH /{avatar_id}",
+        "POST ",
+        "POST /{avatar_id}/ask",
+        "POST /{avatar_id}/ask-audio",
+        "GET /{avatar_id}/turns",
+        "GET /turns/{turn_id}"
+      ]
+    },
+    {
+      "path": "api/routers/studio/avatars_live.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 339,
+      "classes": [],
+      "functions": [
+        "live_config",
+        "avatar_live"
+      ],
+      "endpoints": [
+        "GET /{avatar_id}/live-config",
+        "WEBSOCKET /{avatar_id}/live"
+      ]
+    },
+    {
+      "path": "api/routers/studio/productions.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 286,
+      "classes": [],
+      "functions": [
+        "create_production",
+        "analyze_production",
+        "review_production_storyboard",
+        "evaluate_production_video",
+        "regenerate_flagged_production_scenes",
+        "get_production_story_graph",
+        "run_story_graph_pipeline",
+        "run_story_graph_stage",
+        "approve_story_graph_gate",
+        "reject_story_graph_gate",
+        "approve_story_graph_appearance",
+        "regenerate_story_graph_appearance",
+        "compile_story_graph_shot"
+      ],
+      "endpoints": [
+        "POST ",
+        "POST /{id}/analyze",
+        "POST /{id}/review",
+        "POST /{id}/evaluate",
+        "POST /{id}/regenerate-flagged",
+        "GET /{id}/graph",
+        "POST /{id}/run",
+        "POST /{id}/stages/{stage_id}/run",
+        "POST /{id}/gates/{gate_id}/approve",
+        "POST /{id}/gates/{gate_id}/reject",
+        "POST /{id}/appearances/{appearance_id}/approve",
+        "POST /{id}/appearances/{appearance_id}/regenerate",
+        "POST /{id}/shots/{shot_id}/compile"
+      ]
+    },
+    {
+      "path": "api/routers/studio/render.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 159,
+      "classes": [],
+      "functions": [
+        "start_render",
+        "stitch_production",
+        "get_stitch_status"
+      ],
+      "endpoints": [
+        "POST /{id}/render",
+        "POST /{id}/stitch",
+        "GET /{id}/stitch-status"
+      ]
+    },
+    {
+      "path": "api/routers/studio/scenes.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 293,
+      "classes": [],
+      "functions": [
+        "build_scene_prompt",
+        "update_scene",
+        "generate_scene_frame",
+        "generate_scene_video"
+      ],
+      "endpoints": [
+        "POST /{id}/scenes/{scene_id}/build-prompt",
+        "PATCH /{id}/scenes/{scene_id}",
+        "POST /{id}/scenes/{scene_id}/frame",
+        "POST /{id}/scenes/{scene_id}/video"
+      ]
+    },
+    {
+      "path": "api/scripts/backfill_pricing.py",
+      "language": "python",
+      "domain_package": "api/scripts",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 399,
+      "classes": [],
+      "functions": [
+        "main"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/scripts/build-reframe-fixture.py",
+      "language": "python",
+      "domain_package": "api/scripts",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 135,
+      "classes": [],
+      "functions": [
+        "build",
+        "rebaseline",
+        "verify",
+        "main"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/scripts/fetch-firestore.py",
+      "language": "python",
+      "domain_package": "api/scripts",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 84,
+      "classes": [],
+      "functions": [
+        "main"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/scripts/reframe_eval_local.py",
+      "language": "python",
+      "domain_package": "api/scripts",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 123,
+      "classes": [],
+      "functions": [
+        "main"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/scripts/reframe_v2_spike.py",
+      "language": "python",
+      "domain_package": "api/scripts",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 121,
+      "classes": [],
+      "functions": [
+        "main"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/scripts/test_chat_agent.py",
+      "language": "python",
+      "domain_package": "api/scripts",
+      "tier": "Test Suite",
+      "non_comment_lines": 50,
+      "classes": [],
+      "functions": [
+        "test_chat"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/services/adapt_prompts.py",
+      "language": "python",
+      "domain_package": "api/services",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 169,
+      "classes": [],
+      "functions": [
+        "adapt_prompt_variables"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/services/ai_helpers.py",
+      "language": "python",
+      "domain_package": "api/services",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 93,
+      "classes": [],
+      "functions": [
+        "resolve_model",
+        "load_schema",
+        "compute_usage",
+        "compute_image_usage",
+        "image_generation_usage",
+        "extract_image_from_response",
+        "resolve_resource"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/services/avatar_service.py",
+      "language": "python",
+      "domain_package": "api/services",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 146,
+      "classes": [],
+      "functions": [
+        "build_system_instruction",
+        "answer_question",
+        "answer_audio_question",
+        "build_render_prompt",
+        "create_pending_turn"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/services/brief_helpers.py",
+      "language": "python",
+      "domain_package": "api/services",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 178,
+      "classes": [],
+      "functions": [
+        "parse_scenes",
+        "merge_reviewed_scenes",
+        "parse_review_response",
+        "parse_eval_response"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/services/diarization_service.py",
+      "language": "python",
+      "domain_package": "api/services",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 388,
+      "classes": [
+        "DiarizationService"
+      ],
+      "functions": [
+        "extract_audio"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/services/gemini_generation.py",
+      "language": "python",
+      "domain_package": "api/services",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 277,
+      "classes": [
+        "GeminiGenerationMixin"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/services/gemini_video_analysis.py",
+      "language": "python",
+      "domain_package": "api/services",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 309,
+      "classes": [
+        "GeminiVideoAnalysisMixin"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/services/promo_service.py",
+      "language": "python",
+      "domain_package": "api/services",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 351,
+      "classes": [],
+      "functions": [
+        "parse_timestamp",
+        "extract_segment",
+        "extract_frame",
+        "normalize_segment",
+        "concatenate_with_crossfade",
+        "create_title_card_video",
+        "overlay_image_on_segment"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/services/prompt_resolver.py",
+      "language": "python",
+      "domain_package": "api/services",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 117,
+      "classes": [
+        "PromptResolver"
+      ],
+      "functions": [
+        "gcs_ref_url"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/services/prompt_templates.py",
+      "language": "python",
+      "domain_package": "api/services",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 55,
+      "classes": [],
+      "functions": [
+        "build_collage_prompt",
+        "default_promo_prompt"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/services/transcoder_service.py",
+      "language": "python",
+      "domain_package": "api/services",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 232,
+      "classes": [
+        "TranscoderService"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/services/url_signing.py",
+      "language": "python",
+      "domain_package": "api/services",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 153,
+      "classes": [],
+      "functions": [
+        "sign_records_concurrently",
+        "sign_values_concurrently",
+        "sign_record_urls",
+        "sign_nested_list_uris",
+        "sign_production_urls",
+        "list_upload_sources",
+        "list_video_upload_sources",
+        "list_image_upload_sources",
+        "list_completed_production_sources"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/services/video_prompt_helpers.py",
+      "language": "python",
+      "domain_package": "api/services",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 237,
+      "classes": [],
+      "functions": [
+        "build_scene_video_prompt",
+        "extract_omni_video_uri"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/sitecustomize.py",
+      "language": "python",
+      "domain_package": "api",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 41,
+      "classes": [
+        "_ReframeAliasFinder"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/storage_service.py",
+      "language": "python",
+      "domain_package": "api",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 143,
+      "classes": [
+        "StorageService"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/conftest.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 21,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/reframe/test_reframe_active_area.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 167,
+      "classes": [],
+      "functions": [
+        "test_full_frame_returns_none",
+        "test_letterbox_bars_detected",
+        "test_pillarbox_bars_detected",
+        "test_minority_full_bleed_frame_tolerated_as_outlier",
+        "test_mixed_format_source_not_trimmed",
+        "test_subtitle_inside_bottom_bar_limits_trim",
+        "test_deep_dark_region_rejected_as_content",
+        "test_hairline_bar_ignored",
+        "test_rect_px_even_and_full_frame_default",
+        "test_crop_prefilter_string",
+        "test_slice_frame_trims",
+        "test_outlier_shot_ranges_maps_times_to_shots",
+        "test_canvas_filter_src_crop_prefix",
+        "test_canvas_filter_letterboxed_bg_also_cropped",
+        "test_split_filter_src_crop_prefix",
+        "test_legacy_pick_is_largest",
+        "test_subject_pick_prefers_face_and_bucket",
+        "test_face_evidence_alone_beats_size",
+        "test_no_evidence_falls_back_to_largest",
+        "test_series_follows_one_person_no_flicker",
+        "test_person_groups_cluster_and_face_hits"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/reframe/test_reframe_av1.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 84,
+      "classes": [
+        "_Tmp"
+      ],
+      "functions": [
+        "test_h264_source_passes_through_unchanged",
+        "test_av1_source_is_transcoded_to_readable_copy"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/reframe/test_reframe_diagnostic.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 61,
+      "classes": [
+        "TestTrackLabelMap",
+        "TestNearestTracks",
+        "TestSceneAt",
+        "TestInterpX"
+      ],
+      "functions": [
+        "test_canvas_is_portrait_1080x1920"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/reframe/test_reframe_escalation.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 98,
+      "classes": [
+        "TestMakePoint",
+        "TestClustering",
+        "TestBatching"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/reframe/test_reframe_eval.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 366,
+      "classes": [
+        "TestSplitEval",
+        "TestCropJumps",
+        "TestCenterOffsetFreedom",
+        "TestSubjectMismatch"
+      ],
+      "functions": [
+        "test_crop_geometry_matches_renderer",
+        "test_crop_window_centered",
+        "test_crop_window_full_width_when_no_crop",
+        "test_no_cut_full_containment",
+        "test_face_cut_detected",
+        "test_over_letterbox_flags_unneeded_bars",
+        "test_not_over_letterbox_when_bars_needed",
+        "test_gemini_letterbox_justified_by_band_not_over",
+        "test_gemini_letterbox_wider_than_its_band_is_over",
+        "test_mean_letterbox_pct",
+        "test_av_sync_positive_when_framed_mouth_moves_with_speech",
+        "test_activity_window_is_time_based_not_frame_count",
+        "test_speaker_miss_when_off_frame_face_talks",
+        "test_empty_plan_returns_empty",
+        "test_no_audio_or_dialogue_nulls_talker",
+        "test_tiny_background_face_not_counted_as_cut",
+        "test_talker_null_below_min_dialogue_frames",
+        "test_3x4_canvas_full_bleed_has_no_letterbox",
+        "test_3x4_canvas_wide_rung_letterboxes",
+        "test_must_keep_width_from_detections"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/reframe/test_reframe_filters.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 190,
+      "classes": [
+        "TestCanvasFilter",
+        "TestCanvas34",
+        "TestSplitFilter",
+        "TestRenderEvalContract",
+        "TestPixelKeypoints"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/reframe/test_reframe_orchestration.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 172,
+      "classes": [
+        "TestOrchestration"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/reframe/test_reframe_plan_model.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 146,
+      "classes": [
+        "TestParsing",
+        "TestLetterboxFlag",
+        "TestEscalation",
+        "TestExplain",
+        "TestRoundTrip"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/reframe/test_reframe_regression.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 65,
+      "classes": [],
+      "functions": [
+        "test_fixture_within_baseline",
+        "test_fixture_replay_is_deterministic"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/reframe/test_reframe_render_check.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 222,
+      "classes": [
+        "TestPredictedOutX",
+        "TestSampleIndices",
+        "TestSummarize",
+        "TestBlankDetection",
+        "TestRealRenderIntegration"
+      ],
+      "functions": [
+        "test_pos_tol_is_sane"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/reframe/test_reframe_semantic.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 209,
+      "classes": [],
+      "functions": [
+        "test_schema_has_no_coverage_or_coordinates",
+        "test_prompt_carries_cuts_chirp_and_importance_framing",
+        "test_validate_snaps_to_cuts_and_drops_garbage",
+        "test_validate_rejects_unusable_payloads",
+        "test_validate_drops_overlapping_shots_keeps_earlier",
+        "test_essential_text_with_measured_region_uses_measured_band",
+        "test_essential_text_with_no_measured_region_falls_back_to_prior",
+        "test_incidental_or_watermark_text_never_locks",
+        "test_title_card_letterboxes_without_escalation",
+        "test_poster_with_detected_face_still_letterboxes",
+        "test_broll_center_crops_confidently_without_escalation",
+        "test_text_keep_raises_coverage_before_the_dp",
+        "test_semantic_shot_without_text_keep_crops_measured_text",
+        "test_no_scenes_keeps_full_legacy_behavior",
+        "test_multi_person_dialogue_unlocks_keep_both",
+        "test_flag_defaults_off_and_record_overrides",
+        "test_reconciled_scene_shape_matches_legacy_consumers"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/reframe/test_reframe_speaker_join.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 152,
+      "classes": [],
+      "functions": [
+        "test_speaker_label_normalization",
+        "test_semantic_position_snaps_when_mar_is_silent",
+        "test_mar_overrides_semantic_position",
+        "test_offscreen_narrator_suppresses_speaker_centering",
+        "test_single_face_speech_pin",
+        "test_chewing_outside_speech_does_not_pin",
+        "test_equal_two_shot_still_outranks_speaker_centering"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/reframe/test_reframe_text_regions.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 83,
+      "classes": [],
+      "functions": [
+        "test_legacy_frames_without_lines_return_none",
+        "test_lines_cluster_into_one_region_across_frames",
+        "test_corner_bug_classified_and_caption_not",
+        "test_wide_persistent_caption_is_not_a_bug",
+        "test_bug_never_reaches_the_segment_band",
+        "test_candidate_band_is_the_region_not_the_union_with_the_bug",
+        "test_legacy_fallback_uses_union_band",
+        "test_escalation_band_is_offending_regions_only",
+        "test_no_escalation_when_all_regions_behind_subject"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/reframe/test_reframe_tracker.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 101,
+      "classes": [],
+      "functions": [
+        "test_track_survives_missed_sample",
+        "test_track_retires_after_gap",
+        "test_identity_never_crosses_a_cut",
+        "test_gap_does_not_bridge_a_cut",
+        "test_big_jump_is_a_new_identity",
+        "test_two_faces_keep_distinct_ids",
+        "test_hist_dist_identity_and_disjoint",
+        "test_v1_flag_restores_legacy_behavior",
+        "test_nms_merges_same_face_across_variants",
+        "test_nms_keeps_distinct_faces"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/reframe_plan/test_reframe_decide.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 311,
+      "classes": [
+        "TestApplyVerdicts",
+        "TestSubjectVerdicts",
+        "TestNoSubjectVerdicts",
+        "TestWeakSubjectVerdicts"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/reframe_plan/test_reframe_decide_verdicts.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 283,
+      "classes": [
+        "TestActiveSpeakerVerdicts",
+        "TestKeepBothSplitVerdicts",
+        "TestHarmonizeLetterbox",
+        "TestClusterSampleSecs",
+        "TestPrompt"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/reframe_plan/test_reframe_plan_layout.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 292,
+      "classes": [
+        "TestDialogueWindow",
+        "TestSpeakerCentering",
+        "TestSpeakerEscalationOffersKeepBoth",
+        "TestCandidateLabels",
+        "TestPanContinuity",
+        "TestAdaptive34EscalatesLikeMultiRung",
+        "TestSpeakerTurnCuts"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/reframe_plan/test_reframe_plan_reconcile.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 365,
+      "classes": [
+        "TestReconcile",
+        "TestStableTracksConfidence",
+        "TestWeakSubjectEscalation",
+        "TestAttachKeypoints",
+        "TestRobustness"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/reframe_plan/test_reframe_plan_rungs.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 357,
+      "classes": [
+        "TestRungCoverage",
+        "TestPickRung",
+        "TestPickRung34",
+        "TestEntityMatch",
+        "TestKeepBothPair",
+        "TestTextEscalationPredicate",
+        "TestSubjectEscalationPredicate",
+        "TestMotionSceneType",
+        "TestMergeShort",
+        "TestMergeShortContentGates",
+        "TestRungDP",
+        "TestBoundaryHairlines"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/reframe_plan/test_reframe_plan_speakers.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 306,
+      "classes": [
+        "TestActiveSpeaker",
+        "TestSegmentTextBand",
+        "TestReconcileWithText",
+        "TestSplitLayout",
+        "TestDialogueFromDiarization"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/routers/test_access_control.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 143,
+      "classes": [
+        "TestGuestBlockedFromWrites",
+        "TestAllowlistedPostsAllowedForGuest",
+        "TestGuestCanRead",
+        "TestMasterCanWrite",
+        "TestPowerUser",
+        "TestGuestBlockedFromPrivilegedPrefix",
+        "TestMissingCode"
+      ],
+      "functions": [
+        "client"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/routers/test_agent_specialists.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 285,
+      "classes": [
+        "TestResolveSourceUri",
+        "TestEditorProposeResolvesSource",
+        "TestMarketerAdaptsImageSource",
+        "TestFeatureIsolatedAgentHierarchy",
+        "TestDubbingAgentTools",
+        "TestFinOpsAgentTools"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/routers/test_agent_tools.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 266,
+      "classes": [
+        "TestCreateProductionPayload",
+        "TestCreatePromoPayload",
+        "TestCreateReframePayload",
+        "TestKeyMomentsPayload",
+        "TestThumbnailsPayload",
+        "TestAdaptPayload",
+        "TestSystemPromptsParams",
+        "TestLookupEndpoints",
+        "TestJobStatusEndpoints",
+        "TestEditorPromptPickers"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/routers/test_power_user.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 73,
+      "classes": [
+        "TestPromote",
+        "TestDemote",
+        "TestWebSocketPrivilegeCheck"
+      ],
+      "functions": [
+        "client_and_store"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/routers/test_render_pipeline.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 183,
+      "classes": [
+        "_InMemoryFirestore"
+      ],
+      "functions": [
+        "test_parallel_render_respects_concurrency_and_stitches",
+        "test_stitch_falls_back_to_ffmpeg_when_transcoder_fails"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/routers/test_render_pipeline_stages.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 370,
+      "classes": [],
+      "functions": [
+        "test_five_stage_pipeline_review_eval_and_selective_regen",
+        "test_start_and_end_frames_generated_before_videos_and_rai_retry"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/routers/test_route_shadowing.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 39,
+      "classes": [],
+      "functions": [
+        "test_no_literal_route_is_shadowed_by_a_path_param_route",
+        "test_known_previously_shadowed_endpoints_resolve"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/services/test_avatar.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 287,
+      "classes": [
+        "TestSystemInstruction",
+        "TestRenderPrompt",
+        "TestAnswerQuestion",
+        "TestAskEndpoint",
+        "TestCreateAvatarRequest",
+        "TestV2Gating",
+        "TestLiveConfig"
+      ],
+      "functions": [
+        "avatar",
+        "client",
+        "v2_client"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/services/test_avatar_worker.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 122,
+      "classes": [],
+      "functions": [
+        "turn_and_avatar",
+        "test_processor_calls_omni_with_image_and_audio",
+        "test_processor_calls_veo_fast_when_configured",
+        "test_processor_marks_failed_when_avatar_missing"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/services/test_diarization_merge.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 151,
+      "classes": [
+        "TestMergeChunkResults",
+        "TestMergeAdjacentSegments"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/services/test_dubbing.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 339,
+      "classes": [
+        "TestMeasureLag",
+        "TestAssembleTrack",
+        "TestIsSilent",
+        "TestBuildSrt",
+        "TestResolveVariantStatus",
+        "TestProgressMapping",
+        "TestCreateDubValidation",
+        "TestDubRetryUpdates",
+        "TestLanguageTable"
+      ],
+      "functions": [
+        "tone",
+        "first_nonzero_byte",
+        "client"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/services/test_ffmpeg_runner.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 151,
+      "classes": [
+        "TestSpliceFilterPlaceholder",
+        "TestSpliceFilterAutoInsert"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/services/test_focal_path.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 40,
+      "classes": [
+        "TestL1PanPath"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/services/test_piecewise_expr.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 81,
+      "classes": [
+        "TestPiecewiseExpr"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/services/test_pricing.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 190,
+      "classes": [
+        "TestGeminiTextTiers",
+        "TestGeminiImageTokenBased",
+        "TestVeoDispatch",
+        "TestFeatureServices",
+        "TestCatalogs",
+        "TestEstimator",
+        "TestUsageNormalization"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/services/test_scene_detect.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 29,
+      "classes": [],
+      "functions": [
+        "test_missing_file_falls_back_to_single_scene",
+        "test_real_detection_finds_a_cut"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/services/test_strategies.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 90,
+      "classes": [
+        "TestStrategyConfig",
+        "TestPromptVariables",
+        "TestResolvePrompt"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/services/test_text_detect.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 73,
+      "classes": [
+        "TestDetectTextCoverage",
+        "TestScanVideoText"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/test_architecture_and_duplication.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 71,
+      "classes": [],
+      "functions": [
+        "test_codebase_has_no_duplicate_code_or_tier_breakers",
+        "test_python_ast_normalizer_detects_renamed_clones",
+        "test_ts_ast_normalizer_detects_structural_clones",
+        "test_tier_classification_enforces_hierarchy",
+        "test_codebase_has_no_ui_component_lapses"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/video_service.py",
+      "language": "python",
+      "domain_package": "api",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 367,
+      "classes": [
+        "VideoService"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/App.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src",
+      "tier": "Tier 6 (Next.js App Entrypoints & Root Router)",
+      "non_comment_lines": 199,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/app/ClientShell.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/app",
+      "tier": "Tier 6 (Next.js App Entrypoints & Root Router)",
+      "non_comment_lines": 29,
+      "classes": [],
+      "functions": [
+        "ClientShell"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/app/[[...slug]]/page.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/app",
+      "tier": "Tier 6 (Next.js App Entrypoints & Root Router)",
+      "non_comment_lines": 5,
+      "classes": [],
+      "functions": [
+        "dynamic",
+        "CatchAllPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/app/layout.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/app",
+      "tier": "Tier 6 (Next.js App Entrypoints & Root Router)",
+      "non_comment_lines": 20,
+      "classes": [],
+      "functions": [
+        "metadata",
+        "RootLayout"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/Common.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 15,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/InviteCodeGate.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views)",
+      "non_comment_lines": 143,
+      "classes": [],
+      "functions": [
+        "InviteCodeGate"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/Layout.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views)",
+      "non_comment_lines": 308,
+      "classes": [],
+      "functions": [
+        "Sidebar"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/Modal.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 1,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ModelPill.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 21,
+      "classes": [],
+      "functions": [
+        "ModelPill"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ModelRegionPicker.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 139,
+      "classes": [],
+      "functions": [
+        "ModelRegionPicker",
+        "invalidateModelCache"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/UI.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 2,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/CostBreakdownPill.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 144,
+      "classes": [],
+      "functions": [
+        "CostBreakdownPill"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/ProductionSummary.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 96,
+      "classes": [],
+      "functions": [
+        "ProductionSummary"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/ProjectForm.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 172,
+      "classes": [],
+      "functions": [
+        "ProjectForm"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/ProjectList.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 215,
+      "classes": [],
+      "functions": [
+        "ProjectList"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/PromptModal.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 142,
+      "classes": [],
+      "functions": [
+        "PromptModal"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/RefinePromptView.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 227,
+      "classes": [],
+      "functions": [
+        "RefinePromptView"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/ResourceModal.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 184,
+      "classes": [],
+      "functions": [
+        "ResourceModal"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/SceneItem.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 146,
+      "classes": [],
+      "functions": [
+        "SceneItem"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/StoryGraphStudioPanel.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 257,
+      "classes": [],
+      "functions": [
+        "StoryGraphStudioPanel"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/StoryGraphVisualizer3D.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 227,
+      "classes": [],
+      "functions": [
+        "StoryGraphVisualizer3D"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/projects/ProjectFormSections.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 236,
+      "classes": [],
+      "functions": [
+        "ProductionFormatCard",
+        "StoryConceptCard",
+        "DurationAndAspectGrid",
+        "LanguageAndGateModeCard"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/projects/ProjectListSubcomponents.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 377,
+      "classes": [],
+      "functions": [
+        "STAGE_LABELS",
+        "ProjectStatusFilter",
+        "ExtendedProject",
+        "getProjectThumbnailUrl",
+        "ProjectListHeader",
+        "ProjectCardItem",
+        "ProductionInspectorPanel"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/projects/useAdsProjectActions.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 11,
+      "classes": [],
+      "functions": [
+        "useAdsProjectActions"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/storygraph/StudioCommandHeader.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 333,
+      "classes": [],
+      "functions": [
+        "StrictFailureBanner",
+        "GateControlBar",
+        "MacroStepCardItem",
+        "StudioCommandHeader",
+        "MasterCutQuickBanner"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/storygraph/StudioRightInspectorPane.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 358,
+      "classes": [],
+      "functions": [
+        "AppearanceInspectorView",
+        "VideoRunInspectorView",
+        "ShotAndEntityInspectorView",
+        "StudioRightInspectorPane"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/storygraph/StudioStepReferenceImages.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 159,
+      "classes": [],
+      "functions": [
+        "StepVisualReferenceSheetsSection"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/storygraph/StudioStepVideoRenders.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 119,
+      "classes": [],
+      "functions": [
+        "StepVideoRendersSection"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/storygraph/StudioStepsShotsToVideos.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 302,
+      "classes": [],
+      "functions": [
+        "StepShotBreakdownSection",
+        "StepValidatorCompilerSection"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/storygraph/StudioStepsWorldToImages.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 350,
+      "classes": [],
+      "functions": [
+        "StepWorldBibleSection",
+        "StepScreenplaySection"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/storygraph/Visualizer3DControls.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 189,
+      "classes": [],
+      "functions": [
+        "Visualizer3DToolbar",
+        "Visualizer3DLegend",
+        "Visualizer3DInspector"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/storygraph/graphBuilder3D.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 290,
+      "classes": [],
+      "functions": [
+        "GraphNodeKind",
+        "GraphNode3D",
+        "GraphEdge3D",
+        "KIND_META",
+        "buildStoryGraph3D"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/storygraph/graphCanvasRenderer3D.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 174,
+      "classes": [],
+      "functions": [
+        "ProjectedNodeItem",
+        "createProjector3D",
+        "drawBackgroundAndRings",
+        "drawGraphEdges3D",
+        "drawGraphNodes3D"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/storygraph/storyGraphStudioTypes.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 226,
+      "classes": [],
+      "functions": [
+        "ActiveStepId",
+        "DesignFilter",
+        "CompiledShotPreview",
+        "SelectedInspectorItem",
+        "MacroStepCardDef",
+        "PIPELINE_SUB_STAGES",
+        "deriveStageAndGateMaps",
+        "deriveEntityAndAssetMaps",
+        "useMacroStepCards",
+        "useStoryGraphStudioActions"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/studio/CreatableSelect.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 248,
+      "classes": [],
+      "functions": [
+        "CreatableSelect"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/studio/CreativeSettings.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 80,
+      "classes": [],
+      "functions": [
+        "CreativeSettings"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/studio/ErrorBadge.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 54,
+      "classes": [],
+      "functions": [
+        "ErrorBadge"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/studio/MediaDropZone.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 145,
+      "classes": [],
+      "functions": [
+        "MediaDropZone"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/studio/ProductionSummarySections.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 373,
+      "classes": [],
+      "functions": [
+        "ProductionSummaryHeader",
+        "ProductionVideoAndBrief",
+        "ProductionMetricsSidebar",
+        "FinalStoryboardGrid"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/studio/SceneItemGrid.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 141,
+      "classes": [],
+      "functions": [
+        "SceneItemGrid"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/studio/SceneItemList.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 162,
+      "classes": [],
+      "functions": [
+        "SceneItemList"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/studio/SceneItemShared.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 325,
+      "classes": [],
+      "functions": [
+        "SceneItemHandlers",
+        "AudioToggle",
+        "StatusIcon",
+        "StatusBadge",
+        "EvalStatusPill",
+        "RenderQualityBadge",
+        "StepStatusIcon",
+        "StepUsageBadges",
+        "SceneMetaBanner"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/studio/SceneMediaCarousel.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 191,
+      "classes": [],
+      "functions": [
+        "SceneMediaCarousel"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/studio/StoryboardView.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 78,
+      "classes": [],
+      "functions": [
+        "StoryboardView"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/avatar/AvatarEditModal.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [avatar]",
+      "non_comment_lines": 147,
+      "classes": [],
+      "functions": [
+        "AvatarEditModal"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/avatar/AvatarLiveView.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [avatar]",
+      "non_comment_lines": 223,
+      "classes": [],
+      "functions": [
+        "AvatarLiveView"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/avatar/AvatarPlayer.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [avatar]",
+      "non_comment_lines": 71,
+      "classes": [],
+      "functions": [
+        "AvatarPlayer"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/avatar/chat/AvatarChatInput.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [avatar]",
+      "non_comment_lines": 168,
+      "classes": [],
+      "functions": [
+        "AvatarChatInput"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/avatar/chat/AvatarTurnBubble.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [avatar]",
+      "non_comment_lines": 103,
+      "classes": [],
+      "functions": [
+        "AvatarTurnBubble"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/avatar/live/AudioCapture.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 49,
+      "classes": [],
+      "functions": [
+        "AudioCapture"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/avatar/live/AudioPlayer.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 49,
+      "classes": [],
+      "functions": [
+        "AudioPlayer"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/avatar/live/GeminiLiveSession.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 168,
+      "classes": [],
+      "functions": [
+        "LiveMessage",
+        "GeminiLiveSession"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/avatar/live/VideoCanvasSink.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 247,
+      "classes": [],
+      "functions": [
+        "VideoCanvasSink"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/avatar/live/videoCanvasHelpers.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 105,
+      "classes": [],
+      "functions": [
+        "extractAvcDescription",
+        "extractAudioDescription",
+        "decodeVideoSamples",
+        "decodeAudioSamples",
+        "scheduleAudioBuffer"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/chat/ChatWidget.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [chat]",
+      "non_comment_lines": 92,
+      "classes": [],
+      "functions": [
+        "ChatWidget"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/chat/ChatWidgets.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [chat]",
+      "non_comment_lines": 246,
+      "classes": [],
+      "functions": [
+        "ConfirmationCard"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/chat/ChatWindow.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [chat]",
+      "non_comment_lines": 290,
+      "classes": [],
+      "functions": [
+        "ChatWindow"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/chat/widgets/ChatConfirmationFields.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [chat]",
+      "non_comment_lines": 277,
+      "classes": [],
+      "functions": [
+        "FieldRendererProps",
+        "DisplayField",
+        "ToggleField",
+        "PromoFields",
+        "ReframeFields",
+        "ProductionFields",
+        "KeyMomentsFields",
+        "AdaptsFields",
+        "DubbingFields"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/chat/widgets/ChatMessageParts.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [chat]",
+      "non_comment_lines": 369,
+      "classes": [],
+      "functions": [
+        "AGENT_LABELS",
+        "STARTER_PROMPTS",
+        "formatChatMarkdown",
+        "formatLatency",
+        "ChatMarkdownBody",
+        "SharedLinkBanner",
+        "ChatEmptyState",
+        "ChatMessageRow"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/chat/widgets/ChatSourcePickers.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [chat]",
+      "non_comment_lines": 241,
+      "classes": [],
+      "functions": [
+        "VideoResultCard",
+        "VideoSourcePicker",
+        "ImageSourcePicker",
+        "PromptPicker"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/chat/widgets/useChatWidgetActions.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [chat]",
+      "non_comment_lines": 175,
+      "classes": [],
+      "functions": [
+        "ConfirmationJobType",
+        "ConfirmationJobParams",
+        "ConfirmationJobResult",
+        "ConfirmationData",
+        "UploadSourceItem",
+        "ProductionSourceItem",
+        "PromptResourceItem",
+        "ROUTE_MAP",
+        "executeConfirmationJob",
+        "useDubbingLanguages",
+        "useVideoSources",
+        "useImageSources",
+        "usePromptSources",
+        "shareChatTranscript"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/PromptsPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views)",
+      "non_comment_lines": 253,
+      "classes": [],
+      "functions": [
+        "PromptsPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/adapts/AdaptsLandingPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [adapts]",
+      "non_comment_lines": 63,
+      "classes": [],
+      "functions": [
+        "AdaptsLandingPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/adapts/AdaptsOutputPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [adapts]",
+      "non_comment_lines": 102,
+      "classes": [],
+      "functions": [
+        "AdaptsOutputPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/adapts/AdaptsWorkPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [adapts]",
+      "non_comment_lines": 275,
+      "classes": [],
+      "functions": [
+        "AdaptsWorkPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/adapts/components/AdaptVariantGrid.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [adapts]",
+      "non_comment_lines": 113,
+      "classes": [],
+      "functions": [
+        "AdaptVariantGrid"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/admin/ConfigSettingsPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [admin]",
+      "non_comment_lines": 172,
+      "classes": [],
+      "functions": [
+        "ConfigSettingsPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/admin/DiagnosticsPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [admin]",
+      "non_comment_lines": 258,
+      "classes": [],
+      "functions": [
+        "DiagnosticsPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/admin/InviteCodesComponents.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [admin]",
+      "non_comment_lines": 294,
+      "classes": [],
+      "functions": [
+        "InviteCode",
+        "POWER_DEFAULT_DAYS",
+        "EXPIRY_OPTIONS",
+        "computeExpiryDate",
+        "InviteCodeRow"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/admin/InviteCodesPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [admin]",
+      "non_comment_lines": 227,
+      "classes": [],
+      "functions": [
+        "InviteCodesPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/admin/ModelsPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [admin]",
+      "non_comment_lines": 261,
+      "classes": [],
+      "functions": [
+        "ModelsPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/avatar/AvatarCreatePage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [avatar]",
+      "non_comment_lines": 326,
+      "classes": [],
+      "functions": [
+        "AvatarCreatePage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/avatar/AvatarLandingPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [avatar]",
+      "non_comment_lines": 84,
+      "classes": [],
+      "functions": [
+        "AvatarLandingPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/avatar/AvatarWorkPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [avatar]",
+      "non_comment_lines": 200,
+      "classes": [],
+      "functions": [
+        "AvatarWorkPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/avatar/components/AvatarPresetGrid.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [avatar]",
+      "non_comment_lines": 80,
+      "classes": [],
+      "functions": [
+        "AvatarPresetGrid"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/chat/ChatPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [chat]",
+      "non_comment_lines": 69,
+      "classes": [],
+      "functions": [
+        "ChatPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/chat/SharedChatPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [chat]",
+      "non_comment_lines": 175,
+      "classes": [],
+      "functions": [
+        "SharedChatPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/dubbing/DubbingLandingPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [dubbing]",
+      "non_comment_lines": 98,
+      "classes": [],
+      "functions": [
+        "DubbingLandingPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/dubbing/DubbingResults.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [dubbing]",
+      "non_comment_lines": 103,
+      "classes": [],
+      "functions": [
+        "DubVariant",
+        "DubbingResults"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/dubbing/DubbingWorkPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [dubbing]",
+      "non_comment_lines": 190,
+      "classes": [],
+      "functions": [
+        "DubbingWorkPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/keyMoments/KeyMomentsAnalyzePage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [keymoments]",
+      "non_comment_lines": 357,
+      "classes": [],
+      "functions": [
+        "KeyMomentsAnalyzePage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/keyMoments/KeyMomentsLandingPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [keymoments]",
+      "non_comment_lines": 83,
+      "classes": [],
+      "functions": [
+        "KeyMomentsLandingPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/keyMoments/components/KeyMomentsSourcePicker.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [keymoments]",
+      "non_comment_lines": 125,
+      "classes": [],
+      "functions": [
+        "KeyMomentsSourcePicker"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/keyMoments/components/KeyMomentsTimeline.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [keymoments]",
+      "non_comment_lines": 92,
+      "classes": [],
+      "functions": [
+        "KeyMomentsTimeline"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/promo/PromoCompleted.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [promo]",
+      "non_comment_lines": 89,
+      "classes": [],
+      "functions": [
+        "PromoCompleted"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/promo/PromoLandingPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [promo]",
+      "non_comment_lines": 52,
+      "classes": [],
+      "functions": [
+        "PromoLandingPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/promo/PromoWorkPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [promo]",
+      "non_comment_lines": 252,
+      "classes": [],
+      "functions": [
+        "PromoWorkPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/reframe/ReframeLandingPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [reframe]",
+      "non_comment_lines": 89,
+      "classes": [],
+      "functions": [
+        "ReframeLandingPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/reframe/ReframeOutputPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [reframe]",
+      "non_comment_lines": 172,
+      "classes": [],
+      "functions": [
+        "ReframeOutputPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/reframe/ReframeWorkPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [reframe]",
+      "non_comment_lines": 161,
+      "classes": [],
+      "functions": [
+        "ReframeWorkPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/reframe/components/ReframeCompleted.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [reframe]",
+      "non_comment_lines": 72,
+      "classes": [],
+      "functions": [
+        "ReframeCompleted"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/reframe/components/ReframeOutputSections.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [reframe]",
+      "non_comment_lines": 312,
+      "classes": [],
+      "functions": [
+        "ReframeSegmentItem",
+        "ReframeSummaryData",
+        "ReframeEvalReport",
+        "ReframeDetailRecord",
+        "fmtTimeSec",
+        "CollapsibleCard",
+        "ReframeEvalReportSection",
+        "ReframePlanSection"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/reframe/components/ReframePipelineLinks.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [reframe]",
+      "non_comment_lines": 19,
+      "classes": [],
+      "functions": [
+        "ReframePipelineLinks"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/thumbnails/ThumbnailsLandingPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [thumbnails]",
+      "non_comment_lines": 54,
+      "classes": [],
+      "functions": [
+        "ThumbnailsLandingPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/thumbnails/ThumbnailsWorkPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [thumbnails]",
+      "non_comment_lines": 310,
+      "classes": [],
+      "functions": [
+        "ThumbnailsWorkPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/thumbnails/ThumbnailsWorkSections.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [thumbnails]",
+      "non_comment_lines": 318,
+      "classes": [],
+      "functions": [
+        "ScreenshotWithLocal",
+        "AnalyzeMomentInput",
+        "mapMomentsToScreenshots",
+        "runScreenshotCapture",
+        "ThumbnailsPageHeader",
+        "ThumbnailAnalyzeControls",
+        "ThumbnailCollageControls",
+        "ThumbnailOutputSections"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/thumbnails/components/ThumbnailsResult.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [thumbnails]",
+      "non_comment_lines": 34,
+      "classes": [],
+      "functions": [
+        "ThumbnailsResult"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/thumbnails/components/ThumbnailsScreenshotGrid.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [thumbnails]",
+      "non_comment_lines": 74,
+      "classes": [],
+      "functions": [
+        "ThumbnailsScreenshotGrid"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/thumbnails/components/ThumbnailsSourcePicker.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [thumbnails]",
+      "non_comment_lines": 157,
+      "classes": [],
+      "functions": [
+        "ThumbnailsSourcePicker"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/tools/DashboardPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [tools]",
+      "non_comment_lines": 47,
+      "classes": [],
+      "functions": [
+        "DashboardPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/tools/PromptDetailPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [tools]",
+      "non_comment_lines": 111,
+      "classes": [],
+      "functions": [
+        "PromptDetailPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/uploads/UploadsPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [uploads]",
+      "non_comment_lines": 217,
+      "classes": [],
+      "functions": [
+        "UploadsPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/uploads/components/UploadCard.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [uploads]",
+      "non_comment_lines": 135,
+      "classes": [],
+      "functions": [
+        "UploadCard"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/uploads/components/UploadDetailView.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [uploads]",
+      "non_comment_lines": 271,
+      "classes": [],
+      "functions": [
+        "UploadDetailView"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/uploads/components/UploadDropzone.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [uploads]",
+      "non_comment_lines": 110,
+      "classes": [],
+      "functions": [
+        "UploadZone",
+        "UploadProgress"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/uploads/components/fileTypeStyles.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [uploads]",
+      "non_comment_lines": 11,
+      "classes": [],
+      "functions": [
+        "FILE_TYPE_ICONS",
+        "FILE_TYPE_STYLES"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pricing/ServicesUsedPanel.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 130,
+      "classes": [],
+      "functions": [
+        "ServicesUsedPanel"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/AspectRatioSelector.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 129,
+      "classes": [],
+      "functions": [
+        "AspectRatioSelector"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/EditableNameField.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 55,
+      "classes": [],
+      "functions": [
+        "EditableNameField"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/ErrorDisplay.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 14,
+      "classes": [],
+      "functions": [
+        "ErrorDisplay"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/ImageSourceSelector.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 88,
+      "classes": [],
+      "functions": [
+        "ImageUploadItem",
+        "ImageSourceSelector"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/LandingPageShell.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 151,
+      "classes": [],
+      "functions": [
+        "LandingPageShell"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/PageTransition.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 31,
+      "classes": [],
+      "functions": [
+        "PageTransition"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/PromptSelector.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 33,
+      "classes": [],
+      "functions": [
+        "PromptSelector"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/RecordCard.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 172,
+      "classes": [],
+      "functions": [
+        "VideoSourceBadge",
+        "CardMetadataFooterProps",
+        "CardMetadataFooter",
+        "RecordCardProps",
+        "RecordCard"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/ShowMore.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 14,
+      "classes": [],
+      "functions": [
+        "ShowMore"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/ToastViewport.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 68,
+      "classes": [],
+      "functions": [
+        "ToastViewport"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/VideoSourceSelector.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 170,
+      "classes": [],
+      "functions": [
+        "UploadItem",
+        "ProductionItem",
+        "VideoSourceSelector"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/WorkPageHeader.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 53,
+      "classes": [],
+      "functions": [
+        "WorkPageHeader"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/WorkPageShell.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 204,
+      "classes": [],
+      "functions": [
+        "BaseWorkRecord",
+        "WorkViewShellProps",
+        "WorkViewShell",
+        "WorkCreateShellProps",
+        "WorkCreateShell",
+        "SelectedVideoPreview",
+        "CheckboxOption"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/media/ProgressBar.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 25,
+      "classes": [],
+      "functions": [
+        "ProgressBar"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/media/StatusBadge.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 34,
+      "classes": [],
+      "functions": [
+        "StatusBadge"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/media/VideoPlayer.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 13,
+      "classes": [],
+      "functions": [
+        "VideoPlayer"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ui/badge.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 31,
+      "classes": [],
+      "functions": [
+        "badgeVariants",
+        "BadgeProps",
+        "Badge"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ui/button.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 128,
+      "classes": [],
+      "functions": [
+        "buttonVariants",
+        "ButtonProps",
+        "Button"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ui/card.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 142,
+      "classes": [],
+      "functions": [
+        "AnchorLink",
+        "AnchorHeading",
+        "CardHeader",
+        "CardTitle",
+        "CardDescription",
+        "CardContent",
+        "CardFooter",
+        "CardProps",
+        "Card"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ui/dialog.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 87,
+      "classes": [],
+      "functions": [
+        "Dialog",
+        "DialogTrigger",
+        "DialogPortal",
+        "DialogClose",
+        "ModalProps",
+        "Modal"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ui/input.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 37,
+      "classes": [],
+      "functions": [
+        "InputProps",
+        "Input"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ui/select.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 166,
+      "classes": [],
+      "functions": [
+        "SelectOption",
+        "SelectProps",
+        "Select",
+        "NativeSelectProps",
+        "NativeSelect"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ui/skeleton.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 8,
+      "classes": [],
+      "functions": [
+        "Skeleton"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ui/switch.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 24,
+      "classes": [],
+      "functions": [
+        "Switch"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ui/tabs.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 47,
+      "classes": [],
+      "functions": [
+        "Tabs",
+        "TabsList",
+        "TabsTrigger",
+        "TabsContent"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ui/textarea.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 36,
+      "classes": [],
+      "functions": [
+        "TextareaProps",
+        "Textarea"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ui/tooltip.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 23,
+      "classes": [],
+      "functions": [
+        "TooltipProvider",
+        "Tooltip",
+        "TooltipTrigger",
+        "TooltipContent"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/hooks/jobStatus.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/hooks",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 57,
+      "classes": [],
+      "functions": [
+        "JobStatus",
+        "JobStatusConfig",
+        "TERMINAL_STATUS_CONFIG",
+        "buildStatusConfig",
+        "UNIFIED_STATUS_STYLES",
+        "UNIFIED_STATUS_LABELS",
+        "formatElapsedDuration"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/hooks/useApiClient.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/hooks",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 5,
+      "classes": [],
+      "functions": [
+        "useApiClient"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/hooks/useAvatarLiveSession.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/hooks",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 115,
+      "classes": [],
+      "functions": [
+        "AvatarLiveStatus",
+        "useAvatarLiveSession"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/hooks/usePolling.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/hooks",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 44,
+      "classes": [],
+      "functions": [
+        "usePolling"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/hooks/useShowMore.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/hooks",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 17,
+      "classes": [],
+      "functions": [
+        "useShowMore"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/hooks/useVideoSourceState.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/hooks",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 52,
+      "classes": [],
+      "functions": [
+        "VideoSourceTab",
+        "useVideoSourceState"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 78,
+      "classes": [],
+      "functions": [
+        "Project",
+        "api",
+        "buildAvatarLiveUrl"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/chat.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 5,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/core/_crud.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 38,
+      "classes": [],
+      "functions": [
+        "CrudClient",
+        "createCrudClient"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/core/_http.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 103,
+      "classes": [],
+      "functions": [
+        "JsonValue",
+        "API_BASE_URL",
+        "getInviteCode",
+        "serverFetch",
+        "authFetch",
+        "request",
+        "requestVoid",
+        "jsonInit",
+        "postJson",
+        "patchJson",
+        "buildQS"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/core/auth.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 66,
+      "classes": [],
+      "functions": [
+        "auth"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/core/diagnostics.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 26,
+      "classes": [],
+      "functions": [
+        "diagnostics"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/core/models.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 42,
+      "classes": [],
+      "functions": [
+        "models"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/core/pricing.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 17,
+      "classes": [],
+      "functions": [
+        "pricing"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/core/system.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 29,
+      "classes": [],
+      "functions": [
+        "system"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/dubbing.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 5,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/endpoints/adapts.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 24,
+      "classes": [],
+      "functions": [
+        "adapts"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/endpoints/ai.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 31,
+      "classes": [],
+      "functions": [
+        "ai"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/endpoints/assets.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 72,
+      "classes": [],
+      "functions": [
+        "UploadInitResp",
+        "UploadResp",
+        "assets"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/endpoints/avatars.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 71,
+      "classes": [],
+      "functions": [
+        "avatars"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/endpoints/chat.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 43,
+      "classes": [],
+      "functions": [
+        "SharedChatMessageItem",
+        "SharedChatRecord",
+        "chat"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/endpoints/dubbing.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 38,
+      "classes": [],
+      "functions": [
+        "DubLanguage",
+        "DubLanguagesResponse",
+        "dubbing"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/endpoints/keyMoments.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 44,
+      "classes": [],
+      "functions": [
+        "keyMoments"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/endpoints/projects.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 184,
+      "classes": [],
+      "functions": [
+        "projects"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/endpoints/promo.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 27,
+      "classes": [],
+      "functions": [
+        "promo"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/endpoints/reframe.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 40,
+      "classes": [],
+      "functions": [
+        "reframe"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/endpoints/thumbnails.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 52,
+      "classes": [],
+      "functions": [
+        "thumbnails"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/endpoints/uploads.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 30,
+      "classes": [],
+      "functions": [
+        "uploads"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/index.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 29,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/serverAction.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 60,
+      "classes": [],
+      "functions": [
+        "ServerApiResponse",
+        "serverApiRequest"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/captureFrames.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 48,
+      "classes": [],
+      "functions": [
+        "FrameMoment",
+        "CapturedFrame",
+        "captureVideoFrames"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 40,
+      "classes": [],
+      "functions": [
+        "cn",
+        "downloadJson",
+        "getTimeAgo",
+        "formatFileSize",
+        "parseTimestamp"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/store/useAuthStore.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/store",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 35,
+      "classes": [],
+      "functions": [
+        "useAuthStore"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/store/useChatStore.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/store",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 89,
+      "classes": [],
+      "functions": [
+        "Message",
+        "useChatStore"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/store/useLayoutStore.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/store",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 39,
+      "classes": [],
+      "functions": [
+        "ProjectView",
+        "useLayoutStore"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/store/useProjectStore.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/store",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 100,
+      "classes": [],
+      "functions": [
+        "useProjectStore"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/store/useToastStore.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/store",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 33,
+      "classes": [],
+      "functions": [
+        "ToastVariant",
+        "ToastItem",
+        "useToastStore"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/avatar.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 170,
+      "classes": [],
+      "functions": [
+        "AvatarStyle",
+        "AvatarVersion",
+        "AvatarVoice",
+        "Gender",
+        "AvatarVoiceInfo",
+        "VOICE_CATALOG",
+        "AvatarPresetInfo",
+        "PRESET_CATALOG",
+        "Avatar",
+        "LANGUAGE_OPTIONS",
+        "AvatarTurnStatus",
+        "AvatarTurn",
+        "AskAvatarResponse",
+        "AvatarLiveConfig",
+        "STYLE_LABELS",
+        "VOICE_TURN_MARKER"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/project.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 279,
+      "classes": [],
+      "functions": [
+        "sceneSchema",
+        "RenderQuality",
+        "VideoResolution",
+        "Scene",
+        "ProjectType",
+        "ProductionLanguage",
+        "PRODUCTION_LANGUAGES",
+        "projectSchema",
+        "ProjectFormData",
+        "ProjectStatus",
+        "SystemResourceInfo",
+        "SystemResource",
+        "UsageMetrics",
+        "ServiceLineItem",
+        "FeaturePricing",
+        "FeatureId",
+        "PricingRatesResponse",
+        "PricingFeaturesResponse",
+        "PricingEstimateRequest",
+        "MediaFile",
+        "StoryboardFrame",
+        "GlobalStyle",
+        "CharacterProfile",
+        "Continuity",
+        "PipelineStepLog",
+        "StoryboardReviewIssue",
+        "StoryboardReviewReport",
+        "SceneEvalFinding",
+        "VideoEvalReport",
+        "Project"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/records.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 193,
+      "classes": [],
+      "functions": [
+        "KeyMoment",
+        "KeyMomentsAnalysis",
+        "KeyMomentsRecord",
+        "ThumbnailScreenshot",
+        "ThumbnailRecord",
+        "CompressedVariant",
+        "UploadRecord",
+        "CompletedProductionSource",
+        "AdaptVariant",
+        "AdaptRecord",
+        "PresetBundle",
+        "SelectCategory",
+        "CustomOption",
+        "DEFAULT_OPTIONS",
+        "VIDEO_LENGTH_OPTIONS",
+        "SELECT_LABELS"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/schemas.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 57,
+      "classes": [],
+      "functions": [
+        "inviteCodeFormSchema",
+        "InviteCodeFormValues",
+        "systemResourceFormSchema",
+        "SystemResourceFormValues",
+        "promoCreateSchema",
+        "reframeCreateSchema",
+        "adaptCreateSchema"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/storygraph.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 177,
+      "classes": [],
+      "functions": [
+        "StoryGraphStyleGuide",
+        "StoryGraphAttributeValue",
+        "StoryGraphEntity",
+        "StoryGraphEventEffect",
+        "StoryGraphEvent",
+        "StoryGraphAsset",
+        "StoryGraphAppearance",
+        "StoryGraphScene",
+        "StoryGraphDialogueLine",
+        "StoryGraphMusicCue",
+        "StoryGraphBeat",
+        "StoryGraphCastEntry",
+        "StoryGraphCameraSpec",
+        "StoryGraphShot",
+        "StoryGraphQaScores",
+        "StoryGraphGenerationRun",
+        "StoryGraphGate",
+        "StoryGraphStageRun",
+        "StoryGraphChangeRequest",
+        "StoryGraphAuditEntry",
+        "StoryGraphStateFact",
+        "StoryGraphValidationIssue",
+        "StoryGraphData"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/main.py",
+      "language": "python",
+      "domain_package": "productions_service",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 21,
+      "classes": [],
+      "functions": [
+        "health_check"
+      ],
+      "endpoints": [
+        "GET /health"
+      ]
+    },
+    {
+      "path": "productions_service/routers/productions.py",
+      "language": "python",
+      "domain_package": "productions_service/routers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 97,
+      "classes": [],
+      "functions": [
+        "create_production",
+        "list_productions",
+        "get_production",
+        "update_production",
+        "archive_production",
+        "unarchive_production",
+        "run_production_pipeline",
+        "analyze_production_compat",
+        "render_production_compat",
+        "run_single_stage",
+        "approve_production_gate",
+        "reject_production_gate",
+        "approve_single_appearance",
+        "regenerate_single_appearance",
+        "compile_single_shot_preview"
+      ],
+      "endpoints": [
+        "POST /api/v1/productions",
+        "GET /api/v1/productions",
+        "GET /api/v1/productions/{project_id}",
+        "GET /api/v1/productions/{project_id}/graph",
+        "PATCH /api/v1/productions/{project_id}",
+        "POST /api/v1/productions/{project_id}/archive",
+        "POST /api/v1/productions/{project_id}/unarchive",
+        "POST /api/v1/productions/{project_id}/run",
+        "POST /api/v1/productions/{project_id}/analyze",
+        "POST /api/v1/productions/{project_id}/render",
+        "POST /api/v1/productions/{project_id}/stages/{stage_id}/run",
+        "POST /api/v1/productions/{project_id}/gates/{gate_id}/approve",
+        "POST /api/v1/productions/{project_id}/gates/{gate_id}/reject",
+        "POST /api/v1/productions/{project_id}/appearances/{appearance_id}/approve",
+        "POST /api/v1/productions/{project_id}/appearances/{appearance_id}/regenerate",
+        "POST /api/v1/productions/{project_id}/shots/{shot_id}/compile"
+      ]
+    },
+    {
+      "path": "productions_service/services/productions_service.py",
+      "language": "python",
+      "domain_package": "productions_service/services",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 313,
+      "classes": [
+        "CreateProductionPayload",
+        "RunPipelinePayload",
+        "GateDecisionPayload"
+      ],
+      "functions": [
+        "create_production_project",
+        "list_production_projects",
+        "get_production_project",
+        "update_production_project",
+        "run_pipeline_for_project",
+        "analyze_project_compat",
+        "render_project_compat",
+        "run_project_stage",
+        "approve_project_gate",
+        "reject_project_gate",
+        "approve_project_appearance",
+        "regenerate_project_appearance",
+        "compile_project_shot_preview"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/services/runtime.py",
+      "language": "python",
+      "domain_package": "productions_service/services",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 156,
+      "classes": [],
+      "functions": [
+        "load_runtime_config",
+        "get_repo",
+        "build_pipeline",
+        "reset_storygraph_collections"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/services/snapshot.py",
+      "language": "python",
+      "domain_package": "productions_service/services",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 248,
+      "classes": [],
+      "functions": [
+        "format_graph_snapshot"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/adapters/base.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 26,
+      "classes": [
+        "ImageGenerator",
+        "VideoGenerator",
+        "VLMProvider",
+        "TTSProvider"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/adapters/gemini_image.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 58,
+      "classes": [
+        "GeminiImageGenerator"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/adapters/gemini_video.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 249,
+      "classes": [
+        "GeminiVideoGenerator"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/adapters/media_frames.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 67,
+      "classes": [],
+      "functions": [
+        "extract_representative_frames_png"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/adapters/mock.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 221,
+      "classes": [
+        "MockImageGenerator",
+        "MockVideoGenerator",
+        "MockVLMProvider",
+        "MockTTSProvider",
+        "MockLLMClient"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/adapters/tts.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 2,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/adapters/vlm.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 54,
+      "classes": [
+        "GeminiVLMProvider",
+        "CloudTTSProvider"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/agents/critic.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 205,
+      "classes": [
+        "AssetCritiqueOutput"
+      ],
+      "functions": [
+        "review_visual_asset",
+        "evaluate_clip_qa"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/agents/design_studio.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 247,
+      "classes": [
+        "AttributeKV",
+        "AppearanceDraft",
+        "EntityDesignOutput"
+      ],
+      "functions": [
+        "design_single_entity",
+        "run_visual_design_studio"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/agents/role/architect.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 157,
+      "classes": [],
+      "functions": [
+        "run_story_architect"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/agents/role/director.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 365,
+      "classes": [],
+      "functions": [
+        "run_director_for_scene"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/agents/role/music.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 88,
+      "classes": [],
+      "functions": [
+        "run_music_director"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/agents/role/screenwriter.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 137,
+      "classes": [],
+      "functions": [
+        "run_screenwriter_for_scene"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/agents/role/supervisor.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 383,
+      "classes": [],
+      "functions": [
+        "deduplicate_entities_fuzzy",
+        "run_script_supervisor"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/agents/roles.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 45,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/agents/runner.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 250,
+      "classes": [
+        "RoleRunResult"
+      ],
+      "functions": [
+        "load_role_prompt",
+        "build_adk_role_agent",
+        "run_role"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/assemble.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 143,
+      "classes": [],
+      "functions": [
+        "assemble"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/audit.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 26,
+      "classes": [],
+      "functions": [
+        "append_audit"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/budget.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 247,
+      "classes": [
+        "_Candidate",
+        "RefPlan"
+      ],
+      "functions": [
+        "build_composite_sheet",
+        "select_references"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/compile.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 229,
+      "classes": [
+        "Package"
+      ],
+      "functions": [
+        "compile_shot"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/config.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 1 (Models & Pure Config)",
+      "non_comment_lines": 113,
+      "classes": [
+        "StoreCfg",
+        "BlobCfg",
+        "ModelsCfg",
+        "ImageProviderCfg",
+        "VideoProviderCfg",
+        "QACfg",
+        "CapsCfg",
+        "Config"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/errors.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 1 (Models & Pure Config)",
+      "non_comment_lines": 17,
+      "classes": [
+        "StoryGraphError",
+        "PermissionDenied",
+        "ValidationFailed",
+        "GateBlocked",
+        "BudgetExceeded",
+        "PromptTooLong",
+        "AlreadyExists",
+        "NotFound",
+        "DocTooLarge",
+        "StructuredOutputError"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/pipeline/gates.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 100,
+      "classes": [],
+      "functions": [
+        "ensure_gate",
+        "require_gate",
+        "approve_gate",
+        "reject_gate"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/pipeline/render_stage.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 192,
+      "classes": [],
+      "functions": [
+        "compile_all_shots",
+        "attempt_shot_render",
+        "render_single_shot_with_qa",
+        "render_and_qa_shots",
+        "evaluate_missing_qa"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/pipeline/runner.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 365,
+      "classes": [
+        "Stage",
+        "Pipeline"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/repo/service.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 297,
+      "classes": [
+        "Repo"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/repo/versioning.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 183,
+      "classes": [],
+      "functions": [
+        "strip_version_suffix",
+        "mint_versioned_appearance",
+        "mint_versioned_asset",
+        "persist_shot_with_refs",
+        "propagate_staleness"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/schema.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 1 (Models & Pure Config)",
+      "non_comment_lines": 291,
+      "classes": [
+        "Role",
+        "EntityType",
+        "Provenance",
+        "Status",
+        "NodeBase",
+        "AttributeVal",
+        "Entity",
+        "StateEffect",
+        "Event",
+        "StateFact",
+        "Appearance",
+        "Asset",
+        "StyleGuide",
+        "Scene",
+        "DialogueLine",
+        "MusicCue",
+        "CastInShot",
+        "ActionBeat",
+        "CameraSpec",
+        "Shot",
+        "QAReport",
+        "GenerationRun",
+        "ChangeRequest",
+        "Gate",
+        "StageRun",
+        "AuditEntry",
+        "ProjectMeta"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/state.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 97,
+      "classes": [],
+      "functions": [
+        "normalize_scene_timeline",
+        "rebuild_state_facts",
+        "state_at",
+        "appearance_for"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/store/base.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 46,
+      "classes": [
+        "BatchWriter",
+        "Tx",
+        "GraphStore",
+        "BlobStore"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/store/codec.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 24,
+      "classes": [],
+      "functions": [
+        "check_doc_size",
+        "encode",
+        "decode"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/store/firestore.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 142,
+      "classes": [
+        "_FirestoreAutoChunkBatch",
+        "_FirestoreTx",
+        "FirestoreStore"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/store/gcs.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 119,
+      "classes": [
+        "LocalBlobStore",
+        "GcsBlobStore"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/store/memory.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 114,
+      "classes": [
+        "_MemoryBatch",
+        "_MemoryTx",
+        "MemoryStore"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/tools/read_tools.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 27,
+      "classes": [],
+      "functions": [
+        "get_outline_view",
+        "get_entity_design_view",
+        "get_scene_view",
+        "get_shot_view",
+        "get_entity",
+        "list_entities",
+        "get_state_at",
+        "get_style_guide"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/tools/registry.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 376,
+      "classes": [
+        "ToolContext"
+      ],
+      "functions": [
+        "assert_can_write",
+        "assert_entity_type_allowed",
+        "assert_asset_kind_allowed",
+        "tools_for_role"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/tools/role_helpers/extraction.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 317,
+      "classes": [],
+      "functions": [
+        "extract_entities_from_story"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/tools/role_helpers/models.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 116,
+      "classes": [
+        "SceneDraft",
+        "EventDraft",
+        "StoryArchitectOutput",
+        "AttributeKV",
+        "ExtractedEntityDraft",
+        "ScriptSupervisorOutput",
+        "DialogueLineDraft",
+        "ScreenwriterOutput",
+        "ShotDraft",
+        "DirectorSceneOutput",
+        "MusicCueDraft",
+        "ShotAudioDraft",
+        "MusicDirectorOutput"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/tools/role_helpers/normalization.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 113,
+      "classes": [],
+      "functions": [
+        "normalize_indian_epic_names",
+        "normalize_entity_id",
+        "strip_honorifics",
+        "slug_id",
+        "name_similarity"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/tools/write_tools/entities.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 299,
+      "classes": [],
+      "functions": [
+        "put_entity",
+        "propose_entity_merge",
+        "set_entity_attributes",
+        "set_character_attributes",
+        "set_location_attributes",
+        "set_object_attributes",
+        "add_appearance",
+        "add_character_appearance",
+        "add_location_appearance",
+        "add_object_appearance"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/tools/write_tools/scenes.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 188,
+      "classes": [],
+      "functions": [
+        "put_style_guide",
+        "put_event",
+        "put_scene",
+        "update_scene_script",
+        "put_dialogue"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/tools/write_tools/shots_and_assets.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 381,
+      "classes": [],
+      "functions": [
+        "register_asset",
+        "generate_character_asset",
+        "generate_location_asset",
+        "generate_object_asset",
+        "put_shot",
+        "put_music_cue",
+        "set_shot_audio",
+        "record_asset_critique",
+        "record_clip_qa",
+        "create_change_request"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/validate.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 205,
+      "classes": [
+        "ValidationIssue"
+      ],
+      "functions": [
+        "validate_shot",
+        "validate_all"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/views.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 229,
+      "classes": [
+        "OutlineView",
+        "EntityDesignView",
+        "SceneView",
+        "ShotView"
+      ],
+      "functions": [
+        "outline_view",
+        "entity_design_view",
+        "scene_view",
+        "shot_view"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/conftest.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 182,
+      "classes": [],
+      "functions": [
+        "tmp_repo",
+        "default_cfg",
+        "seed_valid_graph"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/test_state_and_validate.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 125,
+      "classes": [],
+      "functions": [
+        "test_state_engine_intervals_and_valid_graph",
+        "test_validator_rules_v1_through_v4",
+        "test_validator_rules_v5_and_v10_v12",
+        "test_validator_rules_v6_through_v13"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/test_store_and_schema.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 303,
+      "classes": [],
+      "functions": [
+        "test_store_crud_and_queries",
+        "test_store_batches_transactions_and_blobs",
+        "test_all_14_node_types_round_trip",
+        "test_repo_versioning_append_only_and_staleness_propagation"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/test_storygraph_suite.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 158,
+      "classes": [],
+      "functions": [
+        "test_end_to_end_pipeline_gates_retries_and_idempotency",
+        "test_budget_exceeded_cap",
+        "test_fastapi_productions_service_endpoints",
+        "test_epic_name_normalization_hindi_dialogue_and_deduplication"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/test_tools_and_budget.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 230,
+      "classes": [],
+      "functions": [
+        "test_role_permissions_architect_and_designers",
+        "test_role_permissions_location_object_and_from_text",
+        "test_role_permissions_writers_director_music_and_critic",
+        "test_structured_output_repair_loop",
+        "test_reference_budgeter_and_prompt_compiler_determinism"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "scripts/check_architecture.py",
+      "language": "python",
+      "domain_package": "scripts",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 50,
+      "classes": [],
+      "functions": [
+        "run_all_checks",
+        "main"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "scripts/check_coding_standards.py",
+      "language": "python",
+      "domain_package": "scripts",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 121,
+      "classes": [],
+      "functions": [
+        "run_all_coding_checks",
+        "main"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "scripts/check_components.py",
+      "language": "python",
+      "domain_package": "scripts",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 108,
+      "classes": [
+        "ComponentViolation"
+      ],
+      "functions": [
+        "check_frontend_components",
+        "main"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "scripts/checkers/arch_tiers.py",
+      "language": "python",
+      "domain_package": "scripts/checkers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 254,
+      "classes": [],
+      "functions": [
+        "classify_backend_module",
+        "resolve_backend_import",
+        "analyze_python_ast",
+        "classify_frontend_module",
+        "resolve_frontend_import",
+        "analyze_frontend_ast"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "scripts/checkers/ast_clones.py",
+      "language": "python",
+      "domain_package": "scripts/checkers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 242,
+      "classes": [
+        "_CanonicalASTNormalizer"
+      ],
+      "functions": [
+        "check_py_clones_and_limits",
+        "check_ts_clones"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "scripts/checkers/brute_force.py",
+      "language": "python",
+      "domain_package": "scripts/checkers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 69,
+      "classes": [],
+      "functions": [
+        "check_python_no_brute_force"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "scripts/checkers/folder_structure.py",
+      "language": "python",
+      "domain_package": "scripts/checkers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 71,
+      "classes": [],
+      "functions": [
+        "check_folder_organization"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "scripts/checkers/logging_and_tests.py",
+      "language": "python",
+      "domain_package": "scripts/checkers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 143,
+      "classes": [],
+      "functions": [
+        "check_python_semantic_logging",
+        "check_ts_semantic_logging",
+        "check_python_no_vanity_tests"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "scripts/checkers/models.py",
+      "language": "python",
+      "domain_package": "scripts/checkers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 29,
+      "classes": [
+        "CodingViolation",
+        "Violation"
+      ],
+      "functions": [
+        "strip_ts_comments_preserve_lines"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "scripts/checkers/owasp.py",
+      "language": "python",
+      "domain_package": "scripts/checkers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 127,
+      "classes": [],
+      "functions": [
+        "check_python_owasp",
+        "check_ts_owasp_and_db_tier"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "scripts/checkers/size_and_types.py",
+      "language": "python",
+      "domain_package": "scripts/checkers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 168,
+      "classes": [],
+      "functions": [
+        "count_py_statements",
+        "count_py_non_comment_lines",
+        "check_python_size_and_types",
+        "check_ts_size_and_types"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "scripts/checkers/tier_isolation.py",
+      "language": "python",
+      "domain_package": "scripts/checkers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 155,
+      "classes": [],
+      "functions": [
+        "check_python_tier_isolation",
+        "check_ts_tier_isolation"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "scripts/generate_codebase_index.py",
+      "language": "python",
+      "domain_package": "scripts",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 194,
+      "classes": [
+        "FileIndexEntry",
+        "CodebaseIndexPayload"
+      ],
+      "functions": [
+        "generate_index",
+        "main"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "workers/_promo_helpers.py",
+      "language": "python",
+      "domain_package": "workers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 237,
+      "classes": [],
+      "functions": [
+        "maybe_prepend_title_card",
+        "maybe_apply_text_overlays"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "workers/_reframe_ai_pipeline.py",
+      "language": "python",
+      "domain_package": "workers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 341,
+      "classes": [],
+      "functions": [
+        "scan_and_track_video",
+        "run_diarization",
+        "analyze_scenes",
+        "collect_semantics",
+        "apply_gemini_decisions"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "workers/_reframe_helpers.py",
+      "language": "python",
+      "domain_package": "workers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 147,
+      "classes": [],
+      "functions": [
+        "ensure_cv2_readable",
+        "format_chirp_context",
+        "format_track_summary"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "workers/_reframe_reporting.py",
+      "language": "python",
+      "domain_package": "workers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 242,
+      "classes": [],
+      "functions": [
+        "dump_detection_fixture",
+        "store_segment_plan",
+        "store_eval_report",
+        "store_render_check"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "workers/_reframe_v2_pipeline.py",
+      "language": "python",
+      "domain_package": "workers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 304,
+      "classes": [],
+      "functions": [
+        "launch_semantic_pass",
+        "run_diagnostic_pipeline",
+        "detect_and_scan_video",
+        "plan_and_evaluate_segments",
+        "run_ai_reframe_pipeline"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "workers/adapts_processor.py",
+      "language": "python",
+      "domain_package": "workers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 151,
+      "classes": [
+        "AdaptsProcessor"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "workers/avatar_processor.py",
+      "language": "python",
+      "domain_package": "workers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 332,
+      "classes": [
+        "AvatarProcessor"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "workers/base_processor.py",
+      "language": "python",
+      "domain_package": "workers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 66,
+      "classes": [
+        "TempFileManager",
+        "JobProcessor"
+      ],
+      "functions": [
+        "resolve_variant_status"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "workers/dubbing_processor.py",
+      "language": "python",
+      "domain_package": "workers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 195,
+      "classes": [
+        "DubbingProcessor"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "workers/health.py",
+      "language": "python",
+      "domain_package": "workers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 33,
+      "classes": [
+        "_HealthHandler"
+      ],
+      "functions": [
+        "start_health_server"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "workers/promo_processor.py",
+      "language": "python",
+      "domain_package": "workers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 267,
+      "classes": [
+        "PromoProcessor"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "workers/reframe_processor.py",
+      "language": "python",
+      "domain_package": "workers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 376,
+      "classes": [
+        "ReframeProcessor"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "workers/unified_worker.py",
+      "language": "python",
+      "domain_package": "workers",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 148,
+      "classes": [
+        "UnifiedWorker"
+      ],
+      "functions": [
+        "main"
+      ],
+      "endpoints": []
+    }
+  ]
+}

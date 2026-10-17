@@ -1,0 +1,109 @@
+"""Video reframing router for vertical and portrait aspect ratio conversion."""
+
+from __future__ import annotations
+
+import logging
+from typing import Any, Optional
+
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
+
+import deps
+from helpers import (
+    ensure_services_ready,
+    list_completed_production_sources,
+    list_video_upload_sources,
+    sign_record_urls,
+)
+from models import ReframeRecord
+from reframe_filters import OUTPUT_CANVAS
+from routers._crud import register_crud_routes
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/v1/reframe", tags=["reframe"])
+
+
+class ReframeRequest(BaseModel):
+    gcs_uri: str
+    source_filename: str = ""
+    mime_type: str = "video/mp4"
+    prompt_id: str = ""
+    content_type: str = "other"
+    blurred_bg: bool = False
+    sports_mode: bool = False  # deprecated — use content_type="sports"
+    diagnostic_mode: bool = False  # render detector overlays instead of reframing
+    deterministic_only: bool = False  # skip Gemini; plan from CPU detections only
+    output_aspect_ratio: str = "9:16"  # "9:16" (adaptive) or "3:4"
+    model_id: Optional[str] = None
+    region: Optional[str] = None
+
+
+def _sign(record: ReframeRecord) -> dict[str, Any]:
+    """Sign source and reframed output GCS URIs on a ReframeRecord."""
+    return sign_record_urls(
+        record,
+        {"source_gcs_uri": "source_signed_url", "output_gcs_uri": "output_signed_url"},
+        lambda cache: deps.firestore_svc.update_reframe_record(
+            record.id, {"signed_urls": cache}
+        ),
+    )
+
+
+register_crud_routes(
+    router,
+    resource_label="Reframe record",
+    getter=lambda rid: deps.firestore_svc.get_reframe_record(rid),
+    updater=lambda rid, u: deps.firestore_svc.update_reframe_record(rid, u),
+    deleter=lambda rid: deps.firestore_svc.delete_reframe_record(rid),
+    lister=lambda include_archived=False: deps.firestore_svc.get_reframe_records(
+        include_archived=include_archived
+    ),
+    sign_one=_sign,
+    include_retry=True,
+)
+
+
+@router.get("/sources/uploads")
+async def list_reframe_upload_sources() -> list[dict[str, Any]]:
+    """List uploaded video files eligible for reframing."""
+    return list_video_upload_sources()
+
+
+@router.get("/sources/productions")
+async def list_reframe_production_sources() -> list[dict[str, Any]]:
+    """List completed studio productions eligible for reframing."""
+    return list_completed_production_sources(
+        extra_fields={"orientation": "orientation"}
+    )
+
+
+@router.post("")
+async def create_reframe(body: ReframeRequest, request: Request) -> dict[str, str]:
+    """Create a reframe job. Worker picks it up from Firestore."""
+    ensure_services_ready()
+    content_type = body.content_type
+    if body.sports_mode and content_type == "other":
+        content_type = "sports"
+    if body.output_aspect_ratio not in OUTPUT_CANVAS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"output_aspect_ratio must be one of {sorted(OUTPUT_CANVAS)}",
+        )
+    record = ReframeRecord(
+        source_gcs_uri=body.gcs_uri,
+        source_filename=body.source_filename,
+        prompt_id=body.prompt_id,
+        content_type=content_type,
+        blurred_bg=body.blurred_bg,
+        sports_mode=body.sports_mode,
+        diagnostic_mode=body.diagnostic_mode,
+        deterministic_only=body.deterministic_only,
+        output_aspect_ratio=body.output_aspect_ratio,
+        model_id=body.model_id,
+        region=body.region,
+        status="pending",
+        invite_code=getattr(request.state, "invite_code", None),
+    )
+    deps.firestore_svc.create_reframe_record(record)
+    return {"id": record.id, "status": record.status}

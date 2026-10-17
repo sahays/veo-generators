@@ -4,25 +4,26 @@
 //
 // mp4box.js parses the fragmented MP4 the model emits and hands us per-sample
 // byte ranges. The Live Avatar API multiplexes both video AND audio into the
-// same MP4 (we confirmed `audioTracks: 1` from mp4box's onReady) — so this
-// sink owns both decoders:
+// same MP4 — so this sink owns both decoders:
 //
 //   video samples → VideoDecoder → VideoFrame → ctx.drawImage(canvas)
 //   audio samples → AudioDecoder → AudioData   → AudioBufferSourceNode (WebAudio)
-//
-// WebCodecs takes the binary avcC / AudioSpecificConfig as the `description`
-// field, so there's no codec-string round-trip to fight Chrome over.
 
 import {
   createFile,
-  DataStream,
-  Endianness,
   MP4BoxBuffer,
   type ISOFile,
   type Movie,
   type Sample,
   type Track,
 } from 'mp4box'
+import {
+  decodeAudioSamples,
+  decodeVideoSamples,
+  extractAudioDescription,
+  extractAvcDescription,
+  scheduleAudioBuffer,
+} from './videoCanvasHelpers'
 
 export class VideoCanvasSink {
   private mp4: ISOFile
@@ -35,23 +36,12 @@ export class VideoCanvasSink {
   private broken = false
   private trackReady = false
 
-  // Audio playback timeline.
   private audioCtx: AudioContext | null = null
   private nextAudioStart = 0
-  // Maps stream timestamps (seconds) to AudioContext wall-clock time:
-  //   wallClock = streamSeconds + streamOffset
-  // Set once when the first audio AudioData is scheduled. Video frames are
-  // queued until this is anchored, then drawn at their target wall-clock
-  // time so lip-sync matches the audio.
   private streamOffset: number | null = null
   private pendingVideoFrames: VideoFrame[] = []
   private canvasCtx: CanvasRenderingContext2D | null = null
 
-  private chunkCount = 0
-  private videoSampleCount = 0
-  private audioSampleCount = 0
-  private videoFrameCount = 0
-  private audioDataCount = 0
   private pendingVideoSamples: Sample[] = []
   private pendingAudioSamples: Sample[] = []
 
@@ -62,41 +52,18 @@ export class VideoCanvasSink {
     this.mp4 = createFile()
     this.mp4.onError = (e: string) => this._fail('mp4box error: ' + e)
     this.mp4.onReady = (info: Movie) => {
-      // eslint-disable-next-line no-console
-      console.log('[VideoCanvasSink] mp4box onReady', {
-        videoTracks: info.videoTracks?.length,
-        audioTracks: info.audioTracks?.length,
-        isFragmented: info.isFragmented,
-        videoCodec: info.videoTracks?.[0]?.codec,
-        audioCodec: info.audioTracks?.[0]?.codec,
-        audioRate: info.audioTracks?.[0]?.audio?.sample_rate,
-        audioChannels: info.audioTracks?.[0]?.audio?.channel_count,
-      })
       try {
         this._onReadySync(info)
       } catch (e) {
         this._fail('onReady setup failed: ' + (e as Error).message)
       }
     }
-    this.mp4.onSamples = (
-      id: number,
-      _user: unknown,
-      samples: Sample[],
-    ) => this._onSamples(id, samples)
-    // eslint-disable-next-line no-console
-    console.log('[VideoCanvasSink] constructed')
+    this.mp4.onSamples = (id: number, _user: unknown, samples: Sample[]) =>
+      this._onSamples(id, samples)
   }
 
   pushChunk(_mimeType: string, data: Uint8Array) {
     if (this.broken || this.destroyed) return
-    this.chunkCount += 1
-    if (this.chunkCount <= 3 || this.chunkCount % 200 === 0) {
-      // eslint-disable-next-line no-console
-      console.log(
-        `[VideoCanvasSink] pushChunk #${this.chunkCount}`,
-        { size: data.byteLength, offset: this.offset, ready: this.trackReady },
-      )
-    }
     const buf = MP4BoxBuffer.fromArrayBuffer(data.slice().buffer, this.offset)
     this.offset += buf.byteLength
     try {
@@ -137,26 +104,25 @@ export class VideoCanvasSink {
       this._configureAudio(audioTrack)
     }
 
-    // Tell mp4box which tracks to extract samples for. Then start.
     this.mp4.setExtractionOptions(videoTrack.id, null, { nbSamples: 5 })
     if (audioTrack) {
       this.mp4.setExtractionOptions(audioTrack.id, null, { nbSamples: 10 })
     }
     this.mp4.start()
     this.trackReady = true
-    // eslint-disable-next-line no-console
-    console.log('[VideoCanvasSink] decoders configured + extraction started')
+    this._drainPendingSamples()
+  }
 
-    // Drain any samples mp4box buffered while we were setting up.
-    if (this.pendingVideoSamples.length) {
+  private _drainPendingSamples() {
+    if (this.pendingVideoSamples.length && this.videoDecoder) {
       const drained = this.pendingVideoSamples
       this.pendingVideoSamples = []
-      this._dispatchVideoSamples(drained)
+      decodeVideoSamples(this.videoDecoder, drained)
     }
-    if (this.pendingAudioSamples.length) {
+    if (this.pendingAudioSamples.length && this.audioDecoder) {
       const drained = this.pendingAudioSamples
       this.pendingAudioSamples = []
-      this._dispatchAudioSamples(drained)
+      decodeAudioSamples(this.audioDecoder, drained)
     }
   }
 
@@ -166,14 +132,10 @@ export class VideoCanvasSink {
       this._fail('could not extract avcC description')
       return
     }
-    const config: VideoDecoderConfig = {
-      codec: track.codec,
-      codedWidth: track.video?.width ?? 0,
-      codedHeight: track.video?.height ?? 0,
-      description,
-    }
-    this.canvas.width = track.video?.width ?? 0
-    this.canvas.height = track.video?.height ?? 0
+    const width = track.video?.width ?? 0
+    const height = track.video?.height ?? 0
+    this.canvas.width = width
+    this.canvas.height = height
     const ctx = this.canvas.getContext('2d')
     if (!ctx) {
       this._fail('could not acquire 2D canvas context')
@@ -181,56 +143,36 @@ export class VideoCanvasSink {
     }
     this.canvasCtx = ctx
     this.videoDecoder = new VideoDecoder({
-      output: (frame) => {
-        this.videoFrameCount += 1
-        if (this.videoFrameCount === 1 || this.videoFrameCount % 60 === 0) {
-          // eslint-disable-next-line no-console
-          console.log(`[VideoCanvasSink] video frame #${this.videoFrameCount}`)
-        }
-        this._scheduleVideoFrame(frame)
-      },
+      output: (frame) => this._scheduleVideoFrame(frame),
       error: (e) => this._fail('VideoDecoder error: ' + e.message),
     })
-    this.videoDecoder.configure(config)
+    this.videoDecoder.configure({
+      codec: track.codec,
+      codedWidth: width,
+      codedHeight: height,
+      description,
+    })
   }
 
   private _configureAudio(track: Track) {
     const description = extractAudioDescription(this.mp4, track)
-    if (!description) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        '[VideoCanvasSink] no AudioSpecificConfig found in audio track — skipping audio',
-      )
-      return
-    }
+    if (!description) return
     this._ensureAudioContext()
-    const config: AudioDecoderConfig = {
-      codec: track.codec,
-      sampleRate: track.audio?.sample_rate ?? 24000,
-      numberOfChannels: track.audio?.channel_count ?? 1,
-      description,
-    }
     this.audioDecoder = new AudioDecoder({
       output: (audio) => {
-        this.audioDataCount += 1
         try {
           this._playAudioData(audio)
         } finally {
           audio.close()
         }
       },
-      error: (e) => {
-        // eslint-disable-next-line no-console
-        console.error('[VideoCanvasSink] AudioDecoder error', e.message)
-      },
+      error: () => {},
     })
-    this.audioDecoder.configure(config)
-    // eslint-disable-next-line no-console
-    console.log('[VideoCanvasSink] audio decoder configured', {
+    this.audioDecoder.configure({
       codec: track.codec,
-      sampleRate: config.sampleRate,
-      channels: config.numberOfChannels,
-      descriptionBytes: description.byteLength,
+      sampleRate: track.audio?.sample_rate ?? 24000,
+      numberOfChannels: track.audio?.channel_count ?? 1,
+      description,
     })
   }
 
@@ -240,116 +182,32 @@ export class VideoCanvasSink {
         this.pendingVideoSamples.push(...samples)
         return
       }
-      this._dispatchVideoSamples(samples)
+      decodeVideoSamples(this.videoDecoder, samples)
     } else if (trackId === this.audioTrackId) {
       if (!this.audioDecoder || this.audioDecoder.state !== 'configured') {
         this.pendingAudioSamples.push(...samples)
         return
       }
-      this._dispatchAudioSamples(samples)
-    }
-  }
-
-  private _dispatchVideoSamples(samples: Sample[]) {
-    if (!this.videoDecoder) return
-    for (const s of samples) {
-      if (!s.data) continue
-      this.videoSampleCount += 1
-      if (
-        this.videoSampleCount <= 2 ||
-        this.videoSampleCount % 200 === 0
-      ) {
-        // eslint-disable-next-line no-console
-        console.log(
-          `[VideoCanvasSink] video sample #${this.videoSampleCount}`,
-          { sync: s.is_sync, size: s.data.byteLength },
-        )
-      }
-      this.videoDecoder.decode(
-        new EncodedVideoChunk({
-          type: s.is_sync ? 'key' : 'delta',
-          timestamp: (s.cts * 1_000_000) / s.timescale,
-          duration: (s.duration * 1_000_000) / s.timescale,
-          data: s.data,
-        }),
-      )
-    }
-  }
-
-  private _dispatchAudioSamples(samples: Sample[]) {
-    if (!this.audioDecoder) return
-    for (const s of samples) {
-      if (!s.data) continue
-      this.audioSampleCount += 1
-      if (
-        this.audioSampleCount <= 2 ||
-        this.audioSampleCount % 200 === 0
-      ) {
-        // eslint-disable-next-line no-console
-        console.log(
-          `[VideoCanvasSink] audio sample #${this.audioSampleCount}`,
-          { size: s.data.byteLength },
-        )
-      }
-      this.audioDecoder.decode(
-        new EncodedAudioChunk({
-          type: 'key', // every AAC frame is independently decodable
-          timestamp: (s.cts * 1_000_000) / s.timescale,
-          duration: (s.duration * 1_000_000) / s.timescale,
-          data: s.data,
-        }),
-      )
+      decodeAudioSamples(this.audioDecoder, samples)
     }
   }
 
   private _playAudioData(audio: AudioData) {
     this._ensureAudioContext()
-    const ctx = this.audioCtx
-    if (!ctx) return
-    if (ctx.state === 'suspended') {
-      void ctx.resume().catch(() => {})
-    }
-    const numChannels = audio.numberOfChannels
-    const numFrames = audio.numberOfFrames
-    const sampleRate = audio.sampleRate
-    const buffer = ctx.createBuffer(numChannels, numFrames, sampleRate)
-    for (let ch = 0; ch < numChannels; ch++) {
-      const channel = new Float32Array(numFrames)
-      audio.copyTo(channel, { planeIndex: ch, format: 'f32-planar' })
-      buffer.copyToChannel(channel, ch)
-    }
-    const src = ctx.createBufferSource()
-    src.buffer = buffer
-    src.connect(ctx.destination)
-    const start = Math.max(ctx.currentTime, this.nextAudioStart)
-    src.start(start)
-    this.nextAudioStart = start + buffer.duration
+    if (!this.audioCtx) return
+    const { start, nextStart } = scheduleAudioBuffer(
+      this.audioCtx,
+      audio,
+      this.nextAudioStart,
+    )
+    this.nextAudioStart = nextStart
 
-    // Anchor the stream-to-wallclock relationship from the first audio
-    // sample. Both video and audio timestamps share the same MP4 timebase,
-    // so any video frame's wall-clock target is `streamTime + streamOffset`.
     if (this.streamOffset === null) {
       const audioStreamSec = audio.timestamp / 1_000_000
       this.streamOffset = start - audioStreamSec
-      // eslint-disable-next-line no-console
-      console.log('[VideoCanvasSink] sync anchored', {
-        streamOffset: this.streamOffset,
-        firstAudioStreamSec: audioStreamSec,
-        startedAt: start,
-        pendingVideoFrames: this.pendingVideoFrames.length,
-      })
-      // Drain any video frames decoded before audio caught up.
       const drained = this.pendingVideoFrames
       this.pendingVideoFrames = []
       for (const f of drained) this._scheduleVideoFrame(f)
-    }
-    if (this.audioDataCount === 1 || this.audioDataCount % 50 === 0) {
-      // eslint-disable-next-line no-console
-      console.log(
-        `[VideoCanvasSink] audio data #${this.audioDataCount} ` +
-          `frames=${numFrames} ch=${numChannels} rate=${sampleRate} ` +
-          `ctx=${ctx.state}`,
-      )
     }
   }
 
@@ -358,8 +216,6 @@ export class VideoCanvasSink {
       try { frame.close() } catch {}
       return
     }
-    // Until audio playback has actually started, we don't yet know the
-    // wall-clock target for any frame. Buffer them.
     if (this.streamOffset === null || !this.audioCtx) {
       this.pendingVideoFrames.push(frame)
       return
@@ -397,8 +253,6 @@ export class VideoCanvasSink {
   private _fail(reason: string) {
     if (this.broken) return
     this.broken = true
-    // eslint-disable-next-line no-console
-    console.error('[VideoCanvasSink]', reason)
     try {
       this.onBroken?.(reason)
     } catch {
@@ -423,69 +277,4 @@ export class VideoCanvasSink {
     }
     try { this.mp4.flush() } catch {}
   }
-}
-
-// Extract the AVCDecoderConfigurationRecord (avcC payload, no box header) for
-// VideoDecoder.configure({ description }).
-function extractAvcDescription(mp4: ISOFile, track: Track): Uint8Array | null {
-  const trak = (mp4 as unknown as {
-    getTrackById: (id: number) => unknown
-  }).getTrackById(track.id) as
-    | { mdia?: { minf?: { stbl?: { stsd?: { entries?: Array<unknown> } } } } }
-    | undefined
-  const entries = trak?.mdia?.minf?.stbl?.stsd?.entries ?? []
-  for (const entry of entries) {
-    const e = entry as {
-      avcC?: { write: (s: DataStream) => void }
-      hvcC?: { write: (s: DataStream) => void }
-      vpcC?: { write: (s: DataStream) => void }
-      av1C?: { write: (s: DataStream) => void }
-    }
-    const box = e.avcC ?? e.hvcC ?? e.vpcC ?? e.av1C
-    if (!box) continue
-    const stream = new DataStream(undefined, 0, Endianness.BIG_ENDIAN)
-    stream.endianness = Endianness.BIG_ENDIAN
-    box.write(stream)
-    const buf = stream.buffer as ArrayBuffer
-    // Skip 8-byte box header → just the configuration record payload.
-    return new Uint8Array(buf, 8)
-  }
-  return null
-}
-
-// Walk the parsed esds DescriptorTree to find the AudioSpecificConfig bytes
-// — that's what AudioDecoder wants in `description`.
-//   esds → ES_Descriptor (tag 3) → DecoderConfigDescriptor (tag 4) →
-//          DecSpecificInfo (tag 5)
-// mp4box's parsed esds exposes nested `descs` arrays; the DSI's `data` field
-// is the AudioSpecificConfig.
-function extractAudioDescription(
-  mp4: ISOFile,
-  track: Track,
-): Uint8Array | null {
-  const trak = (mp4 as unknown as {
-    getTrackById: (id: number) => unknown
-  }).getTrackById(track.id) as
-    | { mdia?: { minf?: { stbl?: { stsd?: { entries?: Array<unknown> } } } } }
-    | undefined
-  const entries = trak?.mdia?.minf?.stbl?.stsd?.entries ?? []
-  for (const entry of entries) {
-    const e = entry as {
-      esds?: {
-        esd?: { descs?: Array<{ tag?: number; descs?: Array<{ tag?: number; data?: Uint8Array | ArrayLike<number> }> }> }
-      }
-    }
-    const esd = e.esds?.esd
-    if (!esd) continue
-    // Find DecoderConfigDescriptor (tag 4) inside ES_Descriptor.
-    const dcd = esd.descs?.find((d) => d.tag === 4)
-    if (!dcd) continue
-    // Find DecSpecificInfo (tag 5) inside DCD.
-    const dsi = dcd.descs?.find((d) => d.tag === 5)
-    if (!dsi?.data) continue
-    return dsi.data instanceof Uint8Array
-      ? dsi.data
-      : new Uint8Array(dsi.data as ArrayLike<number>)
-  }
-  return null
 }

@@ -15,6 +15,7 @@ from .schema import (
     MusicCue,
     Scene,
     Shot,
+    Status,
     StyleGuide,
 )
 from .state import state_at
@@ -90,10 +91,11 @@ def entity_design_view(repo: Repo, entity_id: str) -> EntityDesignView:
                     assets.append(asset)
                     seen_aids.add(aid)
 
-    labels = ["default"]
+    wearing_labels: list[str] = []
     for sf in repo.list_state_facts(entity_id=entity_id):
-        if sf.attribute in ("wearing", "injury") and sf.value not in labels:
-            labels.append(sf.value)
+        if sf.attribute == "wearing" and sf.value and sf.value not in wearing_labels:
+            wearing_labels.append(sf.value)
+    labels = wearing_labels if wearing_labels else ["default"]
 
     return EntityDesignView(
         style_guide=repo.get_style_guide(),
@@ -134,34 +136,18 @@ def scene_view(repo: Repo, scene_id: str) -> SceneView:
     )
 
 
-def shot_view(repo: Repo, shot_id: str) -> ShotView:
-    shot = repo.get_shot(shot_id)
-    if not shot:
-        raise NotFound(f"Shot {shot_id} not found")
-    scene = repo.get_scene(shot.scene_id)
-    if not scene:
-        raise NotFound(f"Scene {shot.scene_id} not found")
-    sg = repo.get_style_guide()
-    if not sg:
-        raise NotFound("StyleGuide not found")
-    loc = repo.get_entity(shot.location_id)
-    if not loc:
-        raise NotFound(f"Location entity {shot.location_id} not found")
-    loc_app = repo.get_appearance(shot.location_appearance_id)
-    if not loc_app:
-        apps = repo.list_appearances(entity_id=shot.location_id)
-        if not apps:
-            raise NotFound(f"Location appearance for {shot.location_id} not found")
-        loc_app = apps[-1]
-    loc_assets = [
-        a for aid in loc_app.asset_ids if (a := repo.get_asset(aid)) is not None
-    ]
-
+def _resolve_cast_for_shot(
+    repo: Repo, shot: Shot
+) -> tuple[
+    dict[str, Entity],
+    dict[str, Appearance],
+    dict[str, list[Asset]],
+    dict[str, dict[str, str]],
+]:
     cast_entities: dict[str, Entity] = {}
     cast_appearances: dict[str, Appearance] = {}
     cast_assets: dict[str, list[Asset]] = {}
     cast_states: dict[str, dict[str, str]] = {}
-
     for c in shot.cast:
         ent = repo.get_entity(c.entity_id)
         if ent:
@@ -176,7 +162,12 @@ def shot_view(repo: Repo, shot_id: str) -> ShotView:
                 a for aid in app.asset_ids if (a := repo.get_asset(aid)) is not None
             ]
         cast_states[c.entity_id] = state_at(repo, c.entity_id, shot.story_order)
+    return cast_entities, cast_appearances, cast_assets, cast_states
 
+
+def _resolve_props_for_shot(
+    repo: Repo, shot: Shot
+) -> tuple[dict[str, Entity], dict[str, Appearance], dict[str, list[Asset]]]:
     prop_entities: dict[str, Entity] = {}
     prop_appearances: dict[str, Appearance] = {}
     prop_assets: dict[str, list[Asset]] = {}
@@ -194,26 +185,60 @@ def shot_view(repo: Repo, shot_id: str) -> ShotView:
             prop_assets[pid] = [
                 a for aid in papp.asset_ids if (a := repo.get_asset(aid)) is not None
             ]
+    return prop_entities, prop_appearances, prop_assets
 
+
+def _resolve_prev_shot_last_frame(repo: Repo, shot: Shot) -> Asset | None:
+    if not shot.continue_from_last_frame:
+        return None
+    scene_shots = sorted(
+        repo.list_shots(scene_id=shot.scene_id), key=lambda s: s.index_in_scene
+    )
+    for idx, s in enumerate(scene_shots):
+        if s.id == shot.id and idx > 0:
+            prev_s = scene_shots[idx - 1]
+            runs = repo.list_generation_runs(shot_id=prev_s.id)
+            for r in reversed(runs):
+                if r.status == Status.APPROVED and r.extracted_last_frame_asset_id:
+                    return repo.get_asset(r.extracted_last_frame_asset_id)
+    return None
+
+
+def _resolve_shot_location(
+    repo: Repo, shot: Shot
+) -> tuple[Entity, Appearance, list[Asset]]:
+    loc = repo.get_entity(shot.location_id)
+    if not loc:
+        raise NotFound(f"Location entity {shot.location_id} not found")
+    loc_app = repo.get_appearance(shot.location_appearance_id)
+    if not loc_app:
+        apps = repo.list_appearances(entity_id=shot.location_id)
+        if not apps:
+            raise NotFound(f"Location appearance for {shot.location_id} not found")
+        loc_app = apps[-1]
+    loc_assets = [
+        a for aid in loc_app.asset_ids if (a := repo.get_asset(aid)) is not None
+    ]
+    return loc, loc_app, loc_assets
+
+
+def shot_view(repo: Repo, shot_id: str) -> ShotView:
+    shot = repo.get_shot(shot_id)
+    if not shot:
+        raise NotFound(f"Shot {shot_id} not found")
+    scene = repo.get_scene(shot.scene_id)
+    if not scene:
+        raise NotFound(f"Scene {shot.scene_id} not found")
+    sg = repo.get_style_guide()
+    if not sg:
+        raise NotFound("StyleGuide not found")
+    loc, loc_app, loc_assets = _resolve_shot_location(repo, shot)
+    c_ents, c_apps, c_assets, c_states = _resolve_cast_for_shot(repo, shot)
+    p_ents, p_apps, p_assets = _resolve_props_for_shot(repo, shot)
     dlines = [
         d for did in shot.dialogue_ids if (d := repo.get_dialogue(did)) is not None
     ]
     mcue = repo.get_music_cue(shot.music_cue_id) if shot.music_cue_id else None
-
-    prev_frame: Asset | None = None
-    if shot.continue_from_last_frame:
-        scene_shots = sorted(
-            repo.list_shots(scene_id=shot.scene_id), key=lambda s: s.index_in_scene
-        )
-        for idx, s in enumerate(scene_shots):
-            if s.id == shot.id and idx > 0:
-                prev_s = scene_shots[idx - 1]
-                runs = repo.list_generation_runs(shot_id=prev_s.id)
-                for r in reversed(runs):
-                    if r.extracted_last_frame_asset_id:
-                        prev_frame = repo.get_asset(r.extracted_last_frame_asset_id)
-                        break
-
     return ShotView(
         style_guide=sg,
         scene=scene,
@@ -221,14 +246,14 @@ def shot_view(repo: Repo, shot_id: str) -> ShotView:
         location=loc,
         location_appearance=loc_app,
         location_assets=loc_assets,
-        cast_entities=cast_entities,
-        cast_appearances=cast_appearances,
-        cast_assets=cast_assets,
-        cast_states=cast_states,
-        prop_entities=prop_entities,
-        prop_appearances=prop_appearances,
-        prop_assets=prop_assets,
+        cast_entities=c_ents,
+        cast_appearances=c_apps,
+        cast_assets=c_assets,
+        cast_states=c_states,
+        prop_entities=p_ents,
+        prop_appearances=p_apps,
+        prop_assets=p_assets,
         dialogue_lines=dlines,
         music_cue=mcue,
-        prev_shot_last_frame=prev_frame,
+        prev_shot_last_frame=_resolve_prev_shot_last_frame(repo, shot),
     )

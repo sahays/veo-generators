@@ -75,43 +75,32 @@ async def trigger_production_step(
     payload: dict | None = None,
 ) -> dict:
     """Trigger a lifecycle step ('analyze', 'review', 'render', 'render-draft', 'upgrade-final', 'evaluate', 'regenerate-flagged', 'generate-storyboard', 'generate-videos', 'stitch') on a production."""
+    base = f"/api/v1/productions/{production_id}"
+    body = payload or {}
     if step == "render-draft":
-        body = {"quality": "draft", "resolution": "360p", **(payload or {})}
         return await api_call(
             "POST",
-            f"/api/v1/productions/{production_id}/render",
+            f"{base}/render",
             invite_code,
-            json=body,
+            json={"quality": "draft", "resolution": "360p", **body},
         )
     if step in ("upgrade-final", "render-final"):
-        body = {"quality": "final", "resolution": "720p", **(payload or {})}
         return await api_call(
             "POST",
-            f"/api/v1/productions/{production_id}/render",
+            f"{base}/render",
             invite_code,
-            json=body,
+            json={"quality": "final", "resolution": "720p", **body},
         )
     if step in ("approve-G1", "approve-G2", "approve-G3"):
         gate_id = step.split("-")[1]
         return await api_call(
-            "POST",
-            f"/api/v1/productions/{production_id}/gates/{gate_id}/approve",
-            invite_code,
-            json=payload or {},
+            "POST", f"{base}/gates/{gate_id}/approve", invite_code, json=body
         )
     if step.startswith("S") and "_" in step:
         return await api_call(
-            "POST",
-            f"/api/v1/productions/{production_id}/stages/{step}/run",
-            invite_code,
-            json=payload or {},
+            "POST", f"{base}/stages/{step}/run", invite_code, json=body
         )
-    return await api_call(
-        "POST",
-        f"/api/v1/productions/{production_id}/{step}",
-        invite_code,
-        json=payload or {},
-    )
+    return await api_call("POST", f"{base}/{step}", invite_code, json=body)
 
 
 # ── Promo ───────────────────────────────────────────────────────────────────

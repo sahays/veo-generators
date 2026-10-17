@@ -11,7 +11,7 @@ import os
 import time
 import uuid as _uuid
 from concurrent.futures import ThreadPoolExecutor
-from typing import Awaitable, Callable, TypeVar
+from typing import Any, Awaitable, Callable, TypeVar
 
 import deps
 from cost_tracking import accumulate_image_cost_on
@@ -26,12 +26,12 @@ logger = logging.getLogger(__name__)
 
 
 def maybe_prepend_title_card(
-    record,
+    record: Any,
     record_id: str,
     src_path: str,
     segments_raw: list,
     segment_paths: list,
-    tmp,
+    tmp: Any,
     run_async: RunAsync,
 ) -> None:
     """If `record.generate_thumbnail`, build a title-card video and prepend it
@@ -44,16 +44,25 @@ def maybe_prepend_title_card(
             record, record_id, src_path, segments_raw, segment_paths, tmp, run_async
         )
     except Exception as e:
-        logger.warning(f"[promo:{record_id}] Title card failed, skipping: {e}")
+        logger.warning(
+            f"[promo:{record_id}] Title card failed, skipping: {e}",
+            extra={
+                "who": "promo",
+                "where": "maybe_prepend_title_card",
+                "what": "title_card_failed",
+                "why": str(e),
+                "how": "skip_title_card",
+            },
+        )
 
 
 def _generate_title_card(
-    record,
+    record: Any,
     record_id: str,
     src_path: str,
     segments_raw: list,
     segment_paths: list,
-    tmp,
+    tmp: Any,
     run_async: RunAsync,
 ) -> None:
     from ffmpeg_runner import ffprobe_video
@@ -71,21 +80,39 @@ def _generate_title_card(
         thumb_img, title_card, width=probe["width"], height=probe["height"]
     )
     segment_paths.insert(0, title_card)
-    logger.info(f"[promo:{record_id}] Title card prepended")
+    logger.info(
+        f"[promo:{record_id}] Title card prepended",
+        extra={
+            "who": "promo",
+            "where": "_generate_title_card",
+            "what": "title_card_prepended",
+            "why": "generate_thumbnail",
+            "how": "create_title_card_video",
+        },
+    )
 
 
 def _get_or_create_thumbnail(
-    record,
+    record: Any,
     record_id: str,
     src_path: str,
     segments_raw: list,
     orientation: str,
-    tmp,
+    tmp: Any,
     run_async: RunAsync,
 ) -> str:
     """Return existing thumbnail URI or generate a new collage."""
     if record.thumbnail_gcs_uri:
-        logger.info(f"[promo:{record_id}] Reusing existing thumbnail")
+        logger.info(
+            f"[promo:{record_id}] Reusing existing thumbnail",
+            extra={
+                "who": "promo",
+                "where": "_get_or_create_thumbnail",
+                "what": "reuse_thumbnail",
+                "why": "cached_thumbnail_gcs_uri",
+                "how": "return_existing",
+            },
+        )
         return record.thumbnail_gcs_uri
 
     frame_uris = _extract_key_frames(record_id, src_path, segments_raw, tmp)
@@ -108,7 +135,9 @@ def _get_or_create_thumbnail(
     return uri
 
 
-def _extract_key_frames(record_id: str, src_path: str, segments_raw: list, tmp) -> list:
+def _extract_key_frames(
+    record_id: str, src_path: str, segments_raw: list, tmp: Any
+) -> list[str]:
     """Extract frames from the first few key moments and upload to GCS."""
     from promo_service import extract_frame, parse_timestamp
 
@@ -128,7 +157,16 @@ def _extract_key_frames(record_id: str, src_path: str, segments_raw: list, tmp) 
                 frame_path, gcs_path, content_type="image/png"
             )
         )
-        logger.info(f"[promo:{record_id}] Frame {i + 1}/{len(key_segments)}")
+        logger.info(
+            f"[promo:{record_id}] Frame {i + 1}/{len(key_segments)}",
+            extra={
+                "who": "promo",
+                "where": "_extract_key_frames",
+                "what": f"frame_{i + 1}/{len(key_segments)}",
+                "why": "collage_input",
+                "how": "extract_frame",
+            },
+        )
     return uris
 
 
@@ -136,12 +174,12 @@ def _extract_key_frames(record_id: str, src_path: str, segments_raw: list, tmp) 
 
 
 def maybe_apply_text_overlays(
-    record,
+    record: Any,
     record_id: str,
     src_path: str,
     segments_raw: list,
     segment_paths: list,
-    tmp,
+    tmp: Any,
     run_async: RunAsync,
 ) -> None:
     """If `record.text_overlay`, generate per-segment overlay images and
@@ -164,7 +202,7 @@ def _collect_overlay_images(
     segments_raw: list,
     orientation: str,
     start_idx: int,
-    tmp,
+    tmp: Any,
     run_async: RunAsync,
 ) -> list[tuple[int, str]]:
     """Resolve overlay URIs (cached or generated) and download each locally."""
@@ -177,8 +215,14 @@ def _collect_overlay_images(
         deps.storage_svc.download_to_file(uri, path)
         overlays.append((i + start_idx, path))
         logger.info(
-            f"[promo:{record_id}] Overlay {i + 1}/{len(segments_raw)}: "
-            f"{seg.get('title', '')}"
+            f"[promo:{record_id}] Overlay {i + 1}/{len(segments_raw)}: {seg.get('title', '')}",
+            extra={
+                "who": "promo",
+                "where": "_collect_overlay_images",
+                "what": f"overlay_{i + 1}/{len(segments_raw)}",
+                "why": "text_overlay",
+                "how": "download_to_file",
+            },
         )
     return overlays
 
@@ -216,14 +260,23 @@ def _composite_overlays(
     record_id: str,
     overlays: list[tuple[int, str]],
     segment_paths: list,
-    tmp,
+    tmp: Any,
 ) -> None:
     """Apply overlay images to segments in parallel (mutates `segment_paths`)."""
     from promo_service import overlay_image_on_segment
 
-    logger.info(f"[promo:{record_id}] Compositing {len(overlays)} overlays...")
+    logger.info(
+        f"[promo:{record_id}] Compositing {len(overlays)} overlays...",
+        extra={
+            "who": "promo",
+            "where": "_composite_overlays",
+            "what": f"count={len(overlays)}",
+            "why": "text_overlay",
+            "how": "ThreadPoolExecutor",
+        },
+    )
 
-    def apply(seg_idx: int, ovr_path: str):
+    def apply(seg_idx: int, ovr_path: str) -> tuple[int, str]:
         out = tmp.create(suffix=f"_overlaid{seg_idx}.mp4")
         overlay_image_on_segment(segment_paths[seg_idx], ovr_path, out)
         return seg_idx, out

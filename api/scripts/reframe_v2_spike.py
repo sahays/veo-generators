@@ -2,28 +2,11 @@
 """THROWAWAY validation spike for reframe v2 adaptive letterboxing (Phase 0.5).
 
 Gate before building Phase 1. Runs the full v2 decision path on a LOCAL clip and
-emits, for human review:
-  1. <name>.diag.mp4   — full frame letterboxed in 9:16 with detector overlays
-                         (red face boxes, scene labels, green chosen crop window)
-  2. <name>.v2.mp4     — the actual adaptive-letterboxed reframe
-  3. a per-segment decision log (C → rung, layout, reason) on stdout
-
-Pass criteria (judge by eye):
-  - `C` triggers letterbox on wide cases (logo / side-by-side / slide) WITHOUT
-    false-triggering on a plain talking head.
-  - cut-snapped aspect changes look intentional, not janky.
-
-Requires ffmpeg + scenedetect + opencv (worker image or a local env with them).
-Gemini scene labels are optional: pass --gcs-uri to enable them, otherwise the
-plan runs face-only (no wide-text signal).
-
-Usage:
-  python api/scripts/reframe_v2_spike.py clip.mp4 [--gcs-uri gs://...] [--outdir /tmp]
-
-Delete this file once the spike has served its purpose.
+emits diagnostic and adaptive-letterboxed videos for human review.
 """
 
 import argparse
+import logging
 import os
 import sys
 
@@ -37,8 +20,23 @@ from reframe_plan import reconcile
 from reframe_service import _concat_chunks, _safe_unlink
 from scene_detect import detect_cuts
 
+logger = logging.getLogger("reframe_v2_spike")
 
-def _maybe_gemini_scenes(gcs_uri, content_type, track_summary):
+
+def _log(msg: str, where: str = "reframe_v2_spike") -> None:
+    logger.info(
+        msg,
+        extra={
+            "who": "reframe_v2_spike",
+            "where": where,
+            "what": msg[:120],
+            "why": "Reframe v2 validation spike",
+            "how": "cli",
+        },
+    )
+
+
+def _maybe_gemini_scenes(gcs_uri: str, content_type: str, track_summary: str) -> list:
     """Call Gemini scene analysis if a GCS URI + app deps are available."""
     if not gcs_uri:
         return []
@@ -58,11 +56,14 @@ def _maybe_gemini_scenes(gcs_uri, content_type, track_summary):
         )
         return result.data.get("scenes", [])
     except Exception as e:  # noqa: BLE001 — spike: degrade to face-only
-        print(f"[spike] Gemini unavailable ({e}); running face-only")
+        _log(
+            f"[spike] Gemini unavailable ({e}); running face-only",
+            "_maybe_gemini_scenes",
+        )
         return []
 
 
-def _render_segment(src, out, seg, src_w, src_h):
+def _render_segment(src: str, out: str, seg: dict, src_w: int, src_h: int) -> None:
     """Render one segment with the unified canvas filter (re-encodes audio for sync)."""
     ss, dur = seg["start"], seg["end"] - seg["start"]
     kps = [(t - ss, x, y) for (t, x, y) in seg["crops"][0]["keypoints"]]
@@ -96,7 +97,24 @@ def _render_segment(src, out, seg, src_w, src_h):
     run_ffmpeg_with_filter(cmd, filt, filter_flag="-/filter_complex", label="spike-seg")
 
 
-def main():
+def _render_all_segments(
+    video: str, base: str, plan: list, w: int, h: int, has_audio: bool
+) -> None:
+    seg_paths: list[str] = []
+    try:
+        for i, s in enumerate(plan):
+            p = f"{base}.seg{i}.mp4"
+            _render_segment(video, p, s, w, h)
+            seg_paths.append(p)
+        v2 = f"{base}.v2.mp4"
+        _concat_chunks(seg_paths, v2, has_audio)
+        _log(f"[spike] wrote {v2}", "_render_all_segments")
+    finally:
+        for p in seg_paths:
+            _safe_unlink(p)
+
+
+def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("video", help="local landscape video file")
     ap.add_argument("--gcs-uri", default="", help="gs:// URI to enable Gemini labels")
@@ -107,50 +125,27 @@ def main():
     base = os.path.join(args.outdir, os.path.splitext(os.path.basename(args.video))[0])
     probe = ffprobe_video(args.video)
     w, h, dur = probe["width"], probe["height"], probe["duration"]
-    print(f"[spike] source {w}x{h} {dur:.1f}s")
+    has_audio = probe.get("has_audio", True)
+    _log(f"[spike] source {w}x{h} {dur:.1f}s", "main")
 
     cuts = detect_cuts(args.video)
-    print(f"[spike] {len(cuts)} cuts: {[round(c, 2) for c in cuts]}")
+    _log(f"[spike] {len(cuts)} cuts: {[round(c, 2) for c in cuts]}", "main")
 
     tracked = track_faces(scan_video_faces(args.video, sample_fps=0.5))
-    from _reframe_helpers import format_track_summary  # worker helper
+    from _reframe_helpers import format_track_summary
 
     track_summary = format_track_summary(tracked)
     scenes = _maybe_gemini_scenes(args.gcs_uri, args.content_type, track_summary)
-
     plan = reconcile(scenes, tracked, cuts, w, h, dur)
-    print("\n[spike] === DECISION LOG ===")
     for s in plan:
-        print(f"  [{s['start']:6.2f}-{s['end']:6.2f}] {s['reason']}")
-    print()
+        _log(f"  [{s['start']:6.2f}-{s['end']:6.2f}] {s['reason']}", "main")
 
-    # 1. diagnostic overlay (with chosen crop windows)
     diag = f"{base}.diag.mp4"
     render_diagnostic(
-        args.video,
-        diag,
-        tracked,
-        scenes,
-        w,
-        h,
-        segments=plan,
-        has_audio=probe.get("has_audio", True),
+        args.video, diag, tracked, scenes, w, h, segments=plan, has_audio=has_audio
     )
-    print(f"[spike] wrote {diag}")
-
-    # 2. actual adaptive-letterboxed render
-    seg_paths = []
-    try:
-        for i, s in enumerate(plan):
-            p = f"{base}.seg{i}.mp4"
-            _render_segment(args.video, p, s, w, h)
-            seg_paths.append(p)
-        v2 = f"{base}.v2.mp4"
-        _concat_chunks(seg_paths, v2, probe.get("has_audio", True))
-        print(f"[spike] wrote {v2}")
-    finally:
-        for p in seg_paths:
-            _safe_unlink(p)
+    _log(f"[spike] wrote {diag}", "main")
+    _render_all_segments(args.video, base, plan, w, h, has_audio)
 
 
 if __name__ == "__main__":

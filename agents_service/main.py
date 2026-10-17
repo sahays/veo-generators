@@ -6,10 +6,11 @@ Maintains strict runtime isolation and separation of duties:
   forwarding the caller's `X-Invite-Code` header.
 """
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 import logging
 import os
-from typing import List
+from typing import Any, List
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     yield
     await close_client()
 
@@ -61,7 +62,7 @@ async def _verify_invite_code(invite_code: str) -> None:
 
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict[str, str | int]:
     return {
         "status": "healthy",
         "service": "veo-generators-agents",
@@ -70,7 +71,7 @@ async def health_check():
 
 
 @app.post("/api/v1/chat")
-async def chat_endpoint(body: ChatRequest, request: Request):
+async def chat_endpoint(body: ChatRequest, request: Request) -> dict[str, Any]:
     invite_code = request.headers.get("X-Invite-Code", "")
     await _verify_invite_code(invite_code)
     try:
@@ -79,9 +80,19 @@ async def chat_endpoint(body: ChatRequest, request: Request):
             message=body.message,
             history=[(m.role, m.content) for m in body.history],
         )
-    except Exception:
-        logger.exception("Error in ADK multi-agent orchestrator")
+    except Exception as exc:
+        logger.exception(
+            "Error in ADK multi-agent orchestrator",
+            extra={
+                "who": "chat_endpoint",
+                "where": "agents_service.main",
+                "what": "run_agent_chat",
+                "why": str(exc),
+                "how": "POST /api/v1/chat",
+            },
+        )
         raise HTTPException(
             status_code=500,
             detail="An error occurred processing your request. Please try again.",
         )
+

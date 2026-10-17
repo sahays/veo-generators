@@ -41,6 +41,16 @@ def require_gate(repo: Repo, gate_id: GateId) -> Gate:
     return gate
 
 
+def _promote_g2_assets(repo: Repo) -> None:
+    """Promote all PROPOSED or DRAFT Appearances and Assets to APPROVED when G2 is approved."""
+    for app in repo.list_appearances(active_only=True):
+        if app.status in (Status.PROPOSED, Status.DRAFT):
+            repo.update_appearance_status(app.id, Status.APPROVED)
+    for asset in repo.list_assets():
+        if asset.status in (Status.PROPOSED, Status.DRAFT):
+            repo.update_asset(asset.id, status=Status.APPROVED)
+
+
 def approve_gate(
     repo: Repo,
     gate_id: GateId,
@@ -61,16 +71,8 @@ def approve_gate(
         decided_at=datetime.now(UTC),
     )
     saved = repo.set_gate(gate)
-
-    # When G2 is approved, automatically promote all PROPOSED Appearances and Assets to APPROVED
     if gate_id == "G2":
-        for app in repo.list_appearances(active_only=True):
-            if app.status == Status.PROPOSED or app.status == Status.DRAFT:
-                repo.update_appearance_status(app.id, Status.APPROVED)
-        for asset in repo.list_assets():
-            if asset.status == Status.PROPOSED or asset.status == Status.DRAFT:
-                repo.update_asset(asset.id, status=Status.APPROVED)
-
+        _promote_g2_assets(repo)
     append_audit(
         repo.store,
         Role.HUMAN,

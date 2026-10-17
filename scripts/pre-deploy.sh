@@ -117,4 +117,20 @@ else
     exit 1
 fi
 
+echo "   Running coding standards checker (No-Brute-Force, OWASP Top 10, File/Fn Size, Typing, Tier Isolation)..."
+if python3 scripts/check_coding_standards.py; then
+    echo "   ✅ Coding standards checker passed."
+else
+    echo "   ❌ Coding standards checker failed."
+    exit 1
+fi
+
+echo "   Refreshing codebase index (CODEBASE_INDEX.json & CODEBASE_INDEX.md)..."
+if python3 scripts/generate_codebase_index.py; then
+    echo "   ✅ Codebase index refreshed."
+else
+    echo "   ❌ Codebase index generation failed."
+    exit 1
+fi
+
 echo "✨ All pre-deployment checks passed!"

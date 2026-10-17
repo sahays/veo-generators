@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class _HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
+    def do_GET(self) -> None:
         if self.path in ("/health", "/"):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -23,13 +23,22 @@ class _HealthHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
-    def log_message(self, format, *args):
+    def log_message(self, format: str, *args: object) -> None:
         pass  # suppress noisy access logs
 
 
-def start_health_server():
+def start_health_server() -> None:
     port = int(os.environ.get("PORT", "8080"))
     server = HTTPServer(("0.0.0.0", port), _HealthHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    logger.info(f"Health-check server started on port {port}")
+    logger.info(
+        f"Health-check server started on port {port}",
+        extra={
+            "who": "health",
+            "where": "start_health_server",
+            "what": f"port={port}",
+            "why": "cloud_run_liveness",
+            "how": "HTTPServer_daemon_thread",
+        },
+    )

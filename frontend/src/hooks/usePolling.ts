@@ -1,5 +1,13 @@
 import { useState, useEffect } from 'react'
 
+function getRecordStatus(record: unknown): string | undefined {
+  if (record && typeof record === 'object' && 'status' in record) {
+    const val = (record as { status?: unknown }).status
+    return typeof val === 'string' ? val : undefined
+  }
+  return undefined
+}
+
 export function usePolling<T>(
   id: string | undefined,
   fetchFn: (id: string) => Promise<T>,
@@ -16,21 +24,23 @@ export function usePolling<T>(
     setLoading(true)
     fetchFn(id)
       .then(setRecord)
-      .catch((err) => setError(err.message))
+      .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false))
   }, [id])
 
+  const currentStatus = getRecordStatus(record)
+
   // Poll while status is active
   useEffect(() => {
-    if (!id || !record) return
-    const status = (record as any).status
-    if (!activeStatuses.includes(status)) return
+    if (!id || !record || !currentStatus) return
+    if (!activeStatuses.includes(currentStatus)) return
 
     const timer = setInterval(async () => {
       try {
         const updated = await fetchFn(id)
         setRecord(updated)
-        if (!activeStatuses.includes((updated as any).status)) {
+        const nextStatus = getRecordStatus(updated)
+        if (!nextStatus || !activeStatuses.includes(nextStatus)) {
           clearInterval(timer)
         }
       } catch {
@@ -39,7 +49,7 @@ export function usePolling<T>(
     }, interval)
 
     return () => clearInterval(timer)
-  }, [id, (record as any)?.status])
+  }, [id, currentStatus])
 
   return { record, loading, error }
 }

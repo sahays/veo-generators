@@ -1,6 +1,6 @@
 """Key Moments specialist (`key_moments_agent`) — analyzes videos to extract timestamped key moments."""
 
-from typing import Optional
+from typing import Any, Optional
 
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
@@ -24,7 +24,7 @@ _KEY_MOMENTS_ROLE = (
 
 
 def _make_key_moments_tools(invite_code: str) -> list:
-    async def list_recent_key_moments(limit: int = 5):
+    async def list_recent_key_moments(limit: int = 5) -> Any:
         """List the most recent key moments analysis jobs."""
         return await agent_tools.list_recent_key_moments(invite_code, limit)
 

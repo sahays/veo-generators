@@ -6,7 +6,7 @@ import {
   UNIFIED_STATUS_STYLES,
   formatElapsedDuration,
 } from '@/hooks/jobStatus'
-import { StatusBadge } from '@/components/shared/StatusBadge'
+import { StatusBadge } from '@/components/shared/media/StatusBadge'
 
 export const VideoSourceBadge = ({ source }: { source: 'production' | 'upload' }) => (
   <span
@@ -50,33 +50,17 @@ export const CardMetadataFooter = ({
   showArchive,
   onArchive,
 }: CardMetadataFooterProps) => {
-  const elapsed =
-    typeof createdAt === 'string'
-      ? formatElapsedDuration(createdAt, completedAt)
-      : null
+  const elapsed = typeof createdAt === 'string' ? formatElapsedDuration(createdAt, completedAt) : null
+  const durationLabel = durationSec ? `${Math.round(durationSec)}s` : elapsed
+  const costLabel = costUsd && costUsd > 0 ? `$${costUsd.toFixed(3)}` : null
 
   return (
     <div className="flex items-center justify-between text-[10px] text-muted-foreground">
       <div className="flex items-center gap-2 flex-wrap">
         {leftContent}
         {createdAt !== undefined && <span>{getTimeAgo(createdAt)}</span>}
-        {durationSec ? (
-          <>
-            <span className="text-muted-foreground/50">&middot;</span>
-            <span>{Math.round(durationSec)}s</span>
-          </>
-        ) : elapsed ? (
-          <>
-            <span className="text-muted-foreground/50">&middot;</span>
-            <span>{elapsed}</span>
-          </>
-        ) : null}
-        {costUsd && costUsd > 0 ? (
-          <>
-            <span className="text-muted-foreground/50">&middot;</span>
-            <span>${costUsd.toFixed(3)}</span>
-          </>
-        ) : null}
+        {durationLabel && <><span className="text-muted-foreground/50">&middot;</span><span>{durationLabel}</span></>}
+        {costLabel && <><span className="text-muted-foreground/50">&middot;</span><span>{costLabel}</span></>}
         {extraMeta}
       </div>
       {showArchive && onArchive && (
@@ -112,8 +96,7 @@ export interface RecordCardProps {
   className?: string
 }
 
-export const RecordCard = ({
-  onClick,
+const RecordCardBody = ({
   title,
   titleRight,
   description,
@@ -124,46 +107,47 @@ export const RecordCard = ({
   progressPct,
   activeStatuses,
   badges,
-  topMedia,
-  sideMedia,
   children,
   footerProps,
+}: Omit<RecordCardProps, 'onClick' | 'topMedia' | 'sideMedia' | 'className'>) => (
+  <>
+    {(status || badges || titleRight) && (
+      <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+        {status && statusIcon && (
+          <StatusBadge
+            status={status}
+            statusStyles={statusStyles}
+            statusLabels={statusLabels}
+            icon={statusIcon}
+            progress={progressPct}
+            activeStatuses={activeStatuses}
+          />
+        )}
+        {badges}
+        {titleRight && <div className="ml-auto">{titleRight}</div>}
+      </div>
+    )}
+    <h4 className="text-sm font-heading font-bold text-foreground group-hover:text-accent-dark transition-colors line-clamp-1 mb-1.5">
+      {title}
+    </h4>
+    {description && (
+      <p className="text-xs text-muted-foreground line-clamp-2 mb-3 leading-relaxed">
+        {description}
+      </p>
+    )}
+    {children}
+    <CardMetadataFooter {...footerProps} />
+  </>
+)
+
+export const RecordCard = ({
+  onClick,
+  topMedia,
+  sideMedia,
   className,
+  ...bodyProps
 }: RecordCardProps) => {
-  const content = (
-    <>
-      {(status || badges || titleRight) && (
-        <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-          {status && statusIcon && (
-            <StatusBadge
-              status={status}
-              statusStyles={statusStyles}
-              statusLabels={statusLabels}
-              icon={statusIcon}
-              progress={progressPct}
-              activeStatuses={activeStatuses}
-            />
-          )}
-          {badges}
-          {titleRight && <div className="ml-auto">{titleRight}</div>}
-        </div>
-      )}
-
-      <h4 className="text-sm font-heading font-bold text-foreground group-hover:text-accent-dark transition-colors line-clamp-1 mb-1.5">
-        {title}
-      </h4>
-
-      {description && (
-        <p className="text-xs text-muted-foreground line-clamp-2 mb-3 leading-relaxed">
-          {description}
-        </p>
-      )}
-
-      {children}
-
-      <CardMetadataFooter {...footerProps} />
-    </>
-  )
+  const content = <RecordCardBody {...bodyProps} />
 
   return (
     <Button

@@ -14,8 +14,8 @@ CAMERA: {{ shot.camera.shot_size }}, {{ shot.camera.angle }} angle, {{ shot.came
 {% endif %}ACTION:
 {% for b in shot.beats %}  ({{ "%.1f"|format(b.t_start_s) }}–{{ "%.1f"|format(b.t_end_s) }}s) {{ b.description }}
 {% endfor %}
-{% if dialogue %}DIALOGUE:
-{% for d in dialogue %}  {{ d.speaker_name }} ({{ d.delivery }}): "{{ d.text }}"
+{% if dialogue %}DIALOGUE: [Spoken language: {{ dialogue[0].language_label }}]
+{% for d in dialogue %}  {{ d.speaker_name }} ({{ d.delivery }}): "{{ d.text }}" [spoken in {{ d.language_label }}]
 {% endfor %}{% endif %}
-{% if music or shot.sfx %}AUDIO: {% if music %}{{ music.mood }} ({{ music.instrumentation }}, {{ music.tempo_bpm }}bpm). {% endif %}{% if shot.sfx %}SFX: {{ shot.sfx | join(", ") }}.{% endif %}
+{% if music or shot.sfx or dialogue %}AUDIO: {% if dialogue %}Spoken dialogue in {{ dialogue[0].language_label }}. {% endif %}{% if music %}{{ music.mood }} ({{ music.instrumentation }}, {{ music.tempo_bpm }}bpm). {% endif %}{% if shot.sfx %}SFX: {{ shot.sfx | join(", ") }}.{% endif %}
 {% endif %}AVOID: {{ style_guide.avoid | join(", ") }}.

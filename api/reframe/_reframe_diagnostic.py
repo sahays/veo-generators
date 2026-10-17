@@ -1,0 +1,363 @@
+"""Diagnostic-mode renderer for smart reframing.
+
+Draws what the detection models *see* — MediaPipe face-track boxes (red) and
+per-scene Gemini labels — onto the full, uncropped 16:9 frame, then letterboxes
+it into the selected output canvas (9:16 or 3:4) over a blurred background. A
+visualization/debug feature (per-job toggle), not part of the crop pipeline.
+
+Optionally overlays the chosen crop window per segment (green) when a reframe
+plan is supplied, so you can see exactly what the v2 pipeline would keep vs.
+discard.
+"""
+
+import bisect
+import logging
+import tempfile
+from typing import Any, List, Optional, Tuple
+
+import cv2
+
+from ffmpeg_runner import run_ffmpeg
+
+logger = logging.getLogger(__name__)
+
+# OpenCV uses BGR.
+_RED = (0, 0, 255)  # face boxes
+_ORANGE = (0, 140, 255)  # person (body) boxes
+_GREEN = (0, 255, 0)  # chosen crop window
+_WHITE = (255, 255, 255)
+_BLACK = (0, 0, 0)
+
+CANVAS_W, CANVAS_H = 1080, 1920
+
+
+# ---------------------------------------------------------------------------
+# Label + lookup helpers
+# ---------------------------------------------------------------------------
+
+
+def track_label_map(tracked_frames: List[dict]) -> dict:
+    """Map track_id → label (A, B, C…) ranked by visibility (most frames first).
+
+    Matches the labelling in workers/_reframe_helpers.format_track_summary so the
+    boxes drawn here line up with what Gemini is told.
+    """
+    counts: dict = {}
+    for frame in tracked_frames:
+        for t in frame.get("tracks", []):
+            counts[t["track_id"]] = counts.get(t["track_id"], 0) + 1
+    ranked = sorted(counts, key=lambda tid: -counts[tid])
+    return {
+        tid: (chr(ord("A") + i) if i < 26 else str(tid)) for i, tid in enumerate(ranked)
+    }
+
+
+def _nearest_tracks(tracked_frames: List[dict], times: List[float], t: float) -> list:
+    """Tracks from the most recent sampled frame at or before time t (held)."""
+    if not tracked_frames:
+        return []
+    i = bisect.bisect_right(times, t) - 1
+    i = max(0, min(i, len(tracked_frames) - 1))
+    return tracked_frames[i].get("tracks", [])
+
+
+def _scene_at(scenes: List[dict], starts: List[float], t: float) -> Optional[dict]:
+    if not scenes:
+        return None
+    i = bisect.bisect_right(starts, t) - 1
+    if i < 0:
+        return None
+    return scenes[i]
+
+
+def _interp_x(keypoints: List[Tuple[float, float, float]], t: float) -> float:
+    """Linear interpolation of the fractional x center at time t."""
+    if not keypoints:
+        return 0.5
+    if t <= keypoints[0][0]:
+        return keypoints[0][1]
+    if t >= keypoints[-1][0]:
+        return keypoints[-1][1]
+    times = [kp[0] for kp in keypoints]
+    i = min(bisect.bisect_right(times, t) - 1, len(keypoints) - 2)
+    t0, x0, _ = keypoints[i]
+    t1, x1, _ = keypoints[i + 1]
+    frac = (t - t0) / (t1 - t0) if t1 != t0 else 0.0
+    return x0 + (x1 - x0) * frac
+
+
+# ---------------------------------------------------------------------------
+# Drawing
+# ---------------------------------------------------------------------------
+
+
+def _ascii(text: str) -> str:
+    """OpenCV's Hershey font is ASCII-only — strip Unicode so captions/labels
+    (em-dashes, Gemini subject names, etc.) don't render as '???' in the video."""
+    return text.encode("ascii", "ignore").decode() if text else ""
+
+
+def _draw_box(
+    frame: Any,
+    x0: float,
+    y0: float,
+    x1: float,
+    y1: float,
+    color: Tuple[int, int, int],
+    thickness: int,
+    label: Optional[str] = None,
+    scale: float = 0.6,
+) -> None:
+    """Draw a rectangle with an optional label chip above its top-left corner."""
+    h, w = frame.shape[:2]
+    ix0, ix1 = max(0, min(w - 1, int(x0))), max(0, min(w - 1, int(x1)))
+    iy0, iy1 = max(0, min(h - 1, int(y0))), max(0, min(h - 1, int(y1)))
+    cv2.rectangle(frame, (ix0, iy0), (ix1, iy1), color, thickness)
+    if label:
+        label = _ascii(label)
+        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, scale, 1)
+        ly = max(th + 4, iy0)
+        cv2.rectangle(frame, (ix0, ly - th - 4), (ix0 + tw + 4, ly), color, -1)
+        cv2.putText(
+            frame,
+            label,
+            (ix0 + 2, ly - 3),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            scale,
+            _BLACK,
+            1,
+            cv2.LINE_AA,
+        )
+
+
+def _draw_caption(frame: Any, lines: List[str], scale: float) -> None:
+    """Draw stacked caption banners (scene label, then the decision trigger)."""
+    w = frame.shape[1]
+    (_tw, th), _ = cv2.getTextSize("Ag", cv2.FONT_HERSHEY_SIMPLEX, scale, 2)
+    row = th + 12
+    cv2.rectangle(frame, (0, 0), (w, row * len(lines) + 4), _BLACK, -1)
+    for i, text in enumerate(lines):
+        cv2.putText(
+            frame,
+            _ascii(text),
+            (10, row * i + th + 6),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            scale,
+            _WHITE,
+            2,
+            cv2.LINE_AA,
+        )
+
+
+def _draw_person_and_face_overlays(
+    frame: Any, t: float, ctx: dict, w: int, h: int, thick: int, scale: float
+) -> None:
+    if ctx["persons"]:
+        i = bisect.bisect_right(ctx["person_times"], t) - 1
+        if 0 <= i < len(ctx["persons"]):
+            for p in ctx["persons"][i].get("persons", []):
+                bw, bh = p.get("w", 0.0) * w, p.get("h", 0.0) * h
+                cx, cy = p["x"] * w, p["y"] * h
+                _draw_box(
+                    frame,
+                    cx - bw / 2,
+                    cy - bh / 2,
+                    cx + bw / 2,
+                    cy + bh / 2,
+                    _ORANGE,
+                    thick,
+                    f"Person {p.get('confidence', 0):.2f}",
+                    scale,
+                )
+
+    for tr in _nearest_tracks(ctx["tracked"], ctx["track_times"], t):
+        bw, bh = tr.get("w", 0.0) * w, tr.get("h", 0.0) * h
+        cx, cy = tr["x"] * w, tr["y"] * h
+        if bw <= 0 or bh <= 0:
+            bw = bh = 0.08 * w
+        label = ctx["labels"].get(tr["track_id"], str(tr["track_id"]))
+        cap = f"Track {label} {tr.get('confidence', 0):.2f}"
+        if tr.get("mouth") is not None:
+            cap += f" m{tr['mouth']:.2f}"
+        _draw_box(
+            frame,
+            cx - bw / 2,
+            cy - bh / 2,
+            cx + bw / 2,
+            cy + bh / 2,
+            _RED,
+            thick,
+            cap,
+            scale,
+        )
+
+
+def _annotate_frame(frame: Any, t: float, ctx: dict) -> None:
+    """Draw all overlays onto a single native-resolution BGR frame."""
+    h, w = frame.shape[:2]
+    thick = max(2, w // 500)
+    scale = max(0.5, w / 1600)
+    _draw_person_and_face_overlays(frame, t, ctx, w, h, thick, scale)
+
+    lines: List[str] = []
+    scene = _scene_at(ctx["scenes"], ctx["scene_starts"], t)
+    if scene:
+        parts = [scene.get("scene_type", "scene")]
+        if scene.get("active_subject"):
+            parts.append(f"focus: {scene['active_subject']}")
+        if scene.get("requires_full_width"):
+            parts.append("FULL-WIDTH")
+        lines.append("  |  ".join(parts))
+
+    seg = (
+        _scene_at(ctx["segments"], ctx["segment_starts"], t)
+        if ctx["segments"]
+        else None
+    )
+    if seg:
+        _draw_crop_window(frame, t, seg, ctx["src_h"])
+        trig = (seg.get("trace") or {}).get("trigger") or seg.get("reason")
+        if trig:
+            lines.append(trig)
+    if lines:
+        _draw_caption(frame, lines, scale)
+
+
+def _draw_crop_window(frame: Any, t: float, seg: dict, src_h: int) -> None:
+    h, w = frame.shape[:2]
+    crops = seg.get("crops") or [{}]
+    thick = max(2, w // 400)
+
+    # Split: two stacked panels — draw each subject's source slice (the renderer
+    # crops a panel-AR slice per track; here on the 9:16 diagnostic that's 9:8).
+    if seg.get("layout") == "split" and len(crops) == 2:
+        crop_w = min(int(src_h * CANVAS_W / (CANVAS_H // 2)), w)
+        for crop in crops:
+            x_frac = _interp_x(crop.get("keypoints", []), t)
+            left = max(0, min(w - crop_w, int(x_frac * w - crop_w / 2)))
+            cv2.rectangle(frame, (left, 0), (left + crop_w, h - 1), _GREEN, thick)
+        return
+
+    inner = seg.get("inner_ar")
+    if inner:
+        aw, ah = inner
+        crop_w = min(int(src_h * aw / ah), w)
+    else:  # full-width letterbox
+        crop_w = w
+    x_frac = _interp_x(crops[0].get("keypoints", []), t)
+    left = max(0, min(w - crop_w, int(x_frac * w - crop_w / 2)))
+    cv2.rectangle(frame, (left, 0), (left + crop_w, h - 1), _GREEN, thick)
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+
+def render_diagnostic(
+    src_path: str,
+    out_path: str,
+    tracked_frames: List[dict],
+    scenes: List[dict],
+    src_w: int,
+    src_h: int,
+    segments: Optional[List[dict]] = None,
+    has_audio: bool = True,
+    person_frames: Optional[List[dict]] = None,
+    out_w: int = CANVAS_W,
+    out_h: int = CANVAS_H,
+) -> str:
+    """Render an annotated letterboxed diagnostic video onto the output canvas.
+
+    Draws detector overlays on every native-resolution frame, then letterboxes
+    the result into `out_w`×`out_h` (default 9:16 1080×1920; pass 1080×1440 for
+    3:4) over a blurred background (audio copied from src).
+    """
+    cap = cv2.VideoCapture(src_path)
+    if not cap.isOpened():
+        raise RuntimeError(f"Diagnostic: cannot open {src_path}")
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    ctx = {
+        "tracked": tracked_frames,
+        "track_times": [f["time_sec"] for f in tracked_frames],
+        "labels": track_label_map(tracked_frames),
+        "scenes": scenes,
+        "scene_starts": [s.get("start_sec", 0.0) for s in scenes],
+        "segments": segments,
+        "segment_starts": [s["start"] for s in segments] if segments else [],
+        "persons": person_frames,
+        "person_times": [f["time_sec"] for f in person_frames] if person_frames else [],
+        "src_h": src_h,
+    }
+    annotated = tempfile.mkstemp(suffix="_annot.mp4")[1]
+    writer = cv2.VideoWriter(
+        annotated, cv2.VideoWriter_fourcc(*"mp4v"), fps, (src_w, src_h)
+    )
+    try:
+        idx = 0
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            _annotate_frame(frame, idx / fps, ctx)
+            writer.write(frame)
+            idx += 1
+        logger.info(
+            f"Diagnostic: annotated {idx} frames",
+            extra={
+                "who": "reframe_diagnostic",
+                "where": "render_diagnostic",
+                "what": f"{idx}_frames",
+                "why": "annotated",
+                "how": "opencv",
+            },
+        )
+    finally:
+        cap.release()
+        writer.release()
+
+    _letterbox_to_canvas(annotated, src_path, out_path, has_audio, out_w, out_h)
+    return out_path
+
+
+def _letterbox_to_canvas(
+    annotated: str,
+    src_path: str,
+    out_path: str,
+    has_audio: bool,
+    out_w: int = CANVAS_W,
+    out_h: int = CANVAS_H,
+) -> None:
+    """Scale the annotated 16:9 frame to fit the canvas width, center over blurred bg."""
+    filter_complex = (
+        f"[0:v]scale={out_w}:{out_h}:force_original_aspect_ratio=increase,"
+        f"crop={out_w}:{out_h},gblur=sigma=40[bg];"
+        f"[0:v]scale={out_w}:-2[fg];[bg][fg]overlay=0:(H-h)/2[v]"
+    )
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        annotated,
+        "-i",
+        src_path,
+        "-filter_complex",
+        filter_complex,
+        "-map",
+        "[v]",
+    ]
+    cmd += ["-map", "1:a?"] if has_audio else []
+    cmd += [
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-crf",
+        "20",
+        "-c:a",
+        "aac",
+        "-movflags",
+        "+faststart",
+        out_path,
+    ]
+    run_ffmpeg(cmd, timeout=1200, label="diagnostic-letterbox")

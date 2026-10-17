@@ -85,7 +85,7 @@ class FirestoreStore:
         self._db = client or firestore.Client(project=gcp_project, database=database)
         self._root = self._db.collection(collection_prefix).document(project_id)
 
-    def _col(self, collection: str):
+    def _col(self, collection: str) -> Any:
         return self._root.collection(collection)
 
     def get(self, collection: str, doc_id: str) -> dict[str, Any] | None:
@@ -98,6 +98,36 @@ class FirestoreStore:
 
     def delete(self, collection: str, doc_id: str) -> None:
         self._col(collection).document(doc_id).delete()
+
+    @staticmethod
+    def _filter_and_sort_rows(
+        rows: list[dict[str, Any]],
+        extra_filters: list[Filter],
+        order_by: str | None,
+        limit: int | None,
+    ) -> list[dict[str, Any]]:
+        for field, op, val in extra_filters:
+            if op == "==":
+                rows = [r for r in rows if r.get(field) == val]
+            elif op == "!=":
+                rows = [r for r in rows if r.get(field) != val]
+            elif op == "in":
+                rows = [r for r in rows if r.get(field) in val]
+            elif op == "<=":
+                rows = [
+                    r for r in rows if r.get(field) is not None and r.get(field) <= val
+                ]
+            elif op == ">=":
+                rows = [
+                    r for r in rows if r.get(field) is not None and r.get(field) >= val
+                ]
+        if order_by:
+            desc = order_by.startswith("-")
+            key_field = order_by[1:] if desc else order_by
+            rows.sort(
+                key=lambda r: (r.get(key_field) is None, r.get(key_field)), reverse=desc
+            )
+        return rows[:limit] if limit is not None else rows
 
     def query(
         self,
@@ -128,32 +158,7 @@ class FirestoreStore:
         f0_field, f0_op, f0_val = flt_list[0]
         q = q.where(filter=FieldFilter(f0_field, f0_op, f0_val))
         rows = [snap.to_dict() for snap in q.stream() if snap.exists]
-
-        for field, op, val in flt_list[1:]:
-            if op == "==":
-                rows = [r for r in rows if r.get(field) == val]
-            elif op == "!=":
-                rows = [r for r in rows if r.get(field) != val]
-            elif op == "in":
-                rows = [r for r in rows if r.get(field) in val]
-            elif op == "<=":
-                rows = [
-                    r for r in rows if r.get(field) is not None and r.get(field) <= val
-                ]
-            elif op == ">=":
-                rows = [
-                    r for r in rows if r.get(field) is not None and r.get(field) >= val
-                ]
-
-        if order_by:
-            desc = order_by.startswith("-")
-            key_field = order_by[1:] if desc else order_by
-            rows.sort(
-                key=lambda r: (r.get(key_field) is None, r.get(key_field)), reverse=desc
-            )
-        if limit is not None:
-            rows = rows[:limit]
-        return rows
+        return self._filter_and_sort_rows(rows, flt_list[1:], order_by, limit)
 
     @contextmanager
     def batch(self) -> Iterator[BatchWriter]:

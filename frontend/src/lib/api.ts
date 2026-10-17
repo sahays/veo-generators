@@ -1,21 +1,39 @@
-import { adapts } from './api/adapts'
-import { ai } from './api/ai'
-import { assets } from './api/assets'
-import { auth } from './api/auth'
-import { avatars } from './api/avatars'
-import { chat } from './api/chat'
-import { diagnostics } from './api/diagnostics'
-import { dubbing } from './api/dubbing'
-import { getInviteCode } from './api/_http'
-import { keyMoments } from './api/keyMoments'
-import { models } from './api/models'
-import { pricing } from './api/pricing'
-import { projects } from './api/projects'
-import { promo } from './api/promo'
-import { reframe } from './api/reframe'
-import { system } from './api/system'
-import { thumbnails } from './api/thumbnails'
-import { uploads } from './api/uploads'
+import { getInviteCode, type JsonValue } from './api/core/_http'
+import { auth } from './api/core/auth'
+import { diagnostics } from './api/core/diagnostics'
+import { models } from './api/core/models'
+import { pricing } from './api/core/pricing'
+import { system } from './api/core/system'
+import { adapts } from './api/endpoints/adapts'
+import { ai } from './api/endpoints/ai'
+import { assets, type UploadInitResp, type UploadResp } from './api/endpoints/assets'
+import { avatars } from './api/endpoints/avatars'
+import {
+  chat,
+  type SharedChatMessageItem,
+  type SharedChatRecord,
+} from './api/endpoints/chat'
+import {
+  dubbing,
+  type DubLanguage,
+  type DubLanguagesResponse,
+} from './api/endpoints/dubbing'
+import { keyMoments } from './api/endpoints/keyMoments'
+import { projects } from './api/endpoints/projects'
+import { promo } from './api/endpoints/promo'
+import { reframe } from './api/endpoints/reframe'
+import { thumbnails } from './api/endpoints/thumbnails'
+import { uploads } from './api/endpoints/uploads'
+
+export type {
+  DubLanguage,
+  DubLanguagesResponse,
+  JsonValue,
+  SharedChatMessageItem,
+  SharedChatRecord,
+  UploadInitResp,
+  UploadResp,
+}
 
 export interface Project {
   id: string
@@ -29,8 +47,8 @@ export interface Project {
   character_appearance?: string
   video_length: string
   status: 'draft' | 'generating' | 'completed' | 'failed'
-  media_files: any[]
-  storyboard_frames: any[]
+  media_files: JsonValue[]
+  storyboard_frames: JsonValue[]
   created_at: string
   updated_at: string
 }

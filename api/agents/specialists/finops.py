@@ -1,6 +1,6 @@
 """FinOps, Models & Asset Inventory specialist (`finops_agent`) — pricing, cost estimates, job usage breakdowns, AI models, and uploads."""
 
-from typing import Optional
+from typing import Any, Callable, Optional
 
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
@@ -39,16 +39,7 @@ _ESTIMATE_FIELDS = (
 )
 
 
-def make_finops_tools(invite_code: str) -> list:
-    async def get_pricing_rates():
-        """Return the current pricing catalog — per-token rates for Gemini text
-        and image models, per-second Veo rates, and per-minute flat services."""
-        return await agent_tools.get_pricing_rates(invite_code)
-
-    async def get_feature_services():
-        """Return the list of services each feature consumes with rates inlined."""
-        return await agent_tools.get_feature_services(invite_code)
-
+def _make_estimate_cost_tool(invite_code: str) -> Callable:
     async def estimate_cost(
         feature: str,
         scene_count: Optional[int] = None,
@@ -58,37 +49,49 @@ def make_finops_tools(invite_code: str) -> list:
         segment_count: Optional[int] = None,
         has_title_card: Optional[bool] = None,
         thumbnail_count: Optional[int] = None,
-    ):
+    ) -> Any:
         """Estimate the cost of a job BEFORE it runs."""
         locals_ = locals()
-        payload: dict = {"feature": feature}
-        for k in _ESTIMATE_FIELDS:
-            v = locals_[k]
-            if v is not None:
-                payload[k] = v
+        payload = {
+            "feature": feature,
+            **{k: locals_[k] for k in _ESTIMATE_FIELDS if locals_[k] is not None},
+        }
         return await agent_tools.estimate_cost(invite_code, payload)
 
-    async def get_job_cost(feature: str, record_id: str):
-        """Return the per-service cost breakdown for an existing job, plus
-        total and pricing confidence."""
+    return estimate_cost
+
+
+def make_finops_tools(invite_code: str) -> list:
+    async def get_pricing_rates() -> Any:
+        """Return the current pricing catalog."""
+        return await agent_tools.get_pricing_rates(invite_code)
+
+    async def get_feature_services() -> Any:
+        """Return the list of services each feature consumes with rates inlined."""
+        return await agent_tools.get_feature_services(invite_code)
+
+    async def get_job_cost(feature: str, record_id: str) -> Any:
+        """Return the per-service cost breakdown for an existing job."""
         return await agent_tools.get_job_cost(invite_code, feature, record_id)
 
-    async def list_recent_jobs(feature: str, limit: int = 5):
+    async def list_recent_jobs(feature: str, limit: int = 5) -> Any:
         """List the most recent records for any feature, sorted newest-first."""
         return await agent_tools.list_recent_jobs(invite_code, feature, limit)
 
-    async def list_registered_models():
+    async def list_registered_models() -> Any:
         """List active AI models (text, image, video) and their supported regions."""
         return await agent_tools.list_ai_models(invite_code)
 
-    async def list_uploaded_assets(file_type: Optional[str] = None, limit: int = 10):
+    async def list_uploaded_assets(
+        file_type: Optional[str] = None, limit: int = 10
+    ) -> Any:
         """List uploaded media files ('video' or 'image')."""
         return await agent_tools.list_uploads(invite_code, file_type, limit)
 
     return [
         get_pricing_rates,
         get_feature_services,
-        estimate_cost,
+        _make_estimate_cost_tool(invite_code),
         get_job_cost,
         list_recent_jobs,
         list_registered_models,
