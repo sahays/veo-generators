@@ -63,7 +63,9 @@ def _clip_text(text: str, limit: int | None) -> str:
 
 
 def _build_cast_ctx(
-    view: ShotView, truncate_descriptions: int | None
+    view: ShotView,
+    truncate_descriptions: int | None,
+    wardrobe_limit: int | None = None,
 ) -> list[dict[str, str | None]]:
     cast_ctx: list[dict[str, str | None]] = []
     for c in view.shot.cast:
@@ -75,16 +77,22 @@ def _build_cast_ctx(
         if holding_id:
             pent = view.prop_entities.get(holding_id)
             holding_name = pent.canonical_name if pent else holding_id
+        raw_wardrobe = (app.wardrobe if app else st.get("wearing")) or ""
         cast_ctx.append(
             {
                 "entity_id": c.entity_id,
                 "canonical_name": ent.canonical_name if ent else c.entity_id,
                 "position": c.position,
                 "framing": c.framing,
+                "role_tag": (
+                    "SPEAKING"
+                    if c.speaking
+                    else "SILENT LISTENER (mouth closed, listening attentively)"
+                ),
                 "visual_description": _clip_text(
                     app.visual_description if app else "", truncate_descriptions
                 ),
-                "wardrobe": app.wardrobe if app else st.get("wearing"),
+                "wardrobe": _clip_text(raw_wardrobe, wardrobe_limit) or None,
                 "holding": holding_name,
                 "injury": st.get("injury"),
             }
@@ -110,13 +118,20 @@ def _build_props_and_dialogue_ctx(
         }
         for pid in view.shot.prop_ids
     ]
+    pos_by_char = {c.entity_id: c.position for c in view.shot.cast}
+    n_dlgs = max(1, len(view.dialogue_lines))
+    step = round(view.shot.duration_s / n_dlgs, 1)
     dialogue_ctx: list[dict[str, str]] = []
-    for dl in view.dialogue_lines:
+    for idx, dl in enumerate(view.dialogue_lines):
         sp_ent = view.cast_entities.get(dl.speaker_id)
         raw_lang = (dl.language or "en").strip()
+        t0 = round(idx * step, 1)
+        t1 = round(view.shot.duration_s if idx == n_dlgs - 1 else (idx + 1) * step, 1)
         dialogue_ctx.append(
             {
                 "speaker_name": sp_ent.canonical_name if sp_ent else dl.speaker_id,
+                "speaker_pos": pos_by_char.get(dl.speaker_id, "center"),
+                "time_window": f"{t0:.1f}–{t1:.1f}s",
                 "delivery": dl.delivery,
                 "text": dl.text,
                 "language": raw_lang,
@@ -124,6 +139,32 @@ def _build_props_and_dialogue_ctx(
             }
         )
     return props_ctx, dialogue_ctx
+
+
+def _build_reference_map(view: ShotView, plan: RefPlan) -> list[str]:
+    """Build ordered labels mapping each reference image slot to its subject identity."""
+    entries: list[str] = []
+    slot = 1
+    if plan.first_frame is not None:
+        entries.append(f"Ref {slot}=Previous Shot Last Frame (continuity anchor)")
+        slot += 1
+    for asset in plan.selected_assets:
+        names: list[str] = []
+        for sid in asset.depicts_entity_ids:
+            if sid in view.cast_entities:
+                names.append(view.cast_entities[sid].canonical_name)
+            elif sid in view.prop_entities:
+                names.append(view.prop_entities[sid].canonical_name)
+            elif sid == view.location.id:
+                names.append(view.location.canonical_name)
+            else:
+                names.append(sid)
+        if asset.kind == "composite_sheet" and len(names) >= 2:
+            entries.append(f"Ref {slot}=Composite(LEFT: {names[0]}, RIGHT: {names[1]})")
+        else:
+            entries.append(f"Ref {slot}={', '.join(names) or asset.id}")
+        slot += 1
+    return entries
 
 
 def _resolve_focus_and_continuity(view: ShotView) -> tuple[str | None, str | None]:
@@ -149,16 +190,21 @@ def _render_template(
     template: jinja2.Template,
     view: ShotView,
     dropped_verbal: list[str],
+    reference_map: list[str],
     include_music: bool = True,
     truncate_descriptions: int | None = None,
+    setting_limit: int | None = None,
 ) -> str:
-    cast_ctx = _build_cast_ctx(view, truncate_descriptions)
-    props_ctx, dialogue_ctx = _build_props_and_dialogue_ctx(view, truncate_descriptions)
+    loc_limit = setting_limit if setting_limit is not None else truncate_descriptions
+    cast_ctx = _build_cast_ctx(
+        view, truncate_descriptions, wardrobe_limit=setting_limit
+    )
+    props_ctx, dialogue_ctx = _build_props_and_dialogue_ctx(view, loc_limit)
     focus_name, continuity_note = _resolve_focus_and_continuity(view)
     loc_app_copy = view.location_appearance.model_copy(
         update={
             "visual_description": _clip_text(
-                view.location_appearance.visual_description, truncate_descriptions
+                view.location_appearance.visual_description, loc_limit
             )
         }
     )
@@ -171,6 +217,7 @@ def _render_template(
         cast=cast_ctx,
         props=props_ctx,
         dropped_verbal=[_clip_text(d, truncate_descriptions) for d in dropped_verbal],
+        reference_map=reference_map,
         focus_name=focus_name,
         continuity_note=continuity_note,
         dialogue=dialogue_ctx,
@@ -180,18 +227,32 @@ def _render_template(
 
 
 def _render_within_budget(
-    template: jinja2.Template, view: ShotView, dropped_verbal: list[str], max_chars: int
+    template: jinja2.Template,
+    view: ShotView,
+    plan: RefPlan,
+    max_chars: int,
 ) -> str:
-    attempts: list[tuple[list[str], bool, int | None]] = [
-        (dropped_verbal, True, None),
-        (dropped_verbal, False, None),
-        ([], False, 120),
-        ([], False, 50),
+    ref_map = _build_reference_map(view, plan)
+    verbal = plan.dropped_to_verbal
+    attempts: list[tuple[list[str], list[str], bool, int | None, int | None]] = [
+        (verbal, ref_map, True, None, None),
+        (verbal, ref_map, False, None, 140),
+        (verbal, ref_map, False, 240, 90),
+        (verbal, [], False, 220, 60),
+        (verbal, [], False, 180, 35),
+        ([], [], False, 160, 30),
+        ([], [], False, 50, 25),
     ]
     prompt = ""
-    for verbal, inc_music, trunc in attempts:
+    for v_list, r_map, inc_music, trunc, set_lim in attempts:
         prompt = _render_template(
-            template, view, verbal, include_music=inc_music, truncate_descriptions=trunc
+            template,
+            view,
+            v_list,
+            r_map,
+            include_music=inc_music,
+            truncate_descriptions=trunc,
+            setting_limit=set_lim,
         )
         if len(prompt) <= max_chars:
             return prompt
@@ -236,9 +297,7 @@ def compile_shot(
         lstrip_blocks=True,
     )
     template = env.get_template(_TEMPLATE_PATH.name)
-    prompt = _render_within_budget(
-        template, view, plan.dropped_to_verbal, provider_caps.max_prompt_chars
-    )
+    prompt = _render_within_budget(template, view, plan, provider_caps.max_prompt_chars)
     negative_prompt = ", ".join(view.style_guide.avoid)
     seed = _derive_seed(project_id, view.shot.id, attempt=attempt)
     pkg_hash = _compute_package_hash(view, plan, prompt, negative_prompt, seed)

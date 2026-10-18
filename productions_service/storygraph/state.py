@@ -7,46 +7,42 @@ from .repo import Repo
 from .schema import Appearance, Role, StateFact, Status
 
 
-def _normalize_scene_shots(repo: Repo, sc_id: str, shot_base: int) -> None:
-    """Normalize story_order and trim excessive dialogue lines for shots in a scene."""
-    dlgs = {d.id: d for d in repo.list_dialogue(scene_id=sc_id)}
+def _normalize_scene_shots(
+    repo: Repo, sc_id: str, base_order: int, num_events: int
+) -> None:
+    """Align shot `story_order` with its corresponding scene event offset `[0, num_events - 1]`."""
+    max_offset = max(0, num_events - 1)
     for sh in repo.list_shots(scene_id=sc_id):
-        kept_dlgs: list[str] = []
-        words = 0
-        for did in sh.dialogue_ids:
-            w = len(dlgs[did].text.split()) if did in dlgs else 0
-            if kept_dlgs and words + w > 21:
-                break
-            kept_dlgs.append(did)
-            words += w
-        target_order = shot_base + max(0, sh.index_in_scene - 1)
-        if sh.story_order != target_order or kept_dlgs != sh.dialogue_ids:
-            repo.put_shot(
-                sh.model_copy(
-                    update={"story_order": target_order, "dialogue_ids": kept_dlgs}
-                )
-            )
+        offset = min(max(0, sh.index_in_scene - 1), max_offset)
+        target_order = base_order + offset
+        if sh.story_order != target_order:
+            repo.put_shot(sh.model_copy(update={"story_order": target_order}))
 
 
 def normalize_scene_timeline(repo: Repo) -> None:
-    """Normalize scene event and shot story_orders into [sc.index * 10, (sc.index + 1) * 10) bands when unspaced."""
+    """Normalize scene event and shot story_orders into [sc.index * 10, (sc.index + 1) * 10) bands."""
     scenes = repo.list_scenes()
-    if not scenes or not any(
+    if not scenes:
+        return
+    needs_event_norm = any(
         e.story_order < sc.index * 10
         for sc in scenes
         for e in repo.list_events(scene_id=sc.id)
-    ):
-        return
+    )
     for sc in scenes:
         base_order = sc.index * 10
         sc_events = repo.list_events(scene_id=sc.id)
-        for e_idx, ev in enumerate(sc_events):
-            if ev.story_order != base_order + e_idx:
-                repo.put_event(
-                    ev.model_copy(update={"story_order": base_order + e_idx})
-                )
-        shot_base = base_order + max(0, len(sc_events) - 1)
-        _normalize_scene_shots(repo, sc.id, shot_base)
+        if needs_event_norm:
+            for e_idx, ev in enumerate(sc_events):
+                if ev.story_order != base_order + e_idx:
+                    repo.put_event(
+                        ev.model_copy(update={"story_order": base_order + e_idx})
+                    )
+            _normalize_scene_shots(repo, sc.id, base_order, len(sc_events))
+        elif sc_events and all(
+            ev.story_order == base_order + idx for idx, ev in enumerate(sc_events)
+        ):
+            _normalize_scene_shots(repo, sc.id, base_order, len(sc_events))
 
 
 def rebuild_state_facts(repo: Repo) -> list[StateFact]:

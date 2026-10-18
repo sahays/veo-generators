@@ -14,12 +14,16 @@ from ...schema import (
     EntityType,
     Role,
 )
+from ...state import state_at
 from ...tools import write_tools as wt
 from ...tools.registry import ToolContext
 from ...tools.role_helpers import (
     DirectorSceneOutput,
     ShotDraft,
+    deduplicate_cast_positions,
+    expand_overbudget_shot_buckets,
     normalize_indian_epic_names,
+    partition_scene_dialogues,
 )
 from ...views import SceneView, scene_view
 from ..runner import RoleRunResult, run_role
@@ -171,23 +175,14 @@ def _build_director_fallback(
 
 def _select_shot_dialogues_and_duration(
     sh: ShotDraft,
-    idx: int,
-    dlg_ids: list[str],
+    shot_dlgs: list[str],
     dlg_by_id: dict[str, DialogueLine],
 ) -> tuple[list[str], float]:
-    """Select valid dialogue lines within word budget and compute shot duration."""
+    """Compute shot duration for the partitioned `shot_dlgs` without dropping lines."""
     dur = max(4.0, min(float(sh.duration_s or 5.0), 8.0))
-    raw_dlgs = [did for did in sh.dialogue_ids if did in dlg_by_id] or (
-        dlg_ids[:1] if idx == 1 and dlg_ids else []
+    total_words = sum(
+        len(dlg_by_id[did].text.split()) for did in shot_dlgs if did in dlg_by_id
     )
-    shot_dlgs: list[str] = []
-    total_words = 0
-    for did in raw_dlgs:
-        w = len(dlg_by_id[did].text.split())
-        if shot_dlgs and total_words + w > 21:
-            break
-        shot_dlgs.append(did)
-        total_words += w
     if total_words > 0:
         dur = max(dur, min(8.0, round((total_words / 2.5) + 0.5, 1)))
     return shot_dlgs, dur
@@ -199,10 +194,14 @@ def _resolve_shot_cast(
     valid_char_ids: set[str],
     shot_dlgs: list[str],
     dlg_by_id: dict[str, DialogueLine],
+    prev_positions: dict[str, str],
 ) -> dict[str, CastInShot]:
-    """Normalize shot cast and ensure dialogue speakers are marked `speaking=True`."""
+    """Normalize shot cast, strictly set `speaking` iff speaking in `shot_dlgs`, and deduplicate positions."""
+    speaker_ids = {dlg_by_id[did].speaker_id for did in shot_dlgs if did in dlg_by_id}
     cast_by_id = {
-        c.entity_id: c.model_copy(update={"appearance_id": ""})
+        c.entity_id: c.model_copy(
+            update={"appearance_id": "", "speaking": c.entity_id in speaker_ids}
+        )
         for c in sh.cast
         if c.entity_id in valid_char_ids
     }
@@ -211,19 +210,15 @@ def _resolve_shot_cast(
             entity_id=lead_id,
             position="center",
             framing="MCU",
-            speaking=bool(shot_dlgs),
+            speaking=lead_id in speaker_ids,
         )
     for did in shot_dlgs:
         sp_id = dlg_by_id[did].speaker_id
-        if sp_id in valid_char_ids:
-            cast_by_id[sp_id] = (
-                cast_by_id[sp_id].model_copy(update={"speaking": True})
-                if sp_id in cast_by_id
-                else CastInShot(
-                    entity_id=sp_id, position="center", framing="MCU", speaking=True
-                )
+        if sp_id in valid_char_ids and sp_id not in cast_by_id:
+            cast_by_id[sp_id] = CastInShot(
+                entity_id=sp_id, position="center", framing="MCU", speaking=True
             )
-    return cast_by_id
+    return deduplicate_cast_positions(cast_by_id, prev_positions)
 
 
 def _normalize_shot_beats(
@@ -278,14 +273,22 @@ def _persist_director_shot(
     valid_char_ids: set[str],
     valid_prop_ids: set[str],
     ev_ids: list[str],
-    dlg_ids: list[str],
+    shot_dlgs: list[str],
     dlg_by_id: dict[str, DialogueLine],
     base_order: int,
+    prev_positions: dict[str, str],
 ) -> None:
     """Validate and persist a single `ShotDraft` into the repository."""
-    shot_dlgs, dur = _select_shot_dialogues_and_duration(sh, idx, dlg_ids, dlg_by_id)
-    cast_by_id = _resolve_shot_cast(sh, lead_id, valid_char_ids, shot_dlgs, dlg_by_id)
+    shot_dlgs, dur = _select_shot_dialogues_and_duration(sh, shot_dlgs, dlg_by_id)
+    shot_order = base_order + min(idx - 1, max(0, len(sview.events) - 1))
+    cast_by_id = _resolve_shot_cast(
+        sh, lead_id, valid_char_ids, shot_dlgs, dlg_by_id, prev_positions
+    )
     clean_props = [pid for pid in sh.prop_ids if pid in valid_prop_ids]
+    for cid in cast_by_id:
+        held = state_at(ctx.repo, cid, shot_order).get("holding")
+        if held and held in valid_prop_ids and held not in clean_props:
+            clean_props.append(held)
     clean_beats = _normalize_shot_beats(
         sh, sview, dur, list(cast_by_id.keys()), valid_char_ids, clean_props
     )
@@ -294,7 +297,7 @@ def _persist_director_shot(
         shot_id=f"shot_{scene_id}_{idx:02d}",
         scene_id=scene_id,
         index_in_scene=idx,
-        story_order=base_order + (idx - 1),
+        story_order=shot_order,
         duration_s=dur,
         location_id=sview.scene.location_id,
         covers_event_ids=ev_ids,
@@ -332,7 +335,8 @@ def _build_director_prompt(
         "CRITICAL RULES:\n"
         "1. Make every ActionBeat description vividly depict the exact story action in this scene's events and screenplay.\n"
         "2. Only include a prop in `prop_ids` if physically used in that shot.\n"
-        "3. For crying/emotional moments, describe subtle glistening eye moisture — NEVER 'tearful starlight sparkles'.\n\n"
+        "3. Partition `dialogue_ids` across shots in chronological order (1 speaker per shot when possible) and preserve 180-degree screen positions (`left`/`center`/`right`).\n"
+        "4. For crying/emotional moments, describe subtle glistening eye moisture — NEVER 'tearful starlight sparkles'.\n\n"
         f"SCENE VIEW:\n{sview.model_dump_json()}"
     )
 
@@ -341,11 +345,11 @@ def _sync_scene_event_orders(
     ctx: ToolContext, sview: SceneView
 ) -> tuple[int, list[str]]:
     """Normalize `story_order` on `sview.events` and return `(base_order, ev_ids)`."""
+    base_order = sview.scene.index * 10
     for e_idx, ev in enumerate(sview.events):
-        target_order = sview.scene.index * 10 + e_idx
+        target_order = base_order + e_idx
         if ev.story_order != target_order:
             ctx.repo.put_event(ev.model_copy(update={"story_order": target_order}))
-    base_order = sview.scene.index * 10 + max(0, len(sview.events) - 1)
     return base_order, [e.id for e in sview.events]
 
 
@@ -383,7 +387,11 @@ def run_director_for_scene(
         fallback_builder=lambda: fb_dir,
     )
     valid_char_ids, valid_prop_ids = {c.id for c in chars}, {p.id for p in props}
-    for idx, sh in enumerate(res.output.shots or fb_dir.shots, start=1):
+    shots = list(res.output.shots or fb_dir.shots)
+    partitioned_dlgs = partition_scene_dialogues(shots, dlg_ids, dlg_by_id)
+    shot_pairs = expand_overbudget_shot_buckets(shots, partitioned_dlgs, dlg_by_id)
+    prev_positions: dict[str, str] = {}
+    for idx, (sh, sh_dlgs) in enumerate(shot_pairs, start=1):
         _persist_director_shot(
             ctx,
             scene_id,
@@ -394,8 +402,9 @@ def run_director_for_scene(
             valid_char_ids,
             valid_prop_ids,
             ev_ids,
-            dlg_ids,
+            sh_dlgs,
             dlg_by_id,
             base_order,
+            prev_positions,
         )
     return res

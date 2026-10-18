@@ -183,11 +183,28 @@ def _invoke_entity_designer(
     mock_llm: MockLLMClient | None,
 ) -> RoleRunResult:
     """Invoke the entity-type Designer role agent via `run_role`."""
+    peer_chars = [
+        c.canonical_name
+        for c in designer_ctx.repo.list_entities(entity_type=EntityType.CHARACTER)
+        if c.id != ent.id
+    ]
+    story_props = [
+        p.canonical_name
+        for p in designer_ctx.repo.list_entities(entity_type=EntityType.OBJECT)
+    ]
+    char_rules = (
+        f"\nCRITICAL CHARACTER RULES:\n"
+        f"1. Front-load unique skin tone, facial structure, build, and hair silhouette in the FIRST 100 characters of `visual_description`.\n"
+        f"2. Ensure unmistakable visual contrast against peer characters {peer_chars}.\n"
+        f"3. NEVER include held scene props ({story_props}, baskets, berries, vessels) in `default` `visual_description` or `wardrobe`; hands must be empty/neutral.\n"
+        if ent.entity_type == EntityType.CHARACTER
+        else ""
+    )
     prompt = (
         f"Story context:\n{story_context}\n\n"
         f"Design {ent.entity_type} '{ent.canonical_name}' (id='{ent.id}') for required state labels "
         f"{ed_view.required_state_labels}. Make the visual_description and wardrobe 100% faithful "
-        f"to this specific character/location/object in the story and the StyleGuide:\n"
+        f"to this specific character/location/object in the story and the StyleGuide.{char_rules}\n"
         f"{ed_view.model_dump_json()}"
     )
     return run_role(

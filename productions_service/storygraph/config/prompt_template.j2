@@ -1,7 +1,7 @@
 STYLE: {{ style_guide.visual_medium }}. Palette: {{ style_guide.palette | join(", ") }}. {{ style_guide.lens_language }}. {{ style_guide.lighting_rules }}.
 SETTING: {{ location.canonical_name }} — {{ location_appearance.visual_description }}. Time: {{ scene.time_of_day }}, weather: {{ scene.weather }}.
 {% for c in cast %}
-CHARACTER [{{ c.position }}, {{ c.framing }}]: {{ c.canonical_name }} — {{ c.visual_description }}{% if c.wardrobe %}, wearing {{ c.wardrobe }}{% endif %}{% if c.holding %}, holding {{ c.holding }}{% endif %}{% if c.injury %}, {{ c.injury }}{% endif %}.
+CHARACTER [{{ c.position }}, {{ c.framing }}, {{ c.role_tag }}]: {{ c.canonical_name }} — {{ c.visual_description }}{% if c.wardrobe %}, wearing {{ c.wardrobe }}{% endif %}{% if c.holding %}, holding {{ c.holding }}{% endif %}{% if c.injury %}, {{ c.injury }}{% endif %}.
 {% endfor %}
 {% for p in props %}
 PROP: {{ p.canonical_name }} — {{ p.visual_description }}.
@@ -9,13 +9,15 @@ PROP: {{ p.canonical_name }} — {{ p.visual_description }}.
 {% for d in dropped_verbal %}
 DETAIL: {{ d }}.
 {% endfor %}
-CAMERA: {{ shot.camera.shot_size }}, {{ shot.camera.angle }} angle, {{ shot.camera.movement }}, {{ shot.camera.lens_mm }}mm lens{% if focus_name %}, focus on {{ focus_name }}{% endif %}. Duration {{ shot.duration_s }}s.
+{% if reference_map %}REFERENCES: {{ reference_map | join("; ") }}.
+{% endif %}CAMERA: {{ shot.camera.shot_size }}, {{ shot.camera.angle }} angle, {{ shot.camera.movement }}, {{ shot.camera.lens_mm }}mm lens{% if focus_name %}, focus on {{ focus_name }}{% endif %}. Duration {{ shot.duration_s }}s.
 {% if continuity_note %}CONTINUITY: {{ continuity_note }}
 {% endif %}ACTION:
 {% for b in shot.beats %}  ({{ "%.1f"|format(b.t_start_s) }}–{{ "%.1f"|format(b.t_end_s) }}s) {{ b.description }}
 {% endfor %}
 {% if dialogue %}DIALOGUE: [Spoken language: {{ dialogue[0].language_label }}]
-{% for d in dialogue %}  {{ d.speaker_name }} ({{ d.delivery }}): "{{ d.text }}" [spoken in {{ d.language_label }}]
-{% endfor %}{% endif %}
+{% for d in dialogue %}  {{ d.speaker_name }} ({{ d.delivery }}): "{{ d.text }}" [on {{ d.speaker_pos }}, {{ d.time_window }}, spoken in {{ d.language_label }}]
+{% endfor %}  LIP-SYNC RULE: Only the named speaker at the specified position moves their lips; SILENT LISTENER characters keep mouths closed.
+{% endif %}
 {% if music or shot.sfx or dialogue %}AUDIO: {% if dialogue %}Spoken dialogue in {{ dialogue[0].language_label }}. {% endif %}{% if music %}{{ music.mood }} ({{ music.instrumentation }}, {{ music.tempo_bpm }}bpm). {% endif %}{% if shot.sfx %}SFX: {{ shot.sfx | join(", ") }}.{% endif %}
 {% endif %}AVOID: {{ style_guide.avoid | join(", ") }}.

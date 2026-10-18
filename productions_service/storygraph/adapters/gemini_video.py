@@ -98,12 +98,12 @@ def _build_omni_input_blocks(
     """Construct Gemini Omni text + reference image input blocks for `package`."""
     blocks: list[dict[str, Any]] = [{"type": "text", "text": clean_prompt}]
     image_uris: list[str] = []
+    ff_uri = package.first_frame_uri
+    if ff_uri and ff_uri.startswith("gs://"):
+        image_uris.append(ff_uri)
     for r_uri in package.reference_uris:
         if r_uri and r_uri.startswith("gs://") and r_uri not in image_uris:
             image_uris.append(r_uri)
-    ff_uri = package.first_frame_uri
-    if ff_uri and ff_uri.startswith("gs://") and ff_uri not in image_uris:
-        image_uris.append(ff_uri)
     for img_uri in image_uris[:max_refs]:
         blocks.append({"type": "image", "uri": img_uri, "mime_type": "image/png"})
     return blocks

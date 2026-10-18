@@ -90,7 +90,7 @@ def _build_asset_generation_prompt(
         else "Cinematic still frame."
     )
     hints = {
-        "character_sheet": "Character reference turnaround sheet, neutral studio rim-lit portrait + full-body standing pose",
+        "character_sheet": "Single full-body front-facing character reference portrait on neutral studio backdrop (ONE figure only, NO turnaround, NO multiple poses, NO split panels, empty hands)",
         "location_plate": "Establishing wide architectural/environmental plate, unoccupied set reference",
     }
     framing_hint = hints.get(

@@ -318,11 +318,17 @@ def _enrich_scene_event(
         return
     valid_cids = {c.id for c in all_chars}
     valid_oids = {o.id for o in all_objs}
+    all_sc_p = [p for e in sc_events for p in e.participants]
     for e_idx, ev in enumerate(sc_events):
+        ev_in = (
+            ev.model_copy(update={"participants": [*ev.participants, *all_sc_p]})
+            if e_idx == 0 and len(sc_events) > 1
+            else ev
+        )
         _enrich_single_event(
             ctx,
             sc,
-            ev,
+            ev_in,
             base_order + e_idx,
             all_chars,
             valid_cids,

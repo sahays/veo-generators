@@ -122,6 +122,15 @@ def _is_shot_already_valid(
     return evaluate_clip_qa(repo, cfg, vlm, shot, last_run).passed
 
 
+def _should_drop_last_frame(repo: Repo, shot_id: str) -> bool:
+    """Return True only when the latest failed run exhibited first-frame corruption or freeze."""
+    runs = repo.list_generation_runs(shot_id=shot_id)
+    if not runs or runs[-1].status != Status.FAILED or not runs[-1].qa_scores:
+        return False
+    flags = set(runs[-1].qa_scores.artifact_flags)
+    return bool({"frozen_frame", "corrupted_first_frame"} & flags)
+
+
 def render_single_shot_with_qa(
     repo: Repo,
     cfg: Config,
@@ -138,9 +147,7 @@ def render_single_shot_with_qa(
     start_attempt = len(existing_runs) + 1
     passed = False
     for offset in range(max_retries):
-        drop_lf = offset > 0 or bool(
-            existing_runs and existing_runs[-1].status == Status.FAILED
-        )
+        drop_lf = _should_drop_last_frame(repo, shot.id)
         if attempt_shot_render(
             repo,
             cfg,

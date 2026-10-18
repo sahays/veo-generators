@@ -9,6 +9,8 @@ COPY productions_service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY productions_service/storygraph ./storygraph
+COPY productions_service/routers ./routers
+COPY productions_service/services ./services
 COPY productions_service/main.py ./main.py
 
 ENV PORT=8080

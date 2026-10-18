@@ -91,10 +91,43 @@ def _load_clip_and_ref_images(
     return frames, ref_images
 
 
+_SEVERE_EXACT_FLAGS = {
+    "style_drift",
+    "anatomy_glitch",
+    "text_overlay",
+    "frozen_frame",
+    "extreme_blur",
+    "cast_dropout",
+    "hallucinated_character",
+    "character_inconsistency",
+    "skin_color_inconsistency",
+    "costume_inconsistency",
+    "spatial_axis_flip",
+    "character_overlap",
+}
+_SEVERE_FLAG_PREFIXES = (
+    "missing_character",
+    "duplicate_character",
+    "wrong_speaker",
+    "prop_mismatch",
+)
+
+
+def _extract_severe_flags(flags: list[str]) -> set[str]:
+    """Return all artifact flags that match exact severe flags or severe flag prefixes."""
+    return {
+        f
+        for f in flags
+        if f in _SEVERE_EXACT_FLAGS or f.startswith(_SEVERE_FLAG_PREFIXES)
+    }
+
+
 def _build_clip_qa_prompt(sview: ShotView, shot: Shot, attempt: int) -> str:
     """Build the Stage S9 VLM evaluation prompt for a rendered shot."""
+    pos_map = {c.entity_id: c.position for c in shot.cast}
     cast_desc = [
-        f"{ent.canonical_name}: {sview.cast_appearances[cid].visual_description} "
+        f"{ent.canonical_name} [position={pos_map.get(cid, 'center')}]: "
+        f"{sview.cast_appearances[cid].visual_description} "
         f"(wardrobe: {sview.cast_appearances[cid].wardrobe})"
         for cid, ent in sview.cast_entities.items()
         if cid in sview.cast_appearances
@@ -103,9 +136,11 @@ def _build_clip_qa_prompt(sview: ShotView, shot: Shot, attempt: int) -> str:
     return (
         f"Evaluate rendered clip for shot_id={shot.id} (attempt={attempt}).\n"
         f"StyleGuide: {sview.style_guide.visual_medium} (palette: {sview.style_guide.palette}).\n"
-        f"Expected Cast Appearances (judge ONLY against these S3 designs, NOT external assumptions): {cast_desc}.\n"
+        f"Expected Cast Appearances & Blocking (judge ONLY against these S3 designs, NOT external assumptions): {cast_desc}.\n"
         f"Expected location: {sview.location.canonical_name} ({sview.location_appearance.visual_description}).\n"
         f"Expected action beats: {beats_desc}.\n"
+        "Verify every expected cast member is visible (flag 'missing_character_<id>' if absent or 'duplicate_character_<id>' if cloned) "
+        "and their left/center/right order matches expected blocking (flag 'spatial_axis_flip' or 'character_overlap' if violated). "
         "Set dialogue_wer = 0.0 (static frames do not include audio). "
         "Account for shallow depth-of-field bokeh on MCU/CU shots and 3-frame static sampling. "
         "Return all similarity/match scores strictly in the [0.0, 1.0] range."
@@ -115,27 +150,15 @@ def _build_clip_qa_prompt(sview: ShotView, shot: Shot, attempt: int) -> str:
 def _normalize_qa_report(
     raw_report: QAReport, cfg: Config, is_mock: bool
 ) -> tuple[QAReport, set[str]]:
-    """Normalize raw VLM scores into `[0.0, 1.0]` and calibrate non-mock floor scores."""
+    """Normalize raw VLM scores into `[0.0, 1.0]` and identify severe artifact flags."""
+    _ = cfg
     w_score = _norm01(raw_report.wardrobe_match)
     s_score = _norm01(raw_report.setting_match)
     a_score = _norm01(raw_report.action_achieved)
     c_score = _norm01(raw_report.continuity_prev_shot)
     f_sims = {k: _norm01(val) for k, val in raw_report.face_similarity.items()}
     d_wer = _norm01(raw_report.dialogue_wer) if is_mock else 0.0
-
-    severe_flags = {"style_drift", "frozen_frame"} & set(raw_report.artifact_flags)
-    if (
-        not is_mock
-        and not severe_flags
-        and w_score >= 0.45
-        and s_score >= 0.40
-        and a_score >= 0.45
-    ):
-        w_score = max(w_score, cfg.qa.wardrobe_vlm_min)
-        s_score = max(s_score, cfg.qa.setting_vlm_min)
-        a_score = max(a_score, cfg.qa.action_vlm_min)
-        f_sims = {k: max(v, cfg.qa.face_cosine_min) for k, v in f_sims.items()}
-
+    severe_flags = _extract_severe_flags(raw_report.artifact_flags)
     normalized = raw_report.model_copy(
         update={
             "face_similarity": f_sims,
@@ -150,10 +173,18 @@ def _normalize_qa_report(
 
 
 def _collect_qa_failures(
-    report: QAReport, cfg: Config, is_mock: bool, severe_flags: set[str]
+    report: QAReport,
+    cfg: Config,
+    is_mock: bool,
+    severe_flags: set[str],
+    require_continuity: bool = False,
 ) -> list[str]:
-    """Check normalized `report` metrics against `cfg.qa` thresholds."""
+    """Check normalized `report` metrics against `cfg.qa` thresholds and severe artifact flags."""
     reasons = list(report.failure_reasons) if (is_mock or severe_flags) else []
+    for flag in sorted(severe_flags):
+        flag_msg = f"Severe artifact flag: {flag}"
+        if flag_msg not in reasons:
+            reasons.append(flag_msg)
     for char_id, sim in report.face_similarity.items():
         if sim < cfg.qa.face_cosine_min:
             reasons.append(
@@ -176,6 +207,10 @@ def _collect_qa_failures(
             report.dialogue_wer > cfg.qa.dialogue_wer_max,
             f"Dialogue WER ({report.dialogue_wer:.2f}) > {cfg.qa.dialogue_wer_max}",
         ),
+        (
+            require_continuity and report.continuity_prev_shot < 0.60,
+            f"Continuity with previous shot ({report.continuity_prev_shot:.2f}) < 0.60",
+        ),
     ]
     for failed, msg in checks:
         if failed:
@@ -184,9 +219,14 @@ def _collect_qa_failures(
 
 
 def _register_last_frame(
-    repo: Repo, cfg: Config, shot: Shot, run: GenerationRun, png_bytes: bytes
+    repo: Repo,
+    cfg: Config,
+    shot: Shot,
+    run: GenerationRun,
+    png_bytes: bytes,
+    passed: bool = True,
 ) -> str:
-    """Register the extracted last frame of `run` as an APPROVED `first_frame` Asset."""
+    """Register the extracted last frame of `run` as APPROVED only when QA passed."""
     pipeline_ctx = ToolContext(repo=repo, role=Role.PIPELINE, cfg=cfg)
     lf_dict = wt.register_asset(
         pipeline_ctx,
@@ -198,7 +238,7 @@ def _register_last_frame(
         generation_prompt=f"Extracted last frame of {shot.id} (run {run.id})",
         model="ffmpeg-frame-extractor",
         seed=run.seed,
-        status=Status.APPROVED,
+        status=Status.APPROVED if passed else Status.PROPOSED,
     )
     return str(lf_dict["id"])
 
@@ -214,15 +254,20 @@ def evaluate_clip_qa(
     critic_ctx = ToolContext(repo=repo, role=Role.CRITIC, cfg=cfg)
     sview = shot_view(repo, shot.id)
     frames, ref_images = _load_clip_and_ref_images(repo, run)
-    lf_id = _register_last_frame(repo, cfg, shot, run, frames[-1])
 
     prompt = _build_clip_qa_prompt(sview, shot, run.attempt)
     raw_report = vlm.review(images=ref_images, prompt=prompt, schema=QAReport)
     is_mock = vlm.__class__.__name__ == "MockVLMProvider"
     report, severe_flags = _normalize_qa_report(raw_report, cfg, is_mock)
-    failure_reasons = _collect_qa_failures(report, cfg, is_mock, severe_flags)
+    req_cont = bool(
+        shot.continue_from_last_frame and sview.prev_shot_last_frame is not None
+    )
+    failure_reasons = _collect_qa_failures(
+        report, cfg, is_mock, severe_flags, require_continuity=req_cont
+    )
 
     passed = len(failure_reasons) == 0 and (report.passed or not is_mock)
+    lf_id = _register_last_frame(repo, cfg, shot, run, frames[-1], passed=passed)
     suggested_fix = (
         "none"
         if passed

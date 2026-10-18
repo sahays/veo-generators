@@ -150,18 +150,42 @@ def _check_v8_v9_dialogue(
     repo: Repo, shot: Shot, cfg: Config, issues: list[ValidationIssue]
 ) -> None:
     total_words = 0
+    speakers: set[str] = set()
     for did in shot.dialogue_ids:
         dline = repo.get_dialogue(did)
         if dline:
             total_words += len(dline.text.split())
+            speakers.add(dline.speaker_id)
             if not any(c.entity_id == dline.speaker_id for c in shot.cast):
                 msg = f"DialogueLine '{dline.id}' speaker '{dline.speaker_id}' is not in shot '{shot.id}' cast"
                 issues.append(ValidationIssue("V9", "error", shot.id, msg))
+    for c in shot.cast:
+        if c.speaking and c.entity_id not in speakers:
+            msg = f"Cast '{c.entity_id}' has speaking=True in shot '{shot.id}' but no assigned DialogueLine"
+            issues.append(ValidationIssue("V9", "error", shot.id, msg))
     if shot.duration_s > 0:
         wps = total_words / shot.duration_s
         if wps > cfg.caps.max_words_per_sec:
             msg = f"Shot '{shot.id}' speech rate {wps:.2f} words/s exceeds cap {cfg.caps.max_words_per_sec}"
             issues.append(ValidationIssue("V8", "error", shot.id, msg))
+
+
+def _check_cast_position_collisions(shot: Shot, issues: list[ValidationIssue]) -> None:
+    seen_positions: dict[str, str] = {}
+    for c in shot.cast:
+        if c.framing == "background" or c.position not in ("left", "center", "right"):
+            continue
+        prev_char = seen_positions.get(c.position)
+        if prev_char and prev_char != c.entity_id:
+            msg = (
+                f"Foreground cast '{c.entity_id}' collides with '{prev_char}' at position "
+                f"'{c.position}' in shot '{shot.id}'"
+            )
+            issues.append(
+                ValidationIssue("cast_position_collision", "error", shot.id, msg)
+            )
+        else:
+            seen_positions[c.position] = c.entity_id
 
 
 def validate_shot(
@@ -176,6 +200,7 @@ def validate_shot(
     _check_v4_props(repo, shot, issues)
     _check_v6_v7_timing(shot, cfg, issues)
     _check_v8_v9_dialogue(repo, shot, cfg, issues)
+    _check_cast_position_collisions(shot, issues)
     if shot.continue_from_last_frame and (
         prev_shot is None or prev_shot.location_id != shot.location_id
     ):
