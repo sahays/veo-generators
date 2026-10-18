@@ -76,9 +76,9 @@ def check_python_no_brute_force(source: str, rel_path: str) -> list[CodingViolat
     results: list[CodingViolation] = []
     for node in ast.walk(tree):
         if isinstance(node, (ast.For, ast.While)):
-            for v in _find_index_calls_in_loop(node, rel_path) + _find_nested_list_membership(
+            for v in _find_index_calls_in_loop(
                 node, rel_path
-            ):
+            ) + _find_nested_list_membership(node, rel_path):
                 key = (v.location, v.message)
                 if key not in seen:
                     seen.add(key)

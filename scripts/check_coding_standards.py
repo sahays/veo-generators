@@ -122,7 +122,9 @@ def _file_key(location: str) -> str:
     return location.split(":", 1)[0]
 
 
-def _print_report(violations: list[CodingViolation], py_count: int, ts_count: int) -> None:
+def _print_report(
+    violations: list[CodingViolation], py_count: int, ts_count: int
+) -> None:
     """Print a structured breakdown of violations and failing files per rule."""
     by_rule_locs: dict[str, list[CodingViolation]] = defaultdict(list)
     by_rule_files: dict[str, set[str]] = defaultdict(set)

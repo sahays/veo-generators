@@ -74,6 +74,8 @@ export type SelectedInspectorItem =
       }
     }
 
+export type StudioLayoutOrientation = 'left-right' | 'top-bottom'
+
 export interface MacroStepCardDef {
   id: ActiveStepId
   stepNum: string
@@ -86,6 +88,9 @@ export interface MacroStepCardDef {
   metricPrimary: string
   metricSecondary: string
   summaryText: string
+  inputsSummary: string
+  kitchenSummary: string
+  outputsSummary: string
   [key: string]: unknown
 }
 
@@ -97,16 +102,16 @@ export const PIPELINE_SUB_STAGES: Array<{
   stepGroup: ActiveStepId
   gate?: 'G1' | 'G2' | 'G3'
 }> = [
-  { id: 'S1_EXTRACT', short: 'S1', label: 'World & Entities', role: 'STORY_ARCHITECT + SUPERVISOR', stepGroup: 's1_world', gate: 'G1' },
-  { id: 'S2_SCREENPLAY', short: 'S2', label: 'Scene Scripts', role: 'SCREENWRITER', stepGroup: 's2_scripts' },
-  { id: 'S3_DESIGN', short: 'S3', label: 'Reference Images', role: 'CHAR / LOC / OBJ DESIGNERS', stepGroup: 's3_images', gate: 'G2' },
-  { id: 'S4_SHOTS', short: 'S4', label: 'Shot Breakdown', role: 'DIRECTOR', stepGroup: 's4_s5_shots' },
-  { id: 'S5_MUSIC', short: 'S5', label: 'Music & SFX', role: 'MUSIC_DIRECTOR', stepGroup: 's4_s5_shots', gate: 'G3' },
-  { id: 'S6_VALIDATE', short: 'S6', label: 'Validator V1–V13', role: 'DETERMINISTIC', stepGroup: 's6_s7_compile' },
-  { id: 'S7_COMPILE', short: 'S7', label: 'Prompt Compiler', role: 'BUDGETER + JINJA2', stepGroup: 's6_s7_compile' },
-  { id: 'S8_RENDER', short: 'S8', label: 'Video Render', role: 'GEMINI OMNI / VEO', stepGroup: 's8_s10_videos' },
-  { id: 'S9_QA', short: 'S9', label: 'Clip VLM QA', role: 'CRITIC VLM', stepGroup: 's8_s10_videos' },
-  { id: 'S10_ASSEMBLE', short: 'S10', label: 'Final Cut', role: 'FFMPEG ASSEMBLER', stepGroup: 's8_s10_videos' },
+  { id: 'S1_EXTRACT', short: 'A1', label: 'Story Architect', role: 'STORY_ARCHITECT + SUPERVISOR', stepGroup: 's1_world', gate: 'G1' },
+  { id: 'S2_SCREENPLAY', short: 'A2', label: 'Screenplay Writer', role: 'ALGORITHMIC SCREENWRITER', stepGroup: 's2_scripts' },
+  { id: 'S3_DESIGN', short: 'A3', label: 'Design Studio', role: 'CHAR / LOC / OBJ DESIGNERS', stepGroup: 's3_images', gate: 'G2' },
+  { id: 'S4_SHOTS', short: 'A4', label: 'Film Director', role: 'DIRECTOR AGENT', stepGroup: 's4_s5_shots' },
+  { id: 'S5_MUSIC', short: 'A4b', label: 'Music & Foley Director', role: 'MUSIC + FOLEY + SFX', stepGroup: 's4_s5_shots', gate: 'G3' },
+  { id: 'S6_VALIDATE', short: 'A5', label: 'O(V+E) Graph Verifier', role: 'STAGE QA + V1–V13', stepGroup: 's6_s7_compile' },
+  { id: 'S7_COMPILE', short: 'A5b', label: 'Prompt Compiler', role: 'BUDGETER + JINJA2', stepGroup: 's6_s7_compile' },
+  { id: 'S8_RENDER', short: 'A6', label: 'Cinematographer (Veo)', role: 'GEMINI OMNI / VEO', stepGroup: 's8_s10_videos' },
+  { id: 'S9_QA', short: 'A6b', label: 'Clip VLM Critic', role: 'CRITIC VLM', stepGroup: 's8_s10_videos' },
+  { id: 'S10_ASSEMBLE', short: 'A6c', label: 'Master Editor', role: 'FFMPEG ASSEMBLER', stepGroup: 's8_s10_videos' },
 ]
 
 export function deriveStageAndGateMaps(
@@ -159,22 +164,67 @@ export function deriveEntityAndAssetMaps(storyGraph: StoryGraphData | undefined,
   }
 }
 
+function buildWorldToDesignCards(
+  storyGraph: StoryGraphData | undefined,
+  entityMaps: ReturnType<typeof deriveEntityAndAssetMaps>,
+): MacroStepCardDef[] {
+  const scenes = storyGraph?.scenes || [], events = storyGraph?.events || [], dialogueLines = storyGraph?.dialogue_lines || []
+  const totalInteractionSteps = scenes.reduce((acc, sc) => acc + (sc.interaction_steps?.length || 0), 0)
+  const { characters, locations, objects, appearances, approvedAppearancesCount, auxiliaryAssets } = entityMaps
+  return [
+    {
+      id: 's1_world', stepNum: 'AGENT 01', stages: ['S1_EXTRACT'], primaryStage: 'S1_EXTRACT', title: 'Story Architect & Supervisor', subtitle: 'WORLD BIBLE · ENTITIES · STYLE LOCK', icon: User, gate: 'G1',
+      metricPrimary: `${characters.length + locations.length + objects.length} Canonical Entities`, metricSecondary: `${characters.length} Chars · ${locations.length} Locs · ${objects.length} Props · ${events.length} Events`,
+      summaryText: storyGraph?.style_guide?.visual_medium || 'Extracts canonical characters, locations, props, and locks 9.1–9.3 consistency rules.', inputsSummary: 'Story Brief · Visual Style & Color Palette · Directorial Preset', kitchenSummary: `Entity Provenance Graph · ${events.length} Causal Events · S1 Stage QA Verification`, outputsSummary: `${characters.length} Characters, ${locations.length} Locations, ${objects.length} Props & StyleGuide`,
+    },
+    {
+      id: 's2_scripts', stepNum: 'AGENT 02', stages: ['S2_SCREENPLAY'], primaryStage: 'S2_SCREENPLAY', title: 'Screenplay Writer', subtitle: 'ALGORITHMIC 1-ACTION-AT-A-TIME SCRIPT', icon: FileText,
+      metricPrimary: `${scenes.length} Scenes · ${totalInteractionSteps || events.length} Steps`, metricSecondary: `${dialogueLines.length} Dialogue Lines · 1 Action/Step`,
+      summaryText: scenes[0]?.summary || 'Writes ordered, step-by-step character & environment interaction algorithms.', inputsSummary: 'Canonical Entities · Ordered StoryEvents · Auto-Bound Screenplay Style', kitchenSummary: `${totalInteractionSteps} Atomic InteractionSteps (Actor → Verb → Target → Env/Sound)`, outputsSummary: `${scenes.length} Structured Scenes & ${dialogueLines.length} Lip-Synced Dialogue Lines`,
+    },
+    {
+      id: 's3_images', stepNum: 'AGENT 03', stages: ['S3_DESIGN'], primaryStage: 'S3_DESIGN', title: 'Visual Design Studio', subtitle: '9.2 CHARACTER & 9.3 SCENE ANCHORS', icon: Sparkles, gate: 'G2',
+      metricPrimary: `${appearances.length} Reference Sheets`, metricSecondary: `${approvedAppearancesCount}/${appearances.length} Approved · ${auxiliaryAssets.length} Composites`,
+      summaryText: 'Generates character identity sheets, location plates, and hero props verified by VLM Critic.', inputsSummary: 'Entity Visual Attributes · StyleGuide Medium · Color Palette Swatches', kitchenSummary: `Multi-Angle Turnarounds · VLM Identity Checks · ${auxiliaryAssets.length} Composite Plates`, outputsSummary: `${approvedAppearancesCount} Approved Reference Anchors for Downstream Conditioning`,
+    },
+  ]
+}
+
+function buildDirectionToVideoCards(
+  storyGraph: StoryGraphData | undefined,
+  entityMaps: ReturnType<typeof deriveEntityAndAssetMaps>,
+  finalVideoUrl?: string,
+): MacroStepCardDef[] {
+  const shots = storyGraph?.shots || [], musicCues = storyGraph?.music_cues || [], validationIssues = storyGraph?.validation_issues || []
+  const auditLog = storyGraph?.audit_log || [], qaReports = storyGraph?.stage_qa_reports || []
+  const { activeGenerationRuns } = entityMaps
+  return [
+    {
+      id: 's4_s5_shots', stepNum: 'AGENT 04', stages: ['S4_SHOTS', 'S5_MUSIC'], primaryStage: 'S4_SHOTS', title: 'Film Director & Music Director', subtitle: 'CAMERA BLOCKING · FOLEY · AMBIENCE · SFX', icon: Film, gate: 'G3',
+      metricPrimary: `${shots.length} Directed Shots`, metricSecondary: `${musicCues.length} Cues · Foley, Wind & Action SFX`,
+      summaryText: 'Translates algorithmic steps into camera lenses, 9.1 motion vectors, footsteps, wind, and action SFX.', inputsSummary: 'Algorithmic InteractionSteps · Directorial Preset · Auto-Bound Soundscape', kitchenSummary: '180° Axis & Motion Vectors · Footsteps/Wind Foley · Action-Focus SFX', outputsSummary: `${shots.length} Camera-Blocked Shots & ${musicCues.length} Multi-Layer Audio Cues`,
+    },
+    {
+      id: 's6_s7_compile', stepNum: 'AGENT 05', stages: ['S6_VALIDATE', 'S7_COMPILE'], primaryStage: 'S7_COMPILE', title: 'Graph Verifier & Prompt Compiler', subtitle: 'O(V+E) QA CRITIC · V1–V13 · JINJA2', icon: ShieldCheck,
+      metricPrimary: validationIssues.length === 0 ? 'O(V+E) Graph Verified' : `${validationIssues.length} Graph Alerts`, metricSecondary: `${qaReports.length} Stage QA Reports · ${auditLog.length} Audits`,
+      summaryText: 'Runs single-pass O(V+E) graph verification, shift-left QA remediation, and deterministic Jinja2 compilation.', inputsSummary: 'Complete StoryGraph (Entities, Scenes, Appearances, Shots, Audio Cues)', kitchenSummary: 'O(V+E) Missing-Asset & 9.1–9.3 Consistency Sweep · Reference Image Budgeter', outputsSummary: 'Verified ShotPromptPackages with SHA-256 Hashes & Reference Assets',
+    },
+    {
+      id: 's8_s10_videos', stepNum: 'AGENT 06', stages: ['S8_RENDER', 'S9_QA', 'S10_ASSEMBLE'], primaryStage: 'S8_RENDER', title: 'Cinematographer & Master Editor', subtitle: 'VEO RENDER · CLIP VLM QA · FFMPEG CUT', icon: Play,
+      metricPrimary: `${activeGenerationRuns.length}/${shots.length} Video Clips`, metricSecondary: finalVideoUrl ? 'Master Final Cut Stitched' : 'Awaiting Final Cut Render',
+      summaryText: 'Renders reference-conditioned Veo clips, extracts continuity frames, scores VLM QA, and stitches the master cut.', inputsSummary: 'Compiled ShotPromptPackages · Reference Sheets · Continuity Start Frames', kitchenSummary: 'Extracted Last Frames · VLM Clip QA (Wardrobe/Setting/Action/WER) · FFmpeg Normalize', outputsSummary: finalVideoUrl ? 'Stitched Master MP4 + Verified Shot Clips' : `${activeGenerationRuns.length} Rendered Shot Clips`,
+    },
+  ]
+}
+
 function buildMacroStepCardList(
   storyGraph: StoryGraphData | undefined,
   entityMaps: ReturnType<typeof deriveEntityAndAssetMaps>,
   finalVideoUrl?: string,
 ): MacroStepCardDef[] {
-  const scenes = storyGraph?.scenes || [], shots = storyGraph?.shots || [], events = storyGraph?.events || []
-  const dialogueLines = storyGraph?.dialogue_lines || [], musicCues = storyGraph?.music_cues || []
-  const validationIssues = storyGraph?.validation_issues || [], auditLog = storyGraph?.audit_log || []
-  const { characters, locations, objects, appearances, approvedAppearancesCount, auxiliaryAssets, activeGenerationRuns } = entityMaps
   return [
-    { id: 's1_world', stepNum: 'STEP 01', stages: ['S1_EXTRACT'], primaryStage: 'S1_EXTRACT', title: 'World Bible & Entities', subtitle: 'STORY_ARCHITECT + SUPERVISOR', icon: User, gate: 'G1', metricPrimary: `${characters.length + locations.length + objects.length} Canonical Entities`, metricSecondary: `${characters.length} Chars · ${locations.length} Locs · ${objects.length} Props · ${events.length} Events`, summaryText: storyGraph?.style_guide?.visual_medium || 'Canonical characters, locations, hero objects, and state transitions.' },
-    { id: 's2_scripts', stepNum: 'STEP 02', stages: ['S2_SCREENPLAY'], primaryStage: 'S2_SCREENPLAY', title: 'Screenplay & Dialogue', subtitle: 'SCREENWRITER AGENT', icon: FileText, metricPrimary: `${scenes.length} Scenes · ${dialogueLines.length} Lines`, metricSecondary: 'Structured scene scripts & character dialogue', summaryText: scenes[0]?.summary || 'Scene-by-scene action summaries and lip-synced character dialogue.' },
-    { id: 's3_images', stepNum: 'STEP 03', stages: ['S3_DESIGN'], primaryStage: 'S3_DESIGN', title: 'Visual Reference Sheets', subtitle: 'CHAR / LOC / OBJ DESIGNERS', icon: Sparkles, gate: 'G2', metricPrimary: `${appearances.length} Reference Images`, metricSecondary: `${approvedAppearancesCount}/${appearances.length} Approved · ${auxiliaryAssets.length} Composites`, summaryText: 'Canonical character sheets, location plates, and hero props evaluated by CRITIC VLM.' },
-    { id: 's4_s5_shots', stepNum: 'STEP 04', stages: ['S4_SHOTS', 'S5_MUSIC'], primaryStage: 'S4_SHOTS', title: 'Shot Breakdown & Music', subtitle: 'DIRECTOR + MUSIC_DIRECTOR', icon: Film, gate: 'G3', metricPrimary: `${shots.length} Directed Shots`, metricSecondary: `${musicCues.length} Music Cues · Camera & Continuity Locks`, summaryText: 'Timed ActionBeats, lens & framing specs, start-frame continuity links, and audio cues.' },
-    { id: 's6_s7_compile', stepNum: 'STEP 05', stages: ['S6_VALIDATE', 'S7_COMPILE'], primaryStage: 'S7_COMPILE', title: 'Validator & Compiler', subtitle: 'VALIDATOR V1–V13 + JINJA2', icon: ShieldCheck, metricPrimary: validationIssues.length === 0 ? 'All V1–V13 Checks Passed' : `${validationIssues.length} Validation Alerts`, metricSecondary: `${auditLog.length} Graph Mutations Audited`, summaryText: 'Deterministic continuity invariants, reference image budgeting, and Jinja2 prompt compilation.' },
-    { id: 's8_s10_videos', stepNum: 'STEP 06', stages: ['S8_RENDER', 'S9_QA', 'S10_ASSEMBLE'], primaryStage: 'S8_RENDER', title: 'Video Clips & Final Cut', subtitle: 'GEMINI OMNI / VEO + FFMPEG', icon: Play, metricPrimary: `${activeGenerationRuns.length}/${shots.length} Video Clips`, metricSecondary: finalVideoUrl ? 'Master Final Cut Stitched' : 'Awaiting Final Cut Render', summaryText: 'Reference-conditioned video clips, start/end continuity frames, VLM QA, and stitched master cut.' },
+    ...buildWorldToDesignCards(storyGraph, entityMaps),
+    ...buildDirectionToVideoCards(storyGraph, entityMaps, finalVideoUrl),
   ]
 }
 

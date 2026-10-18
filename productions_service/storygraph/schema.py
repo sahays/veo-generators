@@ -44,6 +44,7 @@ class Status(StrEnum):
     DRAFT = "draft"
     PROPOSED = "proposed"
     APPROVED = "approved"
+    NEEDS_REVISION = "needs_revision"
     SUPERSEDED = "superseded"
     FAILED = "failed"
     RENDERED = "rendered"
@@ -86,7 +87,13 @@ class Entity(NodeBase):
 class StateEffect(BaseModel):
     entity_id: str
     attribute: Literal[
-        "location", "holding", "wearing", "injury", "mood", "alive_present"
+        "location",
+        "sub_location",
+        "holding",
+        "wearing",
+        "injury",
+        "mood",
+        "alive_present",
     ]
     new_value: str | None  # None = cleared
 
@@ -157,6 +164,34 @@ class Asset(NodeBase):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+class InteractionStep(BaseModel):
+    """Atomic 1-action-at-a-time algorithmic screenplay step."""
+
+    step_index: int
+    actor_id: str
+    interaction_type: Literal["character", "prop", "environment"] = "environment"
+    target_id: str | None = None
+    target_kind: Literal["character", "prop", "environment"] = "environment"
+    verb: str = "acts"
+    action_verb: str = "acts"
+    action: str = ""
+    description: str = ""
+    detail: str = ""
+    spatial_note: str = "center frame"
+    emotional_beat: str = "focused"
+    environment_reaction: str = ""
+    sound_trigger: str = ""
+    duration_hint_s: float = 2.0
+
+    def model_post_init(self, __context: Any) -> None:
+        if self.action and not self.description:
+            object.__setattr__(self, "description", self.action)
+        elif self.description and not self.action:
+            object.__setattr__(self, "action", self.description)
+        if self.interaction_type != "environment" and self.target_kind == "environment":
+            object.__setattr__(self, "target_kind", self.interaction_type)
+
+
 class StyleGuide(NodeBase):
     node_type: Literal["StyleGuide"] = "StyleGuide"
     visual_medium: str
@@ -166,6 +201,11 @@ class StyleGuide(NodeBase):
     aspect_ratio: Literal["16:9", "9:16", "2.39:1"] = "16:9"
     fps: int = 24
     avoid: list[str] = Field(default_factory=list)
+    visual_style_preset: str = "pixar_3d"
+    color_palette_preset: str = "warm_golden_amber"
+    director_style_preset: str = "wonder_spectacle"
+    screenplay_style_preset: str = "algorithmic_wonder"
+    music_style_preset: str = "symphonic_leitmotif"
 
 
 class Scene(NodeBase):
@@ -179,6 +219,7 @@ class Scene(NodeBase):
     shot_ids: list[str] = Field(default_factory=list)
     summary: str = ""
     mood: str = ""
+    interaction_steps: list[InteractionStep] = Field(default_factory=list)
 
 
 class DialogueLine(NodeBase):
@@ -200,6 +241,7 @@ class MusicCue(NodeBase):
     instrumentation: str
     tempo_bpm: int
     motif_tags: list[str] = Field(default_factory=list)
+    environmental_bed: str = ""
     audio_asset_id: str | None = None
 
 
@@ -255,6 +297,11 @@ class Shot(NodeBase):
     dialogue_ids: list[str] = Field(default_factory=list)
     music_cue_id: str | None = None
     sfx: list[str] = Field(default_factory=list)
+    foley_sfx: list[str] = Field(default_factory=list)
+    environmental_sfx: list[str] = Field(default_factory=list)
+    action_focus_sfx: list[str] = Field(default_factory=list)
+    entry_motion_vector: str = "stationary"
+    exit_motion_vector: str = "stationary"
     continue_from_last_frame: bool = False
     ref_ids: list[str] = Field(default_factory=list)  # denormalized appearance IDs
     stale: bool = False
@@ -345,17 +392,45 @@ class AuditEntry(NodeBase):
     summary: str = ""
 
 
+class StageQaIssue(BaseModel):
+    code: str
+    severity: Literal["error", "warn"] = "error"
+    node_id: str = "graph"
+    dimension: str = "general"
+    message: str
+    remediation: str = ""
+
+
+class StageQaReport(NodeBase):
+    node_type: Literal["StageQaReport"] = "StageQaReport"
+    stage: str
+    agent_role: str = "critic"
+    target_role: str = ""
+    attempt: int = 1
+    iteration: int = 1
+    passed: bool = True
+    score: float = 1.0
+    issues: list[StageQaIssue] = Field(default_factory=list)
+    remediation_applied: list[str] = Field(default_factory=list)
+    summary: str = ""
+
+
 class ProjectMeta(BaseModel):
     """Top-level project metadata stored at projects/{project_id}."""
 
     id: str
     name: str
     type: Literal["movie", "advertizement", "social"] = "movie"
-    base_concept: str
+    base_concept: str = ""
     story_text: str = ""
     video_length: str = "16"
     orientation: Literal["16:9", "9:16"] = "16:9"
     language: str = "en-IN"
+    visual_style_preset: str = "pixar_3d"
+    color_palette_preset: str = "warm_golden_amber"
+    director_style_preset: str = "wonder_spectacle"
+    screenplay_style_preset: str = "algorithmic_wonder"
+    music_style_preset: str = "symphonic_leitmotif"
     auto_approve_gates: bool = False
     status: str = "draft"
     current_stage: str = "S0_INGEST"
@@ -384,4 +459,5 @@ ALL_NODE_TYPES: dict[str, type[NodeBase]] = {
     "Gate": Gate,
     "StageRun": StageRun,
     "AuditEntry": AuditEntry,
+    "StageQaReport": StageQaReport,
 }

@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from ...schema import ActionBeat, CameraSpec, CastInShot, EntityType, StateEffect
+from ...schema import (
+    ActionBeat,
+    CameraSpec,
+    CastInShot,
+    EntityType,
+    InteractionStep,
+    StateEffect,
+)
 
 LANGUAGE_PROMPT_NAMES: dict[str, str] = {
     "hi": "Hindi (Devanagari script, e.g. 'सीता, इस रेखा को पार मत करना।')",
@@ -105,6 +112,7 @@ class DialogueLineDraft(BaseModel):
 class ScreenwriterOutput(BaseModel):
     summary: str
     mood: str
+    interaction_steps: list[InteractionStep] = Field(default_factory=list)
     dialogue_lines: list[DialogueLineDraft] = Field(default_factory=list)
 
 
@@ -120,6 +128,8 @@ class ShotDraft(BaseModel):
     camera: CameraSpec = Field(default_factory=CameraSpec)
     beats: list[ActionBeat] = Field(default_factory=list)
     dialogue_ids: list[str] = Field(default_factory=list)
+    entry_motion_vector: str = "stationary"
+    exit_motion_vector: str = "stationary"
     continue_from_last_frame: bool = False
 
 
@@ -134,12 +144,16 @@ class MusicCueDraft(BaseModel):
     instrumentation: str
     tempo_bpm: int = 92
     motif_tags: list[str] = Field(default_factory=list)
+    environmental_bed: str = ""
 
 
 class ShotAudioDraft(BaseModel):
     shot_id: str
     music_cue_id: str | None = None
     sfx: list[str] = Field(default_factory=list)
+    foley_sfx: list[str] = Field(default_factory=list)
+    environmental_sfx: list[str] = Field(default_factory=list)
+    action_focus_sfx: list[str] = Field(default_factory=list)
 
 
 class MusicDirectorOutput(BaseModel):

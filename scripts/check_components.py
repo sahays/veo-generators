@@ -35,7 +35,9 @@ _RAW_INPUT_TAG_RE: re.Pattern[str] = re.compile(
 _INPUT_TYPE_RE: re.Pattern[str] = re.compile(
     r"\btype\s*=\s*(?:['\"]([^'\"]+)['\"]|\{\s*['\"]([^'\"]+)['\"]\s*\})"
 )
-_STEEL_CLASS_RE: re.Pattern[str] = re.compile(r"\b(?:from|via|to|bg|text|border)-steel-\d+\b")
+_STEEL_CLASS_RE: re.Pattern[str] = re.compile(
+    r"\b(?:from|via|to|bg|text|border)-steel-\d+\b"
+)
 _FLAT_ACCENT_BUTTON_RE: re.Pattern[str] = re.compile(
     r"\bbg-accent\b[^\n\"'`]*\btext-(?:white|accent-foreground|slate-900)\b"
     r"|\btext-(?:white|accent-foreground|slate-900)\b[^\n\"'`]*\bbg-accent\b"
@@ -82,7 +84,9 @@ def _check_raw_fetch_calls() -> list[ComponentViolation]:
         for match in _RAW_FETCH_RE.finditer(clean):
             lineno = clean[: match.start()].count("\n") + 1
             msg = "Browser fetch() used outside lib/api/serverAction.ts; use api.* / serverApiRequest for server-to-server calls."
-            violations.append(ComponentViolation(f"{rel_repo}:{lineno}", "raw-fetch", msg))
+            violations.append(
+                ComponentViolation(f"{rel_repo}:{lineno}", "raw-fetch", msg)
+            )
     return violations
 
 
@@ -97,16 +101,22 @@ def _check_tsx_controls(clean: str, rel_repo: str) -> list[ComponentViolation]:
 
     for match in _RAW_INPUT_TAG_RE.finditer(clean):
         type_match = _INPUT_TYPE_RE.search(match.group("attrs"))
-        input_type = (type_match.group(1) or type_match.group(2)) if type_match else "text"
+        input_type = (
+            (type_match.group(1) or type_match.group(2)) if type_match else "text"
+        )
         if input_type not in ALLOWED_RAW_INPUT_TYPES:
             lineno = clean[: match.start()].count("\n") + 1
             msg = f"Raw '<input type=\"{input_type}\">' used outside components/ui/; use <Input> instead."
-            violations.append(ComponentViolation(f"{rel_repo}:{lineno}", "raw-input", msg))
+            violations.append(
+                ComponentViolation(f"{rel_repo}:{lineno}", "raw-input", msg)
+            )
 
     for match in _FLAT_ACCENT_BUTTON_RE.finditer(clean):
         lineno = clean[: match.start()].count("\n") + 1
         msg = f"Flat '{match.group(0)}' used outside components/ui/; use <Button variant=\"primary\"> or 'btn-primary' gradient."
-        violations.append(ComponentViolation(f"{rel_repo}:{lineno}", "flat-accent-override", msg))
+        violations.append(
+            ComponentViolation(f"{rel_repo}:{lineno}", "flat-accent-override", msg)
+        )
     return violations
 
 

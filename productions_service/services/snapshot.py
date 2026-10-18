@@ -201,6 +201,7 @@ def _build_story_graph_payload(
         "generation_runs": runs_out,
         "gates": [g.model_dump(mode="json") for g in repo.list_gates()],
         "stage_runs": [sr.model_dump(mode="json") for sr in stage_runs],
+        "stage_qa_reports": repo.store.query("stage_qa_reports"),
         "validation_issues": [i.to_dict() for i in validate_all(repo, cfg)],
         "change_requests": [
             cr.model_dump(mode="json")
@@ -230,6 +231,11 @@ def _build_project_envelope(
         "video_length": meta.video_length,
         "orientation": meta.orientation,
         "language": meta.language,
+        "visual_style_preset": meta.visual_style_preset,
+        "color_palette_preset": meta.color_palette_preset,
+        "director_style_preset": meta.director_style_preset,
+        "screenplay_style_preset": meta.screenplay_style_preset,
+        "music_style_preset": meta.music_style_preset,
         "auto_approve_gates": meta.auto_approve_gates,
         "status": meta.status,
         "current_stage": meta.current_stage,

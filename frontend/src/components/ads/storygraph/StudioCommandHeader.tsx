@@ -134,6 +134,10 @@ export const GateControlBar = ({
   </div>
 )
 
+import { useState } from 'react'
+import { CANONICAL_PRODUCTION_DEFINITIONS } from '@/types/project'
+import type { StudioLayoutOrientation } from './storyGraphStudioTypes'
+
 export const MacroStepCardItem = ({
   card, isSelected, allDone, anyFailed, gateObj, onSelect,
 }: {
@@ -143,7 +147,7 @@ export const MacroStepCardItem = ({
   <div
     onClick={onSelect}
     className={cn(
-      'cursor-pointer rounded-2xl border p-5 transition-all flex flex-col justify-between gap-4 relative group min-w-0',
+      'cursor-pointer rounded-2xl border p-4 transition-all flex flex-col justify-between gap-3 relative group min-w-0',
       anyFailed
         ? 'bg-red-500/15 border-red-500/60 hover:border-red-400'
         : isSelected
@@ -153,12 +157,12 @@ export const MacroStepCardItem = ({
             : 'bg-card/50 border-border/70 hover:border-accent/50',
     )}
   >
-    <div className="space-y-3 min-w-0">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3 min-w-0 flex-1">
+    <div className="space-y-2.5 min-w-0">
+      <div className="flex items-start justify-between gap-2.5">
+        <div className="flex items-start gap-2.5 min-w-0 flex-1">
           <div
             className={cn(
-              'w-9 h-9 rounded-xl flex items-center justify-center border shrink-0 mt-0.5',
+              'w-8 h-8 rounded-xl flex items-center justify-center border shrink-0 mt-0.5',
               anyFailed
                 ? 'bg-red-500/20 border-red-500/40 text-red-300'
                 : isSelected
@@ -168,33 +172,51 @@ export const MacroStepCardItem = ({
                     : 'bg-muted border-border text-muted-foreground',
             )}
           >
-            <card.icon size={17} />
+            <card.icon size={16} />
           </div>
-          <div className="min-w-0 flex-1 space-y-1">
+          <div className="min-w-0 flex-1 space-y-0.5">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-muted-foreground">{card.stepNum}</span>
-              <span className="text-[11px] font-mono text-accent-dark font-bold break-words">({card.stages.join(' · ')})</span>
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-accent-dark">
+                {card.stepNum}
+              </span>
+              <span className="text-[10px] font-mono text-muted-foreground">
+                {card.subtitle}
+              </span>
             </div>
-            <h4 className="text-base font-heading font-bold text-foreground leading-snug break-words">{card.title}</h4>
+            <h4 className="text-sm font-heading font-bold text-foreground leading-snug break-words">
+              {card.title}
+            </h4>
           </div>
         </div>
         {anyFailed ? (
-          <AlertTriangle size={17} className="text-red-400 shrink-0 mt-1" />
+          <AlertTriangle size={16} className="text-red-400 shrink-0 mt-1" />
         ) : allDone ? (
-          <CheckCircle2 size={17} className="text-emerald-400 shrink-0 mt-1" />
+          <CheckCircle2 size={16} className="text-emerald-400 shrink-0 mt-1" />
         ) : (
-          <Clock size={16} className="text-muted-foreground shrink-0 mt-1" />
+          <Clock size={15} className="text-muted-foreground shrink-0 mt-1" />
         )}
       </div>
-      <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">{card.summaryText}</p>
+
+      <div className="space-y-1 text-[10px] font-mono bg-muted/35 p-2 rounded-lg border border-border/50">
+        <div className="truncate text-muted-foreground">
+          <strong className="text-foreground uppercase">In:</strong> {card.inputsSummary}
+        </div>
+        <div className="truncate text-muted-foreground">
+          <strong className="text-accent-dark uppercase">Kitchen:</strong> {card.kitchenSummary}
+        </div>
+        <div className="truncate text-muted-foreground">
+          <strong className="text-emerald-500 uppercase">Out:</strong> {card.outputsSummary}
+        </div>
+      </div>
     </div>
-    <div className="pt-3.5 border-t border-border/50 space-y-2">
-      <div className="flex flex-col items-start gap-1.5">
-        <span className="text-xs font-mono font-bold text-foreground">{card.metricPrimary}</span>
+
+    <div className="pt-2.5 border-t border-border/50 flex flex-wrap items-center justify-between gap-2">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[11px] font-mono font-bold text-foreground">{card.metricPrimary}</span>
         {card.gate && (
           <span
             className={cn(
-              'px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase',
+              'px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase',
               gateObj?.decision === 'approved'
                 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                 : gateObj?.decision === 'rejected'
@@ -202,88 +224,109 @@ export const MacroStepCardItem = ({
                   : 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
             )}
           >
-            Gate {card.gate}: {gateObj?.decision || 'pending'}
+            {card.gate}: {gateObj?.decision || 'pending'}
           </span>
         )}
       </div>
-      <div className="flex items-center justify-between gap-2 text-[11px] font-mono text-muted-foreground">
-        <span className="break-words">{card.metricSecondary}</span>
-        <ChevronRight size={14} className={cn('shrink-0 transition-transform', isSelected ? 'translate-x-0.5 text-accent-dark' : 'group-hover:translate-x-0.5')} />
-      </div>
+      <ChevronRight size={14} className={cn('shrink-0 transition-transform', isSelected ? 'translate-x-0.5 text-accent-dark' : 'group-hover:translate-x-0.5')} />
     </div>
   </div>
 )
 
 export const StudioCommandHeader = ({
   completedStages, pendingGate, show3DGraph, onToggle3DGraph, expandAllSteps, onToggleExpandAll,
+  layoutOrientation, onToggleLayoutOrientation,
   canWrite, isRunningPipeline, busyAction, onRunForward, macroStepCards, activeStep,
   latestStageRunByStage, gatesById, onSelectCard,
 }: {
   completedStages: Set<string>; pendingGate: string | null; show3DGraph: boolean; onToggle3DGraph: () => void
-  expandAllSteps: boolean; onToggleExpandAll: () => void; canWrite: boolean; isRunningPipeline: boolean
+  expandAllSteps: boolean; onToggleExpandAll: () => void
+  layoutOrientation: StudioLayoutOrientation; onToggleLayoutOrientation: () => void
+  canWrite: boolean; isRunningPipeline: boolean
   busyAction: string | null; onRunForward: (autoApprove: boolean) => void; macroStepCards: MacroStepCardDef[]
   activeStep: ActiveStepId; latestStageRunByStage: Record<string, StoryGraphStageRun>
   gatesById: Record<string, StoryGraphGate>; onSelectCard: (card: MacroStepCardDef) => void
-}) => (
-  <div className="glass rounded-2xl p-6 md:p-7 border border-border/80 space-y-6">
-    <div className="flex flex-wrap items-center justify-between gap-4">
-      <div className="flex flex-wrap items-center gap-3.5">
-        <div className="w-10 h-10 rounded-xl bg-accent/15 border border-accent/30 flex items-center justify-center text-accent-dark shrink-0">
-          <GitBranch size={19} />
-        </div>
-        <div>
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h3 className="text-sm font-heading font-bold uppercase tracking-wider text-foreground">
-              Story-to-Video Pipeline Stages
-            </h3>
-            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[11px] font-mono font-bold">
-              {completedStages.size - (completedStages.has('S0_INGEST') ? 1 : 0)}/10 Stages Complete
-            </span>
-            {pendingGate && (
-              <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[11px] font-mono font-bold">
-                Awaiting Gate {pendingGate} Approval
-              </span>
-            )}
+}) => {
+  const [showDefinitions, setShowDefinitions] = useState(false)
+  return (
+    <div className="glass rounded-2xl p-5 md:p-6 border border-border/80 space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-accent/15 border border-accent/30 flex items-center justify-center text-accent-dark shrink-0">
+            <GitBranch size={19} />
           </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Select any pipeline step card below to inspect its intermediate outputs, or click an artifact to view deep telemetry in the right inspector pane.
-          </p>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-heading font-bold uppercase tracking-wider text-foreground">
+                Agent-First Production Studio
+              </h3>
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[11px] font-mono font-bold">
+                {completedStages.size - (completedStages.has('S0_INGEST') ? 1 : 0)}/10 Agent Stages Complete
+              </span>
+              {pendingGate && (
+                <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[11px] font-mono font-bold">
+                  Awaiting Gate {pendingGate} Approval
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Select any AI Crew Agent card below to inspect its Inputs, Kitchen (intermediate artifacts & $O(V+E)$ QA), and Outputs.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="xs" variant="outline" onClick={() => setShowDefinitions((v) => !v)}>
+            {showDefinitions ? 'Hide 9.1–9.3 Rules' : '9.1–9.3 Consistency Rules'}
+          </Button>
+          <Button size="xs" variant="outline" icon={Layers} onClick={onToggleLayoutOrientation}>
+            {layoutOrientation === 'left-right' ? 'Layout: Left / Right' : 'Layout: Top / Bottom'}
+          </Button>
+          <Button size="xs" variant={show3DGraph ? 'secondary' : 'outline'} icon={Orbit} onClick={onToggle3DGraph}>
+            {show3DGraph ? 'Hide 3D Graph' : '3D Knowledge Graph'}
+          </Button>
+          <Button size="xs" variant={expandAllSteps ? 'secondary' : 'outline'} onClick={onToggleExpandAll}>
+            {expandAllSteps ? 'Focused Agent View' : 'Show All Agents'}
+          </Button>
+          {canWrite && (
+            <>
+              <Button size="xs" variant="outline" icon={isRunningPipeline ? Loader2 : Play} onClick={() => onRunForward(false)} disabled={isRunningPipeline || !!busyAction}>
+                {isRunningPipeline ? 'Running...' : 'Step Mode (Next Gate)'}
+              </Button>
+              <Button size="xs" variant="primary" icon={isRunningPipeline ? Loader2 : Sparkles} onClick={() => onRunForward(true)} disabled={isRunningPipeline || !!busyAction}>
+                {isRunningPipeline ? 'Auto-Running...' : 'Auto Mode (All Agents & Final Cut)'}
+              </Button>
+            </>
+          )}
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-2.5">
-        <Button size="xs" variant={show3DGraph ? 'secondary' : 'outline'} icon={Orbit} onClick={onToggle3DGraph}>
-          {show3DGraph ? 'Hide 3D Constellation' : '3D StoryGraph View'}
-        </Button>
-        <Button size="xs" variant={expandAllSteps ? 'secondary' : 'outline'} icon={Layers} onClick={onToggleExpandAll}>
-          {expandAllSteps ? 'Focused Step Mode' : 'Expand All Stages'}
-        </Button>
-        {canWrite && (
-          <>
-            <Button size="xs" variant="outline" icon={isRunningPipeline ? Loader2 : Play} onClick={() => onRunForward(false)} disabled={isRunningPipeline || !!busyAction}>
-              {isRunningPipeline ? 'Running Step...' : 'Step Mode (Next Gate)'}
-            </Button>
-            <Button size="xs" variant="primary" icon={isRunningPipeline ? Loader2 : Sparkles} onClick={() => onRunForward(true)} disabled={isRunningPipeline || !!busyAction}>
-              {isRunningPipeline ? 'Auto-Running Pipeline...' : 'Auto Mode (Auto-Approve All & Final Cut)'}
-            </Button>
-          </>
-        )}
+
+      {showDefinitions && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3.5 rounded-xl bg-muted/40 border border-border/60">
+          {CANONICAL_PRODUCTION_DEFINITIONS.map((def) => (
+            <div key={def.id} className="space-y-1">
+              <p className="text-xs font-bold text-accent-dark font-mono">{def.title}</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">{def.summary}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {macroStepCards.map((card) => (
+          <MacroStepCardItem
+            key={card.id}
+            card={card}
+            isSelected={!expandAllSteps && activeStep === card.id}
+            allDone={card.stages.every((st) => completedStages.has(st))}
+            anyFailed={card.stages.some((st) => latestStageRunByStage[st]?.status === 'failed' || !!latestStageRunByStage[st]?.error)}
+            gateObj={card.gate ? gatesById[card.gate] : null}
+            onSelect={() => onSelectCard(card)}
+          />
+        ))}
       </div>
     </div>
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-      {macroStepCards.map((card) => (
-        <MacroStepCardItem
-          key={card.id}
-          card={card}
-          isSelected={!expandAllSteps && activeStep === card.id}
-          allDone={card.stages.every((st) => completedStages.has(st))}
-          anyFailed={card.stages.some((st) => latestStageRunByStage[st]?.status === 'failed' || !!latestStageRunByStage[st]?.error)}
-          gateObj={card.gate ? gatesById[card.gate] : null}
-          onSelect={() => onSelectCard(card)}
-        />
-      ))}
-    </div>
-  </div>
-)
+  )
+}
 
 export const MasterCutQuickBanner = ({
   finalVideoUrl,

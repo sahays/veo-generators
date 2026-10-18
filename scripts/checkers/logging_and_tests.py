@@ -38,7 +38,9 @@ def _has_semantic_context(call: ast.Call) -> bool:
     if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
         return len(call.args) >= 3 and "=" in first_arg.value
     if isinstance(first_arg, ast.JoinedStr):
-        formatted_count = sum(1 for v in first_arg.values if isinstance(v, ast.FormattedValue))
+        formatted_count = sum(
+            1 for v in first_arg.values if isinstance(v, ast.FormattedValue)
+        )
         has_kv = any(
             isinstance(v, ast.Constant) and isinstance(v.value, str) and "=" in v.value
             for v in first_arg.values
@@ -123,24 +125,31 @@ def _is_trivial_assert(test_expr: ast.expr) -> bool:
     if isinstance(test_expr, ast.Compare) and len(test_expr.ops) == 1:
         op = test_expr.ops[0]
         right = test_expr.comparators[0]
-        if isinstance(op, ast.IsNot) and isinstance(right, ast.Constant) and right.value is None:
+        if (
+            isinstance(op, ast.IsNot)
+            and isinstance(right, ast.Constant)
+            and right.value is None
+        ):
             return True
     return False
 
 
-def _has_meaningful_verification(fn_node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[bool, bool]:
+def _has_meaningful_verification(
+    fn_node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> tuple[bool, bool]:
     """Return `(has_any_check, has_non_trivial_check)` for a test function AST node."""
     assert_nodes = [n for n in ast.walk(fn_node) if isinstance(n, ast.Assert)]
     has_helper_check = False
     for node in ast.walk(fn_node):
         if isinstance(node, ast.Attribute) and (
-            node.attr == "raises"
-            or node.attr.startswith("assert")
+            node.attr == "raises" or node.attr.startswith("assert")
         ):
             has_helper_check = True
             break
     has_any = bool(assert_nodes) or has_helper_check
-    has_strong = has_helper_check or any(not _is_trivial_assert(a.test) for a in assert_nodes)
+    has_strong = has_helper_check or any(
+        not _is_trivial_assert(a.test) for a in assert_nodes
+    )
     return has_any, has_strong
 
 
@@ -154,7 +163,9 @@ def check_python_no_vanity_tests(source: str, rel_path: str) -> list[CodingViola
         return []
     violations: list[CodingViolation] = []
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):
+        if isinstance(
+            node, (ast.FunctionDef, ast.AsyncFunctionDef)
+        ) and node.name.startswith("test_"):
             has_any, has_strong = _has_meaningful_verification(node)
             if not has_any:
                 violations.append(

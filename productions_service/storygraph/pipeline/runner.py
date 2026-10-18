@@ -28,6 +28,7 @@ from ..agents.roles import (
     run_script_supervisor,
     run_story_architect,
 )
+from ..agents.stage_qa import run_stage_qa_and_remediate
 from ..assemble import assemble
 from ..compile import Package
 from ..config import Config
@@ -263,6 +264,7 @@ class Pipeline:
             sa_ctx, story_text, aspect_ratio=aspect_ratio, mock_llm=self.mock_llm
         )
         r2 = run_script_supervisor(ss_ctx, story_text, mock_llm=self.mock_llm)
+        run_stage_qa_and_remediate(self.repo, self.cfg, str(st))
         ensure_gate(self.repo, "G1", str(Stage.S1_EXTRACT))
         if auto_approve:
             approve_gate(self.repo, "G1", reviewer="auto_approve")
@@ -290,6 +292,7 @@ class Pipeline:
                 res = f.result()
                 tin += res.tokens_in
                 tout += res.tokens_out
+        run_stage_qa_and_remediate(self.repo, self.cfg, str(st))
         return self._record_stage(
             st, ihash, tokens_in=tin, tokens_out=tout, cost_usd=0.01
         )
@@ -306,6 +309,7 @@ class Pipeline:
             mock_llm=self.mock_llm,
             force_regenerate=force,
         )
+        run_stage_qa_and_remediate(self.repo, self.cfg, str(st))
         ensure_gate(self.repo, "G2", str(Stage.S3_DESIGN))
         if auto_approve:
             approve_gate(self.repo, "G2", reviewer="auto_approve")
@@ -328,6 +332,7 @@ class Pipeline:
                 tin += res.tokens_in
                 tout += res.tokens_out
         rebuild_state_facts(self.repo)
+        run_stage_qa_and_remediate(self.repo, self.cfg, str(st))
         return self._record_stage(
             st, ihash, tokens_in=tin, tokens_out=tout, cost_usd=0.02
         )
@@ -336,6 +341,7 @@ class Pipeline:
         require_gate(self.repo, "G2")
         md_ctx = ToolContext(repo=self.repo, role=Role.MUSIC_DIRECTOR, cfg=self.cfg)
         res = run_music_director(md_ctx, mock_llm=self.mock_llm)
+        run_stage_qa_and_remediate(self.repo, self.cfg, str(st))
         ensure_gate(self.repo, "G3", str(Stage.S5_MUSIC))
         if auto_approve:
             approve_gate(self.repo, "G3", reviewer="auto_approve")
@@ -346,6 +352,7 @@ class Pipeline:
     def _execute_production_stage(self, st: Stage, ihash: str) -> StageRun:
         require_gate(self.repo, "G3")
         if st == Stage.S6_VALIDATE:
+            run_stage_qa_and_remediate(self.repo, self.cfg, str(Stage.S4_SHOTS))
             rebuild_state_facts(self.repo)
             errors = [
                 i for i in validate_all(self.repo, self.cfg) if i.severity == "error"

@@ -185,7 +185,9 @@ def check_py_clones_and_limits(
             fn_stmts = _count_ast_stmts(node.body)
             if fn_stmts > 30:
                 msg = f"Function '{node.name}' in {rel}:{node.lineno} has {fn_stmts} statements (max 30 per GEMINI.md)"
-                violations.append(Violation("function-too-large", f"{rel}:{node.lineno}", msg))
+                violations.append(
+                    Violation("function-too-large", f"{rel}:{node.lineno}", msg)
+                )
 
         digest = _hash_py_function(node)
         if digest is None:
@@ -278,7 +280,9 @@ def check_ts_clones(
                     f"Component/Function '{fn_name}' in {rel_repo}:{lineno} "
                     f"is a structural AST duplicate of '{prev_fn}' in {prev_file}:{prev_line}"
                 )
-                violations.append(Violation("duplicate-code", f"{rel_repo}:{lineno}", msg))
+                violations.append(
+                    Violation("duplicate-code", f"{rel_repo}:{lineno}", msg)
+                )
         else:
             seen_ts_blocks[digest] = (rel_repo, fn_name, lineno)
     return violations

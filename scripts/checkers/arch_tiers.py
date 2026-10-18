@@ -190,9 +190,13 @@ def analyze_python_ast() -> list[Violation]:
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=rel)
         except SyntaxError as exc:
-            violations.append(Violation("syntax-error", f"{rel}:{exc.lineno}", str(exc)))
+            violations.append(
+                Violation("syntax-error", f"{rel}:{exc.lineno}", str(exc))
+            )
             continue
-        violations.extend(_check_backend_file_imports(tree, rel, classify_backend_module(rel)))
+        violations.extend(
+            _check_backend_file_imports(tree, rel, classify_backend_module(rel))
+        )
         if not rel.startswith(("api/tests/", "productions_service/tests/")):
             violations.extend(check_py_clones_and_limits(tree, rel, seen_hashes))
     return violations
@@ -200,8 +204,16 @@ def analyze_python_ast() -> list[Violation]:
 
 _FE_FIXED_TIERS: tuple[tuple[tuple[str, ...], tuple[str, ...], int], ...] = (
     (("types/",), ("lib/utils.ts",), 1),
-    (("components/ui/",), ("components/Common.tsx", "components/UI.tsx", "components/Modal.tsx"), 2),
-    (("store/", "lib/api/", "components/avatar/live/"), ("lib/api.ts", "lib/captureFrames.ts"), 3),
+    (
+        ("components/ui/",),
+        ("components/Common.tsx", "components/UI.tsx", "components/Modal.tsx"),
+        2,
+    ),
+    (
+        ("store/", "lib/api/", "components/avatar/live/"),
+        ("lib/api.ts", "lib/captureFrames.ts"),
+        3,
+    ),
     (
         ("hooks/", "components/shared/", "components/pricing/"),
         ("components/ModelPill.tsx", "components/ModelRegionPicker.tsx"),
@@ -251,7 +263,9 @@ def _check_frontend_file_imports(
         target_path = resolve_frontend_import(path, match.group(1))
         if not target_path or target_path == path:
             continue
-        target_rel_src = str(target_path.relative_to(FRONTEND_SRC_DIR)).replace("\\", "/")
+        target_rel_src = str(target_path.relative_to(FRONTEND_SRC_DIR)).replace(
+            "\\", "/"
+        )
         target_tier, target_domain = classify_frontend_module(target_rel_src)
         lineno = raw[: match.start()].count("\n") + 1
         if target_tier > src_tier:
@@ -291,6 +305,8 @@ def analyze_frontend_ast() -> list[Violation]:
         rel_repo = str(path.relative_to(REPO_ROOT)).replace("\\", "/")
         raw = path.read_text(encoding="utf-8")
         clean = TS_COMMENT_RE.sub("", raw)
-        violations.extend(_check_frontend_file_imports(path, raw, clean, rel_src, rel_repo))
+        violations.extend(
+            _check_frontend_file_imports(path, raw, clean, rel_src, rel_repo)
+        )
         violations.extend(check_ts_clones(raw, clean, rel_repo, seen_ts_blocks))
     return violations

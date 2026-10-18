@@ -19,5 +19,5 @@ DETAIL: {{ d }}.
 {% for d in dialogue %}  {{ d.speaker_name }} ({{ d.delivery }}): "{{ d.text }}" [on {{ d.speaker_pos }}, {{ d.time_window }}, spoken in {{ d.language_label }}]
 {% endfor %}  LIP-SYNC RULE: Only the named speaker at the specified position moves their lips; SILENT LISTENER characters keep mouths closed.
 {% endif %}
-{% if music or shot.sfx or dialogue %}AUDIO: {% if dialogue %}Spoken dialogue in {{ dialogue[0].language_label }}. {% endif %}{% if music %}{{ music.mood }} ({{ music.instrumentation }}, {{ music.tempo_bpm }}bpm). {% endif %}{% if shot.sfx %}SFX: {{ shot.sfx | join(", ") }}.{% endif %}
+{% if music or shot.sfx or shot.foley_sfx or shot.environmental_sfx or dialogue %}AUDIO: {% if dialogue %}Spoken dialogue in {{ dialogue[0].language_label }}. {% endif %}{% if music %}{{ music.mood }} ({{ music.instrumentation }}, {{ music.tempo_bpm }}bpm). {% endif %}{% if shot.foley_sfx %}Foley: {{ shot.foley_sfx | join(", ") }}. {% endif %}{% if shot.environmental_sfx %}Ambience: {{ shot.environmental_sfx | join(", ") }}. {% endif %}{% if shot.action_focus_sfx %}Action SFX: {{ shot.action_focus_sfx | join(", ") }}. {% endif %}{% if shot.sfx %}SFX: {{ shot.sfx | join(", ") }}.{% endif %}
 {% endif %}AVOID: {{ style_guide.avoid | join(", ") }}.

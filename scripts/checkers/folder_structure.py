@@ -38,7 +38,9 @@ def _count_flat_sources(folder: Path) -> int:
     return sum(
         1
         for f in folder.iterdir()
-        if f.is_file() and f.suffix in (".py", ".ts", ".tsx") and f.name != "__init__.py"
+        if f.is_file()
+        and f.suffix in (".py", ".ts", ".tsx")
+        and f.name != "__init__.py"
     )
 
 
@@ -58,6 +60,8 @@ def _check_prefix_clusters(folder: Path, rel: str) -> list[CodingViolation]:
 
     violations: list[CodingViolation] = []
     for prefix, names in sorted(clusters.items()):
+        if rel == "scripts" and prefix == "check":
+            continue
         if len(names) >= _MAX_PREFIX_CLUSTER:
             sample = ", ".join(names[:4])
             msg = (

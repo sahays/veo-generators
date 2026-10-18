@@ -258,7 +258,7 @@ def _enrich_single_event(
     single_wardrobe: dict[str, str],
 ) -> None:
     """Ensure a scene Event has complete location and wearing StateEffects for all participants."""
-    new_fx = _normalize_event_effects(ev.effects, single_wardrobe)
+    new_fx = _normalize_event_effects(ev.effects, single_wardrobe, sc.location_id)
     existing_pairs = {(ef.entity_id, ef.attribute) for ef in new_fx}
     fx_cids = [ef.entity_id for ef in new_fx if ef.entity_id in valid_cids]
     participants = list(

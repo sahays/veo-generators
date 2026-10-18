@@ -1,5 +1,5 @@
 {
-  "total_files": 412,
+  "total_files": 423,
   "domain_packages": {
     "agents_service": 1,
     "api": 9,
@@ -17,17 +17,17 @@
     "api/tests": 40,
     "frontend/src": 1,
     "frontend/src/app": 3,
-    "frontend/src/components": 130,
+    "frontend/src/components": 132,
     "frontend/src/hooks": 6,
     "frontend/src/lib": 26,
     "frontend/src/store": 5,
-    "frontend/src/types": 5,
+    "frontend/src/types": 6,
     "productions_service": 1,
     "productions_service/routers": 1,
     "productions_service/services": 3,
-    "productions_service/storygraph": 44,
-    "productions_service/tests": 6,
-    "scripts": 4,
+    "productions_service/storygraph": 50,
+    "productions_service/tests": 7,
+    "scripts": 5,
     "scripts/checkers": 9,
     "workers": 13
   },
@@ -107,6 +107,7 @@
     "productions_service/storygraph/agents",
     "productions_service/storygraph/agents/role",
     "productions_service/storygraph/pipeline",
+    "productions_service/storygraph/presets",
     "productions_service/storygraph/repo",
     "productions_service/storygraph/store",
     "productions_service/storygraph/tools",
@@ -676,7 +677,7 @@
       "language": "python",
       "domain_package": "api/models",
       "tier": "Tier 1 (Models & Pure Config)",
-      "non_comment_lines": 136,
+      "non_comment_lines": 140,
       "classes": [
         "GlobalStyle",
         "CharacterProfile",
@@ -1558,7 +1559,7 @@
       "language": "python",
       "domain_package": "api/routers",
       "tier": "Tier 4 (Feature Routers & Agents)",
-      "non_comment_lines": 286,
+      "non_comment_lines": 297,
       "classes": [],
       "functions": [
         "create_production",
@@ -2596,14 +2597,15 @@
       "language": "python",
       "domain_package": "api/tests",
       "tier": "Test Suite",
-      "non_comment_lines": 71,
+      "non_comment_lines": 101,
       "classes": [],
       "functions": [
         "test_codebase_has_no_duplicate_code_or_tier_breakers",
         "test_python_ast_normalizer_detects_renamed_clones",
         "test_ts_ast_normalizer_detects_structural_clones",
         "test_tier_classification_enforces_hierarchy",
-        "test_codebase_has_no_ui_component_lapses"
+        "test_codebase_has_no_ui_component_lapses",
+        "test_codebase_index_checker_detects_added_moved_deleted_files"
       ],
       "endpoints": []
     },
@@ -2775,7 +2777,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
-      "non_comment_lines": 172,
+      "non_comment_lines": 210,
       "classes": [],
       "functions": [
         "ProjectForm"
@@ -2847,7 +2849,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
-      "non_comment_lines": 257,
+      "non_comment_lines": 166,
       "classes": [],
       "functions": [
         "StoryGraphStudioPanel"
@@ -2867,11 +2869,23 @@
       "endpoints": []
     },
     {
+      "path": "frontend/src/components/ads/projects/ProjectCreativePresetsCard.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 217,
+      "classes": [],
+      "functions": [
+        "ProjectCreativePresetsCard"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "frontend/src/components/ads/projects/ProjectFormSections.tsx",
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
-      "non_comment_lines": 236,
+      "non_comment_lines": 309,
       "classes": [],
       "functions": [
         "ProductionFormatCard",
@@ -2916,7 +2930,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
-      "non_comment_lines": 333,
+      "non_comment_lines": 371,
       "classes": [],
       "functions": [
         "StrictFailureBanner",
@@ -2928,16 +2942,27 @@
       "endpoints": []
     },
     {
-      "path": "frontend/src/components/ads/storygraph/StudioRightInspectorPane.tsx",
+      "path": "frontend/src/components/ads/storygraph/StudioInspectorItemViews.tsx",
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
-      "non_comment_lines": 358,
+      "non_comment_lines": 320,
       "classes": [],
       "functions": [
         "AppearanceInspectorView",
         "VideoRunInspectorView",
-        "ShotAndEntityInspectorView",
+        "ShotAndEntityInspectorView"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/storygraph/StudioRightInspectorPane.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 382,
+      "classes": [],
+      "functions": [
         "StudioRightInspectorPane"
       ],
       "endpoints": []
@@ -3043,13 +3068,14 @@
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
-      "non_comment_lines": 226,
+      "non_comment_lines": 273,
       "classes": [],
       "functions": [
         "ActiveStepId",
         "DesignFilter",
         "CompiledShotPreview",
         "SelectedInspectorItem",
+        "StudioLayoutOrientation",
         "MacroStepCardDef",
         "PIPELINE_SUB_STAGES",
         "deriveStageAndGateMaps",
@@ -4873,11 +4899,29 @@
       "endpoints": []
     },
     {
+      "path": "frontend/src/types/productionPresets.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 285,
+      "classes": [],
+      "functions": [
+        "CreativePresetOption",
+        "ModeFormatProfile",
+        "MODE_FORMAT_PROFILES",
+        "VISUAL_STYLE_PRESETS_UI",
+        "COLOR_PALETTE_PRESETS_UI",
+        "DIRECTOR_STYLE_PRESETS_UI",
+        "CANONICAL_PRODUCTION_DEFINITIONS"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "frontend/src/types/project.ts",
       "language": "typescript",
       "domain_package": "frontend/src/types",
       "tier": "Tier 1 (Types, Schemas & Pure Utils)",
-      "non_comment_lines": 279,
+      "non_comment_lines": 290,
       "classes": [],
       "functions": [
         "sceneSchema",
@@ -4963,7 +5007,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/types",
       "tier": "Tier 1 (Types, Schemas & Pure Utils)",
-      "non_comment_lines": 177,
+      "non_comment_lines": 226,
       "classes": [],
       "functions": [
         "StoryGraphStyleGuide",
@@ -4973,6 +5017,7 @@
         "StoryGraphEvent",
         "StoryGraphAsset",
         "StoryGraphAppearance",
+        "StoryGraphInteractionStep",
         "StoryGraphScene",
         "StoryGraphDialogueLine",
         "StoryGraphMusicCue",
@@ -4988,6 +5033,8 @@
         "StoryGraphAuditEntry",
         "StoryGraphStateFact",
         "StoryGraphValidationIssue",
+        "StoryGraphStageQaIssue",
+        "StoryGraphStageQaReport",
         "StoryGraphData"
       ],
       "endpoints": []
@@ -5054,7 +5101,7 @@
       "language": "python",
       "domain_package": "productions_service/services",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 320,
+      "non_comment_lines": 342,
       "classes": [
         "CreateProductionPayload",
         "RunPipelinePayload",
@@ -5082,7 +5129,7 @@
       "language": "python",
       "domain_package": "productions_service/services",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 156,
+      "non_comment_lines": 157,
       "classes": [],
       "functions": [
         "load_runtime_config",
@@ -5097,7 +5144,7 @@
       "language": "python",
       "domain_package": "productions_service/services",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 248,
+      "non_comment_lines": 254,
       "classes": [],
       "functions": [
         "format_graph_snapshot"
@@ -5231,7 +5278,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 4 (Feature Routers & Agents)",
-      "non_comment_lines": 157,
+      "non_comment_lines": 175,
       "classes": [],
       "functions": [
         "run_story_architect"
@@ -5243,7 +5290,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 4 (Feature Routers & Agents)",
-      "non_comment_lines": 374,
+      "non_comment_lines": 385,
       "classes": [],
       "functions": [
         "run_director_for_scene"
@@ -5255,7 +5302,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 4 (Feature Routers & Agents)",
-      "non_comment_lines": 88,
+      "non_comment_lines": 132,
       "classes": [],
       "functions": [
         "run_music_director"
@@ -5267,7 +5314,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 4 (Feature Routers & Agents)",
-      "non_comment_lines": 137,
+      "non_comment_lines": 215,
       "classes": [],
       "functions": [
         "run_screenwriter_for_scene"
@@ -5310,6 +5357,19 @@
         "load_role_prompt",
         "build_adk_role_agent",
         "run_role"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/agents/stage_qa.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 295,
+      "classes": [],
+      "functions": [
+        "list_stage_qa_reports",
+        "run_stage_qa_and_remediate"
       ],
       "endpoints": []
     },
@@ -5408,6 +5468,21 @@
       "endpoints": []
     },
     {
+      "path": "productions_service/storygraph/graph_verifier.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 394,
+      "classes": [
+        "GraphIndex"
+      ],
+      "functions": [
+        "build_graph_index",
+        "verify_storygraph"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "productions_service/storygraph/pipeline/gates.py",
       "language": "python",
       "domain_package": "productions_service/storygraph",
@@ -5443,11 +5518,50 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 365,
+      "non_comment_lines": 372,
       "classes": [
         "Stage",
         "Pipeline"
       ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/presets/models.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 92,
+      "classes": [
+        "VisualStylePresetSpec",
+        "ColorPalettePresetSpec",
+        "ScreenplayPresetSpec",
+        "MusicPresetSpec",
+        "DirectorPresetSpec",
+        "ResolvedProductionPresets"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/presets/roles_and_resolver.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 223,
+      "classes": [],
+      "functions": [
+        "resolve_production_presets"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/presets/visual_and_palette.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 294,
+      "classes": [],
       "functions": [],
       "endpoints": []
     },
@@ -5484,7 +5598,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 1 (Models & Pure Config)",
-      "non_comment_lines": 291,
+      "non_comment_lines": 358,
       "classes": [
         "Role",
         "EntityType",
@@ -5498,6 +5612,7 @@
         "StateFact",
         "Appearance",
         "Asset",
+        "InteractionStep",
         "StyleGuide",
         "Scene",
         "DialogueLine",
@@ -5512,6 +5627,8 @@
         "Gate",
         "StageRun",
         "AuditEntry",
+        "StageQaIssue",
+        "StageQaReport",
         "ProjectMeta"
       ],
       "functions": [],
@@ -5626,7 +5743,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 3 (Shared Router Helpers)",
-      "non_comment_lines": 376,
+      "non_comment_lines": 379,
       "classes": [
         "ToolContext"
       ],
@@ -5655,7 +5772,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 3 (Shared Router Helpers)",
-      "non_comment_lines": 116,
+      "non_comment_lines": 130,
       "classes": [
         "SceneDraft",
         "EventDraft",
@@ -5694,6 +5811,22 @@
       "endpoints": []
     },
     {
+      "path": "productions_service/storygraph/tools/write_tools/audio_and_qa.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 173,
+      "classes": [],
+      "functions": [
+        "put_music_cue",
+        "set_shot_audio",
+        "record_asset_critique",
+        "record_clip_qa",
+        "create_change_request"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "productions_service/storygraph/tools/write_tools/entities.py",
       "language": "python",
       "domain_package": "productions_service/storygraph",
@@ -5719,7 +5852,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 3 (Shared Router Helpers)",
-      "non_comment_lines": 188,
+      "non_comment_lines": 226,
       "classes": [],
       "functions": [
         "put_style_guide",
@@ -5735,19 +5868,14 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 3 (Shared Router Helpers)",
-      "non_comment_lines": 381,
+      "non_comment_lines": 280,
       "classes": [],
       "functions": [
         "register_asset",
         "generate_character_asset",
         "generate_location_asset",
         "generate_object_asset",
-        "put_shot",
-        "put_music_cue",
-        "set_shot_audio",
-        "record_asset_critique",
-        "record_clip_qa",
-        "create_change_request"
+        "put_shot"
       ],
       "endpoints": []
     },
@@ -5831,6 +5959,20 @@
       "endpoints": []
     },
     {
+      "path": "productions_service/tests/test_storygraph_presets_and_verifier.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 152,
+      "classes": [],
+      "functions": [
+        "test_presets_catalog_and_director_auto_binding",
+        "test_verify_storygraph_and_stage_qa_remediation",
+        "test_sublocation_event_effects_remediation"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "productions_service/tests/test_storygraph_remediation.py",
       "language": "python",
       "domain_package": "productions_service/tests",
@@ -5892,11 +6034,27 @@
       "endpoints": []
     },
     {
+      "path": "scripts/check_codebase_index.py",
+      "language": "python",
+      "domain_package": "scripts",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 136,
+      "classes": [
+        "IndexDrift"
+      ],
+      "functions": [
+        "check_index_honesty",
+        "sync_codebase_index",
+        "main"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "scripts/check_coding_standards.py",
       "language": "python",
       "domain_package": "scripts",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 121,
+      "non_comment_lines": 123,
       "classes": [],
       "functions": [
         "run_all_coding_checks",
@@ -5909,7 +6067,7 @@
       "language": "python",
       "domain_package": "scripts",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 108,
+      "non_comment_lines": 118,
       "classes": [
         "ComponentViolation"
       ],
@@ -5924,7 +6082,7 @@
       "language": "python",
       "domain_package": "scripts/checkers",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 254,
+      "non_comment_lines": 270,
       "classes": [],
       "functions": [
         "classify_backend_module",
@@ -5941,7 +6099,7 @@
       "language": "python",
       "domain_package": "scripts/checkers",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 242,
+      "non_comment_lines": 246,
       "classes": [
         "_CanonicalASTNormalizer"
       ],
@@ -5968,7 +6126,7 @@
       "language": "python",
       "domain_package": "scripts/checkers",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 71,
+      "non_comment_lines": 75,
       "classes": [],
       "functions": [
         "check_folder_organization"
@@ -5980,7 +6138,7 @@
       "language": "python",
       "domain_package": "scripts/checkers",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 143,
+      "non_comment_lines": 154,
       "classes": [],
       "functions": [
         "check_python_semantic_logging",
@@ -6022,7 +6180,7 @@
       "language": "python",
       "domain_package": "scripts/checkers",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 168,
+      "non_comment_lines": 174,
       "classes": [],
       "functions": [
         "count_py_statements",
@@ -6037,7 +6195,7 @@
       "language": "python",
       "domain_package": "scripts/checkers",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 155,
+      "non_comment_lines": 179,
       "classes": [],
       "functions": [
         "check_python_tier_isolation",
@@ -6050,7 +6208,7 @@
       "language": "python",
       "domain_package": "scripts",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 194,
+      "non_comment_lines": 218,
       "classes": [
         "FileIndexEntry",
         "CodebaseIndexPayload"

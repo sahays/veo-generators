@@ -6,7 +6,15 @@ from typing import Any
 
 from ...audit import append_audit
 from ...errors import NotFound
-from ...schema import DialogueLine, Event, Scene, StateEffect, Status, StyleGuide
+from ...schema import (
+    DialogueLine,
+    Event,
+    InteractionStep,
+    Scene,
+    StateEffect,
+    Status,
+    StyleGuide,
+)
 from ..registry import ToolContext, assert_can_write
 
 
@@ -19,6 +27,11 @@ def put_style_guide(
     aspect_ratio: str = "16:9",
     fps: int = 24,
     avoid: list[str] | None = None,
+    visual_style_preset: str | None = None,
+    color_palette_preset: str | None = None,
+    director_style_preset: str | None = None,
+    screenplay_style_preset: str | None = None,
+    music_style_preset: str | None = None,
 ) -> dict[str, Any]:
     assert_can_write(ctx.role, "StyleGuide")
     prev = ctx.repo.get_style_guide()
@@ -34,6 +47,16 @@ def put_style_guide(
         aspect_ratio=ar,  # type: ignore[arg-type]
         fps=fps,
         avoid=avoid or ["text overlays", "watermarks", "deformed hands", "extra limbs"],
+        visual_style_preset=visual_style_preset
+        or (prev.visual_style_preset if prev else "pixar_3d"),
+        color_palette_preset=color_palette_preset
+        or (prev.color_palette_preset if prev else "warm_golden_amber"),
+        director_style_preset=director_style_preset
+        or (prev.director_style_preset if prev else "wonder_spectacle"),
+        screenplay_style_preset=screenplay_style_preset
+        or (prev.screenplay_style_preset if prev else "algorithmic_wonder"),
+        music_style_preset=music_style_preset
+        or (prev.music_style_preset if prev else "symphonic_leitmotif"),
     )
     saved = ctx.repo.put_style_guide(sg)
     append_audit(
@@ -105,11 +128,20 @@ def put_scene(
     shot_ids: list[str] | None = None,
     summary: str = "",
     mood: str = "",
+    interaction_steps: list[InteractionStep | dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     assert_can_write(ctx.role, "Scene")
     prev = ctx.repo.get_scene(scene_id)
     ev_ids = event_ids if event_ids is not None else (prev.event_ids if prev else [])
     sh_ids = shot_ids if shot_ids is not None else (prev.shot_ids if prev else [])
+    parsed_steps = (
+        [
+            s if isinstance(s, InteractionStep) else InteractionStep.model_validate(s)
+            for s in interaction_steps
+        ]
+        if interaction_steps is not None
+        else (prev.interaction_steps if prev else [])
+    )
     scene = Scene(
         id=scene_id,
         created_by=ctx.role,
@@ -123,6 +155,7 @@ def put_scene(
         shot_ids=sh_ids,
         summary=summary or (prev.summary if prev else ""),
         mood=mood or (prev.mood if prev else ""),
+        interaction_steps=parsed_steps,
     )
     saved = ctx.repo.put_scene(scene)
     append_audit(
@@ -142,14 +175,19 @@ def update_scene_script(
     scene_id: str,
     summary: str,
     mood: str,
+    interaction_steps: list[InteractionStep | dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     assert_can_write(ctx.role, "Scene")
     prev = ctx.repo.get_scene(scene_id)
     if not prev:
         raise NotFound(f"Scene {scene_id} not found")
-    saved = ctx.repo.put_scene(
-        prev.model_copy(update={"summary": summary, "mood": mood})
-    )
+    updates: dict[str, Any] = {"summary": summary, "mood": mood}
+    if interaction_steps is not None:
+        updates["interaction_steps"] = [
+            s if isinstance(s, InteractionStep) else InteractionStep.model_validate(s)
+            for s in interaction_steps
+        ]
+    saved = ctx.repo.put_scene(prev.model_copy(update=updates))
     append_audit(
         ctx.repo.store,
         ctx.role,

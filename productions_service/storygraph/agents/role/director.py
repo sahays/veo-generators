@@ -311,6 +311,7 @@ def _persist_director_shot(
 
 
 def _build_director_prompt(
+    ctx: ToolContext,
     scene_id: str,
     story_context: str,
     sview: SceneView,
@@ -319,21 +320,32 @@ def _build_director_prompt(
     ev_ids: list[str],
 ) -> str:
     """Build the user prompt for `DIRECTOR` scene shot breakdown."""
+    from ...presets import resolve_production_presets
+
+    meta = ctx.repo.get_project_meta()
+    bundle = resolve_production_presets(
+        visual_style_id=meta.visual_style_preset if meta else None,
+        color_palette_id=meta.color_palette_preset if meta else None,
+        director_style_id=meta.director_style_preset if meta else None,
+    )
     char_list = [{"id": c.id, "name": c.canonical_name} for c in chars]
     prop_list = [{"id": p.id, "name": p.canonical_name} for p in props]
     dlg_list = [
         {"id": d.id, "speaker_id": d.speaker_id, "text": d.text}
         for d in sview.dialogue_lines
     ]
+    steps_list = [st.model_dump() for st in sview.scene.interaction_steps]
     return (
+        f"Directorial Style Preset ({bundle.director_style.label}): {bundle.director_style.instruction_prompt}\n\n"
         f"Full Story Context:\n{story_context}\n\n"
         f"Break scene '{scene_id}' (location_id='{sview.scene.location_id}') into 2 cinematic Shot nodes.\n"
+        f"Algorithmic Screenplay Steps (translate 1-to-1 into shot ActionBeats): {steps_list}\n"
         f"Valid character entity_ids in this scene: {char_list}\n"
         f"Valid prop_ids in this scene: {prop_list}\n"
         f"Valid event_ids to cover: {ev_ids}\n"
         f"Valid dialogue_ids: {dlg_list}\n"
         "CRITICAL RULES:\n"
-        "1. Make every ActionBeat description vividly depict the exact story action in this scene's events and screenplay.\n"
+        "1. Make every ActionBeat description vividly depict the exact story action in this scene's events and algorithmic interaction_steps.\n"
         "2. Only include a prop in `prop_ids` if physically used in that shot.\n"
         "3. Partition `dialogue_ids` across shots in chronological order (1 speaker per shot when possible) and preserve 180-degree screen positions (`left`/`center`/`right`).\n"
         "4. For crying/emotional moments, describe subtle glistening eye moisture — NEVER 'tearful starlight sparkles'.\n\n"
@@ -380,7 +392,7 @@ def run_director_for_scene(
         role=Role.DIRECTOR,
         ctx=ctx,
         user_prompt=_build_director_prompt(
-            scene_id, story_context, sview, chars, props, ev_ids
+            ctx, scene_id, story_context, sview, chars, props, ev_ids
         ),
         output_schema=DirectorSceneOutput,
         mock_llm=mock_llm,

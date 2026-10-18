@@ -14,6 +14,56 @@ import {
   DurationAndAspectGrid,
   LanguageAndGateModeCard,
 } from './projects/ProjectFormSections'
+import { ProjectCreativePresetsCard } from './projects/ProjectCreativePresetsCard'
+
+const DEFAULT_PROJECT_FORM_VALUES: ProjectFormData = {
+  name: '',
+  type: 'movie',
+  base_concept: '',
+  video_length: 'auto',
+  orientation: '16:9',
+  language: 'en-IN',
+  visual_style_preset: 'superhero_blockbuster',
+  color_palette_preset: 'warm_golden_amber',
+  director_style_preset: 'wonder_humanist_blocking',
+  screenplay_style_preset: 'classical_causal_chain',
+  music_style_preset: 'symphonic_leitmotif_natural_foley',
+  auto_approve_gates: false,
+}
+
+function mapProjectToFormValues(project: Project): ProjectFormData {
+  return {
+    name: project.name,
+    type: project.type || 'movie',
+    base_concept: project.base_concept,
+    video_length: String(project.video_length || 'auto') as ProjectFormData['video_length'],
+    orientation: project.orientation || '16:9',
+    language: project.language || 'en-IN',
+    visual_style_preset: project.visual_style_preset || 'superhero_blockbuster',
+    color_palette_preset: project.color_palette_preset || 'warm_golden_amber',
+    director_style_preset: project.director_style_preset || 'wonder_humanist_blocking',
+    screenplay_style_preset: project.screenplay_style_preset || 'classical_causal_chain',
+    music_style_preset: project.music_style_preset || 'symphonic_leitmotif_natural_foley',
+    auto_approve_gates: Boolean(project.auto_approve_gates),
+  }
+}
+
+function buildProjectPayload(data: ProjectFormData): Partial<Project> {
+  return {
+    name: data.name,
+    type: data.type,
+    base_concept: data.base_concept,
+    video_length: data.video_length,
+    orientation: data.orientation,
+    language: data.language,
+    visual_style_preset: data.visual_style_preset || 'superhero_blockbuster',
+    color_palette_preset: data.color_palette_preset || 'warm_golden_amber',
+    director_style_preset: data.director_style_preset || 'wonder_humanist_blocking',
+    screenplay_style_preset: data.screenplay_style_preset,
+    music_style_preset: data.music_style_preset,
+    auto_approve_gates: Boolean(data.auto_approve_gates),
+  }
+}
 
 function useLoadProjectIntoForm(id: string | undefined, form: UseFormReturn<ProjectFormData>) {
   const { setActiveProject } = useProjectStore()
@@ -30,15 +80,7 @@ function useLoadProjectIntoForm(id: string | undefined, form: UseFormReturn<Proj
         if (project?.id) {
           setExistingProject(project)
           setActiveProject(id)
-          form.reset({
-            name: project.name,
-            type: project.type || 'movie',
-            base_concept: project.base_concept,
-            video_length: String(project.video_length || '16') as ProjectFormData['video_length'],
-            orientation: project.orientation || '16:9',
-            language: project.language || 'en-IN',
-            auto_approve_gates: Boolean(project.auto_approve_gates),
-          })
+          form.reset(mapProjectToFormValues(project))
         }
       })
       .catch(() => null)
@@ -57,15 +99,7 @@ function useSubmitProjectForm(id: string | undefined, existingProject: Project |
   const submitForm = async (data: ProjectFormData) => {
     setIsSubmitting(true)
     try {
-      const payload: Partial<Project> = {
-        name: data.name,
-        type: data.type,
-        base_concept: data.base_concept,
-        video_length: data.video_length as Project['video_length'],
-        orientation: data.orientation,
-        language: data.language,
-        auto_approve_gates: Boolean(data.auto_approve_gates),
-      }
+      const payload = buildProjectPayload(data)
       if (existingProject && id) {
         await projectsApi.update(id, payload)
         setTempProjectData({ ...existingProject, ...data, id })
@@ -100,7 +134,7 @@ const ProjectFormView = ({
     initial={{ opacity: 0, x: 20 }}
     animate={{ opacity: 1, x: 0 }}
     exit={{ opacity: 0, x: -20 }}
-    className="space-y-6 max-w-3xl mx-auto pb-20"
+    className="space-y-6 max-w-4xl mx-auto pb-20"
   >
     <div className="flex items-center justify-between gap-3">
       <div className="flex items-center gap-3">
@@ -113,11 +147,11 @@ const ProjectFormView = ({
               {existingProject ? 'Edit Production Brief' : 'New Story-to-Video Production'}
             </h2>
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-accent/10 text-accent-dark border border-accent/25 text-[10px] font-mono font-bold uppercase">
-              <GitBranch size={11} /> StoryGraph v1
+              <GitBranch size={11} /> Agent-First StoryGraph
             </span>
           </div>
           <p className="text-xs text-muted-foreground">
-            Provide a story idea or script. The 10-stage multi-agent StoryGraph studio will extract entities, design reference sheets, direct shots, and compile deterministic prompts.
+            Provide a story idea or script. Specialized AI crew agents (Architect, Screenwriter, Design Studio, Director, Music & Foley, and $O(V+E)$ Stage QA Critic) collaborate on a single Knowledge Graph.
           </p>
         </div>
       </div>
@@ -131,8 +165,15 @@ const ProjectFormView = ({
         conceptLength={(form.watch('base_concept') || '').length}
       />
       <DurationAndAspectGrid
+        projectType={form.watch('type')}
         videoLength={form.watch('video_length')}
         orientation={form.watch('orientation')}
+        setValue={form.setValue}
+      />
+      <ProjectCreativePresetsCard
+        visualStylePreset={form.watch('visual_style_preset') || 'superhero_blockbuster'}
+        colorPalettePreset={form.watch('color_palette_preset') || 'warm_golden_amber'}
+        directorStylePreset={form.watch('director_style_preset') || 'wonder_humanist_blocking'}
         setValue={form.setValue}
       />
       <LanguageAndGateModeCard
@@ -150,8 +191,8 @@ const ProjectFormView = ({
           {isSubmitting
             ? 'Launching Studio...'
             : existingProject
-              ? 'Save & Open StoryGraph Studio'
-              : 'Launch Story-to-Video Graph Studio'}
+              ? 'Save & Open Agent Studio'
+              : 'Launch Agent-First StoryGraph Studio'}
         </Button>
       </div>
     </form>
@@ -163,7 +204,7 @@ export const ProjectForm = () => {
   const { id } = useParams<{ id: string }>()
   const form = useForm<ProjectFormData>({
     resolver: zodResolver(projectSchema),
-    defaultValues: { name: '', type: 'movie', base_concept: '', video_length: '16', orientation: '16:9', language: 'en-IN', auto_approve_gates: false },
+    defaultValues: DEFAULT_PROJECT_FORM_VALUES,
   })
   const { existingProject, isLoadingProject } = useLoadProjectIntoForm(id, form)
   const { isSubmitting, submitForm } = useSubmitProjectForm(id, existingProject)

@@ -29,7 +29,9 @@ from checkers.arch_tiers import (  # noqa: E402
 from checkers.models import FRONTEND_SRC_DIR, PYTHON_SCAN_DIRS, REPO_ROOT  # noqa: E402
 from checkers.size_and_types import count_py_non_comment_lines  # noqa: E402
 
-_HTTP_METHODS: frozenset[str] = frozenset({"get", "post", "put", "patch", "delete", "websocket"})
+_HTTP_METHODS: frozenset[str] = frozenset(
+    {"get", "post", "put", "patch", "delete", "websocket"}
+)
 _TS_COMMENT_RE: re.Pattern[str] = re.compile(r"//[^\n]*|/\*[\s\S]*?\*/")
 _TS_EXPORT_RE: re.Pattern[str] = re.compile(
     r"\bexport\s+(?:default\s+)?(?:async\s+)?(?:function|const|class|interface|type|enum)\s+([A-Za-z0-9_]+)"
@@ -65,7 +67,11 @@ def _resolve_py_tier_label(rel_path: str) -> str:
     if rel_path.startswith("scripts/"):
         return "Tier 5 (Entrypoints, Scripts & Workers)"
     tier = classify_backend_module(rel_path)
-    return BACKEND_TIER_NAMES.get(tier, "Support / Package") if tier else "Support / Package"
+    return (
+        BACKEND_TIER_NAMES.get(tier, "Support / Package")
+        if tier
+        else "Support / Package"
+    )
 
 
 def _resolve_ts_tier_label(rel_repo: str) -> str:
@@ -76,7 +82,9 @@ def _resolve_ts_tier_label(rel_repo: str) -> str:
     return f"{base} [{domain}]" if domain else base
 
 
-def _extract_py_route_decorators(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
+def _extract_py_route_decorators(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> list[str]:
     """Extract FastAPI route decorators (`GET /path`) attached to a function node."""
     routes: list[str] = []
     for dec in node.decorator_list:
@@ -86,13 +94,19 @@ def _extract_py_route_decorators(node: ast.FunctionDef | ast.AsyncFunctionDef) -
         if method not in _HTTP_METHODS:
             continue
         route_path = "/"
-        if dec.args and isinstance(dec.args[0], ast.Constant) and isinstance(dec.args[0].value, str):
+        if (
+            dec.args
+            and isinstance(dec.args[0], ast.Constant)
+            and isinstance(dec.args[0].value, str)
+        ):
             route_path = dec.args[0].value
         routes.append(f"{method.upper()} {route_path}")
     return routes
 
 
-def _parse_py_symbols(source: str, rel_path: str) -> tuple[list[str], list[str], list[str]]:
+def _parse_py_symbols(
+    source: str, rel_path: str
+) -> tuple[list[str], list[str], list[str]]:
     """Return `(classes, functions, endpoints)` from a Python module's top-level AST."""
     try:
         tree = ast.parse(source, filename=rel_path)
@@ -160,13 +174,21 @@ def _collect_all_entries() -> list[FileIndexEntry]:
             continue
         for py_path in sorted(folder.rglob("*.py")):
             rel = str(py_path.relative_to(REPO_ROOT)).replace("\\", "/")
-            if rel.startswith("api/venv/") or "/__pycache__/" in rel or rel.endswith("__init__.py"):
+            if (
+                rel.startswith("api/venv/")
+                or "/__pycache__/" in rel
+                or rel.endswith("__init__.py")
+            ):
                 continue
             entries.append(_index_py_file(py_path))
 
     if FRONTEND_SRC_DIR.exists():
         for ts_path in sorted(FRONTEND_SRC_DIR.rglob("*")):
-            if ts_path.is_file() and ts_path.suffix in (".ts", ".tsx") and not ts_path.name.endswith(".d.ts"):
+            if (
+                ts_path.is_file()
+                and ts_path.suffix in (".ts", ".tsx")
+                and not ts_path.name.endswith(".d.ts")
+            ):
                 entries.append(_index_ts_file(ts_path))
     return sorted(entries, key=lambda e: e["path"])
 
@@ -214,14 +236,16 @@ def _render_markdown(payload: CodebaseIndexPayload) -> str:
 
     lines.extend(["", "### Directories", "", "```text"])
     lines.extend(payload["directory_tree"])
-    lines.extend([
-        "```",
-        "",
-        "## File Inventory",
-        "",
-        "| File Path | Tier | Lines | Exported Classes / Functions / Endpoints |",
-        "| :--- | :--- | ---: | :--- |",
-    ])
+    lines.extend(
+        [
+            "```",
+            "",
+            "## File Inventory",
+            "",
+            "| File Path | Tier | Lines | Exported Classes / Functions / Endpoints |",
+            "| :--- | :--- | ---: | :--- |",
+        ]
+    )
     for entry in payload["files"]:
         syms = _format_symbols(entry)
         lines.append(

@@ -20,6 +20,7 @@ from storygraph.errors import (
     ValidationFailed,
 )
 from storygraph.pipeline import Pipeline, Stage, approve_gate, reject_gate
+from storygraph.presets import resolve_production_presets
 from storygraph.schema import ProjectMeta, Status
 from storygraph.views import shot_view
 
@@ -41,6 +42,11 @@ _ALLOWED_PATCH_FIELDS: frozenset[str] = frozenset(
         "video_length",
         "orientation",
         "language",
+        "visual_style_preset",
+        "color_palette_preset",
+        "director_style_preset",
+        "screenplay_style_preset",
+        "music_style_preset",
         "auto_approve_gates",
         "status",
         "archived",
@@ -54,12 +60,16 @@ class CreateProductionPayload(BaseModel):
     type: str = "movie"
     base_concept: str
     story_text: str | None = None
-    video_length: str = "16"
+    video_length: str = "60"
     orientation: str = "16:9"
     language: str = "en-IN"
+    visual_style_preset: str | None = None
+    color_palette_preset: str | None = None
+    director_style_preset: str | None = None
+    screenplay_style_preset: str | None = None
+    music_style_preset: str | None = None
     auto_approve_gates: bool = False
     reference_image_url: str | None = None
-    prompt_id: str | None = None
 
 
 class RunPipelinePayload(BaseModel):
@@ -83,6 +93,13 @@ def create_production_project(
     ptype = body.type if body.type in ("movie", "advertizement", "social") else "movie"
     orient = body.orientation if body.orientation in ("16:9", "9:16") else "16:9"
     story = (body.story_text or body.base_concept).strip()
+    bundle = resolve_production_presets(
+        visual_style_id=body.visual_style_preset,
+        color_palette_id=body.color_palette_preset,
+        director_style_id=body.director_style_preset,
+        screenplay_style_id=body.screenplay_style_preset,
+        music_style_id=body.music_style_preset,
+    )
     meta = ProjectMeta(
         id=project_id,
         name=body.name,
@@ -92,6 +109,11 @@ def create_production_project(
         video_length=str(body.video_length),
         orientation=orient,  # type: ignore[arg-type]
         language=body.language,
+        visual_style_preset=bundle.visual_style.id,
+        color_palette_preset=bundle.color_palette.id,
+        director_style_preset=bundle.director_style.id,
+        screenplay_style_preset=bundle.screenplay_style.id,
+        music_style_preset=bundle.music_style.id,
         auto_approve_gates=body.auto_approve_gates,
         status="draft",
         current_stage="S0_INGEST",

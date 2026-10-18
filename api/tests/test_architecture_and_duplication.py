@@ -111,3 +111,37 @@ def test_codebase_has_no_ui_component_lapses() -> None:
     violations = mod.check_frontend_components()
     formatted = "\n".join(f"[{v.rule}] {v.location}: {v.message}" for v in violations)
     assert not violations, f"UI Component Checker found lapses:\n{formatted}"
+
+
+def test_codebase_index_checker_detects_added_moved_deleted_files() -> None:
+    """Verify check_codebase_index detects unindexed, phantom (deleted/moved), and stale files."""
+    idx_checker_path = REPO_ROOT / "scripts" / "check_codebase_index.py"
+    spec = importlib.util.spec_from_file_location(
+        "check_codebase_index", idx_checker_path
+    )
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["check_codebase_index"] = mod
+    spec.loader.exec_module(mod)
+
+    base_entry = {
+        "path": "api/main.py",
+        "tier": "T4:Entry",
+        "lines": 100,
+        "classes": [],
+        "functions": ["health"],
+        "endpoints": ["GET /health"],
+    }
+    live_map = {
+        "api/main.py": {**base_entry, "functions": ["health", "ready"]},
+        "api/new_module.py": {**base_entry, "path": "api/new_module.py"},
+    }
+    disk_map = {
+        "api/main.py": base_entry,
+        "api/deleted_module.py": {**base_entry, "path": "api/deleted_module.py"},
+    }
+    drifts = mod._compare_file_entries(live_map, disk_map)
+    categories = {(d.category, d.path) for d in drifts}
+    assert ("UNINDEXED_FILE", "api/new_module.py") in categories
+    assert ("PHANTOM_FILE", "api/deleted_module.py") in categories
+    assert ("STALE_METADATA", "api/main.py") in categories

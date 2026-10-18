@@ -1,9 +1,17 @@
 export interface StoryGraphStyleGuide {
   id?: string
   visual_medium?: string
+  visual_style_preset?: string
+  color_palette_preset?: string
+  director_style_preset?: string
+  screenplay_style_preset?: string
+  music_style_preset?: string
   lens_language?: string
   lighting_rules?: string
   palette?: string[]
+  continuity_rules?: string
+  character_consistency_rules?: string
+  scene_consistency_rules?: string
 }
 
 export interface StoryGraphAttributeValue {
@@ -54,6 +62,17 @@ export interface StoryGraphAppearance {
   assets?: StoryGraphAsset[]
 }
 
+export interface StoryGraphInteractionStep {
+  step_index: number
+  actor_id: string
+  action_verb: string
+  target_id?: string | null
+  target_kind?: string
+  environment_reaction?: string
+  sound_trigger?: string
+  description: string
+}
+
 export interface StoryGraphScene {
   id: string
   index: number
@@ -62,6 +81,9 @@ export interface StoryGraphScene {
   heading?: string
   summary?: string
   status?: string
+  interaction_steps?: StoryGraphInteractionStep[]
+  ambient_environment_cue?: string
+  weather_and_air?: string
 }
 
 export interface StoryGraphDialogueLine {
@@ -76,6 +98,11 @@ export interface StoryGraphDialogueLine {
 export interface StoryGraphMusicCue {
   id: string
   mood: string
+  instrumentation?: string
+  tempo_bpm?: number
+  foley_palette?: string[]
+  environmental_ambience?: string
+  action_focus_sfx?: string[]
 }
 
 export interface StoryGraphBeat {
@@ -107,8 +134,14 @@ export interface StoryGraphShot {
   continue_from_last_frame?: boolean
   beats?: StoryGraphBeat[]
   cast?: StoryGraphCastEntry[]
+  prop_ids?: string[]
   dialogue_ids?: string[]
   music_cue_id?: string
+  foley_sfx?: string[]
+  environmental_sfx?: string[]
+  action_focus_sfx?: string[]
+  entry_motion_vector?: string
+  exit_motion_vector?: string
 }
 
 export interface StoryGraphQaScores {
@@ -174,6 +207,24 @@ export interface StoryGraphValidationIssue {
   message: string
 }
 
+export interface StoryGraphStageQaIssue {
+  code: string
+  severity: string
+  node_id: string
+  message: string
+  remediation_applied?: string
+}
+
+export interface StoryGraphStageQaReport {
+  stage: string
+  agent_role: string
+  iteration: number
+  passed: boolean
+  score: number
+  summary: string
+  issues: StoryGraphStageQaIssue[]
+}
+
 export interface StoryGraphData {
   style_guide?: StoryGraphStyleGuide
   entities: {
@@ -193,6 +244,7 @@ export interface StoryGraphData {
   generation_runs: StoryGraphGenerationRun[]
   gates: StoryGraphGate[]
   stage_runs: StoryGraphStageRun[]
+  stage_qa_reports?: StoryGraphStageQaReport[]
   validation_issues: StoryGraphValidationIssue[]
   change_requests: StoryGraphChangeRequest[]
   audit_log: StoryGraphAuditEntry[]

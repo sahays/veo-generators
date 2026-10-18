@@ -5,11 +5,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
-
 import deps
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from helpers import sign_production_urls
 from models import AIResponseWrapper, Project, ProjectStatus
+
 from routers._crud import register_crud_routes
 from routers.render_helpers import (
     run_standalone_regenerate_flagged,
@@ -227,8 +227,8 @@ def _build_analyze_updates(
 def _load_storygraph_service() -> Any:
     """Lazy-load the StoryGraph service functions from `productions_service`."""
     import importlib.util
-    from pathlib import Path
     import sys
+    from pathlib import Path
 
     if "productions_service_main" in sys.modules:
         return sys.modules["productions_service_main"]
@@ -255,6 +255,7 @@ def _ensure_storygraph_seeded(id: str) -> Any:
     if not repo.get_project_meta() and deps.firestore_svc:
         p = deps.firestore_svc.get_production(id)
         if p:
+            from storygraph.presets import resolve_production_presets
             from storygraph.schema import ProjectMeta
 
             ptype = (
@@ -262,6 +263,11 @@ def _ensure_storygraph_seeded(id: str) -> Any:
             )
             orient = p.orientation if p.orientation in ("16:9", "9:16") else "16:9"
             lang = getattr(p, "language", "en-IN") or "en-IN"
+            resolved = resolve_production_presets(
+                getattr(p, "visual_style_preset", None),
+                getattr(p, "color_palette_preset", None),
+                getattr(p, "director_style_preset", None),
+            )
             meta = ProjectMeta(
                 id=p.id,
                 name=p.name,
@@ -271,6 +277,11 @@ def _ensure_storygraph_seeded(id: str) -> Any:
                 video_length=str(p.video_length),
                 orientation=orient,
                 language=lang,
+                visual_style_preset=resolved.visual_style.id,
+                color_palette_preset=resolved.color_palette.id,
+                director_style_preset=resolved.director_style.id,
+                screenplay_style_preset=resolved.screenplay_style.id,
+                music_style_preset=resolved.music_style.id,
             )
             repo.put_project_meta(meta)
             repo.put_source_text(p.base_concept)

@@ -12,7 +12,9 @@ from .models import (
     strip_ts_comments_preserve_lines,
 )
 
-_PY_TRIPLE_QUOTE_RE: re.Pattern[str] = re.compile(r'"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'')
+_PY_TRIPLE_QUOTE_RE: re.Pattern[str] = re.compile(
+    r'"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\''
+)
 _TS_EXPLICIT_ANY_RE: re.Pattern[str] = re.compile(
     r":\s*any\b|\bas\s+any\b|<\s*any\s*>|,\s*any\s*>"
 )
@@ -97,7 +99,9 @@ def _check_py_function(
         args.append(node.args.vararg)
     if node.args.kwarg:
         args.append(node.args.kwarg)
-    untyped = [a.arg for a in args if a.arg not in ("self", "cls") and a.annotation is None]
+    untyped = [
+        a.arg for a in args if a.arg not in ("self", "cls") and a.annotation is None
+    ]
     if untyped or node.returns is None:
         violations.append(
             CodingViolation(
@@ -121,7 +125,9 @@ def check_python_size_and_types(
     violations: list[CodingViolation] = []
     ast_file_stmts = count_py_statements(tree.body)
     code_lines = count_py_non_comment_lines(source)
-    file_size = max(ast_file_stmts, code_lines) if enforce_strict_body else ast_file_stmts
+    file_size = (
+        max(ast_file_stmts, code_lines) if enforce_strict_body else ast_file_stmts
+    )
     if file_size > MAX_FILE_STATEMENTS:
         violations.append(
             CodingViolation(

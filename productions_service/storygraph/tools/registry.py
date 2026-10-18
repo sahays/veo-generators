@@ -39,6 +39,9 @@ ROLE_SCOPE: dict[Role, set[str]] = {
         "MusicCue",
         "Shot.music_cue_id",
         "Shot.sfx",
+        "Shot.foley_sfx",
+        "Shot.environmental_sfx",
+        "Shot.action_focus_sfx",
         "ChangeRequest",
     },
     Role.CRITIC: {

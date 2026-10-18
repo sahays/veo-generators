@@ -3,6 +3,7 @@ import type { StoryGraphData } from './storygraph'
 
 export * from './storygraph'
 export * from './records'
+export * from './productionPresets'
 
 export const sceneSchema = z.object({
   id: z.string(),
@@ -73,6 +74,11 @@ export const projectSchema = z.object({
   video_length: z.string().min(1),
   orientation: z.enum(['16:9', '9:16']),
   language: z.enum(['en-IN', 'hi-IN', 'en-US']),
+  visual_style_preset: z.string().optional(),
+  color_palette_preset: z.string().optional(),
+  director_style_preset: z.string().optional(),
+  screenplay_style_preset: z.string().optional(),
+  music_style_preset: z.string().optional(),
   auto_approve_gates: z.boolean().optional(),
   reference_image_url: z.string().optional(),
   prompt_id: z.string().optional(),
@@ -277,9 +283,14 @@ export interface Project {
   name: string
   type: ProjectType
   base_concept: string
-  video_length: '16' | '24' | '32' | '48' | 'custom'
+  video_length: string
   orientation: '16:9' | '9:16'
   language?: ProductionLanguage
+  visual_style_preset?: string
+  color_palette_preset?: string
+  director_style_preset?: string
+  screenplay_style_preset?: string
+  music_style_preset?: string
   auto_approve_gates?: boolean
   current_stage?: string
   blocked_gate?: string | null

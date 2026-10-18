@@ -73,7 +73,9 @@ def _extract_py_imports(tree: ast.Module) -> list[tuple[str, int]]:
             if mod:
                 imports.append((mod, node.lineno))
             for alias in node.names:
-                imports.append((f"{mod}.{alias.name}" if mod else alias.name, node.lineno))
+                imports.append(
+                    (f"{mod}.{alias.name}" if mod else alias.name, node.lineno)
+                )
                 imports.append((alias.name, node.lineno))
     return imports
 
@@ -89,7 +91,9 @@ def _is_router_or_entrypoint(rel: str) -> bool:
 
 def _is_domain_or_agent_module(rel: str) -> bool:
     """Return True if `rel` is a domain/agent/pipeline module that must use adapters/repos."""
-    return rel.startswith(("api/reframe_", "api/dubbing_", "api/agents/")) or rel.startswith(
+    return rel.startswith(
+        ("api/reframe_", "api/dubbing_", "api/agents/")
+    ) or rel.startswith(
         (
             "productions_service/storygraph/agents/",
             "productions_service/storygraph/tools/",
@@ -121,7 +125,9 @@ def _check_router_layer(
         ):
             seen.add(lineno)
             msg = f"[router-calls-repo-or-infra-directly] Router/Entrypoint '{rel}' directly imports '{sym}'."
-            violations.append(CodingViolation("tier-separation-of-concerns", f"{rel}:{lineno}", msg))
+            violations.append(
+                CodingViolation("tier-separation-of-concerns", f"{rel}:{lineno}", msg)
+            )
     for node in ast.walk(tree):
         if (
             isinstance(node, ast.Attribute)
@@ -132,7 +138,11 @@ def _check_router_layer(
         ):
             seen.add(node.lineno)
             msg = f"[router-calls-repo-or-infra-directly] Router '{rel}' accesses 'deps.{node.attr}' directly."
-            violations.append(CodingViolation("tier-separation-of-concerns", f"{rel}:{node.lineno}", msg))
+            violations.append(
+                CodingViolation(
+                    "tier-separation-of-concerns", f"{rel}:{node.lineno}", msg
+                )
+            )
     return violations
 
 
@@ -149,12 +159,20 @@ def _check_domain_and_low_tiers(
             ):
                 seen.add(lineno)
                 msg = f"[domain-bypasses-repo-or-adapter] Domain/Agent module '{rel}' directly imports '{sym}'."
-                violations.append(CodingViolation("tier-separation-of-concerns", f"{rel}:{lineno}", msg))
+                violations.append(
+                    CodingViolation(
+                        "tier-separation-of-concerns", f"{rel}:{lineno}", msg
+                    )
+                )
     if _is_low_tier_module(rel):
         for sym, lineno in imports:
             if any(part in sym.split(".") for part in _HIGHER_TIER_MARKERS):
                 msg = f"[upward-layer-import] Lower-tier module '{rel}' imports higher-tier symbol '{sym}'."
-                violations.append(CodingViolation("tier-separation-of-concerns", f"{rel}:{lineno}", msg))
+                violations.append(
+                    CodingViolation(
+                        "tier-separation-of-concerns", f"{rel}:{lineno}", msg
+                    )
+                )
     return violations
 
 
@@ -183,14 +201,20 @@ def check_ts_tier_isolation(source: str, rel_path: str) -> list[CodingViolation]
     for match in _TS_IMPORT_RE.finditer(clean):
         spec = match.group(1)
         lineno = clean[: match.start()].count("\n") + 1
-        if any(spec == sdk or spec.startswith(f"{sdk}/") for sdk in _FORBIDDEN_TS_DB_SDKS):
+        if any(
+            spec == sdk or spec.startswith(f"{sdk}/") for sdk in _FORBIDDEN_TS_DB_SDKS
+        ):
             msg = f"[frontend-direct-db-sdk] Frontend module '{rel}' imports DB/storage SDK '{spec}'."
-            violations.append(CodingViolation("tier-separation-of-concerns", f"{rel}:{lineno}", msg))
+            violations.append(
+                CodingViolation("tier-separation-of-concerns", f"{rel}:{lineno}", msg)
+            )
         elif is_ui_component and (
             spec == "@/lib/api"
             or spec.startswith("@/lib/api/")
             or spec.endswith("/serverAction")
         ):
             msg = f"[component-calls-api-or-db-directly] UI component '{rel}' imports API client '{spec}' directly."
-            violations.append(CodingViolation("tier-separation-of-concerns", f"{rel}:{lineno}", msg))
+            violations.append(
+                CodingViolation("tier-separation-of-concerns", f"{rel}:{lineno}", msg)
+            )
     return violations

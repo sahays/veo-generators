@@ -125,11 +125,11 @@ else
     exit 1
 fi
 
-echo "   Refreshing codebase index (CODEBASE_INDEX.json & CODEBASE_INDEX.md)..."
-if python3 scripts/generate_codebase_index.py; then
-    echo "   ✅ Codebase index refreshed."
+echo "   Refreshing and verifying codebase index honesty (CODEBASE_INDEX.json & CODEBASE_INDEX.md)..."
+if python3 scripts/check_codebase_index.py --sync --check; then
+    echo "   ✅ Codebase index refreshed and verified honest."
 else
-    echo "   ❌ Codebase index generation failed."
+    echo "   ❌ Codebase index honesty verification failed."
     exit 1
 fi
 

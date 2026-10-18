@@ -9,13 +9,15 @@ from .versioning import (
     mint_versioned_asset,
     persist_shot_with_refs,
     propagate_staleness,
+)
+from .versioning import (
     strip_version_suffix as _strip_version_suffix,
 )
 
 __all__ = [
+    "_VERSION_SUFFIX_RE",
     "Repo",
     "T",
-    "_VERSION_SUFFIX_RE",
     "_strip_version_suffix",
     "mint_versioned_appearance",
     "mint_versioned_asset",
