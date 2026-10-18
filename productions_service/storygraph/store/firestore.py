@@ -95,6 +95,32 @@ class FirestoreStore:
     def set(self, collection: str, doc_id: str, data: dict[str, Any]) -> None:
         check_doc_size(data, max_bytes=self.max_doc_bytes)
         self._col(collection).document(doc_id).set(data)
+        if collection == "meta" and doc_id == "project":
+            self._sync_parent_project_doc(data)
+
+    def _sync_parent_project_doc(self, data: dict[str, Any]) -> None:
+        raw_status = str(data.get("status") or "draft")
+        status_map = {
+            "completed": "completed",
+            "failed": "failed",
+            "draft": "draft",
+            "running": "generating",
+            "in_progress": "generating",
+        }
+        current_stage = data.get("current_stage")
+        final_video = data.get("final_video_uri") or data.get("final_video_url")
+        patch: dict[str, Any] = {
+            "status": status_map.get(raw_status, "scripted"),
+            "current_stage": current_stage,
+            "pipeline_stage": current_stage,
+            "error_message": data.get("error_message"),
+        }
+        if final_video is not None or raw_status in ("in_progress", "running", "draft"):
+            patch["final_video_url"] = final_video
+        try:
+            self._root.set(patch, merge=True)
+        except Exception:
+            pass
 
     def delete(self, collection: str, doc_id: str) -> None:
         self._col(collection).document(doc_id).delete()

@@ -138,6 +138,7 @@ class Project(BaseModel):
     render_quality: str = "draft"  # draft, final
     video_resolution: str = "360p"  # 360p, 720p, 1080p
     status: ProjectStatus = ProjectStatus.DRAFT
+    current_stage: Optional[str] = None
     pipeline_stage: Optional[str] = None
     pipeline_steps: List[PipelineStepLog] = []
     prompt_info: Optional[SystemResourceInfo] = None

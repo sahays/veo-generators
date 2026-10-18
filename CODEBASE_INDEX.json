@@ -1,5 +1,5 @@
 {
-  "total_files": 411,
+  "total_files": 412,
   "domain_packages": {
     "agents_service": 1,
     "api": 9,
@@ -26,7 +26,7 @@
     "productions_service/routers": 1,
     "productions_service/services": 3,
     "productions_service/storygraph": 44,
-    "productions_service/tests": 5,
+    "productions_service/tests": 6,
     "scripts": 4,
     "scripts/checkers": 9,
     "workers": 13
@@ -676,7 +676,7 @@
       "language": "python",
       "domain_package": "api/models",
       "tier": "Tier 1 (Models & Pure Config)",
-      "non_comment_lines": 135,
+      "non_comment_lines": 136,
       "classes": [
         "GlobalStyle",
         "CharacterProfile",
@@ -1865,7 +1865,7 @@
       "language": "python",
       "domain_package": "api/services",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 153,
+      "non_comment_lines": 152,
       "classes": [],
       "functions": [
         "sign_records_concurrently",
@@ -5054,7 +5054,7 @@
       "language": "python",
       "domain_package": "productions_service/services",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 313,
+      "non_comment_lines": 320,
       "classes": [
         "CreateProductionPayload",
         "RunPipelinePayload",
@@ -5199,7 +5199,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 4 (Feature Routers & Agents)",
-      "non_comment_lines": 205,
+      "non_comment_lines": 247,
       "classes": [
         "AssetCritiqueOutput"
       ],
@@ -5214,7 +5214,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 4 (Feature Routers & Agents)",
-      "non_comment_lines": 247,
+      "non_comment_lines": 264,
       "classes": [
         "AttributeKV",
         "AppearanceDraft",
@@ -5243,7 +5243,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 4 (Feature Routers & Agents)",
-      "non_comment_lines": 365,
+      "non_comment_lines": 374,
       "classes": [],
       "functions": [
         "run_director_for_scene"
@@ -5279,7 +5279,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 4 (Feature Routers & Agents)",
-      "non_comment_lines": 383,
+      "non_comment_lines": 389,
       "classes": [],
       "functions": [
         "deduplicate_entities_fuzzy",
@@ -5342,7 +5342,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 3 (Shared Router Helpers)",
-      "non_comment_lines": 247,
+      "non_comment_lines": 296,
       "classes": [
         "_Candidate",
         "RefPlan"
@@ -5358,7 +5358,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 3 (Shared Router Helpers)",
-      "non_comment_lines": 229,
+      "non_comment_lines": 285,
       "classes": [
         "Package"
       ],
@@ -5427,7 +5427,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 192,
+      "non_comment_lines": 196,
       "classes": [],
       "functions": [
         "compile_all_shots",
@@ -5522,7 +5522,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 97,
+      "non_comment_lines": 93,
       "classes": [],
       "functions": [
         "normalize_scene_timeline",
@@ -5566,7 +5566,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 142,
+      "non_comment_lines": 167,
       "classes": [
         "_FirestoreAutoChunkBatch",
         "_FirestoreTx",
@@ -5679,14 +5679,17 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 3 (Shared Router Helpers)",
-      "non_comment_lines": 113,
+      "non_comment_lines": 184,
       "classes": [],
       "functions": [
         "normalize_indian_epic_names",
         "normalize_entity_id",
         "strip_honorifics",
         "slug_id",
-        "name_similarity"
+        "name_similarity",
+        "partition_scene_dialogues",
+        "deduplicate_cast_positions",
+        "expand_overbudget_shot_buckets"
       ],
       "endpoints": []
     },
@@ -5753,7 +5756,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 205,
+      "non_comment_lines": 228,
       "classes": [
         "ValidationIssue"
       ],
@@ -5824,6 +5827,23 @@
         "test_store_batches_transactions_and_blobs",
         "test_all_14_node_types_round_trip",
         "test_repo_versioning_append_only_and_staleness_propagation"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/test_storygraph_remediation.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 388,
+      "classes": [],
+      "functions": [
+        "test_story_order_alignment",
+        "test_dialogue_partitioning_and_speaker_binding",
+        "test_compile_budget_preserves_identity_and_props",
+        "test_first_frame_slot_reservation_and_ordering",
+        "test_spatial_blocking_deduplication_and_continuity",
+        "test_critic_rejects_missing_character_and_low_scores"
       ],
       "endpoints": []
     },

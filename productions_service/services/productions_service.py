@@ -211,13 +211,23 @@ def render_project_compat(
     )
 
 
+def _clear_rendered_runs(pipe: Pipeline) -> None:
+    """Remove prior GenerationRun records and extracted last-frame assets before a forced re-render."""
+    for run in pipe.repo.list_generation_runs():
+        pipe.repo.store.delete("generation_runs", run.id)
+        pipe.repo.store.delete("assets", f"ast_lastframe_{run.shot_id}")
+
+
 def _execute_requested_stage(pipe: Pipeline, st: Stage, force: bool) -> None:
     """Execute a specific stage on `pipe`, handling forced S1 reset and S8 cascade."""
     if st == Stage.S1_EXTRACT and force:
         reset_storygraph_collections(pipe.repo)
         pipe.run_stage(Stage.S1_EXTRACT, force=True)
         return
+    if st == Stage.S4_SHOTS and force:
+        _clear_rendered_runs(pipe)
     if st == Stage.S8_RENDER and force:
+        _clear_rendered_runs(pipe)
         for sh in pipe.repo.list_shots():
             pipe.repo.put_shot(
                 sh.model_copy(

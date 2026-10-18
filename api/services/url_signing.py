@@ -143,11 +143,10 @@ def sign_production_urls(production: Project, thumbnails_only: bool = False) -> 
 
     for scene in data.get("scenes", []):
         dirty = _sign_scene_urls(scene, cache, thumbnails_only) or dirty
-    if not thumbnails_only:
-        for field in ("final_video_url", "draft_video_url", "reference_image_url"):
-            if data.get(field):
-                data[field], changed = _resolve_with_recovery(data[field], cache)
-                dirty = dirty or changed
+    for field in ("final_video_url", "draft_video_url", "reference_image_url"):
+        if data.get(field):
+            data[field], changed = _resolve_with_recovery(data[field], cache)
+            dirty = dirty or changed
 
     if dirty and deps.firestore_svc:
         deps.firestore_svc.update_production(production.id, {"signed_urls": cache})
