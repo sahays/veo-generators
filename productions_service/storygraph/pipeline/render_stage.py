@@ -109,12 +109,17 @@ def _is_shot_already_valid(
 ) -> bool:
     """Return True if the shot already has a clean approved run passing critical physics & permanence QA.
 
-    Only runs rendered from the shot's current content (`run_matches_shot`) count.
+    Only runs rendered from the shot's current content (`run_matches_shot`) count. The
+    winning APPROVED run is judged when present, so a newer rejected continuity
+    candidate never un-approves a shot that assembly readiness still accepts.
     """
     current_runs = [r for r in existing_runs if run_matches_shot(r, shot)]
     if shot.stale or not current_runs:
         return False
-    last_run = current_runs[-1]
+    winners = [
+        r for r in current_runs if r.status == Status.APPROVED and r.output_video_uri
+    ]
+    last_run = winners[-1] if winners else current_runs[-1]
     scores = last_run.qa_scores
     if scores is not None:
         if _SEVERE_RENDER_FLAGS & set(scores.artifact_flags):

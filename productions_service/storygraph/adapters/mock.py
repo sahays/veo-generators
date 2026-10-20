@@ -175,15 +175,17 @@ class MockVLMProvider:
         self._seen_shots: set[str] = set()
         self.calls: list[dict[str, Any]] = []
 
-    def _build_qa_report(self, prompt: str) -> QAReport:
+    def _consume_fail_once(self, prompt: str) -> bool:
+        """True exactly once per shot listed in `fail_shots_once` (scripted first failure)."""
         shot_match = re.search(r"shot_id=([A-Za-z0-9_]+)", prompt)
         shot_id = shot_match.group(1) if shot_match else ""
-        if (
-            shot_id
-            and shot_id in self.fail_shots_once
-            and shot_id not in self._seen_shots
-        ):
+        if shot_id in self.fail_shots_once and shot_id not in self._seen_shots:
             self._seen_shots.add(shot_id)
+            return True
+        return False
+
+    def _build_qa_report(self, prompt: str) -> QAReport:
+        if self._consume_fail_once(prompt):
             return QAReport(
                 face_similarity={"default": 0.55},
                 wardrobe_match=0.60,
@@ -223,6 +225,13 @@ class MockVLMProvider:
 
         if schema is QAReport or schema.__name__ == "QAReport":
             return self._build_qa_report(prompt)  # type: ignore[return-value]
+        if schema.__name__ == "ClipRubric":
+            # Scripted failures (fail_shots_once / patched _build_qa_report) surface as a
+            # legacy QAReport, which the critic grades via its legacy branch.
+            legacy = self._build_qa_report(prompt)
+            if not legacy.passed:
+                return legacy  # type: ignore[return-value]
+            return schema.mock_response(prompt)  # type: ignore[attr-defined]
 
         if "approved" in schema.model_fields:
             return schema.model_validate(

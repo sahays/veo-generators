@@ -10,6 +10,7 @@ from ...clips.text import DialogueRef
 from ...physics import enrich_scene_steps
 from ...presets import resolve_production_presets
 from ...schema import Entity, EntityType, InteractionStep, Role
+from ...story import log_scene_duplicates, screenwriter_guard_block
 from ...tools import write_tools as wt
 from ...tools.registry import ToolContext
 from ...tools.role_helpers import (
@@ -273,7 +274,10 @@ def _build_screenwriter_prompt(
         "5. Object permanence: every prop and character in the scene is present from the first frame (or enters continuously through a visible doorway); each object exists exactly once; room fixtures stay where they are; a released object stops and rests exactly where it is put. State each prop's start and end place in `pre_state` / `post_state`.\n"
         "6. Species fit: every action and vocalization must match its actor's `kind` above. Only animals bark, meow, neigh, etc.; a non-verbal actor communicates through sounds and body language and gets NO `dialogue_lines`; a character with no mouth speaks voice-only. Write the actor's own name as the subject of each action.\n"
         "7. Keep each step about the props it actually touches; do not restate unrelated props.\n"
-        f"8. Write ALL spoken `dialogue_lines[].text` in {lang_desc} (max 14 words per line) and set `dialogue_lines[].language` to `'{lang_code}'`.\n\n"
+        f"8. Write ALL spoken `dialogue_lines[].text` in {lang_desc} (max 14 words per line) and set `dialogue_lines[].language` to `'{lang_code}'`.\n"
+        "9. Speech window: every line is spoken DURING the clip's action, never after its last step. In `omni_prompt` place each line right after the step it reacts to and end the clip with a short physical beat after the final line; a clip with more than ~15 words gets at most 2 steps.\n"
+        "10. Each scene must advance the story: never repeat a gag, action, or line from another scene. An intentional callback must set the line's `delivery` to include 'callback'.\n\n"
+        f"{screenwriter_guard_block(ctx.repo, scene_id)}"
         f"SCENE VIEW ({scene_id}):\n{sview.model_dump_json(exclude={'shots'})}"
     )
 
@@ -325,4 +329,5 @@ def run_screenwriter_for_scene(
     _persist_screenwriter_output(
         ctx, scene_id, sview, res.output, lead_id, names, lang_code
     )
+    log_scene_duplicates(ctx.repo, scene_id, who=str(Role.SCREENWRITER))
     return res

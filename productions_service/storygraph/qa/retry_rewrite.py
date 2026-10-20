@@ -15,6 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from ..schema import QAReport
+from ..timeline.handling import is_holdable, moved_props
 from ..views import ShotView
 
 MAX_INSTRUCTIONS = 4
@@ -31,11 +32,12 @@ BANNED_RE = re.compile(
 
 @dataclass(frozen=True)
 class PropFocus:
-    """A prop in the shot with its handling actor and original resting place, if known."""
+    """A prop in the clip: who holds it, its own resting place, and who moves it (if anyone)."""
 
     name: str
     handler: str | None = None
     origin: str | None = None
+    mover: str | None = None
 
 
 @dataclass(frozen=True)
@@ -52,28 +54,58 @@ ReasonRewriter = Callable[[str, RewriteContext], str | None]
 Template = Callable[[RewriteContext, list[PropFocus], list[str]], list[str]]
 
 
-def _handler_map(view: ShotView) -> dict[str, tuple[str, str | None]]:
-    """prop_id -> (actor name, origin) from holding state, else scene interaction steps."""
+def _clip_holders(view: ShotView) -> dict[str, str]:
+    """prop_id -> holder name, from the clip's opening/closing holding state only."""
     names = {cid: e.canonical_name for cid, e in view.cast_entities.items()}
-    out: dict[str, tuple[str, str | None]] = {}
-    for step in view.scene.interaction_steps:
-        if step.target_id in view.shot.prop_ids and step.actor_id in names:
-            origin = step.supported_by.strip() or None
-            if origin and len(origin) > _ORIGIN_MAX_CHARS:
-                origin = None
-            out.setdefault(step.target_id, (names[step.actor_id], origin))
-    for cid, state in view.cast_states.items():
-        held = state.get("holding")
-        if held and cid in names:
-            out[held] = (names[cid], out.get(held, ("", None))[1])
+    out: dict[str, str] = {}
+    for states in (view.cast_states, view.cast_end_states):
+        for cid, state in states.items():
+            held = state.get("holding")
+            if held and cid in names:
+                out.setdefault(held, names[cid])
     return out
 
 
+def _handler_map(view: ShotView) -> dict[str, tuple[str, str | None]]:
+    """prop_id -> (holder name, own resting place) for props held in *this* clip.
+
+    Fixtures, liquids and locations never get a holder; looking at a prop is not handling it.
+    """
+    holders = _clip_holders(view)
+    out: dict[str, tuple[str, str | None]] = {}
+    for pid, ent in view.prop_entities.items():
+        holder = holders.get(pid)
+        if not holder or not is_holdable(ent.canonical_name):
+            continue
+        origin = view.prop_states.get(pid, {}).get("supported_by", "").strip() or None
+        out[pid] = (
+            holder,
+            origin if origin and len(origin) <= _ORIGIN_MAX_CHARS else None,
+        )
+    return out
+
+
+def _mover_map(view: ShotView) -> dict[str, str]:
+    """prop_id -> actor name for props this clip's steps physically manipulate."""
+    names = {cid: e.canonical_name for cid, e in view.cast_entities.items()}
+    by_index = {s.step_index: s for s in view.scene.interaction_steps}
+    clip = next(
+        (c for c in view.scene.clips if c.clip_index == view.shot.clip_index), None
+    )
+    steps = [by_index[i] for i in (clip.step_indices if clip else []) if i in by_index]
+    return {
+        pid: names[aid]
+        for pid, aid in moved_props(steps).items()
+        if pid in view.prop_entities and aid in names
+    }
+
+
 def context_from_view(view: ShotView) -> RewriteContext:
-    """Extract actor/prop names, handlers and screen sides from a `ShotView`."""
+    """Extract actor/prop names, holders, movers and screen sides from a `ShotView`."""
     handlers = _handler_map(view)
+    movers = _mover_map(view)
     props = tuple(
-        PropFocus(e.canonical_name, *handlers.get(pid, (None, None)))
+        PropFocus(e.canonical_name, *handlers.get(pid, (None, None)), movers.get(pid))
         for pid, e in view.prop_entities.items()
     )
     on_screen = [c for c in view.shot.cast if c.position != "offscreen_voice"]
@@ -128,17 +160,12 @@ def _t_materialized(
 def _t_single_prop(
     ctx: RewriteContext, ps: list[PropFocus], _a: list[str]
 ) -> list[str]:
-    out: list[str] = []
-    for p in ps:
-        if p.handler:
-            spot = p.origin or "its original spot"
-            out.append(
-                f"after {p.handler} takes the {p.name}, {spot} is empty; "
-                f"exactly one {p.name}, in {p.handler}'s hands"
-            )
-        else:
-            out.append(f"exactly one {p.name} is in the scene for the whole shot")
-    return out
+    return [
+        f"exactly one {p.name}, in {p.handler}'s hands"
+        if p.handler
+        else f"exactly one {p.name} is in the scene for the whole shot"
+        for p in ps
+    ]
 
 
 def _t_single_actor(
@@ -172,7 +199,7 @@ def _t_hand_driven(
     ctx: RewriteContext, ps: list[PropFocus], _a: list[str]
 ) -> list[str]:
     return [
-        f"the {p.name} moves only when {p.handler or 'a character'}'s hand pushes, "
+        f"the {p.name} moves only when {p.mover or p.handler or 'a character'}'s hand pushes, "
         "pulls or carries it"
         for p in ps
     ]

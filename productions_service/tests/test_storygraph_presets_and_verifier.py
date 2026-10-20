@@ -11,6 +11,7 @@ from storygraph.compile import compile_shot
 from storygraph.config import Config
 from storygraph.graph_verifier import verify_storygraph
 from storygraph.omni.spec import OmniClipSpec
+from storygraph.physics import remediate_physical_causality
 from storygraph.pipeline import Pipeline, Stage
 from storygraph.presets import (
     COLOR_PALETTE_PRESETS,
@@ -391,26 +392,23 @@ def test_archetype_conservation_voice_lock_and_critic_flags(
     issues = verify_storygraph(tmp_repo, default_cfg, through_stage="S4_SHOTS")
     codes = {i.code for i in issues}
     assert "character_permanence_gap" in codes
-    assert "prop_permanence_gap" in codes
+    # The scene-wide prop closure is advisory now: props are scoped per clip at view time.
+    assert all(i.severity == "warn" for i in issues if i.code == "prop_permanence_gap")
 
-    s4_report = run_stage_qa_and_remediate(tmp_repo, default_cfg, "S4_SHOTS")
-    assert s4_report.passed is True
+    remediate_physical_causality(tmp_repo, [], include_shots=True)
     healed_shot1 = tmp_repo.get_shot(shot1.id)
     assert healed_shot1 is not None
     assert "char_milo" in {c.entity_id for c in healed_shot1.cast}
-    assert {"obj_chair", "obj_towel", "obj_bowl"}.issubset(set(healed_shot1.prop_ids))
 
     view1 = shot_view(tmp_repo, shot1.id)
     plan1 = select_references(view1, default_cfg)
     pkg1 = compile_shot(view1, plan1, default_cfg)
     assert "NEVER" not in pkg1.compiled_prompt
-    # Clip 1 moves the chair and towel; the bowl is only touched in clip 2.
+    # Clip 1 moves the chair and towel; the bowl is only touched in clip 2, so it is absent.
     spec = OmniClipSpec.model_validate_json(pkg1.compiled_prompt)
     moves = {o.name: o.moves for o in spec.objects or []}
-    assert (moves["Mixing Bowl"], moves["Wooden Chair"], moves["Kitchen Towel"]) == (
-        False,
-        True,
-        True,
+    assert (
+        moves["Wooden Chair"] and moves["Kitchen Towel"] and "Mixing Bowl" not in moves
     )
 
     raw_qa = QAReport(

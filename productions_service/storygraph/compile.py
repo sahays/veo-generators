@@ -17,7 +17,7 @@ from .omni.symbols import ImageBindings
 from .repair.models import RepairDirective
 from .views import ShotView
 
-OMNI_TARGET_CHARS: Final[int] = 2500
+OMNI_TARGET_CHARS: Final[int] = 3500
 _log = logging.getLogger(__name__)
 
 

@@ -55,8 +55,7 @@ def test_towel_failure_becomes_named_target_state_without_failure_words() -> Non
     )
     out = rewrite_retry_feedback(report, _kitchen_ctx())
     assert len(out) == 4  # deduped (reason + flag collapse) and capped
-    assert out[0] == (
-        "after Pip takes the Kitchen Towel, the wall peg is empty; "
+    assert out[0] == (  # never "<place> is empty" (review Theme 2.5)
         "exactly one Kitchen Towel, in Pip's hands"
     )
     assert any("exactly one Milo on screen" in s for s in out)

@@ -15,6 +15,7 @@ from ...schema import (
     StateEffect,
 )
 from ...state import rebuild_state_facts
+from ...timeline.handling import head_noun
 from ...tools import write_tools as wt
 from ...tools.registry import ToolContext
 from ...tools.role_helpers import (
@@ -32,22 +33,34 @@ from ..runner import RoleRunResult, run_role
 from .architect import _normalize_event_effects
 
 
+def _canon(name: str) -> str:
+    return strip_honorifics(name).strip().lower()
+
+
+def same_entity(cand: Entity, ex: Entity, threshold: float) -> bool:
+    """Merge evidence: same id or canonical name; else an alias naming the other's canonical
+    name, or near-identical canonical names, but only when the head nouns agree (so
+    'Bowl of Strawberries' is never merged into 'Single Strawberry')."""
+    if cand.id == ex.id or _canon(cand.canonical_name) == _canon(ex.canonical_name):
+        return True
+    if head_noun(cand.canonical_name) != head_noun(ex.canonical_name):
+        return False
+    aliased = _canon(cand.canonical_name) in {_canon(a) for a in ex.aliases} or _canon(
+        ex.canonical_name
+    ) in {_canon(a) for a in cand.aliases}
+    return (
+        aliased or name_similarity(cand.canonical_name, ex.canonical_name) >= threshold
+    )
+
+
 def _find_matching_entity(
     cand: Entity, pool: list[Entity], exact_idx: dict[str, Entity], threshold: float
 ) -> Entity | None:
-    """Return an existing entity in `pool` matching `cand` by exact honorific-stripped name or RapidFuzz ratio."""
-    cand_names = [n.strip() for n in [cand.canonical_name, *cand.aliases] if n.strip()]
-    for nm in cand_names:
-        hit = exact_idx.get(strip_honorifics(nm).lower())
-        if hit is not None:
-            return hit
-    for ex in pool:
-        ex_names = [n.strip() for n in [ex.canonical_name, *ex.aliases] if n.strip()]
-        if any(
-            name_similarity(a, b) >= threshold for a in cand_names for b in ex_names
-        ):
-            return ex
-    return None
+    """Existing entity in `pool` that is the same entity as `cand` (see `same_entity`)."""
+    hit = exact_idx.get(_canon(cand.canonical_name))
+    if hit is not None:
+        return hit
+    return next((ex for ex in pool if same_entity(cand, ex, threshold)), None)
 
 
 def _merge_within_type(
@@ -69,9 +82,7 @@ def _merge_within_type(
             dropped.append(cand.id)
         else:
             kept.append(cand)
-            for nm in [cand.canonical_name, *cand.aliases]:
-                if nm.strip():
-                    exact_idx.setdefault(strip_honorifics(nm).lower(), cand)
+            exact_idx.setdefault(_canon(cand.canonical_name), cand)
     return dropped
 
 

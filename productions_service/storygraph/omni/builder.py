@@ -52,13 +52,12 @@ class DescPolicy:
 
 
 DESC_LEVELS: Final[tuple[DescPolicy, ...]] = (
-    DescPolicy(2, 2, 2, 1),
+    DescPolicy(2, 2, 2, 2),
     DescPolicy(1, 2, 1, 1),
     DescPolicy(1, 1, 1, 1),
-    DescPolicy(0, 1, 1, 0),
-    DescPolicy(0, 0, 1, 0),
-    DescPolicy(0, 0, 0, 0, extras=False),
-)
+    DescPolicy(1, 1, 1, 1, extras=False),
+    DescPolicy(1, 1, 0, 1, extras=False),
+)  # subject/object identity never drops below one sentence (review Theme 2.7)
 
 
 def _setting(view: ShotView, sym: Symbols, b: ImageBindings, n: int) -> SettingSpec:
@@ -169,7 +168,7 @@ def build_spec(
         if g
     ]
     subjects = build_subjects(
-        view, spk, sym, bindings, policy.with_ref, policy.without_ref
+        view, spk, sym, bindings, policy.with_ref, policy.without_ref, policy.extras
     )
     constraints = _constraints(view, bindings, bool(objects), speech)
     return OmniClipSpec(

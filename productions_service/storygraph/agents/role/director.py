@@ -229,11 +229,10 @@ def _prune_orphan_shots(ctx: ToolContext, scene_id: str, keep: set[str]) -> None
             )
 
 
-def run_director_for_scene(
-    ctx: ToolContext, scene_id: str, mock_llm: MockLLMClient | None = None
-) -> RoleRunResult:
-    """Run DIRECTOR to camera-block and light exactly one Shot per screenwriter clip of `scene_id`."""
-    sview = scene_view(ctx.repo, scene_id)
+def build_scene_blocking(
+    ctx: ToolContext, sview: SceneView
+) -> tuple[_SceneBlocking, list[Entity], list[Entity]]:
+    """Per-scene blocking context (+ scene characters and props) for persisting shots."""
     chars, props = _scene_cast_and_props(ctx, sview)
     base_order, ev_ids = _sync_scene_event_orders(ctx, sview)
     blk = _SceneBlocking(
@@ -248,6 +247,15 @@ def run_director_for_scene(
         bundle=resolve_bundle(ctx.repo),
         prev_positions={},
     )
+    return blk, chars, props
+
+
+def run_director_for_scene(
+    ctx: ToolContext, scene_id: str, mock_llm: MockLLMClient | None = None
+) -> RoleRunResult:
+    """Run DIRECTOR to camera-block and light exactly one Shot per screenwriter clip of `scene_id`."""
+    sview = scene_view(ctx.repo, scene_id)
+    blk, chars, props = build_scene_blocking(ctx, sview)
     clips = sview.scene.clips
     fb = DirectorSceneOutput(
         shots=fallback_drafts(scene_id, sview.scene.location_id, blk.lead_id, clips)

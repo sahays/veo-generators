@@ -6,13 +6,18 @@ a mouth. Non-verbal subjects carry their vocalization in `vocal` instead.
 
 from __future__ import annotations
 
+from typing import Final
+
 from ..schema import CastInShot
 from ..views import ShotView
 from .sequence import speech_anchor
 from .spec import SpeechSpec, StepSpec, SubjectSpec
 from .symbols import ImageBindings, Symbols
-from .text import clean, condense_identity, humanize
+from .text import IdResolver, clean, condense_identity, first_sentence, humanize
 from .voice import Speaker, build_speaker, language_code
+
+_WARDROBE_LABELS: Final[frozenset[str]] = frozenset({"default", "none", "normal"})
+_TRIMMED_WARDROBE_CHARS: Final[int] = 90
 
 
 def build_speakers(view: ShotView, sym: Symbols) -> dict[str, Speaker]:
@@ -31,23 +36,34 @@ def build_speakers(view: ShotView, sym: Symbols) -> dict[str, Speaker]:
     return out
 
 
+def _wardrobe(raw: str, full: bool) -> str:
+    """Wardrobe text ('default' is a state label, not wardrobe); first clause when trimmed."""
+    text = humanize(raw)
+    if text.lower() in _WARDROBE_LABELS:
+        return ""
+    return (
+        text if full else first_sentence(text, IdResolver({}), _TRIMMED_WARDROBE_CHARS)
+    )
+
+
 def _subject(
-    view: ShotView, c: CastInShot, spk: Speaker, sym: Symbols, n_sent: int
+    view: ShotView, c: CastInShot, spk: Speaker, sym: Symbols, n_sent: int, full: bool
 ) -> SubjectSpec:
     app = view.cast_appearances.get(c.entity_id)
     st = view.cast_states.get(c.entity_id, {})
     others = [n for k, n in sym.names.items() if k != c.entity_id]
     r = sym.resolver
     wardrobe = clean((app.wardrobe if app else None) or st.get("wearing"), r)
-    ident = condense_identity(app.visual_description if app else "", r, others, n_sent)
+    desc = app.visual_description if app else ""
+    ident = condense_identity(desc, r, others, max(1, n_sent))
     traits = spk.traits
     return SubjectSpec(
         id=sym.ids[c.entity_id],
         name=spk.name,
         kind=traits.kind.value,
         identity=ident or None,
-        wardrobe=humanize(wardrobe) or None,
-        holding=sym.ref(clean(st.get("holding"), r)),
+        wardrobe=_wardrobe(wardrobe, full) or None,
+        holding=sym.ids.get(st.get("holding", "")),
         screen_pos=c.position,
         framing=c.framing,
         can_speak=traits.can_speak,
@@ -63,16 +79,23 @@ def build_subjects(
     bindings: ImageBindings,
     with_ref: int,
     without_ref: int,
+    full_wardrobe: bool = True,
 ) -> list[SubjectSpec]:
-    """One subject per unique cast member; referenced subjects get shorter identity text."""
+    """One subject per unique cast member; identity never drops below one sentence."""
     out: list[SubjectSpec] = []
     for c in {c.entity_id: c for c in view.shot.cast}.values():
         ref = bindings.ref_by_entity.get(c.entity_id)
-        subj = _subject(
-            view, c, spk[c.entity_id], sym, with_ref if ref else without_ref
-        )
+        n_sent = with_ref if ref else without_ref
+        subj = _subject(view, c, spk[c.entity_id], sym, n_sent, full_wardrobe)
         out.append(subj.model_copy(update={"ref_image": ref}))
     return out
+
+
+def _speech_slot(anchor: int | None, sequence: list[StepSpec]) -> int | None:
+    """Anchor speech before the final step (never after the last action)."""
+    if anchor is None or not sequence:
+        return anchor
+    return min(anchor, len(sequence) - 1)
 
 
 def build_speech(
@@ -92,7 +115,7 @@ def build_speech(
         delivery = clean(d.delivery, sym.resolver)
         out.append(
             SpeechSpec(
-                after=speech_anchor(prompt, sequence, d.text),
+                after=_speech_slot(speech_anchor(prompt, sequence, d.text), sequence),
                 speaker=sym.ids[d.speaker_id],
                 lang=language_code(d.language),
                 text=d.text.strip(),

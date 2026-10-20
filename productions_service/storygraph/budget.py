@@ -4,15 +4,20 @@ from __future__ import annotations
 
 import hashlib
 import io
+import logging
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from PIL import Image
 
+from .anchors.visual_states import StateRef, resolve_state_refs
 from .config import Config, VideoProviderCfg
 from .repair.models import RepairDirective
 from .repo import Repo
-from .schema import Asset, Role, Status
+from .schema import Asset, CastInShot, Role, Status
 from .views import ShotView
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -111,38 +116,47 @@ def build_composite_sheet(
 
 
 _POS_RANK: dict[str, int] = {"left": 0, "center": 1, "right": 2, "background": 3}
+_TYPE_RANK: dict[str, int] = {"location": 0, "character": 1, "object": 2}
+_PROP_REPAIR_BOOST = 60
+
+
+def _cast_score(
+    c: CastInShot, speaking_ids: set[str], action_subjects: set[str]
+) -> int:
+    if c.entity_id in speaking_ids or c.framing in ("ECU", "CU", "MCU"):
+        return 100
+    return 80 if c.entity_id in action_subjects else 50
 
 
 def _build_cast_candidates(
-    view: ShotView, speaking_ids: set[str], action_subjects: set[str]
+    view: ShotView,
+    speaking_ids: set[str],
+    action_subjects: set[str],
+    state_refs: dict[str, StateRef],
 ) -> list[_Candidate]:
+    """One identity candidate per on-screen character (state-matched sheet when available)."""
     out: list[_Candidate] = []
     for c in view.shot.cast:
         if c.position == "offscreen_voice":
             continue
+        ref = state_refs.get(c.entity_id)
         ent = view.cast_entities.get(c.entity_id)
-        app = view.cast_appearances.get(c.entity_id)
-        assets = [
+        app = ref.appearance if ref else view.cast_appearances.get(c.entity_id)
+        sheets = [
             a
             for a in view.cast_assets.get(c.entity_id, [])
             if a.kind != "composite_sheet"
         ]
-        c_asset = assets[-1] if assets else None
-        if c.entity_id in speaking_ids or c.framing in ("ECU", "CU", "MCU"):
-            c_score = 100
-        elif c.entity_id in action_subjects:
-            c_score = 80
-        else:
-            c_score = 50
-        c_name = ent.canonical_name if ent else c.entity_id
+        c_asset = ref.asset if ref else (sheets[-1] if sheets else None)
         c_desc = app.visual_description if app else ""
         if app and app.wardrobe:
             c_desc = f"{c_desc} (wearing {app.wardrobe})"
+        c_name = ent.canonical_name if ent else c.entity_id
         out.append(
             _Candidate(
                 c.entity_id,
                 "character",
-                c_score,
+                _cast_score(c, speaking_ids, action_subjects),
                 c_asset,
                 f"{c_name}: {c_desc}".strip(": "),
                 screen_order=_POS_RANK.get(c.position, 1),
@@ -151,32 +165,35 @@ def _build_cast_candidates(
     return out
 
 
+def _prop_score(view: ShotView, pid: str, action_subjects: set[str]) -> int:
+    held = {st.get("holding") for st in view.cast_states.values()}
+    relevant = (
+        pid in held
+        or view.shot.camera.focus_target_id == pid
+        or view.shot.camera.shot_size in ("ECU", "CU")
+        or pid in action_subjects
+    )
+    return 85 if relevant else 45
+
+
 def _build_prop_candidates(
-    view: ShotView, action_subjects: set[str]
+    view: ShotView, action_subjects: set[str], state_refs: dict[str, StateRef]
 ) -> list[_Candidate]:
+    """One candidate per prop, scored by relevance (held / focus / action subject)."""
     out: list[_Candidate] = []
-    held_props = {
-        st.get("holding") for st in view.cast_states.values() if st.get("holding")
-    }
     for pid in view.shot.prop_ids:
+        ref = state_refs.get(pid)
         pent = view.prop_entities.get(pid)
-        papp = view.prop_appearances.get(pid)
+        papp = ref.appearance if ref else view.prop_appearances.get(pid)
         passets = view.prop_assets.get(pid, [])
-        p_asset = passets[-1] if passets else None
-        is_active_or_held = (
-            pid in held_props
-            or view.shot.camera.focus_target_id == pid
-            or view.shot.camera.shot_size in ("ECU", "CU")
-            or pid in action_subjects
-        )
-        p_score = 85 if is_active_or_held else 45
+        p_asset = ref.asset if ref else (passets[-1] if passets else None)
         p_name = pent.canonical_name if pent else pid
         p_desc = papp.visual_description if papp else ""
         out.append(
             _Candidate(
                 pid,
                 "object",
-                p_score,
+                _prop_score(view, pid, action_subjects),
                 p_asset,
                 f"{p_name}: {p_desc}".strip(": "),
                 screen_order=4,
@@ -185,7 +202,22 @@ def _build_prop_candidates(
     return out
 
 
-def _collect_sorted_candidates(view: ShotView) -> list[_Candidate]:
+def _sort_candidates(candidates: list[_Candidate]) -> list[_Candidate]:
+    """Location, then every on-screen character, then props by relevance (deterministic)."""
+    return sorted(
+        candidates,
+        key=lambda x: (
+            _TYPE_RANK[x.entity_type],
+            -x.score,
+            x.screen_order,
+            x.entity_id,
+        ),
+    )
+
+
+def _collect_sorted_candidates(
+    view: ShotView, state_refs: dict[str, StateRef]
+) -> list[_Candidate]:
     action_subjects = {sid for b in view.shot.beats for sid in b.subject_ids}
     speaking_ids = {c.entity_id for c in view.shot.cast if c.speaking} | {
         dl.speaker_id for dl in view.dialogue_lines
@@ -195,13 +227,13 @@ def _collect_sorted_candidates(view: ShotView) -> list[_Candidate]:
     loc_verbal = (
         f"{view.location.canonical_name}: {view.location_appearance.visual_description}"
     )
-    candidates = [
-        _Candidate(view.location.id, "location", loc_score, loc_asset, loc_verbal),
-        *_build_cast_candidates(view, speaking_ids, action_subjects),
-        *_build_prop_candidates(view, action_subjects),
-    ]
-    candidates.sort(key=lambda x: (-x.score, x.screen_order, x.entity_id))
-    return candidates
+    return _sort_candidates(
+        [
+            _Candidate(view.location.id, "location", loc_score, loc_asset, loc_verbal),
+            *_build_cast_candidates(view, speaking_ids, action_subjects, state_refs),
+            *_build_prop_candidates(view, action_subjects, state_refs),
+        ]
+    )
 
 
 def _make_in_memory_composite(c1: _Candidate, c2: _Candidate) -> Asset:
@@ -224,88 +256,128 @@ def _make_in_memory_composite(c1: _Candidate, c2: _Candidate) -> Asset:
     )
 
 
-def _allocate_non_loc_pool(
-    remaining_pool: list[_Candidate],
-    avail_for_non_loc: int,
-    cfg: Config,
-    repo: Repo | None,
-    dropped_verbal: list[str],
-    allow_composites: bool = True,
-) -> tuple[list[Asset], list[tuple[Asset, Asset]]]:
-    high_pri = [c for c in remaining_pool if c.score >= 70 and c.asset is not None]
-    composites_to_build: list[tuple[Asset, Asset]] = []
-    selected_assets: list[Asset] = []
-    used_ids: set[str] = set()
-    while (
-        allow_composites
-        and cfg.caps.max_composite_subjects >= 2
-        and (rem_high := [c for c in high_pri if c.entity_id not in used_ids])
-        and len(rem_high) > (avail_for_non_loc - len(selected_assets)) >= 1
-    ):
-        char_high = sorted(
-            [c for c in rem_high if c.entity_type == "character"],
-            key=lambda x: (x.screen_order, x.entity_id),
+@dataclass
+class _Fit:
+    """Slot allocation result for one candidate group."""
+
+    assets: list[Asset] = field(default_factory=list)
+    composites: list[tuple[Asset, Asset]] = field(default_factory=list)
+    dropped: list[str] = field(default_factory=list)
+
+
+def _fit_characters(
+    chars: list[_Candidate], avail: int, can_composite: bool, repo: Repo | None
+) -> _Fit:
+    """Fit every on-screen character into `avail` slots, pairing sheets when over budget.
+
+    Each LEFT/RIGHT composite (screen order) saves one slot; pairs never exceed `avail`.
+    """
+    overflow = len(chars) - avail
+    n_pairs = min(overflow, len(chars) // 2, avail) if can_composite else 0
+    if n_pairs <= 0:
+        return _Fit(
+            [c.asset for c in chars[:avail] if c.asset is not None],
+            [],
+            [c.verbal_description for c in chars[max(0, avail) :]],
         )
-        if len(char_high) < 2:
-            break
-        c1, c2 = char_high[0], char_high[1]
+    by_screen = sorted(chars, key=lambda x: (x.screen_order, x.entity_id))
+    pairs = [(by_screen[2 * i], by_screen[2 * i + 1]) for i in range(n_pairs)]
+    paired = {c.entity_id for pair in pairs for c in pair}
+    singles = [c for c in chars if c.entity_id not in paired]
+    room = avail - n_pairs
+    fit = _Fit(dropped=[c.verbal_description for c in singles[room:]])
+    for c1, c2 in pairs:
         assert c1.asset is not None and c2.asset is not None
-        composites_to_build.append((c1.asset, c2.asset))
-        comp = (
+        fit.composites.append((c1.asset, c2.asset))
+        fit.assets.append(
             build_composite_sheet(repo, c1.asset, c2.asset)
             if repo
             else _make_in_memory_composite(c1, c2)
         )
-        selected_assets.append(comp)
-        used_ids.update((c1.entity_id, c2.entity_id))
-    for c in remaining_pool:
-        if c.entity_id in used_ids:
-            continue
-        if len(selected_assets) < avail_for_non_loc and c.asset is not None:
-            selected_assets.append(c.asset)
-        else:
-            dropped_verbal.append(c.verbal_description)
-    return selected_assets, composites_to_build
-
-
-_CHARACTER_REPAIR_BOOST = 100
-_PROP_REPAIR_BOOST = 60
+    fit.assets += [c.asset for c in singles[:room] if c.asset is not None]
+    return fit
 
 
 def _apply_repair_priorities(
     view: ShotView, candidates: list[_Candidate], repair: RepairDirective | None
 ) -> list[_Candidate]:
-    """Re-rank candidates for a repair attempt; optionally drop the location plate."""
+    """Re-rank props for a repair attempt; optionally drop the location plate.
+
+    Characters already precede props, so `character_refs_first` needs no boost here.
+    """
     if repair is None:
         return candidates
     emphasized = {n.lower() for n in repair.emphasize_objects}
     out: list[_Candidate] = []
     for c in candidates:
-        if c.entity_type == "location" and repair.refs_characters_and_props_only:
-            out.append(
-                _Candidate(
-                    c.entity_id, c.entity_type, c.score, None, c.verbal_description
-                )
-            )
-            continue
-        boost = 0
-        if c.entity_type == "character" and repair.character_refs_first:
-            boost = _CHARACTER_REPAIR_BOOST
+        drop_loc = c.entity_type == "location" and repair.refs_characters_and_props_only
         ent = view.prop_entities.get(c.entity_id)
-        if ent is not None and ent.canonical_name.lower() in emphasized:
-            boost = _PROP_REPAIR_BOOST
+        boost = (
+            _PROP_REPAIR_BOOST
+            if ent is not None and ent.canonical_name.lower() in emphasized
+            else 0
+        )
         out.append(
             _Candidate(
                 c.entity_id,
                 c.entity_type,
                 c.score + boost,
-                c.asset,
+                None if drop_loc else c.asset,
                 c.verbal_description,
                 c.screen_order,
             )
         )
-    out.sort(key=lambda x: (-x.score, x.screen_order, x.entity_id))
-    return out
+    return _sort_candidates(out)
+
+
+def _first_frame(
+    view: ShotView, caps: VideoProviderCfg, repair: RepairDirective | None
+) -> Asset | None:
+    """Chained first frame from the view (already approved-only, see `anchors.chaining`)."""
+    if repair is not None and repair.drop_first_frame:
+        return None
+    return view.prev_shot_last_frame if caps.supports_first_frame else None
+
+
+def _allocate(
+    candidates: list[_Candidate],
+    slots: int,
+    can_composite: bool,
+    repo: Repo | None,
+) -> _Fit:
+    """Reserve the location slot, then all characters, then props by relevance."""
+    with_assets = [c for c in candidates if c.asset is not None]
+    fit = _Fit(dropped=[c.verbal_description for c in candidates if c.asset is None])
+    loc = next((c for c in with_assets if c.entity_type == "location"), None)
+    chars = [c for c in with_assets if c.entity_type == "character"]
+    props = [c for c in with_assets if c.entity_type == "object"]
+    reserve_loc = loc is not None and (slots >= 2 or not chars)
+    avail = slots - (1 if reserve_loc else 0)
+    char_fit = _fit_characters(chars, avail, can_composite, repo)
+    room = max(0, avail - len(char_fit.assets))
+    fit.assets = char_fit.assets + [c.asset for c in props[:room] if c.asset]
+    fit.composites = char_fit.composites
+    fit.dropped += char_fit.dropped + [c.verbal_description for c in props[room:]]
+    if reserve_loc and loc is not None and loc.asset is not None:
+        fit.assets.append(loc.asset)
+    elif loc is not None:
+        fit.dropped.append(loc.verbal_description)
+    return fit
+
+
+def _log_plan(view: ShotView, plan: RefPlan, slots: int) -> None:
+    _log.info(
+        "reference_plan_selected",
+        extra={
+            "who": "storygraph.budget",
+            "where": f"select_references:{view.shot.id}",
+            "what": [a.id for a in plan.selected_assets],
+            "when": datetime.now(UTC).isoformat(),
+            "why": f"first_frame={'yes' if plan.first_frame else 'no'}; "
+            f"dropped_to_verbal={len(plan.dropped_to_verbal)}",
+            "how": f"location reserved, characters, props by relevance; slots={slots}",
+        },
+    )
 
 
 def select_references(
@@ -316,71 +388,33 @@ def select_references(
     allow_composites: bool = True,
     repair: RepairDirective | None = None,
 ) -> RefPlan:
-    """Deterministically rank candidate reference assets and fit within `caps.max_reference_images`.
+    """Deterministically rank reference assets and fit within `caps.max_reference_images`.
 
-    A `repair` directive (QA repair attempt) may drop the first frame, put character
-    sheets first, boost emphasized props, drop the location plate and forbid composites.
+    Slot order: the location/setting sheet is always reserved (when >= 2 slots), then every
+    on-screen character's identity sheet (state-matched when the clip opens in a visual
+    state; composites when over budget), then props by relevance. A chained first frame
+    consumes one slot. A `repair` directive may drop the first frame / location plate,
+    boost emphasized props and forbid composites.
     """
     provider_caps = caps or cfg.video
     max_slots = provider_caps.max_reference_images
-    keep_first = repair is None or not repair.drop_first_frame
-    first_frame = (
-        view.prev_shot_last_frame
-        if (
-            keep_first
-            and view.shot.continue_from_last_frame
-            and provider_caps.supports_first_frame
-        )
-        else None
-    )
+    first_frame = _first_frame(view, provider_caps, repair)
+    state_refs = resolve_state_refs(repo, view) if repo else {}
     candidates = _apply_repair_priorities(
-        view, _collect_sorted_candidates(view), repair
+        view, _collect_sorted_candidates(view, state_refs), repair
     )
-    candidate_scores = {c.entity_id: c.score for c in candidates}
+    scores = {c.entity_id: c.score for c in candidates}
     if max_slots <= 0:
         return RefPlan(
-            [],
-            first_frame,
-            [],
-            [c.verbal_description for c in candidates],
-            candidate_scores,
+            [], first_frame, [], [c.verbal_description for c in candidates], scores
         )
-
-    effective_slots = (
-        max(1, max_slots - 1)
-        if (first_frame is not None and max_slots >= 2)
-        else max_slots
+    slots = max_slots - 1 if (first_frame is not None and max_slots >= 2) else max_slots
+    can_composite = (
+        allow_composites
+        and (repair is None or repair.allow_composites)
+        and cfg.caps.max_composite_subjects >= 2
     )
-    with_assets = [c for c in candidates if c.asset is not None]
-    dropped_verbal = [c.verbal_description for c in candidates if c.asset is None]
-    reserved_loc: _Candidate | None = None
-    remaining_pool: list[_Candidate] = []
-    for c in with_assets:
-        if (
-            c.entity_type == "location"
-            and effective_slots >= 3
-            and reserved_loc is None
-        ):
-            reserved_loc = c
-        else:
-            remaining_pool.append(c)
-
-    avail = effective_slots - (1 if reserved_loc else 0)
-    selected, composites = _allocate_non_loc_pool(
-        remaining_pool,
-        avail,
-        cfg,
-        repo,
-        dropped_verbal,
-        allow_composites=allow_composites
-        and (repair is None or repair.allow_composites),
-    )
-    if reserved_loc and reserved_loc.asset is not None:
-        selected.append(reserved_loc.asset)
-    return RefPlan(
-        selected[:effective_slots],
-        first_frame,
-        composites,
-        dropped_verbal,
-        candidate_scores,
-    )
+    fit = _allocate(candidates, slots, can_composite, repo)
+    plan = RefPlan(fit.assets[:slots], first_frame, fit.composites, fit.dropped, scores)
+    _log_plan(view, plan, slots)
+    return plan

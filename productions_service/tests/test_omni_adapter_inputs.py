@@ -87,9 +87,12 @@ def test_labels_interleave_and_characters_precede_props() -> None:
     assert req.task is None and req.first_frame_bound
 
 
-def test_image_cap_drops_props_before_characters() -> None:
+def test_image_cap_keeps_setting_and_drops_props_before_characters() -> None:
     req = build_omni_request(_pkg(), "PROMPT", max_images=3, first_frame_mode="tag")
-    assert _images(req.blocks) == [_FF, "gs://b/pip.png", "gs://b/milo.png"]
+    assert _images(req.blocks) == [_FF, "gs://b/pip.png", "gs://b/kitchen.png"]
+    req = build_omni_request(_pkg(), "PROMPT", max_images=4, first_frame_mode="tag")
+    assert "gs://b/towel.png" not in _images(req.blocks)
+    assert _images(req.blocks)[-1] == "gs://b/kitchen.png"
 
 
 def test_drop_mode_never_sends_last_frame_as_identity_ref() -> None:

@@ -90,9 +90,18 @@ def _check_v1_appearances(
         )
 
 
+def _closing_order(repo: Repo, shot: Shot) -> int:
+    """Order after the last Event the shot's clip plays (`story_order` when it plays none)."""
+    orders = [
+        ev.story_order for eid in shot.covers_event_ids if (ev := repo.get_event(eid))
+    ]
+    return max([shot.story_order, *orders])
+
+
 def _check_v2_v3_v5_cast_states(
     repo: Repo, shot: Shot, issues: list[ValidationIssue]
 ) -> None:
+    close = _closing_order(repo, shot)
     for cast_item in shot.cast:
         st = state_at(repo, cast_item.entity_id, shot.story_order)
         wearing = st.get("wearing")
@@ -104,26 +113,28 @@ def _check_v2_v3_v5_cast_states(
                     f"but shot uses appearance state_label '{app.state_label}'"
                 )
                 issues.append(ValidationIssue("V2", "error", shot.id, msg))
-        ent_loc = st.get("location")
-        if ent_loc and ent_loc != shot.location_id:
-            msg = (
-                f"Cast '{cast_item.entity_id}' is at location '{ent_loc}' at order {shot.story_order}, "
-                f"not shot location '{shot.location_id}'"
-            )
-            issues.append(ValidationIssue("V3", "error", shot.id, msg))
+        for order in dict.fromkeys((shot.story_order, close)):
+            ent_loc = state_at(repo, cast_item.entity_id, order).get("location")
+            if ent_loc and ent_loc != shot.location_id:
+                msg = (
+                    f"Cast '{cast_item.entity_id}' is at location '{ent_loc}' at order {order}, "
+                    f"not shot location '{shot.location_id}'"
+                )
+                issues.append(ValidationIssue("V3", "error", shot.id, msg))
         if st.get("alive_present") == "false":
             msg = f"Cast '{cast_item.entity_id}' has alive_present=='false' at order {shot.story_order}"
             issues.append(ValidationIssue("V5", "error", shot.id, msg))
 
 
 def _check_v4_props(repo: Repo, shot: Shot, issues: list[ValidationIssue]) -> None:
+    order = _closing_order(repo, shot)
     held_props = {
         held
         for c in shot.cast
-        if (held := state_at(repo, c.entity_id, shot.story_order).get("holding"))
+        if (held := state_at(repo, c.entity_id, order).get("holding"))
     }
     for pid in shot.prop_ids:
-        p_loc = state_at(repo, pid, shot.story_order).get("location")
+        p_loc = state_at(repo, pid, order).get("location")
         if p_loc and p_loc != shot.location_id and pid not in held_props:
             msg = f"Prop '{pid}' is at '{p_loc}' and not held by any cast member in shot '{shot.id}'"
             issues.append(ValidationIssue("V4", "error", shot.id, msg))

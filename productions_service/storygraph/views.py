@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from .anchors.chaining import resolve_chain_frame
 from .errors import NotFound
 from .physics import resolve_prop_states_for_shot
 from .repo import Repo
@@ -20,7 +21,8 @@ from .schema import (
     Status,
     StyleGuide,
 )
-from .state import state_at
+from .state import window_states
+from .timeline.clip_context import ClipContext, clip_context
 
 
 class OutlineView(BaseModel):
@@ -60,7 +62,10 @@ class ShotView(BaseModel):
     cast_entities: dict[str, Entity] = Field(default_factory=dict)
     cast_appearances: dict[str, Appearance] = Field(default_factory=dict)
     cast_assets: dict[str, list[Asset]] = Field(default_factory=dict)
-    cast_states: dict[str, dict[str, str]] = Field(default_factory=dict)
+    cast_states: dict[str, dict[str, str]] = Field(default_factory=dict)  # clip opening
+    cast_end_states: dict[str, dict[str, str]] = Field(
+        default_factory=dict
+    )  # clip closing
     prop_entities: dict[str, Entity] = Field(default_factory=dict)
     prop_appearances: dict[str, Appearance] = Field(default_factory=dict)
     prop_assets: dict[str, list[Asset]] = Field(default_factory=dict)
@@ -141,16 +146,10 @@ def scene_view(repo: Repo, scene_id: str) -> SceneView:
 
 def _resolve_cast_for_shot(
     repo: Repo, shot: Shot
-) -> tuple[
-    dict[str, Entity],
-    dict[str, Appearance],
-    dict[str, list[Asset]],
-    dict[str, dict[str, str]],
-]:
+) -> tuple[dict[str, Entity], dict[str, Appearance], dict[str, list[Asset]]]:
     cast_entities: dict[str, Entity] = {}
     cast_appearances: dict[str, Appearance] = {}
     cast_assets: dict[str, list[Asset]] = {}
-    cast_states: dict[str, dict[str, str]] = {}
     for c in shot.cast:
         ent = repo.get_entity(c.entity_id)
         if ent:
@@ -164,8 +163,7 @@ def _resolve_cast_for_shot(
             cast_assets[c.entity_id] = [
                 a for aid in app.asset_ids if (a := repo.get_asset(aid)) is not None
             ]
-        cast_states[c.entity_id] = state_at(repo, c.entity_id, shot.story_order)
-    return cast_entities, cast_appearances, cast_assets, cast_states
+    return cast_entities, cast_appearances, cast_assets
 
 
 def _resolve_props_for_shot(
@@ -212,25 +210,7 @@ def generation_run_rank(r: GenerationRun) -> tuple[int, int, float, int]:
 
 
 def _resolve_prev_shot_last_frame(repo: Repo, shot: Shot) -> Asset | None:
-    if not shot.continue_from_last_frame:
-        return None
-    scene_shots = sorted(
-        repo.list_shots(scene_id=shot.scene_id), key=lambda s: s.index_in_scene
-    )
-    for idx, s in enumerate(scene_shots):
-        if s.id == shot.id and idx > 0:
-            prev_s = scene_shots[idx - 1]
-            runs = [
-                r
-                for r in repo.list_generation_runs(shot_id=prev_s.id)
-                if r.extracted_last_frame_asset_id
-            ]
-            for r in sorted(runs, key=generation_run_rank, reverse=True):
-                if generation_run_rank(r)[1] == 1 and r.extracted_last_frame_asset_id:
-                    ast = repo.get_asset(r.extracted_last_frame_asset_id)
-                    if ast is not None:
-                        return ast
-    return None
+    return resolve_chain_frame(repo, shot)
 
 
 def _resolve_shot_location(
@@ -251,24 +231,54 @@ def _resolve_shot_location(
     return loc, loc_app, loc_assets
 
 
+def _with_state_appearances(repo: Repo, view: ShotView) -> ShotView:
+    """Swap in the appearance matching each entity's opening visual state (if minted)."""
+    from .anchors.visual_states import resolve_state_refs  # imports views: avoid cycle
+
+    refs = resolve_state_refs(repo, view)
+    if not refs:
+        return view
+    cast = {**view.cast_appearances}
+    props = {**view.prop_appearances}
+    for eid, ref in refs.items():
+        (props if eid in view.shot.prop_ids else cast)[eid] = ref.appearance
+    return view.model_copy(update={"cast_appearances": cast, "prop_appearances": props})
+
+
+def _clip_scoped_shot(shot: Shot, ctx: ClipContext) -> Shot:
+    """The shot as it renders its clip: clip Events, opening order and per-clip props."""
+    if not ctx.has_clip:
+        return shot
+    return shot.model_copy(
+        update={
+            "prop_ids": list(ctx.prop_ids),
+            "covers_event_ids": list(ctx.window.event_ids),
+            "story_order": ctx.window.first_order,
+        }
+    )
+
+
 def shot_view(repo: Repo, shot_id: str) -> ShotView:
-    shot = repo.get_shot(shot_id)
-    if not shot:
+    stored = repo.get_shot(shot_id)
+    if not stored:
         raise NotFound(f"Shot {shot_id} not found")
-    scene = repo.get_scene(shot.scene_id)
+    scene = repo.get_scene(stored.scene_id)
     if not scene:
-        raise NotFound(f"Scene {shot.scene_id} not found")
+        raise NotFound(f"Scene {stored.scene_id} not found")
     sg = repo.get_style_guide()
     if not sg:
         raise NotFound("StyleGuide not found")
+    ctx = clip_context(repo, scene, stored)
+    shot = _clip_scoped_shot(stored, ctx)
     loc, loc_app, loc_assets = _resolve_shot_location(repo, shot)
-    c_ents, c_apps, c_assets, c_states = _resolve_cast_for_shot(repo, shot)
+    c_ents, c_apps, c_assets = _resolve_cast_for_shot(repo, shot)
+    c_open, c_close = window_states(repo, [c.entity_id for c in shot.cast], ctx.window)
     p_ents, p_apps, p_assets = _resolve_props_for_shot(repo, shot)
     dlines = [
         d for did in shot.dialogue_ids if (d := repo.get_dialogue(did)) is not None
     ]
     mcue = repo.get_music_cue(shot.music_cue_id) if shot.music_cue_id else None
-    return ShotView(
+    view = ShotView(
         style_guide=sg,
         scene=scene,
         shot=shot,
@@ -278,12 +288,16 @@ def shot_view(repo: Repo, shot_id: str) -> ShotView:
         cast_entities=c_ents,
         cast_appearances=c_apps,
         cast_assets=c_assets,
-        cast_states=c_states,
+        cast_states=c_open,
+        cast_end_states=c_close,
         prop_entities=p_ents,
         prop_appearances=p_apps,
         prop_assets=p_assets,
-        prop_states=resolve_prop_states_for_shot(repo, scene, shot),
+        prop_states=resolve_prop_states_for_shot(
+            repo, scene, shot, ctx.window, ctx.lifecycles
+        ),
         dialogue_lines=dlines,
         music_cue=mcue,
-        prev_shot_last_frame=_resolve_prev_shot_last_frame(repo, shot),
+        prev_shot_last_frame=_resolve_prev_shot_last_frame(repo, stored),
     )
+    return _with_state_appearances(repo, view)

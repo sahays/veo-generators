@@ -100,6 +100,15 @@ def test_validator_rules_v5_and_v10_v12(tmp_repo: Repo, default_cfg: Config) -> 
             canonical_name="Arjun",
         )
     )
+    tmp_repo.put_event(  # an event in a scene with no shots is covered by no clip
+        Event(
+            id="evt_orphan",
+            created_by=Role.SCRIPT_SUPERVISOR,
+            story_order=90,
+            scene_id="scn_unshot",
+            summary="Unfilmed beat",
+        )
+    )
     all_issues = validate_all(tmp_repo, default_cfg)
     assert any(i.code == "V12" for i in all_issues)
     assert any(i.code == "V10" for i in all_issues)

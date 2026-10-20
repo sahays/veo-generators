@@ -111,7 +111,13 @@ _PERSON_RE: Final[re.Pattern[str]] = _words_re(
     )
 )
 _MOUTHLESS_RE: Final[re.Pattern[str]] = re.compile(
-    r"\b(?:visor|mouthless|faceplate|speaker grille|no mouth)\b", re.IGNORECASE
+    r"\b(?:visor|mouthless|faceplate|speaker grille|no mouth|without (?:a )?mouth|"
+    r"screen face|(?:led|lcd|digital|display|screen)[- ](?:face|eyes|display|screen))\b",
+    re.IGNORECASE,
+)
+_MOUTH_RE: Final[re.Pattern[str]] = re.compile(
+    r"\b(?:mouth|lips?|smil(?:e|es|ing)|grin(?:s|ning)?|teeth|tongue|muzzle|snout|beak|jaw)\b",
+    re.IGNORECASE,
 )
 _SENTENCE_SPLIT_RE: Final[re.Pattern[str]] = re.compile(r"(?<=[.!?])\s+")
 _FALSY: Final[frozenset[str]] = frozenset({"false", "no", "0", "none", "never"})
@@ -125,7 +131,7 @@ class ActorTraits:
     kind: ActorKind
     species: str = ""
     can_speak: bool = True
-    has_mouth: bool = True
+    has_mouth: bool = False
 
     @property
     def vocalization(self) -> str:
@@ -172,12 +178,20 @@ def _classify(text: str) -> tuple[ActorKind, str] | None:
     return kind, species
 
 
+def has_mouth_evidence(text: str, kind: ActorKind = ActorKind.ROBOT) -> bool:
+    """Mouth/lips must be explicitly described (people have one unless described otherwise);
+    visor, screen or LED faces never count."""
+    if _MOUTHLESS_RE.search(text):
+        return False
+    return kind == ActorKind.PERSON or bool(_MOUTH_RE.search(text))
+
+
 def detect_traits(tiers: list[str], attrs: dict[str, str]) -> ActorTraits:
     """Classify from evidence tiers in priority order (first decisive tier wins; default person)."""
     text = " ".join([*tiers, *attrs.values()])
-    mouth = _override(attrs, "has_mouth", not _MOUTHLESS_RE.search(text))
     found = next((c for t in tiers if t.strip() and (c := _classify(t))), None)
     kind, species = found or (ActorKind.PERSON, "")
+    mouth = _override(attrs, "has_mouth", has_mouth_evidence(text, kind))
     talks = kind != ActorKind.ANIMAL or bool(_SPEAKING_CREATURE_RE.search(text))
     return ActorTraits(kind, species, _override(attrs, "can_speak", talks), mouth)
 

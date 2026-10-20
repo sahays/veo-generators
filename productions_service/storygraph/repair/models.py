@@ -45,6 +45,8 @@ class RepairDirective(BaseModel):
 
 
 ShotOutcomeKind = Literal["approved", "flagged", "skipped"]
+RepairRoute = Literal["spec", "render"]
+CandidateVerdict = Literal["accepted", "rejected"]
 
 
 class ShotRepairOutcome(BaseModel):
@@ -56,6 +58,10 @@ class ShotRepairOutcome(BaseModel):
     repair_attempts: int = 0
     reasons: list[str] = Field(default_factory=list)
     continuity_follower_of: str | None = None
+    # Route of each repair attempt, in order ('spec' = clip spec regenerated first).
+    routes: list[RepairRoute] = Field(default_factory=list)
+    # Continuity follower re-rendered as a candidate against its existing approved clip.
+    candidate: CandidateVerdict | None = None
 
 
 class RepairReport(BaseModel):

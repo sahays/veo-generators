@@ -10,7 +10,6 @@ logged `no music assets; skipped` path; the mixer is an injectable `MusicMixer`.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
@@ -20,8 +19,6 @@ from ..repo import Repo
 from .readiness import ReadyShot
 
 logger = logging.getLogger(__name__)
-
-DurationProbe = Callable[[bytes], float | None]
 
 
 @dataclass(frozen=True)
@@ -72,17 +69,6 @@ def _scene_ids(repo: Repo, ready: list[ReadyShot]) -> list[str]:
     return ids
 
 
-def _durations(
-    repo: Repo, ready: list[ReadyShot], clips: list[bytes], probe: DurationProbe
-) -> list[float]:
-    out: list[float] = []
-    for r, clip in zip(ready, clips, strict=True):
-        measured = probe(clip)
-        shot = repo.get_shot(r.shot_id)
-        out.append(measured or (shot.duration_s if shot else 0.0))
-    return out
-
-
 def build_scene_segments(
     scene_ids: list[str], durations: list[float], audio: dict[str, bytes | None]
 ) -> list[SceneSegment]:
@@ -104,13 +90,15 @@ def build_scene_segments(
 def apply_music_bed(
     repo: Repo,
     ready: list[ReadyShot],
-    clips: list[bytes],
+    durations: list[float],
     video: bytes,
     cfg: AssemblyCfg,
     mixer: MusicMixer | None,
-    probe: DurationProbe,
 ) -> bytes:
-    """Mix scene scores under `video` when audio assets exist; otherwise return it unchanged."""
+    """Mix scene scores under `video` when audio assets exist; otherwise return it unchanged.
+
+    `durations` are the probed (actual) clip lengths, aligned with `ready`.
+    """
     project_id = repo.project_id
     if not cfg.music_enabled or mixer is None:
         why = (
@@ -135,9 +123,7 @@ def apply_music_bed(
             ),
         )
         return video
-    segments = build_scene_segments(
-        scene_ids, _durations(repo, ready, clips, probe), audio
-    )
+    segments = build_scene_segments(scene_ids, durations, audio)
     mixed = mixer(video, segments, cfg)
     logger.info(
         "Music bed mixed under final video",

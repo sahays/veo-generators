@@ -83,7 +83,8 @@ def _introduced(repo: Repo, before: Scene, after: Scene) -> list[ClipIssue]:
     return [i for i in _issues(repo, after) if (i.code, i.message) not in seen]
 
 
-def _load(repo: Repo, shot_id: str) -> tuple[Shot, Scene, ClipScript]:
+def load_shot_clip(repo: Repo, shot_id: str) -> tuple[Shot, Scene, ClipScript]:
+    """(shot, its scene, its 1:1 scene clip); raises `NotFound` if any is missing."""
     shot = repo.get_shot(shot_id)
     scene = repo.get_scene(shot.scene_id) if shot else None
     clip = find_scene_clip(scene.clips, shot.clip_index) if shot and scene else None
@@ -92,9 +93,13 @@ def _load(repo: Repo, shot_id: str) -> tuple[Shot, Scene, ClipScript]:
     return shot, scene, clip
 
 
-def edit_shot_clip(repo: Repo, shot_id: str, edit: ClipEdit) -> Shot:
-    """Validate + persist the clip edit; return the shot (stale, repair state reset)."""
-    shot, scene, clip = _load(repo, shot_id)
+def apply_clip_edit(
+    repo: Repo, scene: Scene, clip: ClipScript, edit: ClipEdit
+) -> ClipScript:
+    """Validate `edit` against the screenplay clip rules and persist it on the scene.
+
+    Raises `ValidationFailed` for malformed edits or issues the edit would introduce.
+    """
     pre = _step_issues(scene, clip, edit)
     if pre:
         raise ValidationFailed(pre)
@@ -103,6 +108,13 @@ def edit_shot_clip(repo: Repo, shot_id: str, edit: ClipEdit) -> Shot:
     if introduced:
         raise ValidationFailed(introduced)
     repo.put_scene(new_scene)
+    return new_clip
+
+
+def edit_shot_clip(repo: Repo, shot_id: str, edit: ClipEdit) -> Shot:
+    """Validate + persist the clip edit; return the shot (stale, repair state reset)."""
+    shot, scene, clip = load_shot_clip(repo, shot_id)
+    new_clip = apply_clip_edit(repo, scene, clip, edit)
     hashed = shot.model_copy(
         update={"content_hash": compute_shot_content_hash(shot, new_clip)}
     )

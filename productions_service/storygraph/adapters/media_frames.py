@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import io
+import re
 import shutil
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageStat
+from PIL import Image, ImageChops, ImageDraw, ImageStat
 
 
 def _run_ffmpeg_frame(in_mp4: Path, out_png: Path, seek_args: list[str]) -> None:
@@ -24,7 +26,9 @@ def _run_ffmpeg_frame(in_mp4: Path, out_png: Path, seek_args: list[str]) -> None
         "1",
         str(out_png),
     ]
-    subprocess.run(cmd, capture_output=True, timeout=10, check=False)
+    subprocess.run(
+        cmd, capture_output=True, stdin=subprocess.DEVNULL, timeout=10, check=False
+    )
 
 
 def _read_valid_png(png_path: Path, fallback: bytes) -> bytes:
@@ -160,7 +164,7 @@ def _detect_head_trim_seconds(
         return 0.0
     trim_ts = 0.40
     for idx in range(len(extracted) - 1):
-        ts_cur, png_cur = extracted[idx]
+        _ts_cur, png_cur = extracted[idx]
         ts_nxt, png_nxt = extracted[idx + 1]
         step_diff = _mean_l1_diff(png_cur, png_nxt)
         if step_diff is not None and step_diff > 28.0 and ts_nxt <= 0.85:
@@ -222,3 +226,219 @@ def trim_leading_reference_or_static_frames(
     except (OSError, subprocess.SubprocessError):
         return clip_bytes
     return clip_bytes
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 3 critic probe: dense timestamped frames, scene cuts, audio energy, labels
+# ─────────────────────────────────────────────────────────────────────────────
+
+_PTS_RE = re.compile(r"pts_time:([0-9]+(?:\.[0-9]+)?)")
+_SILENCE_DUR_RE = re.compile(r"silence_duration:\s*([0-9]+(?:\.[0-9]+)?)")
+_SILENCE_START_RE = re.compile(r"silence_start:\s*(-?[0-9]+(?:\.[0-9]+)?)")
+_LABEL_BAR_PX = 22
+
+
+@dataclass(frozen=True)
+class TimedFrame:
+    """One sampled clip frame (downscaled PNG) and its timestamp in seconds."""
+
+    t_s: float
+    png: bytes
+
+
+@dataclass(frozen=True)
+class ClipProbe:
+    """Deterministic measurements of a rendered clip used by the S9 critic."""
+
+    frames: list[TimedFrame]
+    last_frame_png: bytes
+    duration_s: float = 0.0
+    cut_times_s: tuple[float, ...] = ()
+    voiced_ratio: float | None = None
+
+
+def _run_capture(cmd: list[str], timeout_s: int = 30) -> str:
+    """Run an ffmpeg/ffprobe argv (no shell) and return combined stdout+stderr text."""
+    proc = subprocess.run(
+        cmd,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
+        timeout=timeout_s,
+        check=False,
+    )
+    return proc.stdout.decode(errors="ignore") + proc.stderr.decode(errors="ignore")
+
+
+def _probe_duration(in_mp4: Path) -> float:
+    """Container duration in seconds via ffprobe (0.0 when unknown)."""
+    out = _run_capture(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=nw=1:nk=1",
+            str(in_mp4),
+        ]
+    )
+    try:
+        return max(0.0, float(out.strip().splitlines()[0]))
+    except (ValueError, IndexError):
+        return 0.0
+
+
+def detect_scene_cuts(in_mp4: Path, threshold: float = 0.35) -> tuple[float, ...]:
+    """Timestamps of hard cuts using ffmpeg's scene-change score (`select=gt(scene,T)`)."""
+    out = _run_capture(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-i",
+            str(in_mp4),
+            "-an",
+            "-vf",
+            f"select='gt(scene,{threshold})',showinfo",
+            "-f",
+            "null",
+            "-",
+        ]
+    )
+    return tuple(round(float(m), 3) for m in _PTS_RE.findall(out))
+
+
+def _has_audio_stream(in_mp4: Path) -> bool:
+    out = _run_capture(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "a",
+            "-show_entries",
+            "stream=index",
+            "-of",
+            "csv=p=0",
+            str(in_mp4),
+        ]
+    )
+    return bool(out.strip())
+
+
+def audio_voiced_ratio(in_mp4: Path, duration_s: float) -> float | None:
+    """Fraction of the clip above -35 dB (None when the clip has no audio stream)."""
+    if duration_s <= 0.0 or not _has_audio_stream(in_mp4):
+        return None
+    out = _run_capture(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-i",
+            str(in_mp4),
+            "-vn",
+            "-af",
+            "silencedetect=n=-35dB:d=0.25",
+            "-f",
+            "null",
+            "-",
+        ]
+    )
+    silent = sum(float(v) for v in _SILENCE_DUR_RE.findall(out))
+    starts = _SILENCE_START_RE.findall(out)
+    if len(starts) > len(_SILENCE_DUR_RE.findall(out)):
+        silent += max(0.0, duration_s - float(starts[-1]))
+    return round(max(0.0, 1.0 - silent / duration_s), 3)
+
+
+def _sample_dense(
+    tmp: Path, in_mp4: Path, fps: float, max_frames: int, width: int
+) -> list[TimedFrame]:
+    """Uniform `fps` downscaled frames (frame k at t=k/fps), capped at `max_frames`."""
+    _run_capture(
+        [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-i",
+            str(in_mp4),
+            "-vf",
+            f"fps={fps},scale={width}:-2",
+            "-frames:v",
+            str(max_frames),
+            str(tmp / "d_%03d.png"),
+        ]
+    )
+    pngs = sorted(tmp.glob("d_*.png"))
+    return [
+        TimedFrame(t_s=round(k / fps, 3), png=p.read_bytes())
+        for k, p in enumerate(pngs)
+        if p.stat().st_size > 64
+    ]
+
+
+def _downscale_png(png: bytes, width: int) -> bytes:
+    """Downscale a PNG to `width` px wide (aspect preserved) to bound VLM cost."""
+    img = Image.open(io.BytesIO(png)).convert("RGB")
+    if img.width > width:
+        img = img.resize((width, max(1, round(img.height * width / img.width))))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _probe_with_ffmpeg(
+    clip_bytes: bytes, fps: float, max_frames: int, width: int
+) -> ClipProbe | None:
+    """Full ffmpeg probe; None if the bytes are not a decodable video."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        in_mp4 = tmp / "clip.mp4"
+        in_mp4.write_bytes(clip_bytes)
+        duration = _probe_duration(in_mp4)
+        frames = _sample_dense(tmp, in_mp4, fps, max(2, max_frames - 1), width)
+        _run_ffmpeg_frame(in_mp4, tmp / "last.png", ["-sseof", "-0.10"])
+        if not frames:
+            return None
+        last_full = _read_valid_png(tmp / "last.png", frames[-1].png)
+        last_t = max(duration - 0.10, frames[-1].t_s)
+        frames.append(
+            TimedFrame(t_s=round(last_t, 3), png=_downscale_png(last_full, width))
+        )
+        return ClipProbe(
+            frames=frames,
+            last_frame_png=last_full,
+            duration_s=duration,
+            cut_times_s=detect_scene_cuts(in_mp4),
+            voiced_ratio=audio_voiced_ratio(in_mp4, duration),
+        )
+
+
+def probe_clip(
+    clip_bytes: bytes, fps: float = 4.0, max_frames: int = 40, width: int = 384
+) -> ClipProbe:
+    """Dense timestamped frames (first..last, >=`fps`), scene cuts and audio energy."""
+    if shutil.which("ffmpeg") and shutil.which("ffprobe") and len(clip_bytes) > 256:
+        try:
+            probe = _probe_with_ffmpeg(clip_bytes, fps, max_frames, width)
+        except (OSError, subprocess.SubprocessError):
+            probe = None
+        if probe is not None:
+            return probe
+    synthetic = _synthetic_fallback_frames(clip_bytes)
+    frames = [TimedFrame(t_s=float(i), png=p) for i, p in enumerate(synthetic)]
+    return ClipProbe(frames=frames, last_frame_png=synthetic[-1])
+
+
+def label_image(png: bytes, label: str, width: int = 384) -> bytes:
+    """Downscale `png` and add a top banner carrying `label` (image content untouched)."""
+    try:
+        img = Image.open(io.BytesIO(_downscale_png(png, width))).convert("RGB")
+    except (OSError, ValueError):
+        return png
+    canvas = Image.new("RGB", (img.width, img.height + _LABEL_BAR_PX), (0, 0, 0))
+    canvas.paste(img, (0, _LABEL_BAR_PX))
+    ImageDraw.Draw(canvas).text((4, 5), label[:90], fill=(255, 255, 0))
+    buf = io.BytesIO()
+    canvas.save(buf, format="PNG")
+    return buf.getvalue()

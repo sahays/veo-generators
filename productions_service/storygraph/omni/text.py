@@ -9,9 +9,10 @@ from ..clips.species import own_sentences
 from ..clips.text import strip_timestamps
 
 _ID_RE: Final[re.Pattern[str]] = re.compile(
-    r"\b(obj|char|loc|ast|shot|scn|evt|app|dlg|comp)_[A-Za-z0-9_]+\b"
+    r"\b(obj|char|loc|prop|ast|shot|scn|evt|app|dlg|comp)_[A-Za-z0-9_]+\b"
 )
-_HUMANIZE_PREFIXES: Final[frozenset[str]] = frozenset({"obj", "char", "loc"})
+_HUMANIZE_PREFIXES: Final[frozenset[str]] = frozenset({"obj", "char", "loc", "prop"})
+_SNAKE_RE: Final[re.Pattern[str]] = re.compile(r"\b[a-z]+(?:_[a-z0-9]+)+\b")
 _NULLISH: Final[frozenset[str]] = frozenset(
     {"", "none", "null", "nil", "n/a", "na", "undefined", "unknown", "-"}
 )
@@ -53,7 +54,8 @@ class IdResolver:
         return ""
 
     def __call__(self, text: str) -> str:
-        return _ID_RE.sub(self._sub, text)
+        resolved = _ID_RE.sub(self._sub, text)
+        return _SNAKE_RE.sub(lambda m: m.group(0).replace("_", " "), resolved)
 
 
 def is_blank(value: str | None) -> bool:
@@ -115,7 +117,13 @@ def condense_identity(
         return ""
     text = clean(description, resolver)
     kept = [s for s in (_strip_style(x) for x in own_sentences(text, other_names)) if s]
+    if (
+        not kept
+    ):  # every sentence names someone else: keep the first one (identity floor)
+        kept = [s for s in (_strip_style(x) for x in own_sentences(text, [])) if s][:1]
     body = " ".join(sentence(s) for s in kept[:max_sentences])
+    if not re.search(r"[A-Za-z]", body):  # style-only text: keep the raw first sentence
+        body = first_sentence(text, resolver)
     return _cap_chars(body, max_chars)
 
 

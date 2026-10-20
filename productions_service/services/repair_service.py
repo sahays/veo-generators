@@ -134,6 +134,7 @@ def repair_project_shots(
         approved=report.approved,
         flagged=report.flagged,
         renders=report.total_renders,
+        routes={o.shot_id: o.routes for o in report.outcomes if o.routes},
     )
     return _response(pipe, report, assembled)
 

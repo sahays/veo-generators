@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from ..adapters.base import ImageGenerator, VLMProvider
 from ..adapters.mock import MockLLMClient
+from ..anchors.visual_states import VISUAL_STATE_LABELS, entity_visual_state_labels
 from ..config import Config
 from ..repo import Repo
 from ..schema import Entity, EntityType, Role
@@ -109,6 +110,46 @@ def _default_design_for_entity(
     return EntityDesignOutput(attributes=attrs, appearances=apps)
 
 
+def _state_draft(base: AppearanceDraft, lbl: str) -> AppearanceDraft:
+    """Derive a visual-state look (wet, spilled, broken...) from the base design."""
+    return AppearanceDraft(
+        state_label=lbl,
+        visual_description=(
+            f"{base.visual_description}; visibly {lbl} "
+            f"(identical identity and design, only the {lbl} condition differs)"
+        ),
+        wardrobe=base.wardrobe,
+        condition_tags=list(dict.fromkeys([*base.condition_tags, lbl])),
+    )
+
+
+def _with_visual_states(repo: Repo, ed_view: EntityDesignView) -> EntityDesignView:
+    """Extend required labels with the entity's visual states (plus a `default` base)."""
+    visual = entity_visual_state_labels(repo, ed_view.entity.id)
+    if not visual:
+        return ed_view
+    labels = list(dict.fromkeys([*ed_view.required_state_labels, "default", *visual]))
+    return ed_view.model_copy(update={"required_state_labels": labels})
+
+
+def _base_labels(labels: list[str]) -> list[str]:
+    return [lbl for lbl in labels if lbl not in VISUAL_STATE_LABELS] or ["default"]
+
+
+def _complete_drafts(
+    ent: Entity, drafts: dict[str, AppearanceDraft], labels: list[str]
+) -> dict[str, AppearanceDraft]:
+    """Fill missing labels: visual states derive from the default look, others fall back."""
+    out = dict(drafts)
+    for lbl in _base_labels(labels):
+        if lbl not in out:
+            out[lbl] = _default_design_for_entity(ent, [lbl]).appearances[0]
+    base = out.get("default") or out[_base_labels(labels)[0]]
+    for lbl in labels:
+        out.setdefault(lbl, _state_draft(base, lbl))
+    return out
+
+
 def _apply_invented_attributes(
     designer_ctx: ToolContext, ent: Entity, design_out: EntityDesignOutput
 ) -> None:
@@ -157,13 +198,19 @@ def _design_and_critique_label(
         condition_tags=app_draft.condition_tags,
     )
     app_id = str(saved_app_dict["id"])
+    state_note = (
+        f"; visual state '{lbl}': identical identity to the default design, "
+        f"only the {lbl} condition differs"
+        if lbl in VISUAL_STATE_LABELS
+        else ""
+    )
     for iteration in range(max_iters):
         asset_dict = wt._generate_entity_asset_with_adapter(
             designer_ctx,
             entity_id=ent.id,
             appearance_id=app_id,
             kind=asset_kind,
-            extra_prompt=f"iteration={iteration + 1}",
+            extra_prompt=f"iteration={iteration + 1}{state_note}",
             seed=100 + iteration * 17,
         )
         critique = review_visual_asset(
@@ -203,7 +250,9 @@ def _invoke_entity_designer(
     prompt = (
         f"Story context:\n{story_context}\n\n"
         f"Design {ent.entity_type} '{ent.canonical_name}' (id='{ent.id}') for required state labels "
-        f"{ed_view.required_state_labels}. Make the visual_description and wardrobe 100% faithful "
+        f"{ed_view.required_state_labels}. Labels in {sorted(VISUAL_STATE_LABELS)} are visual "
+        f"states: keep the identity of `default` and change only that condition. "
+        f"Make the visual_description and wardrobe 100% faithful "
         f"to this specific character/location/object in the story and the StyleGuide.{char_rules}\n"
         f"{ed_view.model_dump_json()}"
     )
@@ -214,7 +263,7 @@ def _invoke_entity_designer(
         output_schema=EntityDesignOutput,
         mock_llm=mock_llm,
         fallback_builder=lambda: _default_design_for_entity(
-            ent, ed_view.required_state_labels
+            ent, _base_labels(ed_view.required_state_labels)
         ),
     )
 
@@ -229,7 +278,7 @@ def design_single_entity(
     force_regenerate: bool = False,
 ) -> tuple[list[str], int, int]:
     """Run the dedicated Designer (`CHARACTER_DESIGNER` / `LOCATION_DESIGNER` / `OBJECT_DESIGNER`) + VLM Critic loop."""
-    ed_view = entity_design_view(repo, entity_id)
+    ed_view = _with_visual_states(repo, entity_design_view(repo, entity_id))
     ent = ed_view.entity
     role, asset_kind = _designer_role_for_entity(ent.entity_type)
     designer_ctx = ToolContext(repo=repo, role=role, cfg=cfg, image_gen=image_gen)
@@ -242,12 +291,11 @@ def design_single_entity(
     design_out: EntityDesignOutput = res.output
     _apply_invented_attributes(designer_ctx, ent, design_out)
 
-    draft_by_label = {a.state_label: a for a in design_out.appearances}
-    for req_lbl in ed_view.required_state_labels:
-        if req_lbl not in draft_by_label:
-            draft_by_label[req_lbl] = _default_design_for_entity(
-                ent, [req_lbl]
-            ).appearances[0]
+    draft_by_label = _complete_drafts(
+        ent,
+        {a.state_label: a for a in design_out.appearances},
+        ed_view.required_state_labels,
+    )
 
     max_iters = max(1, cfg.caps.design_loop_max)
     created_app_ids = [

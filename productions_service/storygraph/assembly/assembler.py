@@ -13,10 +13,12 @@ from datetime import UTC, datetime
 from ..config import AssemblyCfg
 from ..errors import ShotsNotApproved, ValidationFailed
 from ..repo import Repo
-from .music import DurationProbe, MusicMixer, apply_music_bed
+from .loudness import MasterNormalizer
+from .music import MusicMixer, apply_music_bed
 from .music_ffmpeg import ffprobe_duration
 from .readiness import AssemblyReadiness, evaluate_shot_readiness
 from .stitch import ClipStitcher, ffmpeg_stitch
+from .timing import DurationProbe, measure_clip_timings
 
 logger = logging.getLogger(__name__)
 
@@ -111,26 +113,30 @@ def assemble(
     music_mixer: MusicMixer | None = None,
     assembly_cfg: AssemblyCfg | None = None,
     duration_probe: DurationProbe = ffprobe_duration,
+    normalizer: MasterNormalizer | None = None,
 ) -> str:
     """Stitch the winning APPROVED clip of each shot in story order and return the blob URI.
 
     After stitching, scene `MusicCue` audio (if any) is mixed under the result by
-    `music_mixer`; with no music assets or no mixer the stitched video is kept as-is.
+    `music_mixer` using each clip's probed duration; with no music assets or no mixer the
+    stitched video is kept as-is. Finally `normalizer` (EBU R128 loudnorm) runs on the master.
     """
     readiness = evaluate_shot_readiness(repo)
     if not readiness.ready_shots and not readiness.blocking:
         raise ValidationFailed(["Cannot assemble final video: no shots exist"])
     _guard_readiness(repo, readiness, allow_partial)
     clips = [repo.blobs.get_bytes(r.video_uri) for r in readiness.ready_shots]
+    timings = measure_clip_timings(repo, readiness.ready_shots, clips, duration_probe)
     merged = apply_music_bed(
         repo,
         readiness.ready_shots,
-        clips,
+        [t.actual_s for t in timings],
         (stitcher or ffmpeg_stitch)(clips),
         assembly_cfg or AssemblyCfg(),
         music_mixer,
-        duration_probe,
     )
+    if normalizer is not None:
+        merged = normalizer(merged)
     final_uri = repo.blobs.put_bytes(out_rel_path, merged, content_type="video/mp4")
     _record_final_video(repo, final_uri, readiness)
     logger.info(

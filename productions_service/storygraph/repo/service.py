@@ -29,6 +29,7 @@ from ..schema import (
 )
 from ..store.base import BlobStore, Filter, GraphStore
 from ..store.codec import decode, encode
+from .change_requests import close_critic_change_requests
 from .versioning import (
     mint_versioned_appearance,
     mint_versioned_asset,
@@ -292,6 +293,7 @@ class Repo:
         if self.store.get("generation_runs", run.id) is not None:
             raise AlreadyExists(f"GenerationRun {run.id} already exists (append-only)")
         self.store.set("generation_runs", run.id, encode(run))
+        close_critic_change_requests(self.store, run.shot_id, "rerendered")
         return run
 
     def update_generation_run_qa(
@@ -314,6 +316,8 @@ class Repo:
             updates["extracted_last_frame_asset_id"] = extracted_last_frame_asset_id
         updated = run.model_copy(update=updates)
         self.store.set("generation_runs", updated.id, encode(updated))
+        if status == Status.APPROVED:
+            close_critic_change_requests(self.store, run.shot_id, "approved_run")
         return updated
 
     def list_generation_runs(self, shot_id: str | None = None) -> list[GenerationRun]:

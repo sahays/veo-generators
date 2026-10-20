@@ -14,11 +14,13 @@ from ..schema import (
     EntityType,
     InteractionStep,
     Role,
+    StageQaIssue,
     StageQaReport,
     StateEffect,
     Status,
 )
 from ..state import appearance_for, rebuild_state_facts, state_at
+from ..story import detect_story_issues
 from ..tools import write_tools as wt
 from ..tools.registry import ToolContext
 from .stage_qa_clips import remediate_scene_clips
@@ -326,7 +328,7 @@ def stages_to_redo_for_issues(
             "V_UNLINKED_ASSET",
         ):
             needed.add("S3_DESIGN")
-        elif code.startswith("S4_") or code.startswith("V_"):
+        elif code.startswith(("S4_", "V_")):
             needed.add("S4_SHOTS")
         elif code.startswith("S5_"):
             needed.add("S5_MUSIC")
@@ -338,6 +340,14 @@ def stages_to_redo_for_issues(
     return [s for s in order if s in needed]
 
 
+def _collect_issues(repo: Repo, cfg: Config, stage: str) -> list[StageQaIssue]:
+    """Graph-integrity issues plus story-level duplicate-beat / time-of-day issues."""
+    return [
+        *verify_storygraph(repo, cfg, through_stage=stage),
+        *detect_story_issues(repo, stage),
+    ]
+
+
 def run_stage_qa_and_remediate(
     repo: Repo,
     cfg: Config,
@@ -346,7 +356,7 @@ def run_stage_qa_and_remediate(
 ) -> StageQaReport:
     """Run deterministic O(V+E) Stage QA after `stage`, auto-remediate issues, and persist `StageQaReport`."""
     target_role = _STAGE_TO_ROLE.get(stage, Role.CRITIC)
-    issues = verify_storygraph(repo, cfg, through_stage=stage)
+    issues = _collect_issues(repo, cfg, stage)
     remediated_actions: list[str] = []
     iteration = 1
 
@@ -361,7 +371,7 @@ def run_stage_qa_and_remediate(
             _remediate_s4_shots(repo, remediated_actions)
         if stage == "S5_MUSIC":
             _remediate_s5_music(repo, cfg, remediated_actions)
-        issues = verify_storygraph(repo, cfg, through_stage=stage)
+        issues = _collect_issues(repo, cfg, stage)
         iteration += 1
 
     passed = not any(i.severity == "error" for i in issues)

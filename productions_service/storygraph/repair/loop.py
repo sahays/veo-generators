@@ -4,8 +4,10 @@ For each target shot (blocking, not flagged `needs_manual_edit`): render once wh
 is no failed clip of its current content to diagnose, then run the remaining repair
 attempts (never more than `MAX_REPAIR_ATTEMPTS` per content version); flag on failure.
 When a re-rendered shot becomes approved, later shots in its scene that chain off it via
-`continue_from_last_frame` are marked stale and re-rendered in story order with the same
-render + QA + repair rule. Scenes run in parallel; shots within a scene run sequentially.
+`continue_from_last_frame` are re-rendered in story order. A follower that already has an
+approved clip is re-rendered as a *candidate* (its old clip stays the winner unless the
+candidate passes QA); other followers are marked stale and get render + QA + repairs.
+Scenes run in parallel; shots within a scene run sequentially.
 """
 
 from __future__ import annotations
@@ -17,6 +19,10 @@ from datetime import UTC, datetime
 from ..adapters.base import VideoGenerator, VLMProvider
 from ..assembly.readiness import evaluate_shot_readiness, story_ordered_shots
 from ..config import Config
+from ..pipeline.continuity_candidate import (
+    approved_current_run,
+    render_follower_candidate,
+)
 from ..pipeline.render_stage import group_by_scene, run_scene_groups
 from ..pipeline.shot_attempt import RenderDeps, latest_current_run
 from ..pipeline.shot_repair import flag_for_manual_edit, render_with_repairs
@@ -80,18 +86,33 @@ def _followers(scene_shots: Sequence[Shot], shot_id: str) -> list[Shot]:
     return chain
 
 
+def _rerender_follower(
+    deps: RenderDeps, follower: Shot, origin: str
+) -> ShotRepairOutcome:
+    """Candidate render when the follower has an approved clip, else full render + repairs."""
+    current = deps.repo.get_shot(follower.id) or follower
+    incumbent = None if current.stale else approved_current_run(deps.repo, current)
+    if incumbent is not None:
+        return render_follower_candidate(deps, current, incumbent, origin)
+    deps.repo.put_shot(mark_stale_and_reset(current, CONTINUITY_STALE_REASON))
+    outcome = render_with_repairs(deps, follower.id, 1)
+    return outcome.model_copy(update={"continuity_follower_of": origin})
+
+
 def _cascade(
     deps: RenderDeps, scene_shots: Sequence[Shot], origin: str, done: set[str]
 ) -> list[ShotRepairOutcome]:
-    """Re-render continuity followers of `origin` in order until one is not approved."""
+    """Re-render continuity followers of `origin` in order until one is not freshly approved.
+
+    A rejected candidate keeps its old clip unchanged, so later followers (chained off
+    that clip) need no re-render either.
+    """
     out: list[ShotRepairOutcome] = []
     for follower in _followers(scene_shots, origin):
-        current = deps.repo.get_shot(follower.id) or follower
-        deps.repo.put_shot(mark_stale_and_reset(current, CONTINUITY_STALE_REASON))
-        outcome = render_with_repairs(deps, follower.id, 1)
-        out.append(outcome.model_copy(update={"continuity_follower_of": origin}))
+        outcome = _rerender_follower(deps, follower, origin)
+        out.append(outcome)
         done.add(follower.id)
-        if outcome.outcome != "approved":
+        if outcome.outcome != "approved" or outcome.candidate == "rejected":
             break
         origin = follower.id
     return out

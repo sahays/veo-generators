@@ -103,19 +103,33 @@ def _select_task(first_frame: bool, ref_count: int) -> str | None:
     return "reference_to_video" if ref_count else "text_to_video"
 
 
+def _fit_refs(ordered: list[RefLabel], budget: int) -> tuple[RefLabel, ...]:
+    """Truncate to `budget` while keeping the location/setting sheet (needs >= 2 slots)."""
+    if len(ordered) <= budget:
+        return tuple(ordered)
+    loc = next((lbl for lbl in ordered if lbl.role == "location"), None)
+    if loc is None or budget < 2:
+        return tuple(ordered[:budget])
+    others = [lbl for lbl in ordered if lbl is not loc][: budget - 1]
+    return tuple(order_labels([*others, loc]))
+
+
 def plan_image_slots(
     labels: list[RefLabel],
     first_frame_uri: str | None,
     max_images: int,
     first_frame_mode: FirstFrameMode = "tag",
 ) -> ImageSlots:
-    """Decide which images are sent and their order (shared by compiler and request builder)."""
+    """Decide which images are sent and their order (shared by compiler and request builder).
+
+    The location sheet is always kept when at least two reference slots remain.
+    """
     use_ff = first_frame_mode == "tag" and _is_gcs(first_frame_uri) and max_images >= 1
     budget = max(0, max_images - (1 if use_ff else 0))
     candidates = [
         lbl for lbl in labels if _is_gcs(lbl.uri) and lbl.uri != first_frame_uri
     ]
-    refs = tuple(order_labels(candidates)[:budget])
+    refs = _fit_refs(order_labels(candidates), budget)
     return ImageSlots(first_frame_uri if use_ff else None, refs)
 
 

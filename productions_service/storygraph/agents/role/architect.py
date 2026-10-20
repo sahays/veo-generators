@@ -5,6 +5,7 @@ from __future__ import annotations
 from ...adapters.mock import MockLLMClient
 from ...presets import ProductionPresetBundle, resolve_production_presets
 from ...schema import EntityType, Role, StateEffect
+from ...story import architect_guard_block
 from ...tools import write_tools as wt
 from ...tools.registry import ToolContext
 from ...tools.role_helpers import (
@@ -181,7 +182,10 @@ def run_story_architect(
         "1. Faithfully match the active Visual Style & Color Palette presets in `visual_medium`, `palette`, `lens_language`, and `lighting_rules`.\n"
         "2. Every scene and event MUST represent the actual plot, locations, props, and characters of the user's story with zero rushing: decompose multi-stage physical actions (approach, grasp, move, place, release) into distinct sequential Event nodes, keeping every prop in one known place at a time.\n"
         "3. Use snake_case IDs (`scn_001`, `loc_<name>`, `char_<name>`, `obj_<name>`, `evt_001`).\n"
-        "4. Use authentic Hindi character spellings (`Ram`, `Lakshman`, `Ravan`, `Shurpanakha`, `Sita`, `Jatayu`, `Shabari` — never 'Rama', 'Lakshmana', 'Ravana', or 'Surpanakha').\n\n"
+        "4. Use authentic Hindi character spellings (`Ram`, `Lakshman`, `Ravan`, `Shurpanakha`, `Sita`, `Jatayu`, `Shabari` — never 'Rama', 'Lakshmana', 'Ravana', or 'Surpanakha').\n"
+        "5. Every scene must ADVANCE the story: each story moment is covered by exactly one scene; never re-stage an earlier scene's events, gags, or lines (an intentional callback must contain the word 'callback' in its summary).\n"
+        "6. `time_of_day` never moves backwards between consecutive scenes in the same location (Afternoon -> Morning is invalid unless a new day is stated).\n\n"
+        f"{architect_guard_block(ctx.repo)}"
         f"STORY:\n{story_text}"
     )
     res = run_role(

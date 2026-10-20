@@ -331,6 +331,16 @@ class Shot(NodeBase):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+class QADefect(BaseModel):
+    """One observed clip defect; `likely_cause` routes repair (spec vs render vs reference)."""
+
+    type: str
+    severity: Literal["high", "medium", "low"]
+    subject: str = ""
+    evidence: str
+    likely_cause: Literal["spec", "render", "reference"] = "render"
+
+
 class QAReport(BaseModel):
     face_similarity: dict[str, float] = Field(default_factory=dict)
     wardrobe_match: float = 1.0
@@ -346,6 +356,14 @@ class QAReport(BaseModel):
     suggested_fix: Literal[
         "none", "retry_seed", "recompile_prompt", "resplit_shot", "redesign_asset"
     ] = "none"
+    # Phase 3 spec-aware critic outputs (append-only).
+    defects: list[QADefect] = Field(default_factory=list)
+    identity_scores: dict[str, float] = Field(default_factory=dict)
+    steps_done: dict[str, bool] = Field(default_factory=dict)
+    camera_match: float = 1.0
+    hard_cut_times_s: list[float] = Field(default_factory=list)
+    frames_sampled: int = 0
+    rubric_version: str = ""
 
 
 class GenerationRun(NodeBase):

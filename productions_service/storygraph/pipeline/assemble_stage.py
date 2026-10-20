@@ -11,6 +11,7 @@ from ..assembly import (
     assemble,
     evaluate_shot_readiness,
     select_music_mixer,
+    select_normalizer,
     select_stitcher,
 )
 from ..config import Config
@@ -67,6 +68,7 @@ def run_assemble_stage(repo: Repo, cfg: Config, allow_partial: bool = False) -> 
         stitcher=select_stitcher(cfg.video.provider),
         music_mixer=select_music_mixer(cfg.video.provider),
         assembly_cfg=cfg.assembly,
+        normalizer=select_normalizer(cfg.video.provider),
     )
 
 

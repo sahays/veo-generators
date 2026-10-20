@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..schema import Appearance, Asset, CastInShot, Shot, Status
 from ..store.codec import decode, encode
+from .change_requests import close_critic_change_requests
 
 if TYPE_CHECKING:
     from .service import Repo
@@ -187,6 +188,8 @@ def persist_shot_with_refs(repo: Repo, shot: Shot) -> Shot:
         }
     )
     repo.store.set("shots", updated.id, encode(updated))
+    if existing and shot.content_hash and existing.content_hash != shot.content_hash:
+        close_critic_change_requests(repo.store, shot.id, "spec_regenerated")
     scene = repo.get_scene(updated.scene_id)
     if scene and updated.id not in scene.shot_ids:
         repo.put_scene(

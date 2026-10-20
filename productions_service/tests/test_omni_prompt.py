@@ -129,7 +129,7 @@ def test_speech_only_for_speakers_and_lipsync_follows_mouth(
     subj = {s.id: s for s in spec.subjects or []}
     speech = spec.speech or []
     assert [(s.speaker, s.text, s.after) for s in speech] == [
-        ("S1", "Stay back, Milo!", 2)
+        ("S1", "Stay back, Milo!", 1)  # anchored before the final step
     ]
     assert subj["S1"].has_mouth is False and speech[0].lipsync is False
     assert "robotic" in speech[0].voice

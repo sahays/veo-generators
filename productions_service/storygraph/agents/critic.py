@@ -1,22 +1,60 @@
-"""CRITIC agent (`critic_agent`) for Stage S3 Visual Asset QA and Stage S9 Multimodal Clip QA."""
+"""CRITIC agent (`critic_agent`) for Stage S3 Visual Asset QA and Stage S9 Multimodal Clip QA.
+
+S9 is spec-aware: the VLM sees the compiled OmniClipSpec, labelled REFERENCE images, the previous
+approved clip's last frame and densely sampled timestamped frames, and returns a `ClipRubric`.
+Approval is decided deterministically by `qa.critic.gate.gate` (any high defect blocks).
+"""
 
 from __future__ import annotations
+
+import logging
+from datetime import UTC, datetime
+from functools import lru_cache
+from pathlib import Path
 
 from pydantic import BaseModel
 
 from ..adapters.base import VLMProvider
 from ..adapters.media_frames import (
+    ClipProbe,
     detect_frame_anomalies,
     extract_representative_frames_png,
+    label_image,
+    probe_clip,
 )
 from ..config import Config
+from ..qa.critic.checks import CriticThresholds, MediaSignals, norm01
+from ..qa.critic.gate import evaluate_rubric, gate
+from ..qa.critic.legacy import (
+    collect_qa_failures,
+    extract_severe_flags,
+    legacy_defects,
+    normalize_qa_report,
+)
+from ..qa.critic.prompt import (
+    PREV_FRAME_LABEL,
+    build_critic_prompt,
+    frame_label,
+    reference_label,
+)
+from ..qa.critic.rubric import RUBRIC_VERSION, ClipRubric
+from ..qa.critic.spec import CriticSpec, parse_compiled_spec
 from ..repo import Repo
 from ..schema import GenerationRun, QAReport, Role, Shot, Status
 from ..tools import write_tools as wt
 from ..tools.registry import ToolContext
 from ..views import ShotView, shot_view
 
+logger = logging.getLogger(__name__)
+
 _extract_representative_frames_png = extract_representative_frames_png
+# Back-compat aliases for callers/tests of the pre-rubric critic.
+_normalize_qa_report = normalize_qa_report
+_collect_qa_failures = collect_qa_failures
+_extract_severe_flags = extract_severe_flags
+
+_MAX_REFERENCE_IMAGES = 6
+_PROMPT_PATH = Path(__file__).parent / "prompts" / "critic.md"
 
 
 class AssetCritiqueOutput(BaseModel):
@@ -69,202 +107,136 @@ def review_visual_asset(
     return critique
 
 
-def _norm01(v: float) -> float:
-    """Normalize a VLM similarity score from 0..100 or 0..10 into `[0.0, 1.0]`."""
-    if v > 10.0:
-        return min(1.0, max(0.0, round(v / 100.0, 3)))
-    if v > 1.0:
-        return min(1.0, max(0.0, round(v / 10.0, 3)))
-    return max(0.0, v)
-
-
-def _load_clip_and_ref_images(
-    repo: Repo, run: GenerationRun
-) -> tuple[list[bytes], list[bytes]]:
-    """Extract representative frames from `run` and append reference asset images."""
-    clip_bytes = _safe_blob_bytes(repo, run.output_video_uri, fallback=b"mock_mp4")
-    frames = extract_representative_frames_png(clip_bytes)
-    ref_images: list[bytes] = list(frames)
-    for aid in run.reference_asset_ids:
-        ref_asset = repo.get_asset(aid)
-        if ref_asset:
-            raw = _safe_blob_bytes(repo, ref_asset.uri)
-            if raw:
-                ref_images.append(raw)
-    return frames, ref_images
-
-
-_SEVERE_EXACT_FLAGS = {
-    "style_drift",
-    "anatomy_glitch",
-    "text_overlay",
-    "frozen_frame",
-    "start_frame_bleed",
-    "extreme_blur",
-    "cast_dropout",
-    "hallucinated_character",
-    "character_inconsistency",
-    "skin_color_inconsistency",
-    "costume_inconsistency",
-    "spatial_axis_flip",
-    "character_overlap",
-    "object_materialized",
-    "object_vanished",
-    "duplicate_prop",
-    "prop_part_missing",
-    "self_moving_object",
-    "prop_inverted",
-    "rigid_body_deformation",
-    "floating_object",
-    "hallucinated_object",
-    "wrong_support_surface",
-}
-_SEVERE_FLAG_PREFIXES = (
-    "missing_character",
-    "duplicate_character",
-    "wrong_speaker",
-    "prop_mismatch",
-)
-
-
-def _extract_severe_flags(flags: list[str]) -> set[str]:
-    """Return all artifact flags that match exact severe flags or severe flag prefixes."""
-    return {
-        f
-        for f in flags
-        if f in _SEVERE_EXACT_FLAGS or f.startswith(_SEVERE_FLAG_PREFIXES)
-    }
-
-
-def _build_clip_qa_prompt(sview: ShotView, shot: Shot, attempt: int) -> str:
-    """Build the Stage S9 VLM evaluation prompt for a rendered shot."""
-    pos_map = {c.entity_id: c.position for c in shot.cast}
-    cast_desc = [
-        f"{ent.canonical_name} [position={pos_map.get(cid, 'center')}]: "
-        f"{sview.cast_appearances[cid].visual_description} "
-        f"(wardrobe: {sview.cast_appearances[cid].wardrobe})"
-        for cid, ent in sview.cast_entities.items()
-        if cid in sview.cast_appearances
-    ]
-    props_desc = [
-        f"{sview.prop_entities[pid].canonical_name if pid in sview.prop_entities else pid} "
-        f"[t=0.0s supported_by={sview.prop_states.get(pid, {}).get('supported_by', 'in scene')}; "
-        f"state={sview.prop_states.get(pid, {}).get('pre_state', '')} -> {sview.prop_states.get(pid, {}).get('post_state', '')}]"
-        for pid in shot.prop_ids
-    ]
-    beats_desc = [
-        f"{b.description}"
-        + (
-            f" [{b.pre_state} -> {b.post_state}]"
-            if b.pre_state and b.post_state
-            else ""
+@lru_cache(maxsize=1)
+def _critic_instructions() -> str:
+    """System rubric text shared with the ADK critic role (`prompts/critic.md`)."""
+    try:
+        return _PROMPT_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return (
+            "You are the clip QA critic. Fill every rubric verdict with observed facts."
         )
-        for b in shot.beats
+
+
+def _entity_names(sview: ShotView) -> dict[str, str]:
+    """Entity id -> display name for cast, props and location."""
+    names = {cid: e.canonical_name for cid, e in sview.cast_entities.items()}
+    names.update({pid: e.canonical_name for pid, e in sview.prop_entities.items()})
+    names[sview.location.id] = sview.location.canonical_name
+    return names
+
+
+def _reference_images(
+    repo: Repo, run: GenerationRun, sview: ShotView
+) -> list[tuple[str, bytes]]:
+    """Labelled identity references (never mixed with clip frames; first frames excluded)."""
+    names = _entity_names(sview)
+    refs: list[tuple[str, bytes]] = []
+    for aid in run.reference_asset_ids[:_MAX_REFERENCE_IMAGES]:
+        asset = repo.get_asset(aid)
+        raw = _safe_blob_bytes(repo, asset.uri) if asset else b""
+        if not asset or not raw or asset.kind in ("first_frame", "audio"):
+            continue
+        who = " + ".join(names.get(e, e) for e in asset.depicts_entity_ids) or aid
+        kind = "setting identity" if asset.kind == "location_plate" else "identity"
+        refs.append((reference_label(who, kind), raw))
+    return refs
+
+
+def _assemble_images(
+    refs: list[tuple[str, bytes]], prev_frame: bytes | None, probe: ClipProbe
+) -> tuple[list[bytes], list[str]]:
+    """Order: references, previous last frame, then timestamped clip frames (labels burned in)."""
+    labelled = list(refs)
+    if prev_frame:
+        labelled.append((PREV_FRAME_LABEL, prev_frame))
+    last_idx = len(probe.frames) - 1
+    labelled += [
+        (frame_label(f.t_s, i == last_idx), f.png) for i, f in enumerate(probe.frames)
     ]
-    return (
-        f"Evaluate rendered clip for shot_id={shot.id} (attempt={attempt}).\n"
-        f"StyleGuide: {sview.style_guide.visual_medium} (palette: {sview.style_guide.palette}).\n"
-        f"Expected Cast Appearances & Blocking (judge ONLY against these S3 designs, NOT external assumptions): {cast_desc}.\n"
-        f"Expected Props & Physical Support States: {props_desc}.\n"
-        f"Expected location: {sview.location.canonical_name} ({sview.location_appearance.visual_description}).\n"
-        f"Expected action beats: {beats_desc}.\n"
-        "Verify every expected cast member is visible (flag 'missing_character_<id>' if absent or 'duplicate_character_<id>' if cloned) "
-        "and their left/center/right order matches expected blocking (flag 'spatial_axis_flip' or 'character_overlap' if violated). "
-        "Audit physical plausibility (`physics_plausibility`) and object permanence (`object_permanence`) across all timeline frames: "
-        "flag 'start_frame_bleed' if Frame 0 shows a reference sheet, split-screen card, or static title card; "
-        "flag 'object_materialized' if a table, character, or prop appears out of thin air mid-clip; "
-        "flag 'object_vanished' if a held bowl/prop is dropped and disappears instead of being placed on a counter/table; "
-        "flag 'duplicate_prop' if a pulled towel or held prop simultaneously remains hanging on its hook; "
-        "flag 'prop_part_missing' or 'rigid_body_deformation' if a chair loses its backrest or warps; "
-        "flag 'self_moving_object' if a chair or prop slides itself under a table without hand contact; "
-        "and flag 'floating_object' or 'wrong_support_surface' if a prop hangs in mid-air. "
-        "Set dialogue_wer = 0.0 (static frames do not include audio). "
-        "Account for shallow depth-of-field bokeh on MCU/CU shots and multi-frame static sampling. "
-        "Return all similarity/match scores strictly in the [0.0, 1.0] range."
+    return [label_image(png, label) for label, png in labelled], [
+        lbl for lbl, _ in labelled
+    ]
+
+
+def _media_signals(
+    probe: ClipProbe, prev_frame: bytes | None, run_cv: bool
+) -> MediaSignals:
+    """Deterministic signals; pixel-anomaly flags only for real (non-mock) VLM reviews."""
+    pngs = [f.png for f in probe.frames]
+    cv_flags = (
+        detect_frame_anomalies(pngs, prev_last_frame=prev_frame) if run_cv else []
+    )
+    return MediaSignals(
+        duration_s=probe.duration_s,
+        cut_times_s=probe.cut_times_s,
+        voiced_ratio=probe.voiced_ratio,
+        cv_flags=tuple(cv_flags),
+        has_prev_frame=prev_frame is not None,
+        frames_sampled=len(probe.frames),
     )
 
 
-def _normalize_qa_report(
-    raw_report: QAReport, cfg: Config, is_mock: bool
-) -> tuple[QAReport, set[str]]:
-    """Normalize raw VLM scores into `[0.0, 1.0]` and identify severe artifact flags."""
-    _ = cfg
-    w_score = _norm01(raw_report.wardrobe_match)
-    s_score = _norm01(raw_report.setting_match)
-    a_score = _norm01(raw_report.action_achieved)
-    c_score = _norm01(raw_report.continuity_prev_shot)
-    p_score = _norm01(raw_report.physics_plausibility)
-    o_score = _norm01(raw_report.object_permanence)
-    f_sims = {k: _norm01(val) for k, val in raw_report.face_similarity.items()}
-    d_wer = _norm01(raw_report.dialogue_wer) if is_mock else 0.0
-    severe_flags = _extract_severe_flags(raw_report.artifact_flags)
-    normalized = raw_report.model_copy(
+def _face_similarity(scores: dict[str, float], sview: ShotView) -> dict[str, float]:
+    """Key identity scores by cast entity id where the subject name resolves."""
+    by_name = {e.canonical_name.lower(): cid for cid, e in sview.cast_entities.items()}
+    return {by_name.get(n.lower(), n): s for n, s in scores.items()}
+
+
+def grade_rubric(
+    spec: CriticSpec,
+    rubric: ClipRubric,
+    signals: MediaSignals,
+    thr: CriticThresholds,
+    sview: ShotView,
+) -> QAReport:
+    """Deterministically grade a VLM rubric into a gated `QAReport`."""
+    outcome = evaluate_rubric(spec, rubric, signals, thr)
+    decision = gate(outcome.defects, thr)
+    return QAReport(
+        face_similarity=_face_similarity(outcome.identity_scores, sview),
+        identity_scores=outcome.identity_scores,
+        wardrobe_match=norm01(rubric.wardrobe_match),
+        setting_match=norm01(rubric.setting_match),
+        physics_plausibility=norm01(rubric.physics_plausibility),
+        dialogue_wer=0.0,
+        artifact_flags=decision.artifact_flags,
+        passed=decision.passed,
+        failure_reasons=decision.failure_reasons,
+        suggested_fix=decision.suggested_fix,
+        defects=outcome.defects,
+        steps_done=outcome.steps_done,
+        hard_cut_times_s=outcome.cut_times_s,
+        frames_sampled=signals.frames_sampled,
+        rubric_version=RUBRIC_VERSION,
+        **outcome.scores,
+    )
+
+
+def _grade_legacy(
+    raw: QAReport, cfg: Config, is_mock: bool, signals: MediaSignals
+) -> QAReport:
+    """Grade a bare `QAReport` responder (no per-step verdicts) by floors + severe flags."""
+    merged = list(dict.fromkeys([*raw.artifact_flags, *signals.cv_flags]))
+    report, severe = normalize_qa_report(
+        raw.model_copy(update={"artifact_flags": merged}), cfg, is_mock
+    )
+    reasons = collect_qa_failures(
+        report, cfg, is_mock, severe, require_continuity=signals.has_prev_frame
+    )
+    passed = not reasons and (report.passed or not is_mock)
+    fix = report.suggested_fix if report.suggested_fix != "none" else "retry_seed"
+    return report.model_copy(
         update={
-            "face_similarity": f_sims,
-            "wardrobe_match": w_score,
-            "setting_match": s_score,
-            "action_achieved": a_score,
-            "continuity_prev_shot": c_score,
-            "physics_plausibility": p_score,
-            "object_permanence": o_score,
-            "dialogue_wer": d_wer,
+            "passed": passed,
+            "failure_reasons": reasons,
+            "suggested_fix": "none" if passed else fix,
+            "defects": legacy_defects(reasons),
+            "identity_scores": dict(report.face_similarity),
+            "frames_sampled": signals.frames_sampled,
+            "rubric_version": "legacy-qareport",
         }
     )
-    return normalized, severe_flags
-
-
-def _collect_qa_failures(
-    report: QAReport,
-    cfg: Config,
-    is_mock: bool,
-    severe_flags: set[str],
-    require_continuity: bool = False,
-) -> list[str]:
-    """Check normalized `report` metrics against `cfg.qa` thresholds and severe artifact flags."""
-    reasons = list(report.failure_reasons) if (is_mock or severe_flags) else []
-    for flag in sorted(severe_flags):
-        flag_msg = f"Severe artifact flag: {flag}"
-        if flag_msg not in reasons:
-            reasons.append(flag_msg)
-    for char_id, sim in report.face_similarity.items():
-        if sim < cfg.qa.face_cosine_min:
-            reasons.append(
-                f"Face similarity for {char_id} ({sim:.2f}) < {cfg.qa.face_cosine_min}"
-            )
-    checks = [
-        (
-            report.wardrobe_match < cfg.qa.wardrobe_vlm_min,
-            f"Wardrobe match ({report.wardrobe_match:.2f}) < {cfg.qa.wardrobe_vlm_min}",
-        ),
-        (
-            report.setting_match < cfg.qa.setting_vlm_min,
-            f"Setting match ({report.setting_match:.2f}) < {cfg.qa.setting_vlm_min}",
-        ),
-        (
-            report.action_achieved < cfg.qa.action_vlm_min,
-            f"Action score ({report.action_achieved:.2f}) < {cfg.qa.action_vlm_min}",
-        ),
-        (
-            report.physics_plausibility < cfg.qa.physics_vlm_min,
-            f"Physics plausibility ({report.physics_plausibility:.2f}) < {cfg.qa.physics_vlm_min}",
-        ),
-        (
-            report.object_permanence < cfg.qa.permanence_vlm_min,
-            f"Object permanence ({report.object_permanence:.2f}) < {cfg.qa.permanence_vlm_min}",
-        ),
-        (
-            report.dialogue_wer > cfg.qa.dialogue_wer_max,
-            f"Dialogue WER ({report.dialogue_wer:.2f}) > {cfg.qa.dialogue_wer_max}",
-        ),
-        (
-            require_continuity and report.continuity_prev_shot < 0.60,
-            f"Continuity with previous shot ({report.continuity_prev_shot:.2f}) < 0.60",
-        ),
-    ]
-    for failed, msg in checks:
-        if failed:
-            reasons.append(msg)
-    return reasons
 
 
 def _register_last_frame(
@@ -292,6 +264,25 @@ def _register_last_frame(
     return str(lf_dict["id"])
 
 
+def _log_verdict(repo: Repo, shot: Shot, run: GenerationRun, report: QAReport) -> None:
+    logger.info(
+        "clip_qa_verdict",
+        extra={
+            "who": "storygraph.agents.critic",
+            "where": "critic.evaluate_clip_qa",
+            "what": "clip_qa_passed" if report.passed else "clip_qa_blocked",
+            "when": datetime.now(UTC).isoformat(),
+            "why": "; ".join(report.failure_reasons[:3]) or "no blocking defects",
+            "how": f"{report.rubric_version} gate over {report.frames_sampled} frames",
+            "project_id": repo.project_id,
+            "shot_id": shot.id,
+            "run_id": run.id,
+            "attempt": run.attempt,
+            "defect_causes": sorted({d.likely_cause for d in report.defects}),
+        },
+    )
+
+
 def evaluate_clip_qa(
     repo: Repo,
     cfg: Config,
@@ -299,45 +290,32 @@ def evaluate_clip_qa(
     shot: Shot,
     run: GenerationRun,
 ) -> QAReport:
-    """Run Stage S9 multimodal clip QA on a rendered `GenerationRun`, recording `qa_scores` and last-frame Asset."""
-    critic_ctx = ToolContext(repo=repo, role=Role.CRITIC, cfg=cfg)
+    """Run Stage S9 spec-aware clip QA on `run`, recording `qa_scores` and the last-frame Asset."""
     sview = shot_view(repo, shot.id)
-    frames, ref_images = _load_clip_and_ref_images(repo, run)
-
-    prompt = _build_clip_qa_prompt(sview, shot, run.attempt)
-    raw_report = vlm.review(images=ref_images, prompt=prompt, schema=QAReport)
+    spec = parse_compiled_spec(run.compiled_prompt)
+    probe = probe_clip(_safe_blob_bytes(repo, run.output_video_uri, b"mock_mp4"))
+    prev = sview.prev_shot_last_frame
+    prev_png = _safe_blob_bytes(repo, prev.uri) if prev else b""
+    images, labels = _assemble_images(
+        _reference_images(repo, run, sview), prev_png or None, probe
+    )
+    prompt = build_critic_prompt(
+        shot.id, spec, labels, bool(prev_png), _critic_instructions()
+    )
+    raw = vlm.review(images=images, prompt=prompt, schema=ClipRubric)
     is_mock = vlm.__class__.__name__ == "MockVLMProvider"
-    if not is_mock:
-        cv_flags = detect_frame_anomalies(frames)
-        if cv_flags:
-            merged_flags = list(dict.fromkeys([*raw_report.artifact_flags, *cv_flags]))
-            raw_report = raw_report.model_copy(update={"artifact_flags": merged_flags})
-    report, severe_flags = _normalize_qa_report(raw_report, cfg, is_mock)
-    req_cont = bool(
-        shot.continue_from_last_frame and sview.prev_shot_last_frame is not None
+    signals = _media_signals(probe, prev_png or None, run_cv=not is_mock)
+    if isinstance(raw, QAReport):
+        report = _grade_legacy(raw, cfg, is_mock, signals)
+    else:
+        thr = CriticThresholds.from_cfg(cfg.qa)
+        report = grade_rubric(spec, raw, signals, thr, sview)
+    lf_id = _register_last_frame(
+        repo, cfg, shot, run, probe.last_frame_png, passed=report.passed
     )
-    failure_reasons = _collect_qa_failures(
-        report, cfg, is_mock, severe_flags, require_continuity=req_cont
-    )
-
-    passed = len(failure_reasons) == 0 and (report.passed or not is_mock)
-    lf_id = _register_last_frame(repo, cfg, shot, run, frames[-1], passed=passed)
-    suggested_fix = (
-        "none"
-        if passed
-        else ("retry_seed" if report.suggested_fix == "none" else report.suggested_fix)
-    )
-    final_report = report.model_copy(
-        update={
-            "passed": passed,
-            "failure_reasons": failure_reasons,
-            "suggested_fix": suggested_fix,
-        }
-    )
+    critic_ctx = ToolContext(repo=repo, role=Role.CRITIC, cfg=cfg)
     wt.record_clip_qa(
-        critic_ctx,
-        run_id=run.id,
-        qa_report=final_report,
-        extracted_last_frame_asset_id=lf_id,
+        critic_ctx, run_id=run.id, qa_report=report, extracted_last_frame_asset_id=lf_id
     )
-    return final_report
+    _log_verdict(repo, shot, run, report)
+    return report
