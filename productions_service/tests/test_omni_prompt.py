@@ -224,6 +224,35 @@ def test_species_validation_flags_wrong_vocalizer_only(tmp_repo: Repo) -> None:
     ]
 
 
+def test_step_species_rule_attributes_verb_to_its_own_subject(tmp_repo: Repo) -> None:
+    """p-zyt0jprz regression: 'Pip glares … as Milo barks' must not flag Pip."""
+    _seed_shots(tmp_repo)
+    scene = tmp_repo.get_scene("scn_1")
+    assert scene is not None
+    ents = tmp_repo.list_entities()
+    traits = {
+        e.id: entity_traits(e, "", [])
+        for e in ents
+        if e.entity_type == EntityType.CHARACTER
+    }
+    traits["char_milo"] = entity_traits(
+        tmp_repo.get_entity("char_milo"), _MILO_DESC, ["Pip"]
+    )
+    names = {e.id: e.canonical_name for e in ents}
+    ok = "Pip glares at Milo, looks at the puddle, and stares ahead as Milo barks."
+    bad = "Pip kneels and barks at Milo."
+    steps = [
+        scene.interaction_steps[0].model_copy(
+            update={"step_index": i, "actor_id": "char_pip", "action": txt}
+        )
+        for i, txt in ((1, ok), (2, bad))
+    ]
+    scene = scene.model_copy(update={"interaction_steps": steps, "clips": []})
+    issues = validate_species_rules(scene, [], traits, names)
+    flagged = [i.message for i in issues if i.code == CODE_SPECIES_ACTION]
+    assert len(flagged) == 1 and flagged[0].startswith("Step 2: Pip")
+
+
 def test_retry_targets_kept_and_budget_trims_identity_not_sequence(
     tmp_repo: Repo, default_cfg: Config
 ) -> None:

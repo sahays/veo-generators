@@ -16,7 +16,21 @@ class ValidationFailed(StoryGraphError):
 
     def __init__(self, issues: list) -> None:
         self.issues = issues
-        super().__init__(f"{len(issues)} validation error(s)")
+        details = "; ".join(_describe_issue(i) for i in issues[:8])
+        more = f" (+{len(issues) - 8} more)" if len(issues) > 8 else ""
+        suffix = f": {details}{more}" if details else ""
+        super().__init__(f"{len(issues)} validation error(s){suffix}")
+
+
+def _describe_issue(issue: object) -> str:
+    """Render an issue as `CODE node_id: message` (falls back to `str(issue)`)."""
+    message = getattr(issue, "message", None)
+    if message is None:
+        return str(issue)
+    code = getattr(issue, "code", "")
+    node_id = getattr(issue, "node_id", "")
+    head = " ".join(p for p in (code, node_id) if p)
+    return f"{head}: {message}" if head else str(message)
 
 
 class ShotsNotApproved(ValidationFailed):

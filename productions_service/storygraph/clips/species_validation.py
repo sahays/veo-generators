@@ -61,23 +61,56 @@ def _prompt_issues(
     return issues
 
 
+def _name_matcher(
+    traits: dict[str, ActorTraits], names: dict[str, str]
+) -> tuple[re.Pattern[str] | None, dict[str, str]]:
+    """Build a case-insensitive regex over known actor names plus a lowercase name→id map."""
+    ids = {n.lower(): eid for eid, n in names.items() if eid in traits and n.strip()}
+    if not ids:
+        return None, ids
+    alt = "|".join(re.escape(n) for n in sorted(ids, key=len, reverse=True))
+    return re.compile(rf"\b(?:{alt})\b", re.IGNORECASE), ids
+
+
+def _verb_subjects(
+    text: str,
+    verb_re: re.Pattern[str],
+    default_actor: str,
+    matcher: re.Pattern[str] | None,
+    ids: dict[str, str],
+) -> list[tuple[str, str]]:
+    """Return `(subject_id, verb)` for each verb match, subject = nearest preceding named actor."""
+    found: list[tuple[str, str]] = []
+    for sent in _SENTENCE_RE.findall(text):
+        for verb in verb_re.finditer(sent):
+            subject = (
+                _nearest_actor(sent, verb.start(), matcher, ids) if matcher else None
+            )
+            found.append((subject or default_actor, verb.group(0)))
+    return found
+
+
 def _step_issues(
     scene: Scene, traits: dict[str, ActorTraits], names: dict[str, str]
 ) -> list[ClipIssue]:
+    matcher, ids = _name_matcher(traits, names)
     issues: list[ClipIssue] = []
     for st in scene.interaction_steps:
-        tr = traits.get(st.actor_id)
-        if tr is None:
+        if st.actor_id not in traits:
             continue
-        who = names.get(st.actor_id, "actor")
         text = st.action or st.description
-        verb = _ANIMAL_ONLY_RE.search(text)
-        if verb and tr.kind != ActorKind.ANIMAL:
-            msg = f"Step {st.step_index}: {who} ({tr.kind}) cannot '{verb.group(0)}' — only animals do."
-            issues.append(ClipIssue(CODE_SPECIES_ACTION, scene.id, msg))
-        if not tr.can_speak and _SPEECH_RE.search(text):
-            msg = f"Step {st.step_index}: {who} is non-verbal ({tr.vocalization} only)."
-            issues.append(ClipIssue(CODE_MUTE_SPEAKER, scene.id, msg))
+        for subj, verb in _verb_subjects(
+            text, _ANIMAL_ONLY_RE, st.actor_id, matcher, ids
+        ):
+            tr = traits.get(subj)
+            if tr is not None and tr.kind != ActorKind.ANIMAL:
+                msg = f"Step {st.step_index}: {names.get(subj, subj)} ({tr.kind}) cannot '{verb}' — only animals do."
+                issues.append(ClipIssue(CODE_SPECIES_ACTION, scene.id, msg))
+        for subj, _verb in _verb_subjects(text, _SPEECH_RE, st.actor_id, matcher, ids):
+            tr = traits.get(subj)
+            if tr is not None and not tr.can_speak:
+                msg = f"Step {st.step_index}: {names.get(subj, subj)} is non-verbal ({tr.vocalization} only)."
+                issues.append(ClipIssue(CODE_MUTE_SPEAKER, scene.id, msg))
     return issues
 
 
