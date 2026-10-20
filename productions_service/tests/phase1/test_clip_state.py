@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from kitchen_seed import BERRY, PIP, PUDDLE, TOWEL, seed_kitchen
-
 from storygraph.budget import RefPlan
 from storygraph.compile import compile_shot
 from storygraph.config import Config
-from storygraph.omni.props import CONSUMED
 from storygraph.omni.spec import OmniClipSpec
 from storygraph.repo import Repo
 from storygraph.state import state_at
@@ -57,7 +55,7 @@ def test_consuming_clip_shows_the_object_then_marks_it_consumed(
         for o in _spec(tmp_repo, default_cfg, "shot_4_1").objects or []
         if o.name == "Single Strawberry"
     )
-    assert berry.moves and berry.end is not None and berry.end.where == CONSUMED
+    assert berry.moves and berry.end is not None and berry.end.where == "eaten by Milo"
 
 
 def test_prop_rest_place_comes_from_its_own_facts_not_actor_support(

@@ -1,8 +1,10 @@
 """CRITIC agent (`critic_agent`) for Stage S3 Visual Asset QA and Stage S9 Multimodal Clip QA.
 
-S9 is spec-aware: the VLM sees the compiled OmniClipSpec, labelled REFERENCE images, the previous
-approved clip's last frame and densely sampled timestamped frames, and returns a `ClipRubric`.
-Approval is decided deterministically by `qa.critic.gate.gate` (any high defect blocks).
+S9 is a thin gate over the reusable video-eval engine (`storygraph.eval`): one sectioned VLM call
+(compiled OmniClipSpec, labelled REFERENCE images, previous last frame, dense timestamped
+frames) plus shared deterministic metrics feed eleven named dimensions; `eval.gate.decide`
+approves deterministically (any HIGH defect, >= 3 MEDIUM, a confident hard-gate dimension
+below threshold, or the weighted overall below threshold blocks).
 """
 
 from __future__ import annotations
@@ -11,34 +13,30 @@ import logging
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel
 
 from ..adapters.base import VLMProvider
-from ..adapters.media_frames import (
-    ClipProbe,
-    detect_frame_anomalies,
-    extract_representative_frames_png,
-    label_image,
-    probe_clip,
-)
+from ..adapters.embeddings import ImageEmbedder, make_embedder
+from ..adapters.media_frames import extract_representative_frames_png
+from ..adapters.transcribe import GeminiTranscriber
 from ..config import Config
-from ..qa.critic.checks import CriticThresholds, MediaSignals, norm01
-from ..qa.critic.gate import evaluate_rubric, gate
+from ..eval.contracts import EvalInput, LabelledRef
+from ..eval.engine import Collected, EvalEngine
+from ..eval.gate import decide
+from ..eval.mapping import to_qa_report
+from ..eval.media import media_signals
+from ..eval.metrics.video import VideoMetrics
+from ..eval.rubric import EvalRubric
+from ..qa.critic.checks import CriticThresholds, MediaSignals
 from ..qa.critic.legacy import (
     collect_qa_failures,
     extract_severe_flags,
     legacy_defects,
     normalize_qa_report,
 )
-from ..qa.critic.prompt import (
-    PREV_FRAME_LABEL,
-    build_critic_prompt,
-    frame_label,
-    reference_label,
-)
-from ..qa.critic.rubric import RUBRIC_VERSION, ClipRubric
-from ..qa.critic.spec import CriticSpec, parse_compiled_spec
+from ..qa.critic.prompt import reference_label
 from ..repo import Repo
 from ..schema import GenerationRun, QAReport, Role, Shot, Status
 from ..tools import write_tools as wt
@@ -128,89 +126,61 @@ def _entity_names(sview: ShotView) -> dict[str, str]:
 
 def _reference_images(
     repo: Repo, run: GenerationRun, sview: ShotView
-) -> list[tuple[str, bytes]]:
+) -> list[LabelledRef]:
     """Labelled identity references (never mixed with clip frames; first frames excluded)."""
     names = _entity_names(sview)
-    refs: list[tuple[str, bytes]] = []
+    refs: list[LabelledRef] = []
     for aid in run.reference_asset_ids[:_MAX_REFERENCE_IMAGES]:
         asset = repo.get_asset(aid)
         raw = _safe_blob_bytes(repo, asset.uri) if asset else b""
         if not asset or not raw or asset.kind in ("first_frame", "audio"):
             continue
-        who = " + ".join(names.get(e, e) for e in asset.depicts_entity_ids) or aid
-        kind = "setting identity" if asset.kind == "location_plate" else "identity"
-        refs.append((reference_label(who, kind), raw))
+        who = [names.get(e, e) for e in asset.depicts_entity_ids]
+        setting = asset.kind == "location_plate"
+        label = reference_label(
+            " + ".join(who) or aid, "setting identity" if setting else "identity"
+        )
+        kind: Literal["identity", "setting"] = "setting" if setting else "identity"
+        refs.append(LabelledRef(label=label, kind=kind, entity_names=who, png=raw))
     return refs
 
 
-def _assemble_images(
-    refs: list[tuple[str, bytes]], prev_frame: bytes | None, probe: ClipProbe
-) -> tuple[list[bytes], list[str]]:
-    """Order: references, previous last frame, then timestamped clip frames (labels burned in)."""
-    labelled = list(refs)
-    if prev_frame:
-        labelled.append((PREV_FRAME_LABEL, prev_frame))
-    last_idx = len(probe.frames) - 1
-    labelled += [
-        (frame_label(f.t_s, i == last_idx), f.png) for i, f in enumerate(probe.frames)
-    ]
-    return [label_image(png, label) for label, png in labelled], [
-        lbl for lbl, _ in labelled
-    ]
+def _face_ids(sview: ShotView) -> dict[str, str]:
+    """Lower-cased subject display name -> cast entity id."""
+    return {e.canonical_name.lower(): cid for cid, e in sview.cast_entities.items()}
 
 
-def _media_signals(
-    probe: ClipProbe, prev_frame: bytes | None, run_cv: bool
-) -> MediaSignals:
-    """Deterministic signals; pixel-anomaly flags only for real (non-mock) VLM reviews."""
-    pngs = [f.png for f in probe.frames]
-    cv_flags = (
-        detect_frame_anomalies(pngs, prev_last_frame=prev_frame) if run_cv else []
-    )
-    return MediaSignals(
-        duration_s=probe.duration_s,
-        cut_times_s=probe.cut_times_s,
-        voiced_ratio=probe.voiced_ratio,
-        cv_flags=tuple(cv_flags),
-        has_prev_frame=prev_frame is not None,
-        frames_sampled=len(probe.frames),
+@lru_cache(maxsize=1)
+def _live_helpers() -> tuple[ImageEmbedder, GeminiTranscriber]:
+    """Process-wide embedder + transcriber for real (non-mock) reviews (cached clients)."""
+    return make_embedder(prefer_vertex=True), GeminiTranscriber()
+
+
+def _engine(cfg: Config, vlm: VLMProvider, is_mock: bool) -> EvalEngine:
+    """The shared eval engine; mock reviews skip network-backed metrics."""
+    embedder, transcriber = (None, None) if is_mock else _live_helpers()
+    return EvalEngine(
+        vlm=vlm,
+        gate_cfg=cfg.eval,
+        thr=CriticThresholds.from_cfg(cfg.qa),
+        embedder=embedder,
+        transcriber=transcriber,
+        instructions=_critic_instructions(),
+        run_cv=not is_mock,
     )
 
 
-def _face_similarity(scores: dict[str, float], sview: ShotView) -> dict[str, float]:
-    """Key identity scores by cast entity id where the subject name resolves."""
-    by_name = {e.canonical_name.lower(): cid for cid, e in sview.cast_entities.items()}
-    return {by_name.get(n.lower(), n): s for n, s in scores.items()}
-
-
-def grade_rubric(
-    spec: CriticSpec,
-    rubric: ClipRubric,
-    signals: MediaSignals,
-    thr: CriticThresholds,
+def grade_eval(
+    engine: EvalEngine,
+    inp: EvalInput,
+    got: Collected,
+    rubric: EvalRubric,
     sview: ShotView,
 ) -> QAReport:
-    """Deterministically grade a VLM rubric into a gated `QAReport`."""
-    outcome = evaluate_rubric(spec, rubric, signals, thr)
-    decision = gate(outcome.defects, thr)
-    return QAReport(
-        face_similarity=_face_similarity(outcome.identity_scores, sview),
-        identity_scores=outcome.identity_scores,
-        wardrobe_match=norm01(rubric.wardrobe_match),
-        setting_match=norm01(rubric.setting_match),
-        physics_plausibility=norm01(rubric.physics_plausibility),
-        dialogue_wer=0.0,
-        artifact_flags=decision.artifact_flags,
-        passed=decision.passed,
-        failure_reasons=decision.failure_reasons,
-        suggested_fix=decision.suggested_fix,
-        defects=outcome.defects,
-        steps_done=outcome.steps_done,
-        hard_cut_times_s=outcome.cut_times_s,
-        frames_sampled=signals.frames_sampled,
-        rubric_version=RUBRIC_VERSION,
-        **outcome.scores,
-    )
+    """Grade a sectioned rubric through every eval dimension and the eval gate."""
+    report = engine.grade(inp, got, rubric)
+    decision, dims, _overall = decide(report.results, engine.gate_cfg, engine.thr)
+    return to_qa_report(report, decision, dims, rubric, _face_ids(sview))
 
 
 def _grade_legacy(
@@ -283,6 +253,22 @@ def _log_verdict(repo: Repo, shot: Shot, run: GenerationRun, report: QAReport) -
     )
 
 
+def _eval_input(
+    repo: Repo, shot: Shot, run: GenerationRun, sview: ShotView
+) -> EvalInput:
+    prev = sview.prev_shot_last_frame
+    prev_png = _safe_blob_bytes(repo, prev.uri) if prev else b""
+    style = sview.style_guide.visual_medium if sview.style_guide else ""
+    return EvalInput(
+        clip_bytes=_safe_blob_bytes(repo, run.output_video_uri, b"mock_mp4"),
+        spec_json=run.compiled_prompt,
+        refs=_reference_images(repo, run, sview),
+        prev_last_frame=prev_png or None,
+        style_guide=style,
+        shot_id=shot.id,
+    )
+
+
 def evaluate_clip_qa(
     repo: Repo,
     cfg: Config,
@@ -290,28 +276,21 @@ def evaluate_clip_qa(
     shot: Shot,
     run: GenerationRun,
 ) -> QAReport:
-    """Run Stage S9 spec-aware clip QA on `run`, recording `qa_scores` and the last-frame Asset."""
+    """Run Stage S9 clip QA (video-eval engine), recording `qa_scores` and the last frame."""
     sview = shot_view(repo, shot.id)
-    spec = parse_compiled_spec(run.compiled_prompt)
-    probe = probe_clip(_safe_blob_bytes(repo, run.output_video_uri, b"mock_mp4"))
-    prev = sview.prev_shot_last_frame
-    prev_png = _safe_blob_bytes(repo, prev.uri) if prev else b""
-    images, labels = _assemble_images(
-        _reference_images(repo, run, sview), prev_png or None, probe
-    )
-    prompt = build_critic_prompt(
-        shot.id, spec, labels, bool(prev_png), _critic_instructions()
-    )
-    raw = vlm.review(images=images, prompt=prompt, schema=ClipRubric)
     is_mock = vlm.__class__.__name__ == "MockVLMProvider"
-    signals = _media_signals(probe, prev_png or None, run_cv=not is_mock)
-    if isinstance(raw, QAReport):
-        report = _grade_legacy(raw, cfg, is_mock, signals)
+    engine = _engine(cfg, vlm, is_mock)
+    inp = _eval_input(repo, shot, run, sview)
+    got = engine.collect(inp)
+    if isinstance(got.raw, QAReport):
+        signals = media_signals(
+            got.probe, inp.prev_last_frame, VideoMetrics(), not is_mock
+        )
+        report = _grade_legacy(got.raw, cfg, is_mock, signals)
     else:
-        thr = CriticThresholds.from_cfg(cfg.qa)
-        report = grade_rubric(spec, raw, signals, thr, sview)
+        report = grade_eval(engine, inp, got, got.raw, sview)
     lf_id = _register_last_frame(
-        repo, cfg, shot, run, probe.last_frame_png, passed=report.passed
+        repo, cfg, shot, run, got.probe.last_frame_png, passed=report.passed
     )
     critic_ctx = ToolContext(repo=repo, role=Role.CRITIC, cfg=cfg)
     wt.record_clip_qa(

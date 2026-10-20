@@ -3,6 +3,8 @@
 * `S4_LINT_CAMERA_MOVEMENT` → the shot camera is adjusted to follow the locomotion
   (track, or pan for a lateral crossing; size widened per `LocomotionCameraPolicy`; angle and
   lens kept). Never blocks.
+* `S4_LINT_CAMERA_TOO_TIGHT` → the tight size is widened per `FramingPolicy` and kept as a
+  framing intent in the shot look (`timeline.framing.plan_framing`).
 * `S2_CLIP_LINT_TOO_MANY_ACTIONS` → the clip is split into contiguous clips (`split_clip`).
 * `S2_CLIP_LINT_TOO_MANY_WORDS` → overflow lines move to an adjacent clip when they fit.
 
@@ -28,8 +30,15 @@ from ..repo import Repo
 from ..schema import CameraSpec, Role, Scene, Shot, ShotLintIssue
 from ..shots.stamp import stamp_content_hash
 from ..timeline.clip_context import clip_steps_of
+from ..timeline.framing import plan_framing, with_intent
 from ..timeline.locomotion import LocomotionHit, step_locomotion
-from .models import CODE_CAMERA, CODE_TOO_MANY_ACTIONS, CODE_TOO_MANY_WORDS, LintIssue
+from .models import (
+    CODE_CAMERA,
+    CODE_CAMERA_TIGHT,
+    CODE_TOO_MANY_ACTIONS,
+    CODE_TOO_MANY_WORDS,
+    LintIssue,
+)
 
 _log = logging.getLogger(__name__)
 _WHO = "storygraph.lint.remediate"
@@ -125,11 +134,36 @@ def _fix_camera(repo: Repo, issue: LintIssue) -> AppliedFix | None:
     return AppliedFix(shot.id, issue, fix)
 
 
+def _fix_framing(repo: Repo, issue: LintIssue) -> AppliedFix | None:
+    shot = repo.get_shot(issue.shot_id)
+    scene = repo.get_scene(shot.scene_id) if shot else None
+    clip = _clip_of(scene, shot) if scene and shot else None
+    if shot is None or scene is None or clip is None:
+        return None
+    chars = [c.entity_id for c in shot.cast]
+    decision = plan_framing(shot.camera, clip_steps_of(scene, clip), chars)
+    if not decision.widened:
+        return None
+    look = with_intent(shot.look, decision.intent)
+    updated = shot.model_copy(update={"camera": decision.camera, "look": look})
+    repo.put_shot(stamp_content_hash(repo, shot, updated, _WHO))
+    fix = f"camera {shot.camera.shot_size} -> {decision.camera.shot_size} ({decision.intent})"
+    _log_fix("camera_widened", shot.id, issue.message, fix)
+    return AppliedFix(shot.id, issue, fix)
+
+
+_CAMERA_FIXES: dict[str, Callable[[Repo, LintIssue], AppliedFix | None]] = {
+    CODE_CAMERA: _fix_camera,
+    CODE_CAMERA_TIGHT: _fix_framing,
+}
+
+
 def fix_cameras(repo: Repo, issues: list[LintIssue]) -> RemediationResult:
-    """Adjust every shot camera that cannot follow its clip's locomotion."""
+    """Adjust shot cameras that cannot follow locomotion or are tighter than Omni allows."""
     out = RemediationResult()
     for issue in issues:
-        applied = _fix_camera(repo, issue) if issue.code == CODE_CAMERA else None
+        fn = _CAMERA_FIXES.get(issue.code)
+        applied = fn(repo, issue) if fn else None
         if applied is None:
             out.residual.append(issue)
         else:

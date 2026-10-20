@@ -14,7 +14,7 @@ from ..schema import InteractionStep
 from ..views import ShotView
 from .spec import StepSpec
 from .symbols import Symbols
-from .text import clean
+from .text import IdResolver, clean, collapse_repeats, strip_actor_lead
 
 _DEFAULT_VERB: Final[str] = "acts"
 _WORD_RE: Final[re.Pattern[str]] = re.compile(r"[\w'-]+")
@@ -28,8 +28,12 @@ def clip_steps(view: ShotView, clip: ClipScript) -> list[InteractionStep]:
 
 
 def _verb_detail(step: InteractionStep, sym: Symbols) -> tuple[str, str]:
-    """(verb, detail): explicit verb first, else the action text; detail never repeats verb."""
+    """(verb, detail): explicit verb first, else the action text; detail never repeats verb.
+
+    The step's `actor` field names the actor, so a leading actor name is stripped from both
+    (renderers print 'actor verb'; 'Pip Pip reaches' was a QA step-matching failure)."""
     r = sym.resolver
+    actor = sym.name(step.actor_id) if step.actor_id else ""
     bare = next(
         (
             v.strip()
@@ -38,14 +42,18 @@ def _verb_detail(step: InteractionStep, sym: Symbols) -> tuple[str, str]:
         ),
         "",
     )
-    action = clean(step.action or step.description, r)
-    verb = clean(bare, r) or action or _DEFAULT_VERB
+    action = _own_text(step.action or step.description, actor, r)
+    verb = _own_text(bare, actor, r) or action or _DEFAULT_VERB
     candidates = (
-        clean(step.detail, r),
-        clean(step.contact_mechanics, r),
+        _own_text(step.detail, actor, r),
+        _own_text(step.contact_mechanics, actor, r),
         action if action != verb else "",
     )
     return verb, next((c for c in candidates if c and c != verb), "")
+
+
+def _own_text(text: str | None, actor: str, resolver: IdResolver) -> str:
+    return strip_actor_lead(collapse_repeats(clean(text, resolver)), actor)
 
 
 def build_sequence(steps: list[InteractionStep], sym: Symbols) -> list[StepSpec]:
@@ -60,7 +68,8 @@ def build_sequence(steps: list[InteractionStep], sym: Symbols) -> list[StepSpec]
                 verb=verb,
                 target=sym.ref(step.target_id),
                 detail=detail or None,
-                end_state=clean(step.post_state, sym.resolver) or None,
+                end_state=collapse_repeats(clean(step.post_state, sym.resolver))
+                or None,
             )
         )
     return out

@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from storygraph.config import Config
 from storygraph.presets import resolve_production_presets
 from storygraph.repo import Repo
+from storygraph.repo.prompt_versions import PromptVersionRepo
 from storygraph.schema import Asset, EntityType, GenerationRun, Scene, StageRun
 from storygraph.validate import validate_all
 from storygraph.views import generation_run_rank
@@ -80,10 +81,15 @@ def _build_runs_and_shots(
             best_run_by_shot[r.shot_id] = (r, rd)
 
     shots_out: list[dict[str, Any]] = []
+    active_prompts = PromptVersionRepo(repo.store).active_by_shot()
     for sh in repo.list_shots():
         shd = sh.model_dump(mode="json")
         best_pair = best_run_by_shot.get(sh.id)
         shd["latest_run"] = best_pair[1] if best_pair else None
+        pv = active_prompts.get(sh.id)
+        shd["active_prompt_version"] = (
+            {"id": pv.id, "version": pv.version, "author": pv.author} if pv else None
+        )
         shots_out.append(shd)
     return runs_out, shots_out
 

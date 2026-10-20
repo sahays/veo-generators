@@ -225,7 +225,7 @@ class MockVLMProvider:
 
         if schema is QAReport or schema.__name__ == "QAReport":
             return self._build_qa_report(prompt)  # type: ignore[return-value]
-        if schema.__name__ == "ClipRubric":
+        if hasattr(schema, "mock_response"):
             # Scripted failures (fail_shots_once / patched _build_qa_report) surface as a
             # legacy QAReport, which the critic grades via its legacy branch.
             legacy = self._build_qa_report(prompt)

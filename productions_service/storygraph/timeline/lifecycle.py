@@ -1,7 +1,8 @@
 """Object lifecycles and the per-clip prop set.
 
 An object exists from its creation to its destruction/consumption:
-- `alive_present` facts are authoritative (`true` creates, `false` destroys/consumes).
+- `alive_present` facts are authoritative (`BIRTH_VALUES` such as 'true' create,
+  `DEATH_VALUES` such as 'false'/'consumed'/'destroyed' end the object).
 - Emergent objects (puddles, spills, stains, shards, smoke ...) without an explicit creation
   fact come into being at their first substantive evidence: a non-boilerplate state effect,
   being held, a clip step that targets it, or a mention in a clip's closing state.
@@ -62,9 +63,23 @@ def name_pattern(name: str) -> re.Pattern[str]:
     return re.compile(rf"\b(?:{body})s?\b", re.IGNORECASE)
 
 
+BIRTH_VALUES: Final[frozenset[str]] = frozenset(
+    {"true", "yes", "present", "created", "appears", "alive"}
+)
+DEATH_VALUES: Final[frozenset[str]] = frozenset(
+    {"false", "no", "consumed", "eaten", "destroyed", "gone", "absent", "removed",
+     "dead", "vanished", "used up"}
+)  # fmt: skip
+
+
+def is_death(value: str | None) -> bool:
+    """True for an `alive_present` value that ends the object's existence."""
+    return (value or "").strip().lower() in DEATH_VALUES
+
+
 def _alive_bounds(facts: list[StateFact]) -> tuple[int | None, int | None]:
-    born = [f.valid_from_order for f in facts if f.value.lower() == "true"]
-    dead = [f.valid_from_order for f in facts if f.value.lower() == "false"]
+    born = [f.valid_from_order for f in facts if f.value.lower() in BIRTH_VALUES]
+    dead = [f.valid_from_order for f in facts if is_death(f.value)]
     start = min(born) if born else None
     ends = [d for d in dead if start is None or d > start]
     return start, (min(ends) if ends else None)

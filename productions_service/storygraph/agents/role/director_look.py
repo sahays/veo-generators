@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from typing import Final
 
 from ...clips.models import ColorGradeSpec, LightingSpec
 from ...presets import resolve_production_presets
 from ...presets.models import ResolvedProductionPresets
 from ...repo import Repo
-from ...schema import Scene, ShotLook, StyleGuide
+from ...schema import CameraSpec, InteractionStep, Scene, ShotLook, StyleGuide
+from ...timeline.framing import plan_framing, with_intent
 
 _COMPOSITIONS: Final[tuple[str, ...]] = (
     "rule-of-thirds staging with clear foreground, midground and background depth layers",
@@ -122,3 +124,15 @@ def look_constraints_block(
         "Vary composition, grade accents and mood per shot to serve the beat, but keep the lighting "
         "setup (key source, direction, practicals) continuous within a scene.\n"
     )
+
+
+def choose_camera(
+    camera: CameraSpec,
+    look: ShotLook,
+    steps: Sequence[InteractionStep],
+    character_ids: Iterable[str],
+) -> tuple[CameraSpec, ShotLook]:
+    """Camera within Omni limits (`FramingPolicy`): ECU/CU only for one in-place action on
+    one subject, else widened to the default size with the tight size kept as intent."""
+    decision = plan_framing(camera, steps, character_ids)
+    return decision.camera, with_intent(look, decision.intent) or look

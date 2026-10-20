@@ -46,8 +46,24 @@ class LocomotionCameraPolicy:
     pan_min_size: str = "MLS"
 
 
+@dataclass(frozen=True)
+class FramingPolicy:
+    """Omni camera limits: tight sizes drift (cuts, re-framing), so they are reserved for one
+    in-place action on one subject; everything else renders at `default_size` and a tight
+    size survives only as a framing intent. Set dressing is expected in frame only at
+    `set_dressing_min_size` or wider."""
+
+    tight_sizes: frozenset[str] = field(
+        default_factory=lambda: frozenset({"ECU", "CU"})
+    )
+    default_size: str = "MS"
+    tight_max_steps: int = 1
+    set_dressing_min_size: str = "MS"
+
+
 CLIP_LIMITS: Final[ClipLimits] = ClipLimits()
 LOCOMOTION_CAMERA: Final[LocomotionCameraPolicy] = LocomotionCameraPolicy()
+FRAMING: Final[FramingPolicy] = FramingPolicy()
 
 
 def count_spoken_words(text: str) -> int:
@@ -103,6 +119,17 @@ def camera_rules_text(policy: LocomotionCameraPolicy = LOCOMOTION_CAMERA) -> str
         f"to, enter, exit, chase), its camera MUST follow: movement {follow}; {dolly} only at "
         f"shot_size {policy.dolly_min_size} or wider; static only at {static}. Never tilt or "
         "hold a close static shot on locomotion."
+    )
+
+
+def framing_rules_text(policy: FramingPolicy = FRAMING) -> str:
+    """Director rule describing when a tight shot size is allowed (enforced by the linter)."""
+    tight = "/".join(sorted(policy.tight_sizes))
+    return (
+        f"Default shot_size is {policy.default_size} or MLS. Use {tight} ONLY when the clip is "
+        f"{policy.tight_max_steps} in-place action (no travelling) on a single subject; "
+        f"otherwise a tight size is widened to {policy.default_size} and kept only as a "
+        "framing intent in `camera_motion_intent`."
     )
 
 

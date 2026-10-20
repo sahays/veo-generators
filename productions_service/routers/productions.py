@@ -29,6 +29,12 @@ from services.productions_service import (
     run_project_stage,
     update_production_project,
 )
+from services.prompt_versions_service import (
+    HumanPromptPayload,
+    activate_shot_prompt,
+    create_human_shot_prompt,
+    list_shot_prompts,
+)
 from services.repair_service import (
     ClipEdit,
     RepairShotsPayload,
@@ -188,3 +194,26 @@ async def edit_production_shot_clip(
 @router.post("/api/v1/productions/{project_id}/shots/{shot_id}/regenerate")
 async def regenerate_production_shot(project_id: str, shot_id: str) -> dict[str, Any]:
     return await run_in_threadpool(regenerate_project_shot, project_id, shot_id)
+
+
+@router.get("/api/v1/productions/{project_id}/shots/{shot_id}/prompts")
+async def list_production_shot_prompts(project_id: str, shot_id: str) -> dict[str, Any]:
+    return await run_in_threadpool(list_shot_prompts, project_id, shot_id)
+
+
+@router.post("/api/v1/productions/{project_id}/shots/{shot_id}/prompts")
+async def create_production_shot_prompt(
+    project_id: str, shot_id: str, body: HumanPromptPayload
+) -> dict[str, Any]:
+    return await run_in_threadpool(create_human_shot_prompt, project_id, shot_id, body)
+
+
+@router.post(
+    "/api/v1/productions/{project_id}/shots/{shot_id}/prompts/{version_id}/activate"
+)
+async def activate_production_shot_prompt(
+    project_id: str, shot_id: str, version_id: str
+) -> dict[str, Any]:
+    return await run_in_threadpool(
+        activate_shot_prompt, project_id, shot_id, version_id
+    )

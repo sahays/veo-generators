@@ -7,6 +7,7 @@ from typing import Final
 
 from ..clips.species import own_sentences
 from ..clips.text import strip_timestamps
+from ..timeline.placement import cut_phrase
 
 _ID_RE: Final[re.Pattern[str]] = re.compile(
     r"\b(obj|char|loc|prop|ast|shot|scn|evt|app|dlg|comp)_[A-Za-z0-9_]+\b"
@@ -37,6 +38,9 @@ _STYLE_NOUN_RE: Final[re.Pattern[str]] = re.compile(
     re.IGNORECASE,
 )
 _SENTENCE_END: Final[str] = ".!?\u2026\"'"
+_REPEAT_RE: Final[re.Pattern[str]] = re.compile(
+    r"\b([A-Za-z][\w'-]*)(?:\s+\1\b)+", re.IGNORECASE
+)
 
 
 class IdResolver:
@@ -99,10 +103,28 @@ def _strip_style(text: str) -> str:
 
 
 def _cap_chars(text: str, limit: int) -> str:
-    if len(text) <= limit:
+    return text if len(text) <= limit else sentence(cut_phrase(text, limit))
+
+
+def collapse_repeats(text: str) -> str:
+    """'Pip Pip reaches' -> 'Pip reaches' (case-insensitive adjacent duplicate words)."""
+    return _REPEAT_RE.sub(lambda m: m.group(1), text)
+
+
+def has_repeats(text: str) -> bool:
+    return bool(_REPEAT_RE.search(text))
+
+
+def strip_actor_lead(text: str, actor: str) -> str:
+    """'Pip pushes the chair' -> 'pushes the chair' when `actor` is Pip (possessive kept)."""
+    if not actor.strip():
         return text
-    cut = text[:limit].rsplit(" ", 1)[0].rstrip(" ,;:")
-    return sentence(cut)
+    lead = re.match(
+        rf"\s*{re.escape(actor.strip())}\b(?!['\u2019]s)[\s,]*", text, re.IGNORECASE
+    )
+    if lead is None or lead.end() >= len(text):
+        return text
+    return text[lead.end() :]
 
 
 def condense_identity(

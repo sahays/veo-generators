@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ...adapters.mock import MockLLMClient
-from ...clips.limits import camera_rules_text, feedback_block
+from ...clips.limits import camera_rules_text, feedback_block, framing_rules_text
 from ...presets.models import ResolvedProductionPresets
 from ...schema import (
     CastInShot,
@@ -32,6 +32,7 @@ from ...views import SceneView, scene_view
 from ..runner import RoleRunResult, run_role
 from .director_clips import beats_for_clip, fallback_drafts, match_drafts_to_clips
 from .director_look import (
+    choose_camera,
     default_look,
     look_constraints_block,
     merge_look,
@@ -133,6 +134,8 @@ def persist_clip_shot(
         default_look(blk.sview.style_guide, blk.bundle, blk.sview.scene, pos),
     )
     blk.lighting_anchor = blk.lighting_anchor or look
+    clip_steps = [blk.steps[i] for i in clip.step_indices if i in blk.steps]
+    camera, look = choose_camera(sh.camera, look, clip_steps, list(cast_by_id))
     shot_id = f"shot_{blk.sview.scene.id}_{pos:02d}"
     wt.put_shot(
         ctx,
@@ -145,7 +148,7 @@ def persist_clip_shot(
         covers_event_ids=blk.ev_ids,
         cast=list(cast_by_id.values()),
         prop_ids=props,
-        camera=sh.camera,
+        camera=camera,
         beats=beats_for_clip(clip, blk.steps, [*cast_by_id, *props]),
         dialogue_ids=shot_dlgs,
         continue_from_last_frame=(pos > 1),
@@ -186,7 +189,8 @@ def build_director_prompt(
         "2. Preserve 180-degree screen positions (`left`/`center`/`right`) across consecutive shots. "
         "3. Vary shot size/angle/lens across consecutive shots to cut cleanly. "
         "4. For emotional moments describe subtle glistening eyes — never 'tearful starlight sparkles'. "
-        f"5. {camera_rules_text()}\n\n"
+        f"5. {camera_rules_text()}\n"
+        f"6. {framing_rules_text()}\n\n"
         + feedback_block(feedback, "SPEC LINTER REJECTED THE PREVIOUS SHOTS")
         + f"SCENE VIEW:\n{blk.sview.model_dump_json(exclude={'shots'})}"
     )

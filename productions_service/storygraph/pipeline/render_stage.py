@@ -19,6 +19,7 @@ from ..shots import run_matches_shot
 from ..tools import write_tools as wt
 from ..tools.registry import ToolContext
 from ..views import shot_view
+from .prompt_versioning import resolve_package
 from .shot_attempt import (
     RenderDeps,
     _attach_fallback,
@@ -56,7 +57,7 @@ def compile_all_shots(
     for shot in repo.list_shots():
         sv = shot_view(repo, shot.id)
         plan = select_references(sv, cfg, caps=video_gen.caps, repo=repo)
-        compiled[shot.id] = compile_shot(
+        pkg = compile_shot(
             sv,
             plan,
             cfg,
@@ -65,6 +66,7 @@ def compile_all_shots(
             attempt=1,
             resolution=resolution,
         )
+        compiled[shot.id] = resolve_package(repo, sv.shot, pkg, "compile_all").package
     return compiled
 
 

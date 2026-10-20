@@ -37,6 +37,7 @@ class SpecObject(BaseModel):
     has_ref: bool = False
     start: str = ""
     end: str = ""
+    in_frame: bool = True  # False = offscreen set dressing (not expected in view)
 
 
 class SpecCamera(BaseModel):
@@ -91,13 +92,17 @@ def _resolve(names: dict[str, str], token: object) -> str:
 
 
 def _object_state_text(names: dict[str, str], state: object) -> str:
-    """Render an `ObjectState` dict as observable text ('held by Pip' / 'on the counter')."""
+    """Render an `ObjectState` dict as observable text ('held by Pip' / 'tipped, on the table')."""
     if not isinstance(state, dict):
         return ""
     holder = state.get("held_by")
-    if holder:
-        return f"held by {_resolve(names, holder)}"
-    return str(state.get("where") or "")
+    place = (
+        f"held by {_resolve(names, holder)}"
+        if holder
+        else str(state.get("where") or "")
+    )
+    condition = str(state.get("condition") or "").strip()
+    return ", ".join(p for p in (condition, place) if p)
 
 
 def _parse_steps(data: dict[str, Any], names: dict[str, str]) -> list[SpecStep]:
@@ -137,7 +142,7 @@ def _parse_subjects(data: dict[str, Any]) -> list[SpecSubject]:
 
 
 def _parse_objects(data: dict[str, Any], names: dict[str, str]) -> list[SpecObject]:
-    """Extract spec objects with their start/end placement text."""
+    """Extract spec objects with start/end placement text and the in-frame expectation."""
     return [
         SpecObject(
             oid=str(o.get("id") or ""),
@@ -145,6 +150,7 @@ def _parse_objects(data: dict[str, Any], names: dict[str, str]) -> list[SpecObje
             has_ref=bool(o.get("ref_image")),
             start=_object_state_text(names, o.get("start")),
             end=_object_state_text(names, o.get("end")),
+            in_frame=o.get("in_frame") is not False,
         )
         for o in data.get("objects") or []
         if isinstance(o, dict)

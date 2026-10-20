@@ -77,11 +77,17 @@ class SettingSpec(_Spec):
 
 
 class ObjectState(_Spec):
+    """Concrete plain-word state: a location (`where`) or holder, plus state words."""
+
     where: str | None = None
     held_by: str | None = None
+    condition: str | None = None
 
 
 class ObjectSpec(_Spec):
+    """`in_frame` is False for set dressing the shot framing excludes (e.g. in a close-up):
+    the object still exists offscreen, but QA must not expect to see it."""
+
     id: str
     name: str
     ref_image: str | None = None
@@ -89,6 +95,7 @@ class ObjectSpec(_Spec):
     start: ObjectState
     end: ObjectState | None = None
     moves: bool
+    in_frame: bool = True
 
 
 class CameraSpecOut(_Spec):

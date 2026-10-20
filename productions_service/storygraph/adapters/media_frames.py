@@ -97,7 +97,7 @@ def extract_representative_frames_png(clip_bytes: bytes) -> list[bytes]:
     return _synthetic_fallback_frames(clip_bytes)
 
 
-def _mean_l1_diff(png_a: bytes, png_b: bytes) -> float | None:
+def mean_l1_diff(png_a: bytes, png_b: bytes) -> float | None:
     """Compute mean L1 RGB pixel difference in [0.0, 255.0] between two PNG images."""
     try:
         img_a = Image.open(io.BytesIO(png_a)).convert("RGB").resize((64, 36))
@@ -120,7 +120,7 @@ def detect_frame_anomalies(
         diffs = [
             d
             for i in range(len(frames) - 1)
-            if (d := _mean_l1_diff(frames[i], frames[i + 1])) is not None
+            if (d := mean_l1_diff(frames[i], frames[i + 1])) is not None
         ]
         if diffs and max(diffs) < 0.25:
             flags.append("frozen_frame")
@@ -128,12 +128,12 @@ def detect_frame_anomalies(
             flags.append("start_frame_bleed")
     if ref_frames and frames:
         for ref_png in ref_frames:
-            ref_diff = _mean_l1_diff(frames[0], ref_png)
+            ref_diff = mean_l1_diff(frames[0], ref_png)
             if ref_diff is not None and ref_diff < 22.0:
                 flags.append("start_frame_bleed")
                 break
     if prev_last_frame and frames:
-        seam_diff = _mean_l1_diff(prev_last_frame, frames[0])
+        seam_diff = mean_l1_diff(prev_last_frame, frames[0])
         if seam_diff is not None and seam_diff > 180.0:
             flags.append("cut_discontinuity")
     return list(dict.fromkeys(flags))
@@ -166,11 +166,11 @@ def _detect_head_trim_seconds(
     for idx in range(len(extracted) - 1):
         _ts_cur, png_cur = extracted[idx]
         ts_nxt, png_nxt = extracted[idx + 1]
-        step_diff = _mean_l1_diff(png_cur, png_nxt)
+        step_diff = mean_l1_diff(png_cur, png_nxt)
         if step_diff is not None and step_diff > 28.0 and ts_nxt <= 0.85:
             trim_ts = max(trim_ts, ts_nxt + 0.05)
         for ref_png in ref_frames:
-            ref_d = _mean_l1_diff(png_cur, ref_png)
+            ref_d = mean_l1_diff(png_cur, ref_png)
             if ref_d is not None and ref_d < 28.0 and ts_nxt <= 0.85:
                 trim_ts = max(trim_ts, ts_nxt + 0.05)
     return min(trim_ts, 0.85)
@@ -216,7 +216,13 @@ def trim_leading_reference_or_static_frames(
                 "+faststart",
                 str(out_mp4),
             ]
-            proc = subprocess.run(cmd, capture_output=True, timeout=30, check=False)
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                stdin=subprocess.DEVNULL,
+                timeout=30,
+                check=False,
+            )
             if (
                 proc.returncode == 0
                 and out_mp4.is_file()
@@ -269,7 +275,7 @@ def _run_capture(cmd: list[str], timeout_s: int = 30) -> str:
     return proc.stdout.decode(errors="ignore") + proc.stderr.decode(errors="ignore")
 
 
-def _probe_duration(in_mp4: Path) -> float:
+def probe_duration(in_mp4: Path) -> float:
     """Container duration in seconds via ffprobe (0.0 when unknown)."""
     out = _run_capture(
         [
@@ -395,7 +401,7 @@ def _probe_with_ffmpeg(
         tmp = Path(tmpdir)
         in_mp4 = tmp / "clip.mp4"
         in_mp4.write_bytes(clip_bytes)
-        duration = _probe_duration(in_mp4)
+        duration = probe_duration(in_mp4)
         frames = _sample_dense(tmp, in_mp4, fps, max(2, max_frames - 1), width)
         _run_ffmpeg_frame(in_mp4, tmp / "last.png", ["-sseof", "-0.10"])
         if not frames:

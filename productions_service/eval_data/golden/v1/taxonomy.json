@@ -1,0 +1,139 @@
+{
+  "version": "golden-v1",
+  "scale": {
+    "5": "No visible/audible defect for this dimension.",
+    "4": "Minor defect a child viewer would not notice; no fix needed for a draft.",
+    "3": "Noticeable defect; story still readable; fix before final.",
+    "2": "Major defect; breaks the shot's intent for this dimension.",
+    "1": "Broken or absent (e.g. wrong character, silent clip, required line missing)."
+  },
+  "pass_rule": "dimension passes iff score >= 4 and no defect with severity high|blocker",
+  "overall_rule": "overall passes iff every applicable dimension passes",
+  "kids_draft_rule": "acceptable iff no blocker defect, no dimension score <= 2, and no content a parent would object to",
+  "not_applicable": "script_adherence is n/a (score 5, pass, na=true) when the spec has no speech lines",
+  "severity": ["low", "med", "high", "blocker"],
+  "attribution": {
+    "prompt_spec": "Spec/compiled prompt is contradictory, ambiguous, or asks for something wrong (fix upstream in planner/compiler).",
+    "omni_limit": "Spec is clear and consistent; the video model failed to render it (retry/seed/model capability).",
+    "reference": "Reference sheet/plate/first-frame image caused it (off-model ref, conflicting refs, chained last frame).",
+    "pipeline": "Orchestration issue outside the prompt text (duration, chaining, muxing, post-processing).",
+    "unknown": "Cannot be determined from available evidence."
+  },
+  "dimensions": {
+    "character_consistency": {
+      "question": "Do characters match their reference sheets and stay the same within the clip?",
+      "tags": {
+        "CHAR_OFF_MODEL_REF": "Character design differs from the reference sheet from the start.",
+        "CHAR_DRIFT_IN_CLIP": "Character design changes mid-clip (face, eyes, head, colour, proportions).",
+        "CHAR_FEATURE_ADDED": "Feature not in the design appears (e.g. mouth on a mouthless robot).",
+        "CHAR_WARDROBE_DRIFT": "Clothing/accessories change or differ from spec.",
+        "CHAR_DUPLICATE": "Same character appears twice / extra unscripted character.",
+        "CHAR_MISSING": "Scripted character absent for all or most of the clip."
+      }
+    },
+    "temporal_consistency": {
+      "question": "Is motion continuous frame to frame without flicker, morphing, or jumps?",
+      "tags": {
+        "TEMP_FLICKER": "Texture/colour/lighting flicker between frames.",
+        "TEMP_MORPH": "Bodies or objects melt/morph between frames.",
+        "TEMP_JUMP": "Discontinuous jump in time or pose without a cut.",
+        "TEMP_HARD_CUT": "Hard cut inside what must be a single continuous take.",
+        "TEMP_FREEZE": "Frozen/stalled frames or dead air at start/end.",
+        "TEMP_DURATION_MISMATCH": "Rendered duration deviates > 10% from spec duration_s."
+      }
+    },
+    "spatial_consistency": {
+      "question": "Are positions, screen direction, scale and layout coherent?",
+      "tags": {
+        "SPAT_SCREEN_SIDE_WRONG": "Character on the wrong screen side vs spec, or flips mid-shot.",
+        "SPAT_POSITION_JUMP": "Character/object teleports across the frame.",
+        "SPAT_SCALE_DRIFT": "Relative size of characters/props changes implausibly.",
+        "SPAT_LAYOUT_CHANGE": "Room geometry (table, door, window) rearranges within the clip."
+      }
+    },
+    "scene_consistency": {
+      "question": "Does the setting match the location plate and the scene's continuity state?",
+      "tags": {
+        "SCENE_SETTING_MISMATCH": "Location does not match the location plate / spec setting.",
+        "SCENE_LIGHTING_SHIFT": "Time of day or lighting changes without motivation.",
+        "SCENE_OPENING_STATE_WRONG": "Opening state contradicts spec continuity (e.g. door open when it must be shut).",
+        "SCENE_PREV_SHOT_BREAK": "Visible continuity break vs the previous shot's end state."
+      }
+    },
+    "object_permanence": {
+      "question": "Do props persist, stay single, and keep their state?",
+      "tags": {
+        "OBJ_VANISH": "Object disappears without motivated action.",
+        "OBJ_POP_IN": "Object appears from nowhere.",
+        "OBJ_DUPLICATE": "Single-instance object multiplies.",
+        "OBJ_MORPH": "Object design changes (e.g. door gains/loses glass panes).",
+        "OBJ_REQUIRED_MISSING": "Spec-required prop never shown.",
+        "OBJ_STATE_RESET": "Object state reverts (e.g. puddle reappears after being wiped)."
+      }
+    },
+    "physical_plausibility": {
+      "question": "Does motion obey (cartoon-acceptable) physics?",
+      "tags": {
+        "PHYS_FLOAT": "Objects/characters float or levitate unmotivated.",
+        "PHYS_INTERPENETRATION": "Bodies/props pass through each other.",
+        "PHYS_IMPOSSIBLE_MOTION": "Motion without cause, impossible limb/joint motion.",
+        "PHYS_ANATOMY": "Extra/missing limbs, broken anatomy.",
+        "PHYS_FLUID": "Liquid behaves implausibly (spills, puddles, splashes)."
+      }
+    },
+    "action_adherence": {
+      "question": "Does every scripted sequence step happen, by the right actor, in order, reaching the end state?",
+      "tags": {
+        "ACT_STEP_MISSING": "A sequence step does not happen.",
+        "ACT_ORDER_WRONG": "Steps happen out of order.",
+        "ACT_WRONG_ACTOR": "Step performed by the wrong character.",
+        "ACT_INCOMPLETE": "Step started but end_state not reached.",
+        "ACT_UNSCRIPTED": "Significant unscripted action that changes the story beat."
+      }
+    },
+    "camera_adherence": {
+      "question": "Do shot size, angle, movement and focus match the spec?",
+      "tags": {
+        "CAM_SIZE_WRONG": "Shot size differs from spec (e.g. MCU requested, WS rendered).",
+        "CAM_ANGLE_WRONG": "Angle differs (low/eye/high).",
+        "CAM_MOVE_WRONG": "Movement differs (static requested but camera moves, or missing dolly/pan).",
+        "CAM_UNREQUESTED_CUT": "Camera cuts to a new angle in a single-take spec.",
+        "CAM_FOCUS_WRONG": "Focus target not the spec focus subject."
+      }
+    },
+    "style_consistency": {
+      "question": "Does the look match the spec style (2D gouache/watercolour) throughout?",
+      "tags": {
+        "STYLE_RENDER_MISMATCH": "Render style differs from spec (3D/photoreal/flat vector).",
+        "STYLE_DRIFT_IN_CLIP": "Style changes within the clip.",
+        "STYLE_TEXT_OVERLAY": "Text, captions, watermarks or UI on screen.",
+        "STYLE_PALETTE_OFF": "Palette/grade clearly off the spec look."
+      }
+    },
+    "audio": {
+      "question": "Is the audio track present, clean, plausible and synced?",
+      "tags": {
+        "AUD_SILENT": "No audio or near-silent track.",
+        "AUD_SFX_MISSING": "Key spec SFX for on-screen action absent.",
+        "AUD_MUSIC_UNWANTED": "Music present when spec says music:false.",
+        "AUD_VOICE_WRONG": "Voice timbre/age/character inconsistent with the speaker.",
+        "AUD_LIPSYNC_OFF": "Mouth motion not synced with speech.",
+        "AUD_WRONG_MOUTH": "A non-speaking character's mouth moves to the line.",
+        "AUD_ARTIFACT": "Clicks, garble, abrupt cut-off, echo.",
+        "AUD_ANIMAL_SPEAKS": "An animal (can_speak=false) speaks words."
+      }
+    },
+    "script_adherence": {
+      "question": "Are the scripted lines spoken verbatim, in the right language, by the right speaker, at the right beat?",
+      "tags": {
+        "SCRIPT_LINE_MISSING": "Scripted line not spoken.",
+        "SCRIPT_WORDS_WRONG": "Words differ materially from the script.",
+        "SCRIPT_LANG_WRONG": "Spoken in a different language than spec lang.",
+        "SCRIPT_SPEAKER_WRONG": "Spoken by the wrong character.",
+        "SCRIPT_TIMING_WRONG": "Spoken at the wrong beat (before/after the wrong sequence step).",
+        "SCRIPT_EXTRA_LINE": "Unscripted dialogue added.",
+        "SCRIPT_DELIVERY_WRONG": "Delivery clearly contradicts spec (e.g. shout vs whisper)."
+      }
+    }
+  }
+}

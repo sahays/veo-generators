@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from .spec import CriticSpec
 
-RUBRIC_VERSION = "clip-rubric-v1"
+RUBRIC_VERSION = "clip-rubric-v2"
 RUBRIC_KEYS_PREFIX = "RUBRIC_KEYS="
 _KEYS_RE = re.compile(r"^RUBRIC_KEYS=(\{.*\})\s*$", re.MULTILINE)
 
@@ -40,10 +40,19 @@ class IdentityVerdict(BaseModel):
 
 class ObjectVerdict(BaseModel):
     object: str
+    in_frame_expected: bool = Field(
+        description=(
+            "True only if the object's spec location lies inside the visible framing "
+            "of at least one frame. False when the framing is tighter than where the "
+            "object sits (out of frame is NOT missing)."
+        )
+    )
     max_instances_seen: int
     start_matches: bool
     end_matches: bool
-    evidence: str
+    evidence: str = Field(
+        description="Observed fact citing timestamps, e.g. 'second towel at t=4.00s'."
+    )
     spec_conflict: bool
 
 
@@ -131,6 +140,7 @@ def _ok_identity(subject: str) -> IdentityVerdict:
 def _ok_object(name: str) -> ObjectVerdict:
     return ObjectVerdict(
         object=name,
+        in_frame_expected=True,
         max_instances_seen=1,
         start_matches=True,
         end_matches=True,

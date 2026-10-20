@@ -134,6 +134,68 @@ class AssemblyCfg(BaseModel):
     duck_ratio: float = 8.0
 
 
+DimensionName = Literal[
+    "character_consistency",
+    "temporal_consistency",
+    "spatial_consistency",
+    "scene_consistency",
+    "object_permanence",
+    "physical_plausibility",
+    "action_adherence",
+    "camera_adherence",
+    "style_consistency",
+    "audio",
+    "script_adherence",
+]
+
+
+class DimensionGate(BaseModel):
+    """Per-dimension gate: score floor, weight in the overall score, hard-gate flag."""
+
+    threshold: float = Field(default=0.6, ge=0.0, le=1.0)
+    weight: float = Field(default=0.05, ge=0.0)
+    hard_gate: bool = False
+
+
+def _default_dimension_gates() -> dict[DimensionName, DimensionGate]:
+    """Code defaults (mirrors `config/default.yaml: eval.dimensions`)."""
+    spec: dict[DimensionName, tuple[float, float, bool]] = {
+        "character_consistency": (0.65, 0.16, True),
+        "temporal_consistency": (0.6, 0.10, True),
+        "spatial_consistency": (0.5, 0.05, False),
+        "scene_consistency": (0.6, 0.07, False),
+        "object_permanence": (0.6, 0.12, True),
+        "physical_plausibility": (0.6, 0.07, False),
+        "action_adherence": (0.6, 0.14, True),
+        "camera_adherence": (0.0, 0.03, False),
+        "style_consistency": (0.6, 0.06, False),
+        "audio": (0.5, 0.05, False),
+        "script_adherence": (0.6, 0.15, True),
+    }
+    return {
+        k: DimensionGate(threshold=t, weight=w, hard_gate=h)
+        for k, (t, w, h) in spec.items()
+    }
+
+
+class GateConfig(BaseModel):
+    """Attempt-independent video-eval gate (identical thresholds on every attempt)."""
+
+    dimensions: dict[DimensionName, DimensionGate] = Field(
+        default_factory=_default_dimension_gates
+    )
+    overall_threshold: float = Field(default=0.65, ge=0.0, le=1.0)
+    min_confidence: float = Field(default=0.3, ge=0.0, le=1.0)
+    max_medium_defects: int = 2
+
+    def for_dimension(self, name: DimensionName) -> DimensionGate:
+        """Gate for `name`; camera adherence is never a hard gate."""
+        gate = self.dimensions.get(name, DimensionGate())
+        if name == "camera_adherence" and gate.hard_gate:
+            return gate.model_copy(update={"hard_gate": False})
+        return gate
+
+
 class Config(BaseModel):
     store: StoreCfg = StoreCfg()
     blobs: BlobCfg = BlobCfg()
@@ -143,6 +205,7 @@ class Config(BaseModel):
     qa: QACfg = QACfg()
     caps: CapsCfg = CapsCfg()
     assembly: AssemblyCfg = AssemblyCfg()
+    eval: GateConfig = Field(default_factory=lambda: GateConfig())
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> Config:

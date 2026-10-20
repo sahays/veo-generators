@@ -64,6 +64,10 @@ _BACKEND_TIER_1_EXACT: frozenset[str] = frozenset(
         "productions_service/storygraph/schema.py",
     }
 )
+_BACKEND_TIER_1_PREFIXES: tuple[str, ...] = (
+    "api/models",
+    "productions_service/storygraph/schemas/",
+)
 _BACKEND_TIER_5_EXACT: frozenset[str] = frozenset(
     {
         "api/main.py",
@@ -108,7 +112,7 @@ def classify_backend_module(rel_path: str) -> int | None:
         or rel.endswith("__init__.py")
     ):
         return None
-    if rel.startswith("api/models") or rel in _BACKEND_TIER_1_EXACT:
+    if rel.startswith(_BACKEND_TIER_1_PREFIXES) or rel in _BACKEND_TIER_1_EXACT:
         return 1
     if rel in _BACKEND_TIER_5_EXACT or rel.startswith(_BACKEND_TIER_5_PREFIXES):
         return 5

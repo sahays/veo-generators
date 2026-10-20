@@ -2,64 +2,31 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from enum import StrEnum
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from .clips.models import ClipScript, ShotLook
-
-
-def _utc_now() -> datetime:
-    return datetime.now(UTC)
-
-
-class Role(StrEnum):
-    STORY_ARCHITECT = "story_architect"
-    SCRIPT_SUPERVISOR = "script_supervisor"
-    SCREENWRITER = "screenwriter"
-    CHARACTER_DESIGNER = "character_designer"
-    LOCATION_DESIGNER = "location_designer"
-    OBJECT_DESIGNER = "object_designer"
-    DESIGNER = "designer"
-    DIRECTOR = "director"
-    MUSIC_DIRECTOR = "music_director"
-    CRITIC = "critic"
-    PIPELINE = "pipeline"
-    HUMAN = "human"
-
-
-class EntityType(StrEnum):
-    CHARACTER = "character"
-    LOCATION = "location"
-    OBJECT = "object"
-
-
-class Provenance(StrEnum):
-    FROM_TEXT = "from_text"
-    INFERRED = "inferred"
-    INVENTED = "invented"
-
-
-class Status(StrEnum):
-    DRAFT = "draft"
-    PROPOSED = "proposed"
-    APPROVED = "approved"
-    NEEDS_REVISION = "needs_revision"
-    SUPERSEDED = "superseded"
-    FAILED = "failed"
-    RENDERED = "rendered"
-
-
-class NodeBase(BaseModel):
-    id: str
-    node_type: str
-    version: int = 1
-    status: Status = Status.DRAFT
-    created_by: Role
-    created_at: datetime = Field(default_factory=_utc_now)
-
+from .schemas.base import (  # noqa: F401 - re-exported public API
+    EntityType,
+    NodeBase,
+    Provenance,
+    Role,
+    Status,
+    _utc_now,
+)
+from .schemas.generation import (  # noqa: F401 - re-exported public API
+    ClipTrim,
+    DimensionScore,
+    GenerationRun,
+    PatchOp,
+    PromptVersion,
+    PromptVersionAuthor,
+    PromptVersionStatus,
+    QADefect,
+    QAReport,
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Layer 1 — Identity
@@ -341,66 +308,6 @@ class Shot(NodeBase):
     manual_edit_reasons: list[str] = Field(default_factory=list)
     # Spec-linter findings from the latest S7 pass (not render content: excluded from hash).
     lint_issues: list[ShotLintIssue] = Field(default_factory=list)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Layer 5 — Generation & QA
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-class QADefect(BaseModel):
-    """One observed clip defect; `likely_cause` routes repair (spec vs render vs reference)."""
-
-    type: str
-    severity: Literal["high", "medium", "low"]
-    subject: str = ""
-    evidence: str
-    likely_cause: Literal["spec", "render", "reference"] = "render"
-
-
-class QAReport(BaseModel):
-    face_similarity: dict[str, float] = Field(default_factory=dict)
-    wardrobe_match: float = 1.0
-    setting_match: float = 1.0
-    action_achieved: float = 1.0
-    physics_plausibility: float = 1.0
-    object_permanence: float = 1.0
-    continuity_prev_shot: float = 1.0
-    dialogue_wer: float = 0.0
-    artifact_flags: list[str] = Field(default_factory=list)
-    passed: bool = True
-    failure_reasons: list[str] = Field(default_factory=list)
-    suggested_fix: Literal[
-        "none", "retry_seed", "recompile_prompt", "resplit_shot", "redesign_asset"
-    ] = "none"
-    # Phase 3 spec-aware critic outputs (append-only).
-    defects: list[QADefect] = Field(default_factory=list)
-    identity_scores: dict[str, float] = Field(default_factory=dict)
-    steps_done: dict[str, bool] = Field(default_factory=dict)
-    camera_match: float = 1.0
-    hard_cut_times_s: list[float] = Field(default_factory=list)
-    frames_sampled: int = 0
-    rubric_version: str = ""
-
-
-class GenerationRun(NodeBase):
-    node_type: Literal["GenerationRun"] = "GenerationRun"
-    shot_id: str
-    attempt: int
-    provider: str
-    model: str
-    compiled_prompt: str
-    negative_prompt: str = ""
-    reference_asset_ids: list[str] = Field(default_factory=list)
-    first_frame_asset_id: str | None = None
-    seed: int
-    package_hash: str
-    output_video_uri: str | None = None
-    output_video_signed_url: str | None = None
-    extracted_last_frame_asset_id: str | None = None
-    qa_scores: QAReport | None = None
-    render_fallback: dict[str, Any] | None = None
-    shot_content_hash: str | None = None  # Shot.content_hash at render time
 
 
 # ─────────────────────────────────────────────────────────────────────────────

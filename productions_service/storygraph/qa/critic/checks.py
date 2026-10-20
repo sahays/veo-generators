@@ -12,11 +12,11 @@ from typing import Literal
 
 from ...config import QACfg
 from ...schema import QADefect
-from .rubric import ClipRubric
-from .spec import CriticSpec
+from .rubric import ClipRubric, ObjectVerdict
+from .severity import Severity, camera_severity, cut_severity, object_severity
+from .spec import CriticSpec, SpecObject
 
 Cause = Literal["spec", "render", "reference"]
-Severity = Literal["high", "medium", "low"]
 
 _SEVERE_FLAG_TOKENS: tuple[str, ...] = (
     "drift",
@@ -58,7 +58,7 @@ class CriticThresholds:
     cut_ignore_tail_s: float = 0.10
     min_voiced_ratio: float = 0.05
     max_renderable_steps: int = 3
-    max_medium_defects: int = 1
+    max_medium_defects: int = 2  # >= 3 medium defects block
 
     @classmethod
     def from_cfg(cls, qa: QACfg) -> CriticThresholds:
@@ -164,6 +164,24 @@ def _object_issue(count: int, start_ok: bool, end_ok: bool) -> str | None:
     return None
 
 
+def _object_defect(obj: SpecObject, verdict: ObjectVerdict) -> QADefect | None:
+    """One calibrated defect for an object verdict (framing-aware, evidence-gated)."""
+    kind = _object_issue(
+        verdict.max_instances_seen, verdict.start_matches, verdict.end_matches
+    )
+    if kind is None:
+        return None
+    in_frame = obj.in_frame and verdict.in_frame_expected
+    sev = object_severity(kind, in_frame, verdict.evidence)
+    cause: Cause = "spec" if verdict.spec_conflict else "render"
+    framing = "" if in_frame else "outside framing; "
+    msg = (
+        f"{framing}seen x{verdict.max_instances_seen}; spec start '{obj.start}' "
+        f"end '{obj.end or obj.start}'; {verdict.evidence}"
+    )
+    return defect(kind, sev, obj.name, msg, cause)
+
+
 def check_objects(spec: CriticSpec, rubric: ClipRubric) -> tuple[list[QADefect], float]:
     """Counts (exactly one instance), start/end placement and holders vs the spec."""
     by_name = {v.object.strip().lower(): v for v in rubric.objects}
@@ -174,41 +192,43 @@ def check_objects(spec: CriticSpec, rubric: ClipRubric) -> tuple[list[QADefect],
             msg = f"no verdict for object {obj.name}"
             defects.append(defect("object_unverified", "high", obj.name, msg))
             continue
-        kind = _object_issue(
-            verdict.max_instances_seen, verdict.start_matches, verdict.end_matches
-        )
-        if kind:
-            cause: Cause = "spec" if verdict.spec_conflict else "render"
-            msg = (
-                f"seen x{verdict.max_instances_seen}; spec start '{obj.start}' "
-                f"end '{obj.end or obj.start}'; {verdict.evidence}"
-            )
-            defects.append(defect(kind, "high", obj.name, msg, cause))
+        found = _object_defect(obj, verdict)
+        if found is not None:
+            defects.append(found)
     total = len(spec.objects)
-    return defects, round(1.0 - len(defects) / total, 3) if total else 1.0
+    real = sum(1 for d in defects if d.severity != "low")
+    return defects, round(1.0 - real / total, 3) if total else 1.0
 
 
 def check_camera(spec: CriticSpec, rubric: ClipRubric) -> tuple[list[QADefect], float]:
-    """Camera size/angle/move vs the spec (medium severity)."""
+    """Camera vs spec: size-only deviation LOW, angle/move deviation MEDIUM, never HIGH."""
     cam = rubric.camera
     oks = (cam.size_matches, cam.angle_matches, cam.move_matches)
     score = round(sum(oks) / len(oks), 3)
-    if all(oks):
+    sev = camera_severity(*oks)
+    if sev is None:
         return [], score
     want = f"{spec.camera.size}/{spec.camera.angle}/{spec.camera.move}"
     cause: Cause = "spec" if cam.spec_conflict else "render"
     msg = f"spec {want}; observed {cam.observed}"
-    return [defect("camera_mismatch", "medium", "camera", msg, cause)], score
+    return [defect("camera_mismatch", sev, "camera", msg, cause)], score
 
 
 def check_cuts(
     spec: CriticSpec, rubric: ClipRubric, sig: MediaSignals, thr: CriticThresholds
 ) -> tuple[list[QADefect], list[float]]:
-    """Hard cuts inside a single-take clip (ffmpeg scene detection OR the VLM's own eye)."""
-    end = (sig.duration_s or spec.duration_s or 1e9) - thr.cut_ignore_tail_s
+    """Hard cuts inside a single-take clip (ffmpeg scene detection OR the VLM's own eye).
+
+    Late cuts are trimmed before storage (`adapters.clip_trim`); any cut still present is a
+    MEDIUM defect (LOW when it falls in the late, trimmable window), never HIGH.
+    """
+    duration = sig.duration_s or spec.duration_s
+    end = (duration or 1e9) - thr.cut_ignore_tail_s
     cuts = [t for t in sig.cut_times_s if thr.cut_ignore_head_s < t < end]
     if not spec.single_take or not (cuts or rubric.hard_cut_seen):
         return [], cuts
+    if not cuts:
+        return [defect("hard_cut", "medium", "clip", rubric.hard_cut_evidence)], cuts
     stamps = ", ".join(f"t={t:.2f}s" for t in cuts)
-    evidence = f"scene cut at {stamps} (ffmpeg)" if cuts else rubric.hard_cut_evidence
-    return [defect("hard_cut", "high", "clip", evidence)], cuts
+    sev = cut_severity(min(cuts), duration)
+    return [defect("hard_cut", sev, "clip", f"scene cut at {stamps} (ffmpeg)")], cuts

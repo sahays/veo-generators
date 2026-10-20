@@ -43,6 +43,7 @@ def _object_lines(spec: CriticSpec) -> str:
     return (
         "\n".join(
             f"- {o.name}: start {o.start or 'in scene'}; end {o.end or o.start or 'unchanged'}"
+            + ("" if o.in_frame else " (offscreen set dressing; not expected in view)")
             for o in spec.objects
         )
         or "(none)"
@@ -66,7 +67,11 @@ def build_critic_prompt(
             _manifest(image_labels),
             "SPEC SEQUENCE (judge ONLY these steps; ignore any other story events):",
             _step_lines(spec),
-            "EXPECTED OBJECTS (each exactly one instance unless the spec says otherwise):",
+            (
+                "EXPECTED OBJECTS (each exactly one instance unless the spec says "
+                "otherwise; set in_frame_expected=false when the framing excludes the "
+                "object's location — out of frame is NOT missing):"
+            ),
             _object_lines(spec),
             f"EXPECTED CAMERA: size={cam.size} angle={cam.angle} move={cam.move}",
             f"SPEAKERS WITH LINES: {', '.join(spec.speakers) or 'none'}",

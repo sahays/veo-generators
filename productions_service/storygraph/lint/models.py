@@ -15,6 +15,7 @@ LintRoute = Literal["S2", "S4"]
 LintSeverity = Literal["error", "warn"]
 _ROUTE_PREFIX: dict[str, str] = {"S2": "S2_CLIP_LINT", "S4": "S4_LINT"}
 CODE_CAMERA: Final[str] = f"{_ROUTE_PREFIX['S4']}_CAMERA_MOVEMENT"
+CODE_CAMERA_TIGHT: Final[str] = f"{_ROUTE_PREFIX['S4']}_CAMERA_TOO_TIGHT"
 CODE_TOO_MANY_ACTIONS: Final[str] = f"{_ROUTE_PREFIX['S2']}_TOO_MANY_ACTIONS"
 CODE_TOO_MANY_WORDS: Final[str] = f"{_ROUTE_PREFIX['S2']}_TOO_MANY_WORDS"
 

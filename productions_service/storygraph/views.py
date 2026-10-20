@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field
 
 from .anchors.chaining import resolve_chain_frame
 from .errors import NotFound
-from .physics import resolve_prop_states_for_shot
 from .repo import Repo
 from .schema import (
     Appearance,
@@ -23,6 +22,7 @@ from .schema import (
 )
 from .state import window_states
 from .timeline.clip_context import ClipContext, clip_context
+from .timeline.prop_state import resolve_prop_states_for_shot
 
 
 class OutlineView(BaseModel):

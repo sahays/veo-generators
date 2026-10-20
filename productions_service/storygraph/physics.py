@@ -14,9 +14,6 @@ from .schema import (
     Shot,
     StageQaIssue,
 )
-from .state import holders_at, state_at
-from .timeline.clip_events import ClipWindow
-from .timeline.lifecycle import Lifecycle
 
 
 def _default_support_surface(step: InteractionStep, loc_name: str) -> str:
@@ -111,78 +108,6 @@ def compute_scene_cast_closure(
             for b in sh.beats:
                 candidates.extend(b.subject_ids)
     return [cid for cid in dict.fromkeys(candidates) if cid in valid_char_ids]
-
-
-def _own_place(facts: dict[str, str]) -> str:
-    """The prop's own resting place: its `supported_by`, else its `sub_location` fact."""
-    return facts.get("supported_by") or facts.get("sub_location") or ""
-
-
-def _clip_steps_by_prop(
-    scene: Scene, step_indices: list[int], prop_ids: list[str]
-) -> dict[str, list[InteractionStep]]:
-    wanted, chosen = set(prop_ids), set(step_indices)
-    out: dict[str, list[InteractionStep]] = {}
-    for st in scene.interaction_steps:
-        if st.target_id in wanted and st.step_index in chosen:
-            out.setdefault(st.target_id, []).append(st)
-    return out
-
-
-def resolve_prop_states_for_shot(
-    repo: Repo,
-    scene: Scene,
-    shot: Shot,
-    window: ClipWindow,
-    lifecycles: dict[str, Lifecycle] | None = None,
-) -> dict[str, dict[str, str]]:
-    """Per-clip prop states (plain data, '' when unknown — never fabricated physics text).
-
-    Opening keys (`supported_by`, `orientation`, `held_by`, `alive_start`) use the state
-    before the clip's first Event; `end_*` / `alive_end` the state after its last Event.
-    The resting place is the prop's own fact, never the actor's step support.
-    """
-    clip = next((c for c in scene.clips if c.clip_index == shot.clip_index), None)
-    steps = _clip_steps_by_prop(scene, clip.step_indices if clip else [], shot.prop_ids)
-    prior = _prior_post_states(scene, min(clip.step_indices, default=0) if clip else 0)
-    open_holders = holders_at(repo, window.open_at)
-    close_holders = holders_at(repo, window.close_at)
-    life = lifecycles or {}
-    out: dict[str, dict[str, str]] = {}
-    for pid in shot.prop_ids:
-        o_f, c_f = (
-            state_at(repo, pid, window.open_at),
-            state_at(repo, pid, window.close_at),
-        )
-        lc = life.get(pid, Lifecycle(pid))
-        mine = steps.get(pid, [])
-        out[pid] = {
-            "supported_by": _own_place(o_f),
-            "orientation": o_f.get("orientation", ""),
-            "held_by": open_holders.get(pid, ""),
-            "alive_start": str(lc.alive_at(window.open_at)).lower(),
-            "end_supported_by": _own_place(c_f),
-            "end_orientation": c_f.get("orientation", ""),
-            "end_held_by": close_holders.get(pid, ""),
-            "alive_end": str(lc.alive_at(window.close_at)).lower(),
-            "pre_state": mine[0].pre_state if mine else "",
-            "post_state": mine[-1].post_state if mine else "",
-            "opening_state": _opening_text(o_f, prior.get(pid)),
-        }
-    return out
-
-
-def _prior_post_states(scene: Scene, first_step: int) -> dict[str, str]:
-    """prop_id -> post_state of the last step before the clip that targeted it."""
-    out: dict[str, str] = {}
-    for st in sorted(scene.interaction_steps, key=lambda s: s.step_index):
-        if st.step_index < first_step and st.target_id and st.post_state.strip():
-            out[st.target_id] = st.post_state.strip()
-    return out
-
-
-def _opening_text(facts: dict[str, str], prior_post: str | None) -> str:
-    return "; ".join(p for p in (facts.get("orientation", ""), prior_post or "") if p)
 
 
 def verify_physical_causality(

@@ -11,12 +11,13 @@ from ..clips.limits import (
     camera_follows_locomotion,
     count_spoken_words,
 )
-from ..omni.props import ABSENT_AT_START, CONSUMED
+from ..omni.props import ABSENT_AT_START, CONSUMED, located_in
 from ..omni.spec import ObjectSpec, ObjectState, OmniClipSpec
 from ..omni.symbols import Symbols
 from ..timeline.handling import head_noun, step_text
 from ..timeline.locomotion import is_key_action, step_locomotion
 from .models import LintCase, LintIssue, issue
+from .text_rules import TEXT_RULES
 
 MAX_KEY_ACTIONS: Final[int] = CLIP_LIMITS.max_key_actions
 MAX_SPOKEN_WORDS: Final[int] = CLIP_LIMITS.max_spoken_words
@@ -234,10 +235,11 @@ def _place_key(place: str) -> tuple[str, str]:
     return (first if first in _PREPOSITIONS else "", head_noun(place))
 
 
-def _mismatch(prev: tuple[str, str], cur: tuple[str, str]) -> bool:
+def _mismatch(prev: tuple[str, str], cur: tuple[str, str], room: str) -> bool:
+    """Holder or place differs; room-level fallbacks ('in the Kitchen') match anything."""
     if prev[0] or cur[0]:
         return prev[0] != cur[0]
-    loose = {"", "in place", _norm(ABSENT_AT_START), _norm(CONSUMED)}
+    loose = {"", "in place", _norm(ABSENT_AT_START), _norm(CONSUMED), room}
     if prev[1] in loose or cur[1] in loose:
         return False
     return _place_key(prev[1]) != _place_key(cur[1])
@@ -248,13 +250,14 @@ def rule_continuity(case: LintCase) -> list[LintIssue]:
     if case.prev_spec is None:
         return []
     prev = {o.name: o for o in case.prev_spec.objects or []}
+    room = _norm(located_in(case.view.location.canonical_name))
     out: list[LintIssue] = []
     for o in case.spec.objects or []:
         before = prev.get(o.name)
         if before is None:
             continue
         p, c = _edge(before, case.prev_spec, True), _edge(o, case.spec, False)
-        if _mismatch(p, c):
+        if _mismatch(p, c, room):
             msg = f"{o.name} starts {c} but the previous clip ends {p}"
             out.append(issue("CONTINUITY_BREAK", case.shot_id, msg, "S2"))
     return out
@@ -269,4 +272,5 @@ RULES: Final[tuple[Rule, ...]] = (
     rule_load,
     rule_adjacency,
     rule_continuity,
+    *TEXT_RULES,
 )

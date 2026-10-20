@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from ..adapters.base import VideoGenerator, VLMProvider
+from ..adapters.clip_trim import TrimResult, trim_late_hard_cut
 from ..adapters.media_frames import trim_leading_reference_or_static_frames
 from ..adapters.omni.package import build_ref_labels, to_render_package
 from ..agents.critic import evaluate_clip_qa
@@ -22,9 +23,10 @@ from ..qa.llm_rewrite import make_llm_rewriter
 from ..qa.retry_rewrite import ReasonRewriter, context_from_view, rewrite_retry_feedback
 from ..repair.models import RepairDirective
 from ..repo import Repo
-from ..schema import GenerationRun, Role, Shot, Status
+from ..schema import ClipTrim, GenerationRun, Role, Shot, Status
 from ..shots import run_matches_shot
 from ..views import ShotView, shot_view
+from .prompt_versioning import record_run_result, resolve_package
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +119,38 @@ def _attach_fallback(
     return run_node.model_copy(update={"render_fallback": fallback})
 
 
+def _trim_late_cut(repo: Repo, shot_id: str, clip_bytes: bytes) -> TrimResult:
+    """Cut the tail after a late hard cut (>= 75% of duration) and log the decision."""
+    result = trim_late_hard_cut(clip_bytes)
+    if result.trimmed:
+        logger.info(
+            "Late hard cut trimmed before QA",
+            extra={
+                "who": "storygraph.pipeline.shot_attempt",
+                "where": "shot_attempt._trim_late_cut",
+                "what": "late_hard_cut_trimmed",
+                "when": datetime.now(UTC).isoformat(),
+                "why": f"scene cut at t={result.cut_at_s:.2f}s in late window",
+                "how": "ffmpeg scene detect + re-encode with -t (A/V synced)",
+                "project_id": repo.project_id,
+                "shot_id": shot_id,
+                "original_duration_s": result.original_duration_s,
+                "duration_s": result.duration_s,
+            },
+        )
+    return result
+
+
+def _clip_trim_record(result: TrimResult) -> ClipTrim | None:
+    if not result.trimmed:
+        return None
+    return ClipTrim(
+        original_duration_s=result.original_duration_s,
+        duration_s=result.duration_s,
+        cut_at_s=result.cut_at_s,
+    )
+
+
 def _store_rendered_clip(
     repo: Repo,
     cfg: Config,
@@ -126,16 +160,18 @@ def _store_rendered_clip(
     clip_bytes: bytes,
     fallback: dict[str, Any] | None = None,
     shot_content_hash: str | None = None,
+    prompt_version_id: str | None = None,
 ) -> GenerationRun:
-    """Persist rendered video bytes (after stripping any leading start-frame bleed) and record GenerationRun."""
+    """Persist rendered video bytes (head bleed + late hard cut trimmed) and record GenerationRun."""
     has_cond = bool(pkg.reference_uris or pkg.first_frame_uri)
     cond_bytes = _load_conditioning_bytes(repo, pkg) if has_cond else []
     cleaned_bytes = trim_leading_reference_or_static_frames(
         clip_bytes, ref_frames=cond_bytes, has_conditioning_image=has_cond
     )
+    trim = _trim_late_cut(repo, shot_id, cleaned_bytes)
     clip_uri = repo.blobs.put_bytes(
         f"clips/{shot_id}_att{attempt}_{pkg.package_hash[:8]}.mp4",
-        cleaned_bytes,
+        trim.clip_bytes,
         content_type="video/mp4",
     )
     signed_clip = (
@@ -158,6 +194,8 @@ def _store_rendered_clip(
         output_video_uri=clip_uri,
         output_video_signed_url=signed_clip,
         shot_content_hash=shot_content_hash,
+        clip_trim=_clip_trim_record(trim),
+        prompt_version_id=prompt_version_id,
     )
     run_node = _attach_fallback(repo, run_node, fallback)
     repo.add_generation_run(run_node)
@@ -259,7 +297,10 @@ def render_attempt(
     sv = shot_view(repo, shot.id)
     if drop_last_frame:
         sv = sv.model_copy(update={"prev_shot_last_frame": None})
-    pkg = _build_package(deps, sv, attempt, repair)
+    reason = "repair" if repair is not None else f"attempt {attempt}"
+    compiled = _build_package(deps, sv, attempt, repair)
+    versioned = resolve_package(repo, sv.shot, compiled, reason)
+    pkg = versioned.package
     deps.packages[shot.id] = pkg
     clip_bytes = deps.video_gen.generate(pkg)
     fallback = _pop_fallback(deps.video_gen, shot.id)
@@ -272,8 +313,10 @@ def render_attempt(
         clip_bytes,
         fallback,
         sv.shot.content_hash,
+        versioned.version.id,
     )
     qa_report = evaluate_clip_qa(repo, deps.cfg, deps.vlm, shot, run_node)
+    record_run_result(repo, run_node, qa_report)
     if qa_report.passed:
         current = repo.get_shot(shot.id) or shot
         if current.stale:

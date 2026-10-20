@@ -1,8 +1,9 @@
 """Clip-level rubric checks and the deterministic approval gate.
 
 Gate rule (identical on every attempt): ANY high-severity defect blocks approval regardless of
-averaged scores; more than `max_medium_defects` medium defects also block. Failure reasons are
-rendered from defects as short observed facts.
+averaged scores; more than `max_medium_defects` (i.e. >= 3) medium defects also block. Only
+concrete observed defects are HIGH (see `severity`). Failure reasons are rendered from defects
+as short observed facts.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from .checks import (
     norm01,
 )
 from .rubric import ClipRubric
+from .severity import flag_severity, score_breach_severity
 from .spec import CriticSpec
 
 SuggestedFix = Literal["none", "retry_seed", "recompile_prompt", "redesign_asset"]
@@ -105,12 +107,12 @@ def check_speech(
 
 
 def check_flags(rubric: ClipRubric, sig: MediaSignals) -> list[QADefect]:
-    """The critic's own drift flags and CV anomaly flags (severe ones block)."""
+    """The critic's own drift flags and CV anomaly flags (calibrated by `flag_severity`)."""
     flags = list(dict.fromkeys([*rubric.drift_flags, *sig.cv_flags]))
     return [
         defect(
             "critic_flag",
-            "high" if is_severe_flag(f) else "low",
+            flag_severity(f, is_severe_flag(f)),
             f,
             f"flagged '{f}' during frame review",
         )
@@ -119,7 +121,7 @@ def check_flags(rubric: ClipRubric, sig: MediaSignals) -> list[QADefect]:
 
 
 def check_scores(rubric: ClipRubric, thr: CriticThresholds) -> list[QADefect]:
-    """Style drift plus setting/wardrobe/physics score floors."""
+    """Style drift plus setting/wardrobe/physics floors (a floor breach alone is never HIGH)."""
     defects: list[QADefect] = []
     if rubric.style_drift:
         defects.append(defect("style_drift", "high", "style", rubric.style_evidence))
@@ -131,7 +133,8 @@ def check_scores(rubric: ClipRubric, thr: CriticThresholds) -> list[QADefect]:
     for name, value, floor in floors:
         if value < floor:
             msg = f"{name} {value:.2f} below {floor:.2f}"
-            defects.append(defect("low_score", "high", name, msg))
+            sev = score_breach_severity(value, floor)
+            defects.append(defect("low_score", sev, name, msg))
     return defects
 
 
@@ -178,8 +181,9 @@ def gate(defects: list[QADefect], thr: CriticThresholds) -> GateDecision:
     high = [d for d in defects if d.severity == "high"]
     medium = [d for d in defects if d.severity == "medium"]
     blocking = high + (medium if len(medium) > thr.max_medium_defects else [])
-    flags = [_FLAG_FOR_DEFECT[d.type] for d in defects if d.type in _FLAG_FOR_DEFECT]
-    flags += [d.subject for d in defects if d.type == "critic_flag"]
+    real = [d for d in defects if d.severity != "low"]
+    flags = [_FLAG_FOR_DEFECT[d.type] for d in real if d.type in _FLAG_FOR_DEFECT]
+    flags += [d.subject for d in real if d.type == "critic_flag"]
     if not blocking:
         return GateDecision(True, [], "none", list(dict.fromkeys(flags)))
     causes = {d.likely_cause for d in blocking}

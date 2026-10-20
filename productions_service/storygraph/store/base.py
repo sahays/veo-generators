@@ -24,6 +24,7 @@ COLLECTIONS: dict[str, str] = {
     "Gate": "gates",
     "StageRun": "stage_runs",
     "AuditEntry": "audit_log",
+    "PromptVersion": "prompt_versions",
 }
 
 
