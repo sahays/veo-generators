@@ -320,6 +320,10 @@ class Shot(NodeBase):
     stale: bool = False
     stale_reason: str | None = None
     content_hash: str | None = None  # render-relevant fingerprint (None = legacy)
+    # Automatic QA-repair bookkeeping for the current content version (reset on edit).
+    repair_attempts: int = 0
+    needs_manual_edit: bool = False
+    manual_edit_reasons: list[str] = Field(default_factory=list)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

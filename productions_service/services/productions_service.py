@@ -24,6 +24,7 @@ from storygraph.errors import (
 from storygraph.pipeline import Pipeline, Stage, approve_gate, reject_gate
 from storygraph.presets import resolve_production_presets
 from storygraph.schema import ProjectMeta, Status
+from storygraph.shots import mark_stale_and_reset
 from storygraph.views import shot_view
 
 from .runtime import (
@@ -319,11 +320,7 @@ def _execute_requested_stage(pipe: Pipeline, st: Stage, force: bool) -> None:
     if st == Stage.S8_RENDER and force:
         _clear_rendered_runs(pipe)
         for sh in pipe.repo.list_shots():
-            pipe.repo.put_shot(
-                sh.model_copy(
-                    update={"stale": True, "stale_reason": "Manual re-render requested"}
-                )
-            )
+            pipe.repo.put_shot(mark_stale_and_reset(sh, "Manual re-render requested"))
         for cascade_st in (Stage.S8_RENDER, Stage.S9_QA, Stage.S10_ASSEMBLE):
             pipe.run_stage(cascade_st, force=True)
         return

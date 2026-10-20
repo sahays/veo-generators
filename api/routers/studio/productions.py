@@ -384,3 +384,28 @@ async def assemble_story_graph_production(id: str, mode: str = "approved_only") 
     """Stitch the final video (`approved_only` skips blocking shots; `strict` requires all)."""
     prod_main = _ensure_storygraph_seeded(id)
     return await prod_main.assemble_production(id, mode)
+
+
+@router.post("/{id}/shots/repair")
+async def repair_story_graph_shots(id: str, body: dict[str, Any] | None = None) -> Any:
+    """Auto-repair blocking shots (2 directed attempts each), then strict-assemble if ready."""
+    prod_main = _ensure_storygraph_seeded(id)
+    payload = prod_main.RepairShotsPayload(shot_ids=(body or {}).get("shot_ids"))
+    return await prod_main.repair_production_shots(id, payload)
+
+
+@router.patch("/{id}/shots/{shot_id}/clip")
+async def edit_story_graph_shot_clip(
+    id: str, shot_id: str, body: dict[str, Any] | None = None
+) -> Any:
+    """Edit a shot's clip prompt / step actions (marks the shot stale, resets repairs)."""
+    prod_main = _ensure_storygraph_seeded(id)
+    payload = prod_main.ClipEdit.model_validate(body or {})
+    return await prod_main.edit_production_shot_clip(id, shot_id, payload)
+
+
+@router.post("/{id}/shots/{shot_id}/regenerate")
+async def regenerate_story_graph_shot(id: str, shot_id: str) -> Any:
+    """Re-render one shot (+ continuity followers) with QA and repairs."""
+    prod_main = _ensure_storygraph_seeded(id)
+    return await prod_main.regenerate_production_shot(id, shot_id)

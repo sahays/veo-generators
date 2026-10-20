@@ -12,9 +12,9 @@ from storygraph.adapters.mock import (
 )
 from storygraph.budget import select_references
 from storygraph.compile import compile_shot
-from storygraph.omni.spec import OmniClipSpec
 from storygraph.config import Config
 from storygraph.errors import BudgetExceeded, GateBlocked
+from storygraph.omni.spec import OmniClipSpec
 from storygraph.pipeline import Pipeline, Stage, approve_gate
 from storygraph.repo import Repo
 from storygraph.schema import EntityType, ProjectMeta, Status

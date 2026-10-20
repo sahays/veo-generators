@@ -10,8 +10,8 @@ from storygraph.adapters.mock import MockVLMProvider
 from storygraph.agents.critic import _normalize_qa_report, evaluate_clip_qa
 from storygraph.budget import select_references
 from storygraph.compile import compile_shot
-from storygraph.omni.spec import OmniClipSpec
 from storygraph.config import Config
+from storygraph.omni.spec import OmniClipSpec
 from storygraph.repo import Repo
 from storygraph.schema import (
     Appearance,

@@ -70,9 +70,13 @@ const StudioTabs = ({ props, ctrl, ctx, stageMaps }: WorkspaceProps) => (
 
 const StudioWorkspace = ({ props, ctrl, ctx, stageMaps }: WorkspaceProps) => {
   const { actions } = ctx
+  const hasBlockingShots = props.pipelineStatus === 'needs_review' || (props.storyGraph?.shots || []).some((s) => s.needs_manual_edit)
   return (
     <div className="w-full space-y-5">
-      <RegenerateCascadeDialog request={actions.cascade.pendingRequest} onConfirm={() => void actions.cascade.confirmCascade()} onCancel={actions.cascade.cancelCascade} />
+      <RegenerateCascadeDialog
+        request={actions.cascade.pendingRequest} hasBlockingShots={hasBlockingShots}
+        onConfirm={() => void actions.cascade.confirmCascade()} onCancel={actions.cascade.cancelCascade}
+      />
       <StudioHeader
         title={props.title || 'Production studio'} subtitle={props.subtitle} meta={props.meta || []} status={ctrl.status} progress={ctrl.progress}
         canWrite={props.canWrite} nextAction={ctrl.nextAction} onNextAction={ctrl.onNextAction} menuItems={ctrl.menuItems} onBack={props.onBack}

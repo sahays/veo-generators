@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from PIL import Image
 
 from .config import Config, VideoProviderCfg
+from .repair.models import RepairDirective
 from .repo import Repo
 from .schema import Asset, Role, Status
 from .views import ShotView
@@ -267,22 +268,74 @@ def _allocate_non_loc_pool(
     return selected_assets, composites_to_build
 
 
+_CHARACTER_REPAIR_BOOST = 100
+_PROP_REPAIR_BOOST = 60
+
+
+def _apply_repair_priorities(
+    view: ShotView, candidates: list[_Candidate], repair: RepairDirective | None
+) -> list[_Candidate]:
+    """Re-rank candidates for a repair attempt; optionally drop the location plate."""
+    if repair is None:
+        return candidates
+    emphasized = {n.lower() for n in repair.emphasize_objects}
+    out: list[_Candidate] = []
+    for c in candidates:
+        if c.entity_type == "location" and repair.refs_characters_and_props_only:
+            out.append(
+                _Candidate(
+                    c.entity_id, c.entity_type, c.score, None, c.verbal_description
+                )
+            )
+            continue
+        boost = 0
+        if c.entity_type == "character" and repair.character_refs_first:
+            boost = _CHARACTER_REPAIR_BOOST
+        ent = view.prop_entities.get(c.entity_id)
+        if ent is not None and ent.canonical_name.lower() in emphasized:
+            boost = _PROP_REPAIR_BOOST
+        out.append(
+            _Candidate(
+                c.entity_id,
+                c.entity_type,
+                c.score + boost,
+                c.asset,
+                c.verbal_description,
+                c.screen_order,
+            )
+        )
+    out.sort(key=lambda x: (-x.score, x.screen_order, x.entity_id))
+    return out
+
+
 def select_references(
     view: ShotView,
     cfg: Config,
     caps: VideoProviderCfg | None = None,
     repo: Repo | None = None,
     allow_composites: bool = True,
+    repair: RepairDirective | None = None,
 ) -> RefPlan:
-    """Deterministically rank candidate reference assets and fit within `caps.max_reference_images`."""
+    """Deterministically rank candidate reference assets and fit within `caps.max_reference_images`.
+
+    A `repair` directive (QA repair attempt) may drop the first frame, put character
+    sheets first, boost emphasized props, drop the location plate and forbid composites.
+    """
     provider_caps = caps or cfg.video
     max_slots = provider_caps.max_reference_images
+    keep_first = repair is None or not repair.drop_first_frame
     first_frame = (
         view.prev_shot_last_frame
-        if (view.shot.continue_from_last_frame and provider_caps.supports_first_frame)
+        if (
+            keep_first
+            and view.shot.continue_from_last_frame
+            and provider_caps.supports_first_frame
+        )
         else None
     )
-    candidates = _collect_sorted_candidates(view)
+    candidates = _apply_repair_priorities(
+        view, _collect_sorted_candidates(view), repair
+    )
     candidate_scores = {c.entity_id: c.score for c in candidates}
     if max_slots <= 0:
         return RefPlan(
@@ -319,7 +372,8 @@ def select_references(
         cfg,
         repo,
         dropped_verbal,
-        allow_composites=allow_composites,
+        allow_composites=allow_composites
+        and (repair is None or repair.allow_composites),
     )
     if reserved_loc and reserved_loc.asset is not None:
         selected.append(reserved_loc.asset)

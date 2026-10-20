@@ -184,6 +184,11 @@ export interface StoryGraphShot {
   exit_motion_vector?: string
   clip_index?: number | null
   look?: StoryGraphShotLook | null
+  /** Automatic S8 repair attempts consumed for this shot. */
+  repair_attempts?: number
+  /** True once automatic repair is exhausted and a human must edit the clip prompt. */
+  needs_manual_edit?: boolean
+  manual_edit_reasons?: string[]
 }
 
 export interface StoryGraphQaScores {
@@ -217,7 +222,9 @@ export interface StoryGraphGate {
 }
 
 export interface StoryGraphStageRun {
+  id?: string
   stage: string
+  created_at?: string
   completed?: boolean
   status?: string
   error?: string
@@ -257,6 +264,12 @@ export interface BlockingShot {
   latest_status: string
   failure_reasons: string[]
   artifact_flags: string[]
+  needs_manual_edit: boolean
+  repair_attempts: number
+  manual_edit_reasons: string[]
+  clip_omni_prompt?: string
+  clip_index?: number
+  scene_id?: string
 }
 
 /** GET /productions/{id}/assembly-readiness response. */
@@ -267,6 +280,33 @@ export interface AssemblyReadiness {
 }
 
 export type AssembleMode = 'approved_only' | 'strict'
+
+/** Max automatic repair attempts per failing shot (mirrors the S8 repair loop). */
+export const MAX_SHOT_REPAIR_ATTEMPTS = 2
+
+export type ShotRepairOutcomeKind = 'approved' | 'flagged' | 'skipped'
+
+export interface ShotRepairOutcome {
+  shot_id: string
+  outcome: ShotRepairOutcomeKind
+  renders: number
+  repair_attempts: number
+  reasons: string[]
+  continuity_follower_of: string | null
+}
+
+export interface ShotRepairReport {
+  outcomes: ShotRepairOutcome[]
+  approved: string[]
+  flagged: string[]
+  total_renders: number
+}
+
+/** PATCH /productions/{id}/shots/{shot_id}/clip body. */
+export interface ShotClipEdit {
+  omni_prompt?: string
+  step_actions?: Record<number, string>
+}
 
 export interface StoryGraphValidationIssue {
   code: string

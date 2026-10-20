@@ -36,6 +36,13 @@ class BlockingShot(BaseModel):
     latest_status: str
     failure_reasons: list[str] = Field(default_factory=list)
     artifact_flags: list[str] = Field(default_factory=list)
+    # Repair / manual-edit context so the UI can render an editor without extra calls.
+    scene_id: str = ""
+    clip_index: int | None = None
+    clip_omni_prompt: str | None = None
+    needs_manual_edit: bool = False
+    repair_attempts: int = 0
+    manual_edit_reasons: list[str] = Field(default_factory=list)
 
 
 class AssemblyReadiness(BaseModel):
@@ -107,28 +114,43 @@ def _stale_reasons(shot: Shot) -> list[str]:
     return [f"shot is stale: {shot.stale_reason or 'upstream content changed'}"]
 
 
-def _blocking_for(shot: Shot, idx: _RunIndex) -> BlockingShot:
+def _verdict(shot: Shot, idx: _RunIndex) -> tuple[str, list[str], list[str]]:
+    """(latest_status, failure_reasons, artifact_flags) for a blocking shot."""
     latest = idx.latest.get(shot.id)
     stale = _stale_reasons(shot)
     if latest is not None:
         qa = latest.qa_scores
-        return BlockingShot(
-            shot_id=shot.id,
-            latest_status=str(latest.status),
-            failure_reasons=[*stale, *(qa.failure_reasons if qa else [])],
-            artifact_flags=list(qa.artifact_flags) if qa else [],
-        )
+        reasons = [*stale, *(qa.failure_reasons if qa else [])]
+        return str(latest.status), reasons, list(qa.artifact_flags) if qa else []
     if shot.id in idx.outdated_approved:
-        return BlockingShot(
-            shot_id=shot.id,
-            latest_status=OUTDATED_STATUS,
-            failure_reasons=[*stale, OUTDATED_REASON],
-        )
+        return OUTDATED_STATUS, [*stale, OUTDATED_REASON], []
+    missing = "no generation run exists for this shot"
+    return NOT_RENDERED_STATUS, [*stale, missing], []
+
+
+def _blocking_for(shot: Shot, idx: _RunIndex, clip_prompt: str | None) -> BlockingShot:
+    status, reasons, flags = _verdict(shot, idx)
     return BlockingShot(
         shot_id=shot.id,
-        latest_status=NOT_RENDERED_STATUS,
-        failure_reasons=[*stale, "no generation run exists for this shot"],
+        latest_status=status,
+        failure_reasons=reasons,
+        artifact_flags=flags,
+        scene_id=shot.scene_id,
+        clip_index=shot.clip_index,
+        clip_omni_prompt=clip_prompt,
+        needs_manual_edit=shot.needs_manual_edit,
+        repair_attempts=shot.repair_attempts,
+        manual_edit_reasons=list(shot.manual_edit_reasons),
     )
+
+
+def _clip_prompts(repo: Repo) -> dict[tuple[str, int], str]:
+    """(scene_id, clip_index) -> omni_prompt for every scene clip, in one pass."""
+    return {
+        (sc.id, c.clip_index): c.omni_prompt
+        for sc in repo.list_scenes()
+        for c in sc.clips
+    }
 
 
 def evaluate_shot_readiness(repo: Repo) -> AssemblyReadiness:
@@ -139,6 +161,7 @@ def evaluate_shot_readiness(repo: Repo) -> AssemblyReadiness:
     )
     ready: list[ReadyShot] = []
     blocking: list[BlockingShot] = []
+    prompts: dict[tuple[str, int], str] | None = None
     for shot in shots:
         win = idx.winners.get(shot.id)
         if win is not None and win.output_video_uri and not shot.stale:
@@ -148,7 +171,13 @@ def evaluate_shot_readiness(repo: Repo) -> AssemblyReadiness:
                 )
             )
         else:
-            blocking.append(_blocking_for(shot, idx))
+            prompts = _clip_prompts(repo) if prompts is None else prompts
+            key = (
+                (shot.scene_id, shot.clip_index)
+                if shot.clip_index is not None
+                else None
+            )
+            blocking.append(_blocking_for(shot, idx, prompts.get(key) if key else None))
     return AssemblyReadiness(
         ready_shots=ready,
         blocking=blocking,

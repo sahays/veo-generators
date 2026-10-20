@@ -72,7 +72,7 @@ export function deriveNextAction(
 ): NextAction {
   if (s.isRunning || s.busyAction) return { kind: 'busy', label: busyLabel(s, ctx.cascade) }
   if (ctx.failedStage) return { kind: 'retry', label: 'Retry failed step', stage: ctx.failedStage }
-  if (s.pipelineStatus === 'needs_review') return { kind: 'review', label: 'Review shots', step: 's8_s10_videos' }
+  if (s.pipelineStatus === 'needs_review') return { kind: 'review', label: 'Fix failed shots', step: 's8_s10_videos' }
   const allButAssemble = PIPELINE_SUB_STAGES.slice(0, -1).every((x) => s.completedStages.has(x.id))
   if (allButAssemble && !ctx.hasFinalCut) return { kind: 'stitch', label: 'Stitch final cut', stage: 'S10_ASSEMBLE' }
   if (ctx.hasFinalCut && ctx.renderQuality !== 'final') return { kind: 'upgrade', label: 'Render 720p final', stage: 'S8_RENDER' }

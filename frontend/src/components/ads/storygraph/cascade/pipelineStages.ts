@@ -65,11 +65,12 @@ export function buildCascadePlan(req: CascadeRequest): CascadeStep[] {
 }
 
 const GATE_BLOCK_RE = /blocked by unapproved gate\s*(G\d)?/i
-const REVIEW_BLOCK_RE = /assembly blocked by \d+ unapproved|needs[_ ]review/i
+const REVIEW_BLOCK_RE = /assembly blocked by (\d+) unapproved|needs[_ ]review/i
 
-/** Readable message when final assembly is waiting on clip approval. */
-export function reviewStopMessage(step: CascadeStep): string {
-  return `Regeneration paused at ${step.label}: some shots still need review/approval before the final cut can be stitched. Approve the clips, then run Stitch Final Cut (S10).`
+/** Readable message when final assembly is blocked by shots that failed QA. */
+export function reviewStopMessage(step: CascadeStep, failedCount?: number): string {
+  const count = failedCount === undefined ? 'some' : String(failedCount)
+  return `Paused at ${step.label}: ${count} shot(s) failed QA. Use “Repair failed shots” in the Videos step, edit flagged shots, or stitch approved shots only.`
 }
 
 /**
@@ -82,5 +83,7 @@ export function classifyCascadeStop(message: string, step: CascadeStep): string 
     const gateId = gate[1] ? ` ${gate[1]}` : ''
     return `Regeneration paused at ${step.label}: approval gate${gateId} must be approved before continuing.`
   }
-  return REVIEW_BLOCK_RE.test(message) ? reviewStopMessage(step) : null
+  const review = REVIEW_BLOCK_RE.exec(message)
+  if (!review) return null
+  return reviewStopMessage(step, review[1] ? Number(review[1]) : undefined)
 }

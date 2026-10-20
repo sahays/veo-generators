@@ -19,9 +19,9 @@ from storygraph.clips.validation import (
     validate_partition,
 )
 from storygraph.compile import compile_shot
-from storygraph.omni.spec import OmniClipSpec
 from storygraph.config import Config
 from storygraph.errors import ValidationFailed
+from storygraph.omni.spec import OmniClipSpec
 from storygraph.repo import Repo
 from storygraph.schema import InteractionStep, Role
 from storygraph.tools.registry import ToolContext

@@ -87,6 +87,7 @@ const renderVideos = (c: StepSectionContext) => (
       <AssemblyReadinessPanel
         productionId={c.productionId} pipelineStatus={c.pipelineStatus} activeGenerationRuns={c.entityMaps.activeGenerationRuns}
         canWrite={c.canWrite} isBusy={c.actions.busyAction !== null || c.actions.isRunningPipeline} onGraphUpdated={c.onGraphUpdated}
+        onStitchFinalCut={() => void c.actions.handleRetryStage('S10_ASSEMBLE')}
       />
     }
   />

@@ -21,7 +21,11 @@ from ...schema import (
     Status,
     StyleGuide,
 )
-from ...shots import compute_shot_content_hash, find_scene_clip
+from ...shots import (
+    compute_shot_content_hash,
+    find_scene_clip,
+    mark_stale_and_reset,
+)
 from ..registry import (
     ToolContext,
     assert_asset_kind_allowed,
@@ -220,7 +224,13 @@ def _stamp_content_hash(ctx: ToolContext, prev: Shot | None, shot: Shot) -> Shot
     if prev is None:
         return shot.model_copy(update={"content_hash": new_hash})
     if prev.content_hash == new_hash:
-        keep = {"stale": prev.stale, "stale_reason": prev.stale_reason}
+        keep = {
+            "stale": prev.stale,
+            "stale_reason": prev.stale_reason,
+            "repair_attempts": prev.repair_attempts,
+            "needs_manual_edit": prev.needs_manual_edit,
+            "manual_edit_reasons": list(prev.manual_edit_reasons),
+        }
         return shot.model_copy(update={"content_hash": new_hash, **keep})
     reason = f"Shot content changed by {ctx.role} regeneration"
     logger.info(
@@ -238,8 +248,8 @@ def _stamp_content_hash(ctx: ToolContext, prev: Shot | None, shot: Shot) -> Shot
             "new_hash": new_hash,
         },
     )
-    update = {"content_hash": new_hash, "stale": True, "stale_reason": reason}
-    return shot.model_copy(update=update)
+    hashed = shot.model_copy(update={"content_hash": new_hash})
+    return mark_stale_and_reset(hashed, reason)
 
 
 def put_shot(

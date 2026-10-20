@@ -65,7 +65,12 @@ _BACKEND_TIER_1_EXACT: frozenset[str] = frozenset(
     }
 )
 _BACKEND_TIER_5_EXACT: frozenset[str] = frozenset(
-    {"api/main.py", "agents_service/main.py", "productions_service/main.py"}
+    {
+        "api/main.py",
+        "agents_service/main.py",
+        "productions_service/main.py",
+        "productions_service/storygraph/repair/loop.py",
+    }
 )
 _BACKEND_TIER_5_PREFIXES: tuple[str, ...] = (
     "workers/",

@@ -12,6 +12,15 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+RepairToken = Literal[
+    "character_design_matches_refs",
+    "objects_persist_whole_take",
+    "one_action_at_a_time",
+    "screen_positions_locked",
+    "camera_locked_static",
+    "motion_from_first_frame",
+    "single_consistent_art_style",
+]
 ConstraintToken = Literal[
     "sequence_order_strict",
     "single_continuous_take",
@@ -21,6 +30,7 @@ ConstraintToken = Literal[
     "refs_are_identity_only",
     "first_frame_is_opening_frame",
     "lipsync_active_speaker_only",
+    RepairToken,
 ]
 ActorKindToken = Literal["robot", "animal", "person"]
 

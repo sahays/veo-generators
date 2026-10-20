@@ -29,6 +29,13 @@ from services.productions_service import (
     run_project_stage,
     update_production_project,
 )
+from services.repair_service import (
+    ClipEdit,
+    RepairShotsPayload,
+    edit_project_shot_clip,
+    regenerate_project_shot,
+    repair_project_shots,
+)
 
 router = APIRouter()
 
@@ -162,3 +169,22 @@ async def regenerate_single_appearance(
 @router.post("/api/v1/productions/{project_id}/shots/{shot_id}/compile")
 async def compile_single_shot_preview(project_id: str, shot_id: str) -> dict[str, Any]:
     return await run_in_threadpool(compile_project_shot_preview, project_id, shot_id)
+
+
+@router.post("/api/v1/productions/{project_id}/shots/repair")
+async def repair_production_shots(
+    project_id: str, body: RepairShotsPayload | None = None
+) -> dict[str, Any]:
+    return await run_in_threadpool(repair_project_shots, project_id, body)
+
+
+@router.patch("/api/v1/productions/{project_id}/shots/{shot_id}/clip")
+async def edit_production_shot_clip(
+    project_id: str, shot_id: str, body: ClipEdit
+) -> dict[str, Any]:
+    return await run_in_threadpool(edit_project_shot_clip, project_id, shot_id, body)
+
+
+@router.post("/api/v1/productions/{project_id}/shots/{shot_id}/regenerate")
+async def regenerate_production_shot(project_id: str, shot_id: str) -> dict[str, Any]:
+    return await run_in_threadpool(regenerate_project_shot, project_id, shot_id)

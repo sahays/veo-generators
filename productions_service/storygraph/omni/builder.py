@@ -149,6 +149,7 @@ def build_spec(
     bindings: ImageBindings,
     policy: DescPolicy,
     retry_feedback: list[str] | None,
+    extra_constraints: tuple[ConstraintToken, ...] = (),
 ) -> OmniClipSpec:
     """Typed, validated machine spec for the clip this shot renders."""
     sym = Symbols(view)
@@ -170,6 +171,7 @@ def build_spec(
     subjects = build_subjects(
         view, spk, sym, bindings, policy.with_ref, policy.without_ref
     )
+    constraints = _constraints(view, bindings, bool(objects), speech)
     return OmniClipSpec(
         clip=_clip(view, sym, [s for s in sfx if s]),
         subjects=subjects or None,
@@ -181,6 +183,6 @@ def build_spec(
         sequence=sequence or None,
         summary=summary if summary and (policy.extras or not sequence) else None,
         speech=speech or None,
-        constraints=_constraints(view, bindings, bool(objects), speech),
+        constraints=list(dict.fromkeys([*constraints, *extra_constraints])),
         must_achieve=goals or None,
     )

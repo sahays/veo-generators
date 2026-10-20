@@ -1,6 +1,7 @@
 import type { Project } from '@/types/project'
-import type { AssembleMode, AssemblyReadiness } from '@/types/storygraph'
+import type { AssembleMode, AssemblyReadiness, ShotClipEdit, ShotRepairReport } from '@/types/storygraph'
 import { createCrudClient } from '../core/_crud'
+import { requestWithValidation } from '../core/validationError'
 import {
   API_BASE_URL,
   type JsonValue,
@@ -16,6 +17,9 @@ const projectsCrud = createCrudClient<JsonValue>(
   `${API_BASE_URL}/productions`,
   'production',
 )
+
+/** Repair/regenerate responses: the refreshed snapshot plus the per-shot outcome report. */
+export type ShotRepairResponse = Project & { repair_report?: ShotRepairReport }
 
 export const projects = {
   list: (params?: { archived?: boolean; mine?: boolean }) =>
@@ -196,6 +200,24 @@ export const projects = {
       `${API_BASE_URL}/productions/${id}/assemble?mode=${mode}`,
       {},
       'Failed to stitch approved shots',
+    ),
+  repairShots: (id: string, shotIds?: string[]) =>
+    postJson<ShotRepairResponse>(
+      `${API_BASE_URL}/productions/${id}/shots/repair`,
+      shotIds && shotIds.length > 0 ? { shot_ids: shotIds } : {},
+      'Failed to repair shots',
+    ),
+  updateShotClip: (id: string, shotId: string, edit: ShotClipEdit) =>
+    requestWithValidation<Project>(
+      `${API_BASE_URL}/productions/${id}/shots/${encodeURIComponent(shotId)}/clip`,
+      'Clip edit rejected',
+      jsonInit('PATCH', edit),
+    ),
+  regenerateShot: (id: string, shotId: string) =>
+    postJson<ShotRepairResponse>(
+      `${API_BASE_URL}/productions/${id}/shots/${encodeURIComponent(shotId)}/regenerate`,
+      {},
+      'Failed to regenerate shot',
     ),
   delete: projectsCrud.delete,
   archive: projectsCrud.archive,

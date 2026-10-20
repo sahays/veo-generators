@@ -3,8 +3,12 @@ import { Modal } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { buildCascadePlan, type CascadeRequest, type CascadeStep } from './pipelineStages'
 
+const RENDER_STAGE = 'S8_RENDER'
+
 interface RegenerateCascadeDialogProps {
   request: CascadeRequest | null
+  /** True when some shots failed QA, so targeted repair is the better option than a full re-render. */
+  hasBlockingShots: boolean
   onConfirm: () => void
   onCancel: () => void
 }
@@ -35,6 +39,21 @@ const CostWarning = () => (
   </div>
 )
 
+const RenderWipeWarning = ({ hasBlockingShots }: { hasBlockingShots: boolean }) => (
+  <div className="flex gap-2 p-3 rounded-xl border border-red-500/40 bg-red-500/10 text-xs text-red-300">
+    <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+    <div className="space-y-1">
+      <p className="font-semibold">This deletes ALL existing clips — including approved ones — and re-renders every shot with Veo.</p>
+      {hasBlockingShots && (
+        <p>
+          Only some shots failed QA. Cancel and use <span className="font-semibold">“Repair failed shots”</span> in the
+          Videos step instead: it re-renders just the failing shots and keeps approved clips.
+        </p>
+      )}
+    </div>
+  </div>
+)
+
 interface DialogCopy {
   title: string
   subtitle?: string
@@ -46,18 +65,20 @@ function buildDialogCopy(request: CascadeRequest | null, plan: CascadeStep[]): D
   if (!request || !head) return { title: 'Regenerate stage?', confirmLabel: 'Regenerate' }
   const hasDownstream = plan.length > 1
   const qualityNote = request.quality ? ` (${request.quality === 'final' ? '720p final' : '360p draft'})` : ''
+  const wipesClips = head.stageId === RENDER_STAGE
   return {
     title: hasDownstream ? `Regenerate ${head.label} and all downstream agents?` : `Regenerate ${head.label}?`,
     subtitle: `${head.short} · ${head.stageId}${qualityNote} will be force re-run`,
-    confirmLabel: hasDownstream ? `Regenerate ${plan.length} agents` : 'Regenerate',
+    confirmLabel: wipesClips ? 'Delete all clips & re-render' : hasDownstream ? `Regenerate ${plan.length} agents` : 'Regenerate',
   }
 }
 
 /** Confirmation modal shown before regenerating a stage and its downstream agents. */
-export const RegenerateCascadeDialog = ({ request, onConfirm, onCancel }: RegenerateCascadeDialogProps) => {
+export const RegenerateCascadeDialog = ({ request, hasBlockingShots, onConfirm, onCancel }: RegenerateCascadeDialogProps) => {
   const plan = request ? buildCascadePlan(request) : []
   const downstream = plan.slice(1)
   const copy = buildDialogCopy(request, plan)
+  const wipesClips = plan[0]?.stageId === RENDER_STAGE
   return (
     <Modal
       isOpen={request !== null}
@@ -68,15 +89,16 @@ export const RegenerateCascadeDialog = ({ request, onConfirm, onCancel }: Regene
       footer={
         <>
           <Button variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
-          <Button variant="primary" size="sm" icon={RefreshCw} onClick={onConfirm}>
+          <Button variant={wipesClips ? 'destructive' : 'primary'} size="sm" icon={RefreshCw} onClick={onConfirm}>
             {copy.confirmLabel}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
+        {wipesClips && <RenderWipeWarning hasBlockingShots={hasBlockingShots} />}
         {downstream.length > 0 && <DownstreamAgentList steps={downstream} />}
-        <CostWarning />
+        {!wipesClips && <CostWarning />}
       </div>
     </Modal>
   )
