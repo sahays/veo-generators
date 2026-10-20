@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..schema import Appearance, DialogueLine, Entity, Scene, Shot, StageQaIssue
+from .limits import count_spoken_words
 from .species import actor_traits
 from .species_validation import validate_species_rules
 from .validation import (
@@ -24,7 +25,7 @@ def collect_clip_issues(
     """Run screenplay clip rules (and, when `check_shots`, shot↔clip mapping) in O(V + E)."""
     words_by_scene: dict[str, dict[str, int]] = {}
     for d in dialogues:
-        words_by_scene.setdefault(d.scene_id, {})[d.id] = len(d.text.split())
+        words_by_scene.setdefault(d.scene_id, {})[d.id] = count_spoken_words(d.text)
     shots_by_scene: dict[str, list[ShotClipRef]] = {}
     for sh in shots:
         shots_by_scene.setdefault(sh.scene_id, []).append(

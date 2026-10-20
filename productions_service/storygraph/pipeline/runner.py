@@ -31,8 +31,6 @@ from ..agents.stage_qa import run_stage_qa_and_remediate, stages_to_redo_for_iss
 from ..compile import Package
 from ..config import Config
 from ..errors import BudgetExceeded, GateBlocked, ShotsNotApproved, ValidationFailed
-from ..lint.models import blocking
-from ..lint.spec_lint import lint_packages
 from ..repo import Repo
 from ..schema import Role, StageRun, Status
 from ..state import rebuild_state_facts
@@ -40,8 +38,8 @@ from ..tools.registry import ToolContext
 from ..validate import validate_all
 from .assemble_stage import project_status_after_stage, run_assemble_stage
 from .gates import GATE_FOR_STAGE, approve_gate, ensure_gate, require_gate
+from .lint_stage import MAX_LLM_ROUNDS, LintStageDeps, compile_and_lint
 from .render_stage import (
-    compile_all_shots,
     evaluate_missing_qa,
     render_and_qa_shots,
 )
@@ -357,22 +355,17 @@ class Pipeline:
             for cr in open_crs:
                 self.repo.resolve_change_request(cr.id, "accepted")
 
-    def _compile_and_lint(self, max_iterations: int = 2) -> None:
-        """S7: compile every shot, lint the specs, and re-author (S2/S4) on blocking issues."""
-        for attempt in range(1, max_iterations + 1):
-            packages = compile_all_shots(self.repo, self.cfg, self.video_gen)
-            errors = blocking(lint_packages(self.repo, packages))
-            if not errors:
-                self.compiled_packages.update(packages)
-                return
-            if attempt == max_iterations:
-                raise ValidationFailed(errors)
-            for up_st in stages_to_redo_for_issues([], list(errors), []):
-                st_enum = Stage(up_st)
-                self._execute_authoring_stage(
-                    st_enum, self._compute_stage_input_hash(st_enum), force=True
-                )
-            rebuild_state_facts(self.repo)
+    def _compile_and_lint(self, max_llm_rounds: int = MAX_LLM_ROUNDS) -> None:
+        """S7: compile + lint; deterministic remediation, then scene-scoped S2/S4 redo."""
+        meta = self.repo.get_project_meta()
+        deps = LintStageDeps(
+            repo=self.repo,
+            cfg=self.cfg,
+            video_gen=self.video_gen,
+            language=meta.language if meta else "en",
+            mock_llm=self.mock_llm,
+        )
+        self.compiled_packages.update(compile_and_lint(deps, max_llm_rounds))
 
     def _execute_production_stage(self, st: Stage, ihash: str) -> StageRun:
         require_gate(self.repo, "G3")

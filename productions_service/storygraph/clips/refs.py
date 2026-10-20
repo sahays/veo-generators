@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..schema import DialogueLine, Entity, InteractionStep
+from ..timeline.locomotion import is_key_action
 from .text import DialogueRef, StepRef
 
 
@@ -15,6 +16,7 @@ def step_refs(steps: list[InteractionStep], names: dict[str, str]) -> list[StepR
             action=s.action or s.description,
             pre_state=s.pre_state,
             post_state=s.post_state,
+            key_action=is_key_action(s),
         )
         for s in steps
     ]

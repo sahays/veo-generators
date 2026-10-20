@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from ...adapters.mock import MockLLMClient
 from ...clips.builder import build_clips, finalize_clips
+from ...clips.limits import clip_rules_text, feedback_block
 from ...clips.refs import entity_names, step_refs
 from ...clips.species import ActorKind, ActorTraits, actor_traits
 from ...clips.text import DialogueRef
@@ -236,6 +239,7 @@ def _build_screenwriter_prompt(
     chars: list[Entity],
     lang_code: str,
     traits: dict[str, ActorTraits],
+    feedback: Sequence[str] = (),
 ) -> str:
     """Build the user prompt for `SCREENWRITER` scene steps, dialogue & Omni clip arrangement."""
     meta = ctx.repo.get_project_meta()
@@ -268,16 +272,17 @@ def _build_screenwriter_prompt(
         f"TARGET SPOKEN DIALOGUE LANGUAGE: `{lang_code}` — {lang_desc}.\n"
         "CRITICAL RULES (YOU ARRANGE THE SCENE INTO 8–10s GEMINI OMNI CLIPS):\n"
         "1. Author `interaction_steps` as cohesive physical actions (one atomic action each, 2–6 per scene). Do NOT split sub-second micro-gestures into separate steps.\n"
-        "2. Arrange ALL steps into ordered `clips`: each clip covers 1–3 CONTIGUOUS steps (every step exactly once, in order, no gaps/overlap), carries at most ~22 spoken words, and picks `duration_s` between 8.0 and 10.0.\n"
+        f"2. {clip_rules_text()}\n"
         "3. Each clip's `omni_prompt` is ONE present-tense paragraph of one continuous moment sent verbatim to the video model: plain sequential language ('First…, then…, finally…') — NEVER seconds, timestamps, or time ranges. Include each of its dialogue lines verbatim with the speaker's name (e.g. `Mira says: \"…\"`). No camera/lighting/colour words (the Director owns them).\n"
         "4. `closing_state` of clip N must equal `opening_state` of clip N+1; reference dialogue by `line_id` in `dialogue_line_ids` (each line in exactly one clip, spoken order).\n"
         "5. Object permanence: every prop and character in the scene is present from the first frame (or enters continuously through a visible doorway); each object exists exactly once; room fixtures stay where they are; a released object stops and rests exactly where it is put. State each prop's start and end place in `pre_state` / `post_state`.\n"
         "6. Species fit: every action and vocalization must match its actor's `kind` above. Only animals bark, meow, neigh, etc.; a non-verbal actor communicates through sounds and body language and gets NO `dialogue_lines`; a character with no mouth speaks voice-only. Write the actor's own name as the subject of each action.\n"
         "7. Keep each step about the props it actually touches; do not restate unrelated props.\n"
         f"8. Write ALL spoken `dialogue_lines[].text` in {lang_desc} (max 14 words per line) and set `dialogue_lines[].language` to `'{lang_code}'`.\n"
-        "9. Speech window: every line is spoken DURING the clip's action, never after its last step. In `omni_prompt` place each line right after the step it reacts to and end the clip with a short physical beat after the final line; a clip with more than ~15 words gets at most 2 steps.\n"
+        "9. Speech window: every line is spoken DURING the clip's action, never after its last step. In `omni_prompt` place each line right after the step it reacts to and end the clip with a short physical beat after the final line; a wordy clip gets fewer steps.\n"
         "10. Each scene must advance the story: never repeat a gag, action, or line from another scene. An intentional callback must set the line's `delivery` to include 'callback'.\n\n"
         f"{screenwriter_guard_block(ctx.repo, scene_id)}"
+        f"{feedback_block(feedback, 'SPEC LINTER REJECTED THE PREVIOUS DRAFT')}"
         f"SCENE VIEW ({scene_id}):\n{sview.model_dump_json(exclude={'shots'})}"
     )
 
@@ -302,6 +307,7 @@ def run_screenwriter_for_scene(
     scene_id: str,
     language: str = "en",
     mock_llm: MockLLMClient | None = None,
+    feedback: Sequence[str] = (),
 ) -> RoleRunResult:
     """Run SCREENWRITER (`screenwriter_agent`) to author steps, dialogue, and Omni clips for a scene."""
     sview = scene_view(ctx.repo, scene_id)
@@ -318,7 +324,7 @@ def run_screenwriter_for_scene(
         role=Role.SCREENWRITER,
         ctx=ctx,
         user_prompt=_build_screenwriter_prompt(
-            ctx, scene_id, story_context, sview, chars, lang_code, traits
+            ctx, scene_id, story_context, sview, chars, lang_code, traits, feedback
         ),
         output_schema=ScreenwriterOutput,
         mock_llm=mock_llm,

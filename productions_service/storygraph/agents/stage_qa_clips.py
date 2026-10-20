@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from ..clips.builder import build_clips
+from ..clips.limits import count_spoken_words
 from ..clips.refs import dialogue_refs, entity_names, step_refs
 from ..clips.validation import validate_scene_clips
 from ..config import Config
@@ -24,7 +25,7 @@ def remediate_scene_clips(repo: Repo, cfg: Config, fixed: list[str]) -> None:
         if not sc.interaction_steps:
             continue
         lines = repo.list_dialogue(scene_id=sc.id)
-        words = {d.id: len(d.text.split()) for d in lines}
+        words = {d.id: count_spoken_words(d.text) for d in lines}
         steps = [s.step_index for s in sc.interaction_steps]
         issues = validate_scene_clips(sc.id, steps, sc.clips, words)
         if not issues:

@@ -20,12 +20,6 @@ MANIPULATION_RE: Final[re.Pattern[str]] = re.compile(
     r"slide|tuck|hang|shove|kick|catch|fetch|clutch|swipe)\w*",
     re.IGNORECASE,
 )
-LOCOMOTION_RE: Final[re.Pattern[str]] = re.compile(
-    r"\b(?:walk|stride|strode|cross|trot|march|run|ran|scurr|dart|stroll|approach|"
-    r"step(?:s|ped)? (?:over|toward|forward|across|down|back)|hurr|dash|wander|"
-    r"head(?:s|ed)? (?:to|toward)|crawl|climb|pace|zoom|rush)\w*",
-    re.IGNORECASE,
-)
 _UNHOLDABLE_RE: Final[re.Pattern[str]] = re.compile(
     r"\b(?:puddle|spill|liquid|water|juice|milk|door|doorway|floor|floorboards|wall|"
     r"counter|countertop|sink|window|table|shelf|rack|stove|fridge|cabinet|kitchen|"
@@ -64,7 +58,3 @@ def moved_props(steps: list[InteractionStep]) -> dict[str, str]:
         if st.target_id and manipulates(st):
             out.setdefault(st.target_id, st.actor_id)
     return out
-
-
-def has_locomotion(steps: list[InteractionStep]) -> bool:
-    return any(LOCOMOTION_RE.search(step_text(s)) for s in steps)

@@ -30,7 +30,7 @@ from ...tools.registry import ToolContext
 from ...tools.role_helpers import ShotDraft, normalize_indian_epic_names
 from ...views import scene_view
 from ..runner import run_role
-from .director import _persist_clip_shot, build_scene_blocking
+from .director import build_scene_blocking, persist_clip_shot
 
 logger = logging.getLogger(__name__)
 _MAX_ACTION_WORDS: Final[int] = 48
@@ -170,7 +170,7 @@ def remap_clip_shot(ctx: ToolContext, shot: Shot) -> bool:
         look=shot.look,
         clip_index=shot.clip_index,
     )
-    _persist_clip_shot(ctx, blk, pos, clips[pos - 1], draft)
+    persist_clip_shot(ctx, blk, pos, clips[pos - 1], draft)
     return True
 
 

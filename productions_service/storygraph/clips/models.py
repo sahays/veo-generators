@@ -10,10 +10,13 @@ from typing import Final
 
 from pydantic import BaseModel, Field, field_validator
 
-CLIP_MIN_S: Final[float] = 8.0
-CLIP_MAX_S: Final[float] = 10.0
-MAX_CLIP_STEPS: Final[int] = 3
-MAX_CLIP_WORDS: Final[int] = 22
+from .limits import CLIP_LIMITS
+
+CLIP_MIN_S: Final[float] = CLIP_LIMITS.min_duration_s
+CLIP_MAX_S: Final[float] = CLIP_LIMITS.max_duration_s
+MAX_CLIP_STEPS: Final[int] = CLIP_LIMITS.max_clip_steps
+MAX_CLIP_WORDS: Final[int] = CLIP_LIMITS.max_spoken_words
+MAX_KEY_ACTIONS: Final[int] = CLIP_LIMITS.max_key_actions
 
 
 def clamp_clip_duration(value: float | str | None) -> float:

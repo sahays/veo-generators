@@ -6,14 +6,20 @@ import re
 from collections.abc import Callable
 from typing import Final
 
+from ..clips.limits import (
+    CLIP_LIMITS,
+    camera_follows_locomotion,
+    count_spoken_words,
+)
 from ..omni.props import ABSENT_AT_START, CONSUMED
 from ..omni.spec import ObjectSpec, ObjectState, OmniClipSpec
 from ..omni.symbols import Symbols
-from ..timeline.handling import LOCOMOTION_RE, manipulates, step_text
+from ..timeline.handling import head_noun, step_text
+from ..timeline.locomotion import is_key_action, step_locomotion
 from .models import LintCase, LintIssue, issue
 
-MAX_KEY_ACTIONS: Final[int] = 2
-MAX_SPOKEN_WORDS: Final[int] = 20
+MAX_KEY_ACTIONS: Final[int] = CLIP_LIMITS.max_key_actions
+MAX_SPOKEN_WORDS: Final[int] = CLIP_LIMITS.max_spoken_words
 _SYMBOL_RE: Final[re.Pattern[str]] = re.compile(r"^[SOL]\d+$")
 _RAW_ID_RE: Final[re.Pattern[str]] = re.compile(
     r"\b(?:obj|char|loc|prop|ast|shot|scn|evt|app|dlg|comp)_[A-Za-z0-9_]+\b"
@@ -21,10 +27,6 @@ _RAW_ID_RE: Final[re.Pattern[str]] = re.compile(
 _RAW_LABEL_RE: Final[re.Pattern[str]] = re.compile(
     r'"wardrobe":"default"', re.IGNORECASE
 )
-_TRACKING_MOVES: Final[frozenset[str]] = frozenset(
-    {"track", "pan_l", "pan_r", "handheld", "dolly_out"}
-)
-_WIDE_SIZES: Final[frozenset[str]] = frozenset({"WS", "EWS", "MLS"})
 _APPROACH_RE: Final[re.Pattern[str]] = re.compile(
     r"\b(?:trots?|walks?|runs?|scurr\w*|dash\w*|hurr\w*|comes?|goes|moves?|steps?)\s+"
     r"(?:over|up)?\s*(?:to|toward|towards)\b|\bapproach\w*",
@@ -33,7 +35,9 @@ _APPROACH_RE: Final[re.Pattern[str]] = re.compile(
 _ADJACENT_RE: Final[re.Pattern[str]] = re.compile(
     r"\b(?:beside|next to|adjacent|right by)\b", re.IGNORECASE
 )
-_WORD_RE: Final[re.Pattern[str]] = re.compile(r"[\w'-]+")
+_PREPOSITIONS: Final[frozenset[str]] = frozenset(
+    {"on", "in", "under", "beside", "behind", "inside", "near", "at", "by", "atop"}
+)
 _ARTICLE_RE: Final[re.Pattern[str]] = re.compile(r"\b(?:the|a|an)\b|[^\w\s]")
 
 Rule = Callable[[LintCase], list[LintIssue]]
@@ -147,21 +151,19 @@ def rule_text_hygiene(case: LintCase) -> list[LintIssue]:
 
 
 def rule_camera(case: LintCase) -> list[LintIssue]:
-    """A walk/cross needs a tracking or wide shot; a static close shot only for in-place action."""
+    """Main-verb locomotion needs a camera that can follow it (`LocomotionCameraPolicy`)."""
     cam = case.spec.camera
-    walking = [s for s in case.steps if LOCOMOTION_RE.search(step_text(s))]
-    if not walking or cam.move in _TRACKING_MOVES or cam.size in _WIDE_SIZES:
+    hit = next((h for s in case.steps if (h := step_locomotion(s))), None)
+    if hit is None or camera_follows_locomotion(cam.size, cam.move):
         return []
-    msg = f"camera {cam.size}/{cam.move} cannot follow locomotion in step '{walking[0].action[:60]}'"
+    msg = f"camera {cam.size}/{cam.move} cannot follow locomotion '{hit.clause[:60]}'"
     return [issue("CAMERA_MOVEMENT", case.shot_id, msg, "S4")]
 
 
 def rule_load(case: LintCase) -> list[LintIssue]:
-    """At most 2 key actions and 20 spoken words; speech lands before the final step."""
+    """Key-action / spoken-word caps (`CLIP_LIMITS`); speech lands before the final step."""
     sid, spec = case.shot_id, case.spec
-    key = [
-        s for s in case.steps if manipulates(s) or LOCOMOTION_RE.search(step_text(s))
-    ]
+    key = [s for s in case.steps if is_key_action(s)]
     out: list[LintIssue] = []
     if len(key) > MAX_KEY_ACTIONS:
         out.append(
@@ -172,7 +174,7 @@ def rule_load(case: LintCase) -> list[LintIssue]:
                 "S2",
             )
         )
-    words = sum(len(_WORD_RE.findall(s.text)) for s in spec.speech or [])
+    words = sum(count_spoken_words(s.text) for s in spec.speech or [])
     if words > MAX_SPOKEN_WORDS:
         out.append(
             issue(
@@ -226,11 +228,19 @@ def _edge(o: ObjectSpec, spec: OmniClipSpec, closing: bool) -> tuple[str, str]:
     return names.get(state.held_by or "", state.held_by or ""), _norm(state.where)
 
 
+def _place_key(place: str) -> tuple[str, str]:
+    """(leading preposition, head noun): 'on low countertop' == 'on countertop'."""
+    first = place.split(" ", 1)[0]
+    return (first if first in _PREPOSITIONS else "", head_noun(place))
+
+
 def _mismatch(prev: tuple[str, str], cur: tuple[str, str]) -> bool:
     if prev[0] or cur[0]:
         return prev[0] != cur[0]
     loose = {"", "in place", _norm(ABSENT_AT_START), _norm(CONSUMED)}
-    return prev[1] not in loose and cur[1] not in loose and prev[1] != cur[1]
+    if prev[1] in loose or cur[1] in loose:
+        return False
+    return _place_key(prev[1]) != _place_key(cur[1])
 
 
 def rule_continuity(case: LintCase) -> list[LintIssue]:

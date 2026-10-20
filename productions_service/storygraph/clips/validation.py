@@ -9,7 +9,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-from .models import CLIP_MAX_S, CLIP_MIN_S, MAX_CLIP_STEPS, MAX_CLIP_WORDS, ClipScript
+from .models import (
+    CLIP_MAX_S,
+    CLIP_MIN_S,
+    MAX_CLIP_STEPS,
+    MAX_CLIP_WORDS,
+    MAX_KEY_ACTIONS,
+    ClipScript,
+)
 from .text import has_timestamps
 
 CODE_MISSING: Final[str] = "S2_CLIPS_MISSING"
@@ -22,6 +29,7 @@ CODE_INDEX: Final[str] = "S2_CLIP_INDEX"
 CODE_DURATION: Final[str] = "S2_CLIP_DURATION"
 CODE_ACTIONS: Final[str] = "S2_CLIP_ACTION_LIMIT"
 CODE_WORDS: Final[str] = "S2_CLIP_WORD_LIMIT"
+CODE_KEY_ACTIONS: Final[str] = "S2_CLIP_KEY_ACTION_LIMIT"
 CODE_DIALOGUE: Final[str] = "S2_CLIP_DIALOGUE_UNKNOWN"
 CODE_TIMESTAMP: Final[str] = "S2_CLIP_TIMESTAMP"
 CODE_PROMPT: Final[str] = "S2_CLIP_PROMPT_EMPTY"
@@ -89,6 +97,16 @@ def validate_partition(
     return issues
 
 
+def _key_action_issues(
+    scene_id: str, clip: ClipScript, key_steps: frozenset[int]
+) -> list[ClipIssue]:
+    n_key = sum(1 for i in clip.step_indices if i in key_steps)
+    if n_key <= MAX_KEY_ACTIONS:
+        return []
+    msg = f"Clip {clip.clip_index} packs {n_key} key actions (max {MAX_KEY_ACTIONS})."
+    return [ClipIssue(CODE_KEY_ACTIONS, scene_id, msg)]
+
+
 def _validate_clip_body(
     scene_id: str, clip: ClipScript, dialogue_words: dict[str, int]
 ) -> list[ClipIssue]:
@@ -145,8 +163,12 @@ def validate_scene_clips(
     step_indices: list[int],
     clips: list[ClipScript],
     dialogue_words: dict[str, int],
+    key_steps: frozenset[int] = frozenset(),
 ) -> list[ClipIssue]:
-    """Run every screenplay-level clip rule for one scene (no clips => S2 redo)."""
+    """Run every screenplay-level clip rule for one scene (no clips => S2 redo).
+
+    `key_steps` are the scene's key-action step indices (see `timeline.locomotion`).
+    """
     if not clips:
         return [
             ClipIssue(
@@ -159,6 +181,7 @@ def validate_scene_clips(
     issues.extend(_validate_sequence(scene_id, clips))
     for clip in clips:
         issues.extend(_validate_clip_body(scene_id, clip, dialogue_words))
+        issues.extend(_key_action_issues(scene_id, clip, key_steps))
     return issues
 
 

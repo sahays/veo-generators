@@ -6,6 +6,8 @@ import re
 from dataclasses import dataclass
 from typing import Final
 
+from .limits import count_spoken_words
+
 # Matches "(0.0–3.5s)", "0-3s", "3.5 – 7.0 s", "t=0.0s", "at 2.5s", "[t=4s]".
 TIMESTAMP_RANGE_RE: Final[re.Pattern[str]] = re.compile(
     r"\(?\[?\s*\d+(?:\.\d+)?\s*s?\s*[–—-]\s*\d+(?:\.\d+)?\s*s(?:ec(?:onds?)?)?\b\s*\]?\)?",
@@ -29,7 +31,7 @@ class DialogueRef:
 
     @property
     def word_count(self) -> int:
-        return len(self.text.split())
+        return count_spoken_words(self.text)
 
 
 @dataclass(frozen=True)
@@ -41,6 +43,7 @@ class StepRef:
     action: str
     pre_state: str
     post_state: str
+    key_action: bool = False  # travels or handles an object (counts toward CLIP_LIMITS)
 
 
 def has_timestamps(text: str) -> bool:

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ...adapters.mock import MockLLMClient
+from ...clips.limits import camera_rules_text, feedback_block
 from ...presets.models import ResolvedProductionPresets
 from ...schema import (
     CastInShot,
@@ -106,7 +108,7 @@ def _resolve_props(
     return props
 
 
-def _persist_clip_shot(
+def persist_clip_shot(
     ctx: ToolContext,
     blk: _SceneBlocking,
     pos: int,
@@ -153,8 +155,12 @@ def _persist_clip_shot(
     return shot_id
 
 
-def _build_director_prompt(
-    story_context: str, blk: _SceneBlocking, chars: list[Entity], props: list[Entity]
+def build_director_prompt(
+    story_context: str,
+    blk: _SceneBlocking,
+    chars: list[Entity],
+    props: list[Entity],
+    feedback: Sequence[str] = (),
 ) -> str:
     """Build the user prompt for `DIRECTOR` camera + look authoring (one shot per clip)."""
     sc = blk.sview.scene
@@ -179,8 +185,10 @@ def _build_director_prompt(
         + "RULES: 1. Include ALL scene characters in `cast` and ALL scene props in `prop_ids` in every shot. "
         "2. Preserve 180-degree screen positions (`left`/`center`/`right`) across consecutive shots. "
         "3. Vary shot size/angle/lens across consecutive shots to cut cleanly. "
-        "4. For emotional moments describe subtle glistening eyes — never 'tearful starlight sparkles'.\n\n"
-        f"SCENE VIEW:\n{blk.sview.model_dump_json(exclude={'shots'})}"
+        "4. For emotional moments describe subtle glistening eyes — never 'tearful starlight sparkles'. "
+        f"5. {camera_rules_text()}\n\n"
+        + feedback_block(feedback, "SPEC LINTER REJECTED THE PREVIOUS SHOTS")
+        + f"SCENE VIEW:\n{blk.sview.model_dump_json(exclude={'shots'})}"
     )
 
 
@@ -210,7 +218,7 @@ def _scene_cast_and_props(
     return chars, props
 
 
-def _prune_orphan_shots(ctx: ToolContext, scene_id: str, keep: set[str]) -> None:
+def prune_orphan_shots(ctx: ToolContext, scene_id: str, keep: set[str]) -> None:
     """Delete shots of `scene_id` that no longer map to a clip (clip count shrank)."""
     for sh in ctx.repo.list_shots(scene_id=scene_id):
         if sh.id not in keep:
@@ -219,7 +227,7 @@ def _prune_orphan_shots(ctx: ToolContext, scene_id: str, keep: set[str]) -> None
                 "Pruned orphan shot after clip re-arrangement",
                 extra={
                     "who": "director",
-                    "where": "director._prune_orphan_shots",
+                    "where": "director.prune_orphan_shots",
                     "what": "delete_shot",
                     "shot_id": sh.id,
                     "scene_id": scene_id,
@@ -251,7 +259,10 @@ def build_scene_blocking(
 
 
 def run_director_for_scene(
-    ctx: ToolContext, scene_id: str, mock_llm: MockLLMClient | None = None
+    ctx: ToolContext,
+    scene_id: str,
+    mock_llm: MockLLMClient | None = None,
+    feedback: Sequence[str] = (),
 ) -> RoleRunResult:
     """Run DIRECTOR to camera-block and light exactly one Shot per screenwriter clip of `scene_id`."""
     sview = scene_view(ctx.repo, scene_id)
@@ -264,15 +275,15 @@ def run_director_for_scene(
     res = run_role(
         role=Role.DIRECTOR,
         ctx=ctx,
-        user_prompt=_build_director_prompt(story_context, blk, chars, props),
+        user_prompt=build_director_prompt(story_context, blk, chars, props, feedback),
         output_schema=DirectorSceneOutput,
         mock_llm=mock_llm,
         fallback_builder=lambda: fb,
     )
     drafts = match_drafts_to_clips(list(res.output.shots or fb.shots), clips)
     kept = {
-        _persist_clip_shot(ctx, blk, pos, clip, draft)
+        persist_clip_shot(ctx, blk, pos, clip, draft)
         for pos, (clip, draft) in enumerate(zip(clips, drafts, strict=True), start=1)
     }
-    _prune_orphan_shots(ctx, scene_id, kept)
+    prune_orphan_shots(ctx, scene_id, kept)
     return res

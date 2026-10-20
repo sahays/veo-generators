@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Final, Literal
 
 from ..clips.models import ClipScript
 from ..omni.spec import OmniClipSpec
@@ -14,6 +14,9 @@ from ..views import ShotView
 LintRoute = Literal["S2", "S4"]
 LintSeverity = Literal["error", "warn"]
 _ROUTE_PREFIX: dict[str, str] = {"S2": "S2_CLIP_LINT", "S4": "S4_LINT"}
+CODE_CAMERA: Final[str] = f"{_ROUTE_PREFIX['S4']}_CAMERA_MOVEMENT"
+CODE_TOO_MANY_ACTIONS: Final[str] = f"{_ROUTE_PREFIX['S2']}_TOO_MANY_ACTIONS"
+CODE_TOO_MANY_WORDS: Final[str] = f"{_ROUTE_PREFIX['S2']}_TOO_MANY_WORDS"
 
 
 @dataclass(frozen=True)

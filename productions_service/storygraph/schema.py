@@ -291,6 +291,21 @@ class CameraSpec(BaseModel):
     focus_target_id: str | None = None
 
 
+class ShotLintIssue(BaseModel):
+    """A spec-linter finding attached to its shot (S7), for UI display.
+
+    `status="auto_fixed"` records a deterministic S7 remediation (`fix` says what changed);
+    `status="open"` is still blocking and was routed to `route` (S2 screenwriter / S4 director).
+    """
+
+    code: str
+    message: str
+    route: Literal["S2", "S4"]
+    severity: Literal["error", "warn"] = "error"
+    status: Literal["open", "auto_fixed"] = "open"
+    fix: str = ""
+
+
 class Shot(NodeBase):
     node_type: Literal["Shot"] = "Shot"
     scene_id: str
@@ -324,6 +339,8 @@ class Shot(NodeBase):
     repair_attempts: int = 0
     needs_manual_edit: bool = False
     manual_edit_reasons: list[str] = Field(default_factory=list)
+    # Spec-linter findings from the latest S7 pass (not render content: excluded from hash).
+    lint_issues: list[ShotLintIssue] = Field(default_factory=list)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ from .models import (
     ClipScript,
     clamp_clip_duration,
 )
+from .partition import partition_steps
 from .text import (
     DialogueRef,
     StepRef,
@@ -25,18 +26,6 @@ logger = logging.getLogger(__name__)
 
 _SECONDS_PER_STEP: float = 3.0
 _WORDS_PER_SECOND: float = 2.5
-
-
-def _balanced_groups(n_items: int, n_groups: int) -> list[range]:
-    """Split `range(n_items)` into `n_groups` contiguous ranges whose sizes differ by at most 1."""
-    base, extra = divmod(n_items, n_groups)
-    groups: list[range] = []
-    start = 0
-    for g in range(n_groups):
-        size = base + (1 if g < extra else 0)
-        groups.append(range(start, start + size))
-        start += size
-    return groups
 
 
 def _assign_dialogue(lines: list[DialogueRef], n_clips: int) -> list[list[DialogueRef]]:
@@ -54,42 +43,45 @@ def _assign_dialogue(lines: list[DialogueRef], n_clips: int) -> list[list[Dialog
     return buckets
 
 
-def _estimate_duration(n_steps: int, words: int) -> float:
+def estimate_duration(n_steps: int, words: int) -> float:
+    """Clip duration (clamped to the Omni window) for `n_steps` actions and `words` spoken."""
     return clamp_clip_duration(
         max(n_steps * _SECONDS_PER_STEP, words / _WORDS_PER_SECOND + 1.5)
     )
 
 
+def make_clip(pos: int, chunk: list[StepRef], lines: list[DialogueRef]) -> ClipScript:
+    """Deterministic clip for contiguous `chunk` steps carrying `lines`."""
+    words = sum(ln.word_count for ln in lines)
+    return ClipScript(
+        clip_index=pos,
+        duration_s=estimate_duration(len(chunk), words),
+        omni_prompt=compose_omni_prompt(chunk, lines),
+        step_indices=[s.step_index for s in chunk],
+        dialogue_line_ids=[ln.line_id for ln in lines],
+        opening_state=chunk[0].pre_state,
+        closing_state=chunk[-1].post_state,
+    )
+
+
 def build_clips(steps: list[StepRef], lines: list[DialogueRef]) -> list[ClipScript]:
-    """Deterministically partition steps into ≤3-action, ≤22-word, 8–10s Omni clips."""
+    """Deterministically partition steps into clips within `CLIP_LIMITS` (8–10s each)."""
     if not steps:
         return []
     total_words = sum(ln.word_count for ln in lines)
-    n_clips = max(
+    wanted = max(
         math.ceil(len(steps) / MAX_CLIP_STEPS),
         math.ceil(total_words / MAX_CLIP_WORDS),
         1,
     )
-    n_clips = min(n_clips, len(steps))
-    groups = _balanced_groups(len(steps), n_clips)
-    dialogue = _assign_dialogue(lines, n_clips)
-    clips: list[ClipScript] = []
-    for pos, (grp, clip_lines) in enumerate(
-        zip(groups, dialogue, strict=True), start=1
-    ):
-        chunk = [steps[i] for i in grp]
-        words = sum(ln.word_count for ln in clip_lines)
-        clips.append(
-            ClipScript(
-                clip_index=pos,
-                duration_s=_estimate_duration(len(chunk), words),
-                omni_prompt=compose_omni_prompt(chunk, clip_lines),
-                step_indices=[s.step_index for s in chunk],
-                dialogue_line_ids=[ln.line_id for ln in clip_lines],
-                opening_state=chunk[0].pre_state,
-                closing_state=chunk[-1].post_state,
-            )
+    groups = partition_steps([s.key_action for s in steps], wanted)
+    dialogue = _assign_dialogue(lines, len(groups))
+    clips = [
+        make_clip(pos, [steps[i] for i in grp], clip_lines)
+        for pos, (grp, clip_lines) in enumerate(
+            zip(groups, dialogue, strict=True), start=1
         )
+    ]
     return chain_continuity(clips)
 
 
@@ -169,7 +161,10 @@ def finalize_clips(
     ]
     clips = chain_continuity(_attach_unclaimed(clips, lines, claimed))
     words = {ln.line_id: ln.word_count for ln in lines}
-    issues = validate_scene_clips(scene_id, [s.step_index for s in steps], clips, words)
+    keys = frozenset(s.step_index for s in steps if s.key_action)
+    issues = validate_scene_clips(
+        scene_id, [s.step_index for s in steps], clips, words, keys
+    )
     if clips and not issues:
         return clips
     logger.warning(
