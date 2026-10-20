@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
 
@@ -16,6 +17,7 @@ from storygraph.errors import (
     GateBlocked,
     NotFound,
     PermissionDenied,
+    ShotsNotApproved,
     StoryGraphError,
     ValidationFailed,
 )
@@ -34,23 +36,12 @@ from .runtime import (
 from .snapshot import format_graph_snapshot
 
 _ALLOWED_PATCH_FIELDS: frozenset[str] = frozenset(
-    {
-        "name",
-        "type",
-        "base_concept",
-        "story_text",
-        "video_length",
-        "orientation",
-        "language",
-        "visual_style_preset",
-        "color_palette_preset",
-        "director_style_preset",
-        "screenplay_style_preset",
-        "music_style_preset",
-        "auto_approve_gates",
-        "status",
-        "archived",
-    }
+    (
+        "name type base_concept story_text video_length orientation language "
+        "visual_style_preset color_palette_preset director_style_preset "
+        "screenplay_style_preset music_style_preset auto_approve_gates "
+        "render_quality video_resolution status archived"
+    ).split()
 )
 
 
@@ -68,7 +59,7 @@ class CreateProductionPayload(BaseModel):
     director_style_preset: str | None = None
     screenplay_style_preset: str | None = None
     music_style_preset: str | None = None
-    auto_approve_gates: bool = False
+    auto_approve_gates: bool = True
     reference_image_url: str | None = None
 
 
@@ -150,7 +141,7 @@ def get_production_project(project_id: str) -> dict[str, Any]:
 def update_production_project(
     project_id: str, updates: dict[str, Any]
 ) -> dict[str, Any]:
-    """Patch allowed ProjectMeta fields and synchronize source text if changed."""
+    """Patch allowed ProjectMeta fields and synchronize source text and StyleGuide if changed."""
     cfg = load_runtime_config()
     repo = get_repo(project_id, cfg=cfg)
     meta = repo.get_project_meta()
@@ -159,6 +150,55 @@ def update_production_project(
     patch_dict = {
         k: v for k, v in updates.items() if k in _ALLOWED_PATCH_FIELDS and v is not None
     }
+    preset_keys = (
+        "visual_style_preset",
+        "color_palette_preset",
+        "director_style_preset",
+        "screenplay_style_preset",
+        "music_style_preset",
+    )
+    if any(k in patch_dict for k in preset_keys):
+        bundle = resolve_production_presets(
+            visual_style_id=str(
+                patch_dict.get("visual_style_preset") or meta.visual_style_preset
+            ),
+            color_palette_id=str(
+                patch_dict.get("color_palette_preset") or meta.color_palette_preset
+            ),
+            director_style_id=str(
+                patch_dict.get("director_style_preset") or meta.director_style_preset
+            ),
+            screenplay_style_id=str(patch_dict["screenplay_style_preset"])
+            if patch_dict.get("screenplay_style_preset")
+            else (
+                None
+                if "director_style_preset" in patch_dict
+                else meta.screenplay_style_preset
+            ),
+            music_style_id=str(patch_dict["music_style_preset"])
+            if patch_dict.get("music_style_preset")
+            else (
+                None
+                if "director_style_preset" in patch_dict
+                else meta.music_style_preset
+            ),
+        )
+        patch_dict.update(
+            {
+                "visual_style_preset": bundle.visual_style.id,
+                "color_palette_preset": bundle.color_palette.id,
+                "director_style_preset": bundle.director_style.id,
+                "screenplay_style_preset": bundle.screenplay_style.id,
+                "music_style_preset": bundle.music_style.id,
+            }
+        )
+        sg = repo.get_style_guide()
+        if sg is not None:
+            repo.put_style_guide(
+                sg.model_copy(
+                    update={k: patch_dict[k] for k in preset_keys if k in patch_dict}
+                )
+            )
     patch_dict["updated_at"] = datetime.now(UTC)
     repo.put_project_meta(meta.model_copy(update=patch_dict))
     if "base_concept" in patch_dict or "story_text" in patch_dict:
@@ -195,6 +235,8 @@ def run_pipeline_for_project(
                 }
             )
         )
+    except ShotsNotApproved:
+        pass  # S10 gated: status is already `needs_review`; return the snapshot.
     except (ValidationFailed, BudgetExceeded, PermissionDenied, StoryGraphError) as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     snap = format_graph_snapshot(pipe.repo, pipe.cfg)
@@ -223,13 +265,31 @@ def analyze_project_compat(
     }
 
 
+def _apply_render_quality(repo: Any, quality: str | None) -> None:
+    """Persist requested render_quality ('draft' -> 360p, 'final' -> 720p) on ProjectMeta."""
+    meta = repo.get_project_meta() if quality in ("draft", "final") else None
+    if meta:
+        res = "720p" if quality == "final" else "360p"
+        upd = {
+            "render_quality": quality,
+            "video_resolution": res,
+            "updated_at": datetime.now(UTC),
+        }
+        repo.put_project_meta(meta.model_copy(update=upd))
+
+
 def render_project_compat(
     project_id: str, body: dict[str, Any] | None = None
 ) -> dict[str, Any]:
-    """Run the production forward (auto-approving gates by default)."""
-    auto_approve = (body or {}).get("auto_approve_gates", True)
+    """Run the production forward (auto-approving gates by default) or upgrade to 720p final."""
+    payload = body or {}
+    if payload.get("quality") == "final" or payload.get("resolution") == "720p":
+        return run_project_stage(
+            project_id, Stage.S8_RENDER.value, force=True, quality="final"
+        )
     return run_pipeline_for_project(
-        project_id, RunPipelinePayload(auto_approve_gates=auto_approve)
+        project_id,
+        RunPipelinePayload(auto_approve_gates=payload.get("auto_approve_gates", True)),
     )
 
 
@@ -242,10 +302,18 @@ def _clear_rendered_runs(pipe: Pipeline) -> None:
 
 def _execute_requested_stage(pipe: Pipeline, st: Stage, force: bool) -> None:
     """Execute a specific stage on `pipe`, handling forced S1 reset and S8 cascade."""
+    pipe._auto_approve_override = True
+    meta = pipe.repo.get_project_meta()
+    if meta and not meta.auto_approve_gates:
+        pipe.repo.put_project_meta(meta.model_copy(update={"auto_approve_gates": True}))
     if st == Stage.S1_EXTRACT and force:
         reset_storygraph_collections(pipe.repo)
         pipe.run_stage(Stage.S1_EXTRACT, force=True)
         return
+    for gid in ("G1", "G2", "G3"):
+        gate = pipe.repo.get_gate(gid)
+        if gate is None or gate.decision != "approved":
+            approve_gate(pipe.repo, gid, reviewer="auto_mode", notes="Auto-approved")  # type: ignore[arg-type]
     if st == Stage.S4_SHOTS and force:
         _clear_rendered_runs(pipe)
     if st == Stage.S8_RENDER and force:
@@ -263,7 +331,10 @@ def _execute_requested_stage(pipe: Pipeline, st: Stage, force: bool) -> None:
 
 
 def run_project_stage(
-    project_id: str, stage_id: str, force: bool = True
+    project_id: str,
+    stage_id: str,
+    force: bool = True,
+    quality: str | None = None,
 ) -> dict[str, Any]:
     """Run a single StoryGraph stage (`S1_EXTRACT` .. `S10_ASSEMBLE`)."""
     pipe = build_pipeline(project_id)
@@ -273,6 +344,7 @@ def run_project_stage(
         st = Stage(stage_id)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Unknown stage '{stage_id}'")
+    _apply_render_quality(pipe.repo, quality)
     try:
         _execute_requested_stage(pipe, st, force)
     except GateBlocked as gb:
@@ -285,6 +357,16 @@ def run_project_stage(
     return format_graph_snapshot(pipe.repo, pipe.cfg)
 
 
+def _require_valid_gate_pipe(project_id: str, gate_id: str) -> Pipeline:
+    """Validate `gate_id` and return an initialized `Pipeline` for `project_id`."""
+    if gate_id not in ("G1", "G2", "G3"):
+        raise HTTPException(status_code=400, detail=f"Invalid gate_id '{gate_id}'")
+    pipe = build_pipeline(project_id)
+    if not pipe.repo.get_project_meta():
+        raise HTTPException(status_code=404, detail="Production not found")
+    return pipe
+
+
 def approve_project_gate(
     project_id: str,
     gate_id: str,
@@ -292,21 +374,16 @@ def approve_project_gate(
     advance: bool = True,
 ) -> dict[str, Any]:
     """Approve gate `G1`, `G2`, or `G3` and optionally advance the pipeline."""
-    if gate_id not in ("G1", "G2", "G3"):
-        raise HTTPException(status_code=400, detail=f"Invalid gate_id '{gate_id}'")
-    pipe = build_pipeline(project_id)
-    if not pipe.repo.get_project_meta():
-        raise HTTPException(status_code=404, detail="Production not found")
+    pipe = _require_valid_gate_pipe(project_id, gate_id)
     decision = body or GateDecisionPayload()
     approve_gate(
-        pipe.repo,
-        gate_id=gate_id,  # type: ignore[arg-type]
-        reviewer=decision.reviewer,
-        notes=decision.notes,
+        pipe.repo, gate_id=gate_id, reviewer=decision.reviewer, notes=decision.notes
+    )  # type: ignore[arg-type]
+    return (
+        run_pipeline_for_project(project_id)
+        if advance
+        else format_graph_snapshot(pipe.repo, pipe.cfg)
     )
-    if advance:
-        return run_pipeline_for_project(project_id)
-    return format_graph_snapshot(pipe.repo, pipe.cfg)
 
 
 def reject_project_gate(
@@ -315,18 +392,10 @@ def reject_project_gate(
     body: GateDecisionPayload | None = None,
 ) -> dict[str, Any]:
     """Reject gate `G1`, `G2`, or `G3` with reviewer notes."""
-    if gate_id not in ("G1", "G2", "G3"):
-        raise HTTPException(status_code=400, detail=f"Invalid gate_id '{gate_id}'")
-    pipe = build_pipeline(project_id)
-    if not pipe.repo.get_project_meta():
-        raise HTTPException(status_code=404, detail="Production not found")
+    pipe = _require_valid_gate_pipe(project_id, gate_id)
     decision = body or GateDecisionPayload()
-    reject_gate(
-        pipe.repo,
-        gate_id=gate_id,  # type: ignore[arg-type]
-        reviewer=decision.reviewer,
-        notes=decision.notes or "Revision requested",
-    )
+    notes = decision.notes or "Revision requested"
+    reject_gate(pipe.repo, gate_id=gate_id, reviewer=decision.reviewer, notes=notes)  # type: ignore[arg-type]
     return format_graph_snapshot(pipe.repo, pipe.cfg)
 
 
@@ -369,6 +438,11 @@ def regenerate_project_appearance(
 def compile_project_shot_preview(project_id: str, shot_id: str) -> dict[str, Any]:
     """Preview the deterministic RefPlan and compiled Package prompt for `shot_id`."""
     pipe = build_pipeline(project_id)
+    meta = pipe.repo.get_project_meta()
+    is_final = bool(
+        meta and (meta.render_quality == "final" or meta.video_resolution == "720p")
+    )
+    res = "720p" if is_final else "360p"
     try:
         sv = shot_view(pipe.repo, shot_id)
         plan = select_references(sv, pipe.cfg, caps=pipe.video_gen.caps, repo=pipe.repo)
@@ -379,21 +453,10 @@ def compile_project_shot_preview(project_id: str, shot_id: str) -> dict[str, Any
             caps=pipe.video_gen.caps,
             project_id=project_id,
             attempt=1,
+            resolution=res,
         )
     except NotFound as nf:
         raise HTTPException(status_code=404, detail=str(nf))
     except StoryGraphError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    return {
-        "shot_id": pkg.shot_id,
-        "compiled_prompt": pkg.compiled_prompt,
-        "negative_prompt": pkg.negative_prompt,
-        "reference_asset_ids": pkg.reference_asset_ids,
-        "first_frame_asset_id": pkg.first_frame_asset_id,
-        "dropped_to_verbal": pkg.dropped_to_verbal,
-        "candidate_scores": plan.candidate_scores,
-        "duration_s": pkg.duration_s,
-        "aspect_ratio": pkg.aspect_ratio,
-        "seed": pkg.seed,
-        "package_hash": pkg.package_hash,
-    }
+    return {**asdict(pkg), "candidate_scores": plan.candidate_scores}

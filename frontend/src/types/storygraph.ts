@@ -68,9 +68,23 @@ export interface StoryGraphInteractionStep {
   action_verb: string
   target_id?: string | null
   target_kind?: string
+  pre_state?: string
+  contact_mechanics?: string
+  post_state?: string
+  supported_by?: string
   environment_reaction?: string
   sound_trigger?: string
   description: string
+}
+
+export interface StoryGraphClipScript {
+  clip_index: number
+  duration_s: number
+  omni_prompt: string
+  step_indices: number[]
+  dialogue_line_ids: string[]
+  opening_state: string
+  closing_state: string
 }
 
 export interface StoryGraphScene {
@@ -84,6 +98,7 @@ export interface StoryGraphScene {
   interaction_steps?: StoryGraphInteractionStep[]
   ambient_environment_cue?: string
   weather_and_air?: string
+  clips?: StoryGraphClipScript[]
 }
 
 export interface StoryGraphDialogueLine {
@@ -109,6 +124,8 @@ export interface StoryGraphBeat {
   t_start_s: number
   t_end_s: number
   description: string
+  pre_state?: string
+  post_state?: string
 }
 
 export interface StoryGraphCastEntry {
@@ -122,6 +139,29 @@ export interface StoryGraphCameraSpec {
   angle?: string
   movement?: string
   lens_mm?: number
+}
+
+export interface StoryGraphLightingSpec {
+  key: string
+  fill: string
+  practicals: string
+  direction: string
+  quality: string
+}
+
+export interface StoryGraphColorGradeSpec {
+  shades: string[]
+  contrast: string
+  saturation: string
+  temperature: string
+}
+
+export interface StoryGraphShotLook {
+  lighting: StoryGraphLightingSpec
+  color_grade: StoryGraphColorGradeSpec
+  mood: string
+  composition: string
+  camera_motion_intent: string
 }
 
 export interface StoryGraphShot {
@@ -142,12 +182,16 @@ export interface StoryGraphShot {
   action_focus_sfx?: string[]
   entry_motion_vector?: string
   exit_motion_vector?: string
+  clip_index?: number | null
+  look?: StoryGraphShotLook | null
 }
 
 export interface StoryGraphQaScores {
   wardrobe_match: number
   setting_match: number
   action_achieved: number
+  physics_plausibility?: number
+  object_permanence?: number
   dialogue_wer: number
 }
 
@@ -199,6 +243,30 @@ export interface StoryGraphAuditEntry {
 }
 
 export type StoryGraphStateFact = Record<string, unknown>
+
+/** Shot whose latest generation run is approved and can be stitched by S10. */
+export interface ReadyShot {
+  shot_id: string
+  run_id: string
+  video_uri: string
+}
+
+/** Shot preventing a strict S10 assembly (not approved / flagged by QA). */
+export interface BlockingShot {
+  shot_id: string
+  latest_status: string
+  failure_reasons: string[]
+  artifact_flags: string[]
+}
+
+/** GET /productions/{id}/assembly-readiness response. */
+export interface AssemblyReadiness {
+  ready_shots: ReadyShot[]
+  blocking: BlockingShot[]
+  is_complete: boolean
+}
+
+export type AssembleMode = 'approved_only' | 'strict'
 
 export interface StoryGraphValidationIssue {
   code: string

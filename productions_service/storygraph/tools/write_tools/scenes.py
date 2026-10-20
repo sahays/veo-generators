@@ -7,6 +7,7 @@ from typing import Any
 from ...audit import append_audit
 from ...errors import NotFound
 from ...schema import (
+    ClipScript,
     DialogueLine,
     Event,
     InteractionStep,
@@ -176,6 +177,7 @@ def update_scene_script(
     summary: str,
     mood: str,
     interaction_steps: list[InteractionStep | dict[str, Any]] | None = None,
+    clips: list[ClipScript | dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     assert_can_write(ctx.role, "Scene")
     prev = ctx.repo.get_scene(scene_id)
@@ -187,6 +189,11 @@ def update_scene_script(
             s if isinstance(s, InteractionStep) else InteractionStep.model_validate(s)
             for s in interaction_steps
         ]
+    if clips is not None:
+        updates["clips"] = [
+            c if isinstance(c, ClipScript) else ClipScript.model_validate(c)
+            for c in clips
+        ]
     saved = ctx.repo.put_scene(prev.model_copy(update=updates))
     append_audit(
         ctx.repo.store,
@@ -195,7 +202,7 @@ def update_scene_script(
         saved.id,
         prev.version,
         saved.version,
-        f"Updated screenplay summary & mood for {scene_id}",
+        f"Updated screenplay summary, mood & {len(updates.get('clips', []))} clips for {scene_id}",
     )
     return saved.model_dump(mode="json")
 

@@ -276,6 +276,10 @@ class Repo:
         """Persist a Shot after deterministically resolving appearance_ids and denormalizing ref_ids."""
         return persist_shot_with_refs(self, shot)
 
+    def delete_shot(self, shot_id: str) -> None:
+        """Remove a Shot that no longer maps to any screenwriter clip."""
+        self.store.delete("shots", shot_id)
+
     def mark_shots_stale_referencing(self, ref_id: str, reason: str) -> list[str]:
         return self._propagate_staleness(ref_id, reason)
 

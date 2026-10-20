@@ -5,7 +5,10 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from ..adapters.base import VLMProvider
-from ..adapters.media_frames import extract_representative_frames_png
+from ..adapters.media_frames import (
+    detect_frame_anomalies,
+    extract_representative_frames_png,
+)
 from ..config import Config
 from ..repo import Repo
 from ..schema import GenerationRun, QAReport, Role, Shot, Status
@@ -96,6 +99,7 @@ _SEVERE_EXACT_FLAGS = {
     "anatomy_glitch",
     "text_overlay",
     "frozen_frame",
+    "start_frame_bleed",
     "extreme_blur",
     "cast_dropout",
     "hallucinated_character",
@@ -104,6 +108,16 @@ _SEVERE_EXACT_FLAGS = {
     "costume_inconsistency",
     "spatial_axis_flip",
     "character_overlap",
+    "object_materialized",
+    "object_vanished",
+    "duplicate_prop",
+    "prop_part_missing",
+    "self_moving_object",
+    "prop_inverted",
+    "rigid_body_deformation",
+    "floating_object",
+    "hallucinated_object",
+    "wrong_support_surface",
 }
 _SEVERE_FLAG_PREFIXES = (
     "missing_character",
@@ -132,17 +146,40 @@ def _build_clip_qa_prompt(sview: ShotView, shot: Shot, attempt: int) -> str:
         for cid, ent in sview.cast_entities.items()
         if cid in sview.cast_appearances
     ]
-    beats_desc = [b.description for b in shot.beats]
+    props_desc = [
+        f"{sview.prop_entities[pid].canonical_name if pid in sview.prop_entities else pid} "
+        f"[t=0.0s supported_by={sview.prop_states.get(pid, {}).get('supported_by', 'in scene')}; "
+        f"state={sview.prop_states.get(pid, {}).get('pre_state', '')} -> {sview.prop_states.get(pid, {}).get('post_state', '')}]"
+        for pid in shot.prop_ids
+    ]
+    beats_desc = [
+        f"{b.description}"
+        + (
+            f" [{b.pre_state} -> {b.post_state}]"
+            if b.pre_state and b.post_state
+            else ""
+        )
+        for b in shot.beats
+    ]
     return (
         f"Evaluate rendered clip for shot_id={shot.id} (attempt={attempt}).\n"
         f"StyleGuide: {sview.style_guide.visual_medium} (palette: {sview.style_guide.palette}).\n"
         f"Expected Cast Appearances & Blocking (judge ONLY against these S3 designs, NOT external assumptions): {cast_desc}.\n"
+        f"Expected Props & Physical Support States: {props_desc}.\n"
         f"Expected location: {sview.location.canonical_name} ({sview.location_appearance.visual_description}).\n"
         f"Expected action beats: {beats_desc}.\n"
         "Verify every expected cast member is visible (flag 'missing_character_<id>' if absent or 'duplicate_character_<id>' if cloned) "
         "and their left/center/right order matches expected blocking (flag 'spatial_axis_flip' or 'character_overlap' if violated). "
+        "Audit physical plausibility (`physics_plausibility`) and object permanence (`object_permanence`) across all timeline frames: "
+        "flag 'start_frame_bleed' if Frame 0 shows a reference sheet, split-screen card, or static title card; "
+        "flag 'object_materialized' if a table, character, or prop appears out of thin air mid-clip; "
+        "flag 'object_vanished' if a held bowl/prop is dropped and disappears instead of being placed on a counter/table; "
+        "flag 'duplicate_prop' if a pulled towel or held prop simultaneously remains hanging on its hook; "
+        "flag 'prop_part_missing' or 'rigid_body_deformation' if a chair loses its backrest or warps; "
+        "flag 'self_moving_object' if a chair or prop slides itself under a table without hand contact; "
+        "and flag 'floating_object' or 'wrong_support_surface' if a prop hangs in mid-air. "
         "Set dialogue_wer = 0.0 (static frames do not include audio). "
-        "Account for shallow depth-of-field bokeh on MCU/CU shots and 3-frame static sampling. "
+        "Account for shallow depth-of-field bokeh on MCU/CU shots and multi-frame static sampling. "
         "Return all similarity/match scores strictly in the [0.0, 1.0] range."
     )
 
@@ -156,6 +193,8 @@ def _normalize_qa_report(
     s_score = _norm01(raw_report.setting_match)
     a_score = _norm01(raw_report.action_achieved)
     c_score = _norm01(raw_report.continuity_prev_shot)
+    p_score = _norm01(raw_report.physics_plausibility)
+    o_score = _norm01(raw_report.object_permanence)
     f_sims = {k: _norm01(val) for k, val in raw_report.face_similarity.items()}
     d_wer = _norm01(raw_report.dialogue_wer) if is_mock else 0.0
     severe_flags = _extract_severe_flags(raw_report.artifact_flags)
@@ -166,6 +205,8 @@ def _normalize_qa_report(
             "setting_match": s_score,
             "action_achieved": a_score,
             "continuity_prev_shot": c_score,
+            "physics_plausibility": p_score,
+            "object_permanence": o_score,
             "dialogue_wer": d_wer,
         }
     )
@@ -202,6 +243,14 @@ def _collect_qa_failures(
         (
             report.action_achieved < cfg.qa.action_vlm_min,
             f"Action score ({report.action_achieved:.2f}) < {cfg.qa.action_vlm_min}",
+        ),
+        (
+            report.physics_plausibility < cfg.qa.physics_vlm_min,
+            f"Physics plausibility ({report.physics_plausibility:.2f}) < {cfg.qa.physics_vlm_min}",
+        ),
+        (
+            report.object_permanence < cfg.qa.permanence_vlm_min,
+            f"Object permanence ({report.object_permanence:.2f}) < {cfg.qa.permanence_vlm_min}",
         ),
         (
             report.dialogue_wer > cfg.qa.dialogue_wer_max,
@@ -258,6 +307,11 @@ def evaluate_clip_qa(
     prompt = _build_clip_qa_prompt(sview, shot, run.attempt)
     raw_report = vlm.review(images=ref_images, prompt=prompt, schema=QAReport)
     is_mock = vlm.__class__.__name__ == "MockVLMProvider"
+    if not is_mock:
+        cv_flags = detect_frame_anomalies(frames)
+        if cv_flags:
+            merged_flags = list(dict.fromkeys([*raw_report.artifact_flags, *cv_flags]))
+            raw_report = raw_report.model_copy(update={"artifact_flags": merged_flags})
     report, severe_flags = _normalize_qa_report(raw_report, cfg, is_mock)
     req_cont = bool(
         shot.continue_from_last_frame and sview.prev_shot_last_frame is not None

@@ -19,6 +19,27 @@ class ValidationFailed(StoryGraphError):
         super().__init__(f"{len(issues)} validation error(s)")
 
 
+class ShotsNotApproved(ValidationFailed):
+    """Raised when final assembly is attempted while shots lack an APPROVED clip.
+
+    `blocking` maps each blocking node id (usually a shot id) to its human-readable reasons.
+    """
+
+    def __init__(self, blocking: dict[str, list[str]], context: str = "") -> None:
+        self.blocking = blocking
+        super().__init__(
+            [
+                f"{node_id}: {'; '.join(reasons) or 'not approved'}"
+                for node_id, reasons in blocking.items()
+            ]
+        )
+        prefix = f"{context}: " if context else ""
+        self.args = (
+            f"{prefix}assembly blocked by {len(blocking)} unapproved item(s): "
+            + ", ".join(blocking),
+        )
+
+
 class GateBlocked(StoryGraphError):
     """Raised when the pipeline reaches a human gate that is not yet approved."""
 

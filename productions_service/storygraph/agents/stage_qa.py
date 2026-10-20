@@ -7,6 +7,7 @@ from typing import Final
 
 from ..config import Config
 from ..graph_verifier import build_graph_index, verify_storygraph
+from ..physics import remediate_physical_causality
 from ..presets import resolve_production_presets
 from ..repo import Repo
 from ..schema import (
@@ -20,6 +21,7 @@ from ..schema import (
 from ..state import appearance_for, rebuild_state_facts, state_at
 from ..tools import write_tools as wt
 from ..tools.registry import ToolContext
+from .stage_qa_clips import remediate_scene_clips
 
 _STAGE_TO_ROLE: Final[dict[str, Role]] = {
     "S1_EXTRACT": Role.STORY_ARCHITECT,
@@ -218,7 +220,11 @@ def _remediate_s4_shots(repo: Repo, fixed: list[str]) -> None:
             if held and held in idx.entities and held not in updated_props:
                 updated_props.append(held)
                 changed = True
-            app = appearance_for(repo, c.entity_id, sh.story_order)
+            app = (
+                appearance_for(repo, c.entity_id, sh.story_order)
+                if repo.list_appearances(entity_id=c.entity_id)
+                else None
+            )
             if app and c.appearance_id != app.id:
                 new_cast[c_idx] = c.model_copy(update={"appearance_id": app.id})
                 changed = True
@@ -228,7 +234,13 @@ def _remediate_s4_shots(repo: Repo, fixed: list[str]) -> None:
             if sc and sh.location_id != sc.location_id
             else sh.location_id
         )
-        if new_loc != sh.location_id:
+        loc_app = (
+            appearance_for(repo, new_loc, sh.story_order)
+            if repo.list_appearances(entity_id=new_loc)
+            else None
+        )
+        new_loc_app_id = loc_app.id if loc_app else sh.location_appearance_id
+        if new_loc != sh.location_id or new_loc_app_id != sh.location_appearance_id:
             changed = True
         if changed:
             repo.put_shot(
@@ -237,6 +249,7 @@ def _remediate_s4_shots(repo: Repo, fixed: list[str]) -> None:
                         "cast": new_cast,
                         "prop_ids": updated_props,
                         "location_id": new_loc,
+                        "location_appearance_id": new_loc_app_id,
                     }
                 )
             )
@@ -278,11 +291,58 @@ def _remediate_s5_music(repo: Repo, cfg: Config, fixed: list[str]) -> None:
             fixed.append(f"Attached foley, environmental, and action SFX to {sh.id}.")
 
 
+_ROLE_TO_STAGE: Final[dict[str, str]] = {
+    str(Role.STORY_ARCHITECT): "S1_EXTRACT",
+    str(Role.SCRIPT_SUPERVISOR): "S1_EXTRACT",
+    str(Role.SCREENWRITER): "S2_SCREENPLAY",
+    str(Role.DESIGNER): "S3_DESIGN",
+    str(Role.CHARACTER_DESIGNER): "S3_DESIGN",
+    str(Role.LOCATION_DESIGNER): "S3_DESIGN",
+    str(Role.OBJECT_DESIGNER): "S3_DESIGN",
+    str(Role.DIRECTOR): "S4_SHOTS",
+    str(Role.MUSIC_DIRECTOR): "S5_MUSIC",
+}
+
+
+def stages_to_redo_for_issues(
+    qa_issues: list[object],
+    val_errors: list[object],
+    open_crs: list[object] | None = None,
+) -> list[str]:
+    """Map QA issues, validation errors, and open ChangeRequests to ordered upstream stages (`S1..S5`)."""
+    needed: set[str] = set()
+    for item in [*qa_issues, *val_errors]:
+        code = str(getattr(item, "code", ""))
+        if code.startswith("S1_") or code == "V_NO_STYLE_GUIDE":
+            needed.add("S1_EXTRACT")
+        elif code.startswith("S2_") or code == "V_NO_SCENES":
+            needed.add("S2_SCREENPLAY")
+            if code.startswith("S2_CLIP"):
+                needed.add(
+                    "S4_SHOTS"
+                )  # shots are 1:1 with clips; re-block after re-arranging
+        elif code.startswith("S3_") or code in (
+            "V_UNAPPROVED_APPEARANCE",
+            "V_UNLINKED_ASSET",
+        ):
+            needed.add("S3_DESIGN")
+        elif code.startswith("S4_") or code.startswith("V_"):
+            needed.add("S4_SHOTS")
+        elif code.startswith("S5_"):
+            needed.add("S5_MUSIC")
+    for cr in open_crs or []:
+        st = _ROLE_TO_STAGE.get(str(getattr(cr, "to_role", "")))
+        if st:
+            needed.add(st)
+    order = ["S1_EXTRACT", "S2_SCREENPLAY", "S3_DESIGN", "S4_SHOTS", "S5_MUSIC"]
+    return [s for s in order if s in needed]
+
+
 def run_stage_qa_and_remediate(
     repo: Repo,
     cfg: Config,
     stage: str,
-    max_iterations: int = 2,
+    max_iterations: int = 3,
 ) -> StageQaReport:
     """Run deterministic O(V+E) Stage QA after `stage`, auto-remediate issues, and persist `StageQaReport`."""
     target_role = _STAGE_TO_ROLE.get(stage, Role.CRITIC)
@@ -294,7 +354,10 @@ def run_stage_qa_and_remediate(
         _remediate_s1_extract(repo, cfg, remediated_actions)
         if stage in ("S2_SCREENPLAY", "S3_DESIGN", "S4_SHOTS", "S5_MUSIC"):
             _remediate_s2_screenplay(repo, cfg, remediated_actions)
+            remediate_physical_causality(repo, remediated_actions, include_shots=False)
+            remediate_scene_clips(repo, cfg, remediated_actions)
         if stage in ("S4_SHOTS", "S5_MUSIC"):
+            remediate_physical_causality(repo, remediated_actions, include_shots=True)
             _remediate_s4_shots(repo, remediated_actions)
         if stage == "S5_MUSIC":
             _remediate_s5_music(repo, cfg, remediated_actions)

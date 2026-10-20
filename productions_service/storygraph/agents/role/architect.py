@@ -68,7 +68,11 @@ def _resolve_active_bundle(ctx: ToolContext, story_text: str) -> ProductionPrese
         v_id = "chibi_stylized"
         c_id = c_id or "pastel_dreamy"
     return resolve_production_presets(
-        visual_style_id=v_id, color_palette_id=c_id, director_style_id=d_id
+        visual_style_id=v_id,
+        color_palette_id=c_id,
+        director_style_id=d_id,
+        screenplay_style_id=meta.screenplay_style_preset if meta else None,
+        music_style_id=meta.music_style_preset if meta else None,
     )
 
 
@@ -172,10 +176,10 @@ def run_story_architect(
     bundle = _resolve_active_bundle(ctx, story_text)
     prompt = (
         f"{bundle.format_global_instruction_block()}\n\n"
-        "Expand this story concept into a StyleGuide, Scene outline (2 to 4 scenes), and chronological Event timeline.\n"
+        "Expand this story concept into a StyleGuide, Scene outline (as many scenes as the story naturally requires — no artificial scene or video length cap), and an unhurried chronological Event timeline.\n"
         "CRITICAL RULES:\n"
         "1. Faithfully match the active Visual Style & Color Palette presets in `visual_medium`, `palette`, `lens_language`, and `lighting_rules`.\n"
-        "2. Every scene MUST represent the actual plot, locations, and characters of the user's story.\n"
+        "2. Every scene and event MUST represent the actual plot, locations, props, and characters of the user's story with zero rushing: decompose multi-stage physical actions (approach, grasp, move, place, release) into distinct sequential Event nodes, keeping every prop in one known place at a time.\n"
         "3. Use snake_case IDs (`scn_001`, `loc_<name>`, `char_<name>`, `obj_<name>`, `evt_001`).\n"
         "4. Use authentic Hindi character spellings (`Ram`, `Lakshman`, `Ravan`, `Shurpanakha`, `Sita`, `Jatayu`, `Shabari` — never 'Rama', 'Lakshmana', 'Ravana', or 'Surpanakha').\n\n"
         f"STORY:\n{story_text}"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -92,9 +93,12 @@ class VideoProviderCfg(BaseModel):
         )
     )
     max_reference_images: int = 3
-    max_duration_s: float = 8.0
-    max_prompt_chars: int = 4000
+    max_duration_s: float = 10.0
+    max_prompt_chars: int | None = None
     supports_first_frame: bool = True
+    # Omni binds the previous shot's last frame via the `<FIRST_FRAME>` prompt tag ("tag");
+    # "drop" omits it and relies on the text continuity state.
+    first_frame_mode: Literal["tag", "drop"] = "tag"
 
     supports_audio_prompt: bool = True
 
@@ -104,7 +108,11 @@ class QACfg(BaseModel):
     wardrobe_vlm_min: float = 0.70
     setting_vlm_min: float = 0.70
     action_vlm_min: float = 0.70
+    physics_vlm_min: float = 0.75
+    permanence_vlm_min: float = 0.75
     dialogue_wer_max: float = 0.15
+    # Optional cheap-LLM rewrite of unclassified critic reasons into target states.
+    retry_rewrite_llm: bool = False
 
 
 class CapsCfg(BaseModel):
@@ -116,6 +124,16 @@ class CapsCfg(BaseModel):
     project_cost_cap_usd: float = 50.0
 
 
+class AssemblyCfg(BaseModel):
+    """Final-assembly music bed settings (MusicCue audio mixed under stitched clips)."""
+
+    music_enabled: bool = True
+    music_gain: float = 0.35
+    music_crossfade_s: float = 1.5
+    duck_threshold: float = 0.05
+    duck_ratio: float = 8.0
+
+
 class Config(BaseModel):
     store: StoreCfg = StoreCfg()
     blobs: BlobCfg = BlobCfg()
@@ -124,6 +142,7 @@ class Config(BaseModel):
     video: VideoProviderCfg = VideoProviderCfg()
     qa: QACfg = QACfg()
     caps: CapsCfg = CapsCfg()
+    assembly: AssemblyCfg = AssemblyCfg()
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> Config:

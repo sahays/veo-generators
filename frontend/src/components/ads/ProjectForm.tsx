@@ -28,7 +28,7 @@ const DEFAULT_PROJECT_FORM_VALUES: ProjectFormData = {
   director_style_preset: 'wonder_humanist_blocking',
   screenplay_style_preset: 'classical_causal_chain',
   music_style_preset: 'symphonic_leitmotif_natural_foley',
-  auto_approve_gates: false,
+  auto_approve_gates: true,
 }
 
 function mapProjectToFormValues(project: Project): ProjectFormData {
@@ -44,7 +44,7 @@ function mapProjectToFormValues(project: Project): ProjectFormData {
     director_style_preset: project.director_style_preset || 'wonder_humanist_blocking',
     screenplay_style_preset: project.screenplay_style_preset || 'classical_causal_chain',
     music_style_preset: project.music_style_preset || 'symphonic_leitmotif_natural_foley',
-    auto_approve_gates: Boolean(project.auto_approve_gates),
+    auto_approve_gates: true,
   }
 }
 
@@ -61,7 +61,7 @@ function buildProjectPayload(data: ProjectFormData): Partial<Project> {
     director_style_preset: data.director_style_preset || 'wonder_humanist_blocking',
     screenplay_style_preset: data.screenplay_style_preset,
     music_style_preset: data.music_style_preset,
-    auto_approve_gates: Boolean(data.auto_approve_gates),
+    auto_approve_gates: true,
   }
 }
 

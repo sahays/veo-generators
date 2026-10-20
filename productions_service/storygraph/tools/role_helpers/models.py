@@ -8,8 +8,10 @@ from ...schema import (
     ActionBeat,
     CameraSpec,
     CastInShot,
+    ClipScript,
     EntityType,
     InteractionStep,
+    ShotLook,
     StateEffect,
 )
 
@@ -114,6 +116,7 @@ class ScreenwriterOutput(BaseModel):
     mood: str
     interaction_steps: list[InteractionStep] = Field(default_factory=list)
     dialogue_lines: list[DialogueLineDraft] = Field(default_factory=list)
+    clips: list[ClipScript] = Field(default_factory=list)
 
 
 class ShotDraft(BaseModel):
@@ -126,6 +129,8 @@ class ShotDraft(BaseModel):
     cast: list[CastInShot] = Field(default_factory=list)
     prop_ids: list[str] = Field(default_factory=list)
     camera: CameraSpec = Field(default_factory=CameraSpec)
+    look: ShotLook | None = None
+    clip_index: int | None = None
     beats: list[ActionBeat] = Field(default_factory=list)
     dialogue_ids: list[str] = Field(default_factory=list)
     entry_motion_vector: str = "stationary"

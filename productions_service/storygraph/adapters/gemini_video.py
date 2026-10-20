@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import logging
 import os
-import re
+import threading
 import time
 from typing import Any
 
@@ -16,54 +16,23 @@ from google.genai import types
 from ..compile import Package
 from ..config import VideoProviderCfg
 from ..errors import StoryGraphError
+from .omni.fallback import (
+    FallbackRecord,
+    LadderStep,
+    build_ladder,
+    log_downgrade,
+    make_record,
+)
+from .omni.inputs import OmniRequest, build_omni_request
+from .omni.package import RenderPackage
+from .omni.safety import SafetyProfile, select_safety_profile
 
 logger = logging.getLogger(__name__)
-
-_SAFETY_REPLACEMENTS: list[tuple[str, str]] = [
-    (r"AVOID:.*$", "AVOID: photorealism, dark shadows, monochrome."),
-    (r"\bmortally\s+wounded\b", "weary and resting"),
-    (r"\bwounded\b", "weary"),
-    (r"\bdying\b", "resting peacefully"),
-    (r"\bdead\b", "resting"),
-    (r"\bsacrifice\b", "noble devotion"),
-    (r"\bfading\s+with\s+final\s+strength\b", "speaking softly"),
-    (r"\bwith\s+fading\s+breath\b", "with gentle voice"),
-    (r"\bremaining\s+strength\b", "gentle strength"),
-    (r"\bbroken\s+feathers\b", "ruffled feathers"),
-    (r"\bfallen\b", "resting"),
-    (r"\bweeping\s+gently\b", "speaking with gentle emotion"),
-    (r"\bweeping\b", "emotional"),
-    (r"\btearful\b", "emotional"),
-    (r"\bterrified\b", "startled"),
-    (r"\bpanic\b", "surprise"),
-    (r"\bstruggles\s+against\b", "steps back from"),
-    (r"\babducts?\b", "leads away"),
-    (r"\bfled\b", "traveled"),
-    (r"\bdemon\s+king\b", "ruler"),
-    (r"बलिदान", "समर्पण"),
-    (r"दुष्ट", "रावण"),
-]
 
 
 def _get_field(obj: Any, key: str) -> Any:
     """Read `key` from a dict or object attribute."""
     return obj.get(key) if isinstance(obj, dict) else getattr(obj, key, None)
-
-
-def _sanitize_omni_prompt(text: str, aggressive: bool = False) -> str:
-    """Sanitize mythology conflict/injury terms that trigger Vertex AI Responsible AI false positives."""
-    out = text
-    for pat, rep in _SAFETY_REPLACEMENTS:
-        out = re.sub(pat, rep, out, flags=re.IGNORECASE | re.DOTALL)
-    if aggressive:
-        out = re.sub(r"\bAVOID:[^\n]*", "", out, flags=re.IGNORECASE)
-        out = re.sub(
-            r"\b(?:sorrowful|sorrow|grief|grieved|distress|desperate|grave\s+act|vulture)\b",
-            "gentle",
-            out,
-            flags=re.IGNORECASE,
-        )
-    return out.strip()
 
 
 def _find_video_in_steps(interaction: Any) -> Any | None:
@@ -95,90 +64,60 @@ def _extract_omni_video_payload(interaction: Any) -> tuple[str | None, bytes | N
 def _build_omni_input_blocks(
     package: Package, clean_prompt: str, max_refs: int
 ) -> list[dict[str, Any]]:
-    """Construct Gemini Omni text + reference image input blocks for `package`."""
-    blocks: list[dict[str, Any]] = [{"type": "text", "text": clean_prompt}]
-    image_uris: list[str] = []
-    ff_uri = package.first_frame_uri
-    if ff_uri and ff_uri.startswith("gs://"):
-        image_uris.append(ff_uri)
-    for r_uri in package.reference_uris:
-        if r_uri and r_uri.startswith("gs://") and r_uri not in image_uris:
-            image_uris.append(r_uri)
-    for img_uri in image_uris[:max_refs]:
-        blocks.append({"type": "image", "uri": img_uri, "mime_type": "image/png"})
-    return blocks
+    """Interleaved (label, image) Omni input blocks for `package` (first frame tag-bound)."""
+    return build_omni_request(package, clean_prompt, max_refs).blocks
 
 
-def _retry_omni_interaction(
-    client: Any,
-    model_id: str,
-    package: Package,
-    input_blocks: list[dict[str, Any]],
-    fmt_block: dict[str, Any],
+def _profile_for(package: Package) -> SafetyProfile:
+    if isinstance(package, RenderPackage):
+        return select_safety_profile(package.visual_style_preset, package.language)
+    return select_safety_profile("", "")
+
+
+def _send(
+    client: Any, model_id: str, request: OmniRequest, fmt_block: dict[str, Any]
 ) -> Any:
-    """Retry Omni video interaction with aggressive safety prompt and reduced references."""
-    agg_prompt = _sanitize_omni_prompt(package.compiled_prompt, aggressive=True)
-    single_ref = [{"type": "text", "text": agg_prompt}, *input_blocks[1:2]]
-    task = "image_to_video" if len(single_ref) > 1 else "text_to_video"
-    try:
-        return client.interactions.create(
-            model=model_id,
-            background=False,
-            input=single_ref,
-            response_format=[fmt_block],
-            generation_config={"video_config": {"task": task}},
-        )
-    except Exception as second_exc:  # noqa: BLE001
-        logger.warning(
-            "Omni single-ref retry failed; falling back to text_to_video",
-            extra={
-                "shot_id": package.shot_id,
-                "model": model_id,
-                "error": str(second_exc),
-            },
-        )
-        return client.interactions.create(
-            model=model_id,
-            background=False,
-            input=[{"type": "text", "text": agg_prompt}],
-            response_format=[fmt_block],
-            generation_config={"video_config": {"task": "text_to_video"}},
-        )
+    gen_cfg: dict[str, Any] = (
+        {"video_config": {"task": request.task}} if request.task else {}
+    )
+    return client.interactions.create(
+        model=model_id,
+        background=False,
+        input=request.blocks,
+        response_format=[fmt_block],
+        generation_config=gen_cfg,
+    )
 
 
 def _create_omni_interaction(
     client: Any,
     model_id: str,
     package: Package,
-    input_blocks: list[dict[str, Any]],
+    ladder: list[LadderStep],
     fmt_block: dict[str, Any],
-) -> Any:
-    """Invoke `client.interactions.create` with progressive safety/reference fallbacks."""
-    video_task = "image_to_video" if len(input_blocks) > 1 else "text_to_video"
-    try:
-        return client.interactions.create(
-            model=model_id,
-            background=False,
-            input=input_blocks,
-            response_format=[fmt_block],
-            generation_config={"video_config": {"task": video_task}},
-        )
-    except Exception as first_exc:  # noqa: BLE001
-        logger.warning(
-            "Omni primary interaction failed; retrying with aggressive safety prompt",
-            extra={
-                "shot_id": package.shot_id,
-                "model": model_id,
-                "error": str(first_exc),
-            },
-        )
-        return _retry_omni_interaction(
-            client, model_id, package, input_blocks, fmt_block
-        )
+) -> tuple[Any, int, list[str]]:
+    """Walk the fallback ladder; return (interaction, rung index used, errors seen)."""
+    errors: list[str] = []
+    profile = _profile_for(package)
+    for idx, step in enumerate(ladder):
+        try:
+            return _send(client, model_id, step.request, fmt_block), idx, errors
+        except Exception as exc:  # provider raises untyped errors
+            errors.append(f"{step.level}: {exc}")
+            if idx + 1 >= len(ladder):
+                raise
+            log_downgrade(package, model_id, profile, ladder, idx + 1, str(exc))
+    raise StoryGraphError(f"Omni ladder empty for shot '{package.shot_id}'")
 
 
 class GeminiVideoGenerator:
-    """Renders video clips from compiled `Package` objects via Vertex AI Gemini Omni / Veo strictly without silent fallbacks."""
+    """Renders clips from compiled `Package`s via Vertex AI Gemini Omni / Veo.
+
+    Omni requests that the provider rejects are retried down an explicit ladder
+    (aggressive safety rewrite + single identity ref, then text-only). Every downgrade
+    is logged semantically and exposed via `pop_fallback(shot_id)` so the pipeline can
+    persist it on the GenerationRun; there are no unlogged fallbacks.
+    """
 
     def __init__(
         self,
@@ -189,6 +128,20 @@ class GeminiVideoGenerator:
         self.caps = caps or VideoProviderCfg()
         self.project = project or os.getenv("GOOGLE_CLOUD_PROJECT")
         self.location = location or os.getenv("VEO_REGION", "global")
+        self._fallbacks: dict[str, FallbackRecord] = {}
+        self._lock = threading.Lock()
+
+    def pop_fallback(self, shot_id: str) -> FallbackRecord | None:
+        """Return and clear the fallback record of the latest render of `shot_id`."""
+        with self._lock:
+            return self._fallbacks.pop(shot_id, None)
+
+    def _record_fallback(self, record: FallbackRecord | None, shot_id: str) -> None:
+        with self._lock:
+            if record is None:
+                self._fallbacks.pop(shot_id, None)
+            else:
+                self._fallbacks[shot_id] = record
 
     def _download_gs_uri(self, gs_uri: str) -> bytes | None:
         if not gs_uri.startswith("gs://"):
@@ -204,10 +157,15 @@ class GeminiVideoGenerator:
     ) -> bytes | None:
         client = genai.Client(vertexai=True, project=self.project, location="global")
         duration = max(3, min(10, round(package.duration_s or 5)))
+        resolution = (
+            package.resolution
+            if package.resolution in ("360p", "720p", "1080p")
+            else "360p"
+        )
         fmt_block: dict[str, Any] = {
             "type": "video",
             "aspect_ratio": aspect,
-            "resolution": "720p",
+            "resolution": resolution,
             "duration": f"{duration}s",
         }
         bucket = os.getenv("GCS_BUCKET")
@@ -217,13 +175,7 @@ class GeminiVideoGenerator:
                 f"gs://{bucket}/storygraph_renders/{package.shot_id}/"
             )
 
-        clean_prompt = _sanitize_omni_prompt(package.compiled_prompt)
-        blocks = _build_omni_input_blocks(
-            package, clean_prompt, self.caps.max_reference_images or 3
-        )
-        interaction = _create_omni_interaction(
-            client, model_id, package, blocks, fmt_block
-        )
+        interaction = self._run_ladder(client, model_id, package, fmt_block)
         interaction_id = str(_get_field(interaction, "id") or "")
         deadline = time.time() + 180
         while (
@@ -237,6 +189,28 @@ class GeminiVideoGenerator:
         if raw_bytes and len(raw_bytes) > 256:
             return raw_bytes
         return self._download_gs_uri(uri) if uri else None
+
+    def _run_ladder(
+        self, client: Any, model_id: str, package: Package, fmt_block: dict[str, Any]
+    ) -> Any:
+        self._record_fallback(None, package.shot_id)
+        profile = _profile_for(package)
+        ladder = build_ladder(
+            package,
+            profile,
+            self.caps.max_reference_images or 3,
+            self.caps.first_frame_mode,
+        )
+        interaction, used, errors = _create_omni_interaction(
+            client, model_id, package, ladder, fmt_block
+        )
+        record = (
+            make_record(package, model_id, profile, ladder, used, errors)
+            if used
+            else None
+        )
+        self._record_fallback(record, package.shot_id)
+        return interaction
 
     def _generate_veo(
         self, model_id: str, aspect: str, package: Package

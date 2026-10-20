@@ -10,6 +10,7 @@ from storygraph.adapters.mock import MockVLMProvider
 from storygraph.agents.critic import _normalize_qa_report, evaluate_clip_qa
 from storygraph.budget import select_references
 from storygraph.compile import compile_shot
+from storygraph.omni.spec import OmniClipSpec
 from storygraph.config import Config
 from storygraph.repo import Repo
 from storygraph.schema import (
@@ -226,11 +227,12 @@ def test_dialogue_partitioning_and_speaker_binding(
     pkg = compile_shot(
         sv, select_references(sv, default_cfg, repo=tmp_repo), default_cfg
     )
-    assert (
-        "SILENT LISTENER (mouth closed, listening attentively)" in pkg.compiled_prompt
-    )
-    assert "SPEAKING" in pkg.compiled_prompt and "[on left," in pkg.compiled_prompt
-    assert "REFERENCES:" in pkg.compiled_prompt
+    spec = OmniClipSpec.model_validate_json(pkg.compiled_prompt)
+    subj = {s.name: s for s in spec.subjects or []}
+    speakers = {s.speaker for s in spec.speech or []}
+    shabari = next(s for s in subj.values() if s.screen_pos == "left")
+    assert speakers == {shabari.id} and shabari.framing == "MS"
+    assert "lipsync_active_speaker_only" in spec.constraints
 
 
 def test_compile_budget_preserves_identity_and_props(
@@ -260,10 +262,13 @@ def test_compile_budget_preserves_identity_and_props(
     plan.dropped_to_verbal = ["Brass Compass: antique weathered pocket compass"]
     caps = default_cfg.video.model_copy(update={"max_prompt_chars": 950})
     pkg = compile_shot(sv, plan, default_cfg, caps=caps)
-    assert (
-        "cotton-candy blue" in pkg.compiled_prompt
-        and "Brass Compass" in pkg.compiled_prompt
-    )
+    full = compile_shot(sv, plan, default_cfg)
+    spec = OmniClipSpec.model_validate_json(pkg.compiled_prompt)
+    whole = OmniClipSpec.model_validate_json(full.compiled_prompt)
+    assert len(pkg.compiled_prompt) < len(full.compiled_prompt)
+    assert "cotton-candy blue" in full.compiled_prompt  # trimmed only under budget
+    assert spec.sequence == whole.sequence and spec.speech == whole.speech
+    assert "Brass Compass" in {o.name for o in spec.objects or []}
 
 
 def test_first_frame_slot_reservation_and_ordering(

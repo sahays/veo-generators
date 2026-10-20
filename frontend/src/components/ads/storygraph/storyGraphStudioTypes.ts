@@ -16,6 +16,9 @@ import type {
   StoryGraphStageRun,
 } from '@/types/project'
 import { useAdsProjectActions } from '../projects/useAdsProjectActions'
+import { PIPELINE_SUB_STAGES } from './cascade/pipelineStages'
+import { runStageWithRecovery, type StudioProjectsApi } from './cascade/stageRunner'
+import { useStageCascade } from './cascade/useStageCascade'
 
 export type ActiveStepId =
   | 's1_world'
@@ -84,35 +87,15 @@ export interface MacroStepCardDef {
   title: string
   subtitle: string
   icon: typeof User
-  gate?: 'G1' | 'G2' | 'G3'
   metricPrimary: string
   metricSecondary: string
   summaryText: string
   inputsSummary: string
-  kitchenSummary: string
   outputsSummary: string
   [key: string]: unknown
 }
 
-export const PIPELINE_SUB_STAGES: Array<{
-  id: string
-  short: string
-  label: string
-  role: string
-  stepGroup: ActiveStepId
-  gate?: 'G1' | 'G2' | 'G3'
-}> = [
-  { id: 'S1_EXTRACT', short: 'A1', label: 'Story Architect', role: 'STORY_ARCHITECT + SUPERVISOR', stepGroup: 's1_world', gate: 'G1' },
-  { id: 'S2_SCREENPLAY', short: 'A2', label: 'Screenplay Writer', role: 'ALGORITHMIC SCREENWRITER', stepGroup: 's2_scripts' },
-  { id: 'S3_DESIGN', short: 'A3', label: 'Design Studio', role: 'CHAR / LOC / OBJ DESIGNERS', stepGroup: 's3_images', gate: 'G2' },
-  { id: 'S4_SHOTS', short: 'A4', label: 'Film Director', role: 'DIRECTOR AGENT', stepGroup: 's4_s5_shots' },
-  { id: 'S5_MUSIC', short: 'A4b', label: 'Music & Foley Director', role: 'MUSIC + FOLEY + SFX', stepGroup: 's4_s5_shots', gate: 'G3' },
-  { id: 'S6_VALIDATE', short: 'A5', label: 'O(V+E) Graph Verifier', role: 'STAGE QA + V1–V13', stepGroup: 's6_s7_compile' },
-  { id: 'S7_COMPILE', short: 'A5b', label: 'Prompt Compiler', role: 'BUDGETER + JINJA2', stepGroup: 's6_s7_compile' },
-  { id: 'S8_RENDER', short: 'A6', label: 'Cinematographer (Veo)', role: 'GEMINI OMNI / VEO', stepGroup: 's8_s10_videos' },
-  { id: 'S9_QA', short: 'A6b', label: 'Clip VLM Critic', role: 'CRITIC VLM', stepGroup: 's8_s10_videos' },
-  { id: 'S10_ASSEMBLE', short: 'A6c', label: 'Master Editor', role: 'FFMPEG ASSEMBLER', stepGroup: 's8_s10_videos' },
-]
+export { PIPELINE_SUB_STAGES }
 
 export function deriveStageAndGateMaps(
   storyGraph: StoryGraphData | undefined,
@@ -130,8 +113,7 @@ export function deriveStageAndGateMaps(
   )
   const gatesById: Record<string, StoryGraphGate> = {}
   for (const g of storyGraph?.gates || []) gatesById[g.gate_id] = g
-  const pendingGate =
-    blockedGate || (['G1', 'G2', 'G3'].find((gid) => gatesById[gid]?.decision === 'pending') ?? null)
+  const pendingGate = blockedGate || null
   const activeError =
     errorMsg ||
     (pipelineStatus === 'failed' ? pipelineError || 'Pipeline execution failed' : null) ||
@@ -173,19 +155,19 @@ function buildWorldToDesignCards(
   const { characters, locations, objects, appearances, approvedAppearancesCount, auxiliaryAssets } = entityMaps
   return [
     {
-      id: 's1_world', stepNum: 'AGENT 01', stages: ['S1_EXTRACT'], primaryStage: 'S1_EXTRACT', title: 'Story Architect & Supervisor', subtitle: 'WORLD BIBLE · ENTITIES · STYLE LOCK', icon: User, gate: 'G1',
+      id: 's1_world', stepNum: 'AGENT 01', stages: ['S1_EXTRACT'], primaryStage: 'S1_EXTRACT', title: 'Story Architect & Supervisor', subtitle: 'WORLD BIBLE · ENTITIES · STYLE LOCK', icon: User,
       metricPrimary: `${characters.length + locations.length + objects.length} Canonical Entities`, metricSecondary: `${characters.length} Chars · ${locations.length} Locs · ${objects.length} Props · ${events.length} Events`,
-      summaryText: storyGraph?.style_guide?.visual_medium || 'Extracts canonical characters, locations, props, and locks 9.1–9.3 consistency rules.', inputsSummary: 'Story Brief · Visual Style & Color Palette · Directorial Preset', kitchenSummary: `Entity Provenance Graph · ${events.length} Causal Events · S1 Stage QA Verification`, outputsSummary: `${characters.length} Characters, ${locations.length} Locations, ${objects.length} Props & StyleGuide`,
+      summaryText: storyGraph?.style_guide?.visual_medium || 'Extracts canonical characters, locations, props, and locks 9.1–9.3 consistency rules.', inputsSummary: 'Story Brief · Visual Style & Color Palette · Directorial Preset', outputsSummary: `${characters.length} Characters, ${locations.length} Locations, ${objects.length} Props & StyleGuide`,
     },
     {
       id: 's2_scripts', stepNum: 'AGENT 02', stages: ['S2_SCREENPLAY'], primaryStage: 'S2_SCREENPLAY', title: 'Screenplay Writer', subtitle: 'ALGORITHMIC 1-ACTION-AT-A-TIME SCRIPT', icon: FileText,
       metricPrimary: `${scenes.length} Scenes · ${totalInteractionSteps || events.length} Steps`, metricSecondary: `${dialogueLines.length} Dialogue Lines · 1 Action/Step`,
-      summaryText: scenes[0]?.summary || 'Writes ordered, step-by-step character & environment interaction algorithms.', inputsSummary: 'Canonical Entities · Ordered StoryEvents · Auto-Bound Screenplay Style', kitchenSummary: `${totalInteractionSteps} Atomic InteractionSteps (Actor → Verb → Target → Env/Sound)`, outputsSummary: `${scenes.length} Structured Scenes & ${dialogueLines.length} Lip-Synced Dialogue Lines`,
+      summaryText: scenes[0]?.summary || 'Writes ordered, step-by-step character & environment interaction algorithms.', inputsSummary: 'Canonical Entities · Ordered StoryEvents · Auto-Bound Screenplay Style', outputsSummary: `${scenes.length} Structured Scenes & ${dialogueLines.length} Lip-Synced Dialogue Lines`,
     },
     {
-      id: 's3_images', stepNum: 'AGENT 03', stages: ['S3_DESIGN'], primaryStage: 'S3_DESIGN', title: 'Visual Design Studio', subtitle: '9.2 CHARACTER & 9.3 SCENE ANCHORS', icon: Sparkles, gate: 'G2',
+      id: 's3_images', stepNum: 'AGENT 03', stages: ['S3_DESIGN'], primaryStage: 'S3_DESIGN', title: 'Visual Design Studio', subtitle: '9.2 CHARACTER & 9.3 SCENE ANCHORS', icon: Sparkles,
       metricPrimary: `${appearances.length} Reference Sheets`, metricSecondary: `${approvedAppearancesCount}/${appearances.length} Approved · ${auxiliaryAssets.length} Composites`,
-      summaryText: 'Generates character identity sheets, location plates, and hero props verified by VLM Critic.', inputsSummary: 'Entity Visual Attributes · StyleGuide Medium · Color Palette Swatches', kitchenSummary: `Multi-Angle Turnarounds · VLM Identity Checks · ${auxiliaryAssets.length} Composite Plates`, outputsSummary: `${approvedAppearancesCount} Approved Reference Anchors for Downstream Conditioning`,
+      summaryText: 'Generates character identity sheets, location plates, and hero props verified by VLM Critic.', inputsSummary: 'Entity Visual Attributes · StyleGuide Medium · Color Palette Swatches', outputsSummary: `${approvedAppearancesCount} Approved Reference Anchors for Downstream Conditioning`,
     },
   ]
 }
@@ -200,19 +182,19 @@ function buildDirectionToVideoCards(
   const { activeGenerationRuns } = entityMaps
   return [
     {
-      id: 's4_s5_shots', stepNum: 'AGENT 04', stages: ['S4_SHOTS', 'S5_MUSIC'], primaryStage: 'S4_SHOTS', title: 'Film Director & Music Director', subtitle: 'CAMERA BLOCKING · FOLEY · AMBIENCE · SFX', icon: Film, gate: 'G3',
+      id: 's4_s5_shots', stepNum: 'AGENT 04', stages: ['S4_SHOTS', 'S5_MUSIC'], primaryStage: 'S4_SHOTS', title: 'Film Director & Music Director', subtitle: 'CAMERA BLOCKING · FOLEY · AMBIENCE · SFX', icon: Film,
       metricPrimary: `${shots.length} Directed Shots`, metricSecondary: `${musicCues.length} Cues · Foley, Wind & Action SFX`,
-      summaryText: 'Translates algorithmic steps into camera lenses, 9.1 motion vectors, footsteps, wind, and action SFX.', inputsSummary: 'Algorithmic InteractionSteps · Directorial Preset · Auto-Bound Soundscape', kitchenSummary: '180° Axis & Motion Vectors · Footsteps/Wind Foley · Action-Focus SFX', outputsSummary: `${shots.length} Camera-Blocked Shots & ${musicCues.length} Multi-Layer Audio Cues`,
+      summaryText: 'Translates algorithmic steps into camera lenses, 9.1 motion vectors, footsteps, wind, and action SFX.', inputsSummary: 'Algorithmic InteractionSteps · Directorial Preset · Auto-Bound Soundscape', outputsSummary: `${shots.length} Camera-Blocked Shots & ${musicCues.length} Multi-Layer Audio Cues`,
     },
     {
-      id: 's6_s7_compile', stepNum: 'AGENT 05', stages: ['S6_VALIDATE', 'S7_COMPILE'], primaryStage: 'S7_COMPILE', title: 'Graph Verifier & Prompt Compiler', subtitle: 'O(V+E) QA CRITIC · V1–V13 · JINJA2', icon: ShieldCheck,
-      metricPrimary: validationIssues.length === 0 ? 'O(V+E) Graph Verified' : `${validationIssues.length} Graph Alerts`, metricSecondary: `${qaReports.length} Stage QA Reports · ${auditLog.length} Audits`,
-      summaryText: 'Runs single-pass O(V+E) graph verification, shift-left QA remediation, and deterministic Jinja2 compilation.', inputsSummary: 'Complete StoryGraph (Entities, Scenes, Appearances, Shots, Audio Cues)', kitchenSummary: 'O(V+E) Missing-Asset & 9.1–9.3 Consistency Sweep · Reference Image Budgeter', outputsSummary: 'Verified ShotPromptPackages with SHA-256 Hashes & Reference Assets',
+      id: 's6_s7_compile', stepNum: 'AGENT 05', stages: ['S6_VALIDATE', 'S7_COMPILE'], primaryStage: 'S7_COMPILE', title: 'Graph Verifier & Prompt Compiler', subtitle: '3× ITERATIVE REVIEW · V1–V13 · JINJA2', icon: ShieldCheck,
+      metricPrimary: validationIssues.length === 0 ? 'O(V+E) Graph Verified' : `${validationIssues.length} Graph Alerts`, metricSecondary: `${qaReports.length} Stage Reviews · ${auditLog.length} Audits`,
+      summaryText: 'Reviews work across agents, redoes upstream steps up to 3× if flaws are found, and compiles prompts.', inputsSummary: 'Complete StoryGraph (Entities, Scenes, Appearances, Shots, Audio Cues)', outputsSummary: 'Verified ShotPromptPackages with SHA-256 Hashes & Reference Assets',
     },
     {
-      id: 's8_s10_videos', stepNum: 'AGENT 06', stages: ['S8_RENDER', 'S9_QA', 'S10_ASSEMBLE'], primaryStage: 'S8_RENDER', title: 'Cinematographer & Master Editor', subtitle: 'VEO RENDER · CLIP VLM QA · FFMPEG CUT', icon: Play,
+      id: 's8_s10_videos', stepNum: 'AGENT 06', stages: ['S8_RENDER', 'S9_QA', 'S10_ASSEMBLE'], primaryStage: 'S8_RENDER', title: 'Cinematographer & Master Editor', subtitle: 'VEO RENDER · PHYSICS VLM QA · FFMPEG CUT', icon: Play,
       metricPrimary: `${activeGenerationRuns.length}/${shots.length} Video Clips`, metricSecondary: finalVideoUrl ? 'Master Final Cut Stitched' : 'Awaiting Final Cut Render',
-      summaryText: 'Renders reference-conditioned Veo clips, extracts continuity frames, scores VLM QA, and stitches the master cut.', inputsSummary: 'Compiled ShotPromptPackages · Reference Sheets · Continuity Start Frames', kitchenSummary: 'Extracted Last Frames · VLM Clip QA (Wardrobe/Setting/Action/WER) · FFmpeg Normalize', outputsSummary: finalVideoUrl ? 'Stitched Master MP4 + Verified Shot Clips' : `${activeGenerationRuns.length} Rendered Shot Clips`,
+      summaryText: 'Renders reference-conditioned Veo clips, critically QAs physics & object permanence, and stitches the master cut.', inputsSummary: 'Compiled ShotPromptPackages · Reference Sheets · Continuity Start Frames', outputsSummary: finalVideoUrl ? 'Stitched Master MP4 + Physics-Verified Shot Clips' : `${activeGenerationRuns.length} Rendered Shot Clips`,
     },
   ]
 }
@@ -255,30 +237,54 @@ async function runWithBusyKey<T>(
   }
 }
 
+async function executePipelineForward(
+  projectsApi: StudioProjectsApi,
+  productionId: string,
+  completedStages: Set<string> | undefined,
+  onGraphUpdated: (snapshot: Project) => void,
+  setBusyAction: (s: string | null) => void,
+  setFailedStage: (s: string | null) => void,
+  setErrorMsg: (s: string | null) => void,
+  setIsRunningPipeline: (b: boolean) => void,
+) {
+  setIsRunningPipeline(true); setErrorMsg(null); setFailedStage(null)
+  const done = new Set(completedStages || [])
+  let currentSubId: string | null = null
+  try {
+    for (const sub of PIPELINE_SUB_STAGES) {
+      if (done.has(sub.id)) continue
+      currentSubId = sub.id; setBusyAction(sub.id)
+      const snap = await runStageWithRecovery(projectsApi, productionId, sub.id, false, onGraphUpdated)
+      onGraphUpdated(snap)
+      for (const sr of snap.story_graph?.stage_runs || []) if (sr.completed) done.add(sr.stage)
+    }
+  } catch (err) {
+    setFailedStage(currentSubId)
+    setErrorMsg(err instanceof Error ? err.message : 'Pipeline execution failed')
+  } finally {
+    setBusyAction(null); setIsRunningPipeline(false)
+  }
+}
+
 export function useStoryGraphStudioActions(
   productionId: string,
   onGraphUpdated: (snapshot: Project) => void,
+  completedStages?: Set<string>,
 ) {
   const { projects: projectsApi } = useAdsProjectActions()
   const [isRunningPipeline, setIsRunningPipeline] = useState(false)
   const [busyAction, setBusyAction] = useState<string | null>(null)
-  const [gateNotes, setGateNotes] = useState<Record<string, string>>({})
+  const [failedStage, setFailedStage] = useState<string | null>(null)
   const [compiledPreviews, setCompiledPreviews] = useState<Record<string, CompiledShotPreview>>({})
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-  const handleRunForward = (autoApprove = false) =>
-    runWithBusyKey('forward', (k) => setIsRunningPipeline(Boolean(k)), setErrorMsg, 'Pipeline execution failed', () =>
-      projectsApi.runStoryGraph(productionId, { auto_approve_gates: autoApprove ? true : undefined }), onGraphUpdated)
+  const handleRunForward = () =>
+    executePipelineForward(projectsApi, productionId, completedStages, onGraphUpdated, setBusyAction, setFailedStage, setErrorMsg, setIsRunningPipeline)
 
-  const handleRunStage = (stageId: string) =>
-    runWithBusyKey(stageId, setBusyAction, setErrorMsg, `Stage ${stageId} failed`, () =>
-      projectsApi.runStage(productionId, stageId), onGraphUpdated)
-
-  const handleGateDecision = (gateId: 'G1' | 'G2' | 'G3', decision: 'approve' | 'reject') =>
-    runWithBusyKey(`gate_${gateId}_${decision}`, setBusyAction, setErrorMsg, `Gate ${gateId} ${decision} failed`, () => {
-      const note = gateNotes[gateId]
-      return decision === 'approve' ? projectsApi.approveGate(productionId, gateId, note || undefined) : projectsApi.rejectGate(productionId, gateId, note || undefined)
-    }, (snap) => { setGateNotes((prev) => ({ ...prev, [gateId]: '' })); onGraphUpdated(snap) })
+  const handleRunStage = (stageId: string, quality?: 'draft' | 'final') => {
+    setFailedStage(null)
+    return runWithBusyKey(stageId, setBusyAction, (msg) => { if (msg) setFailedStage(stageId); setErrorMsg(msg) }, `Stage ${stageId} failed`, () => runStageWithRecovery(projectsApi, productionId, stageId, true, onGraphUpdated, quality), onGraphUpdated)
+  }
 
   const handleAppearanceAction = (appearanceId: string, action: 'approve' | 'regenerate') =>
     runWithBusyKey(`app_${appearanceId}_${action}`, setBusyAction, setErrorMsg, 'Appearance action failed', () =>
@@ -288,8 +294,10 @@ export function useStoryGraphStudioActions(
     runWithBusyKey(`compile_${shotId}`, setBusyAction, setErrorMsg, 'Shot compilation preview failed', () =>
       projectsApi.compileShot(productionId, shotId), (res) => setCompiledPreviews((prev) => ({ ...prev, [shotId]: res })))
 
+  const cascade = useStageCascade({ projectsApi, productionId, onGraphUpdated, setBusyAction, setFailedStage, setErrorMsg })
+
   return {
-    isRunningPipeline, busyAction, gateNotes, setGateNotes, compiledPreviews, errorMsg, setErrorMsg,
-    handleRunForward, handleRunStage, handleGateDecision, handleAppearanceAction, handleCompilePreview,
+    isRunningPipeline: isRunningPipeline || cascade.isCascading, busyAction, failedStage, compiledPreviews, errorMsg, setErrorMsg,
+    handleRunForward, handleRunStage: cascade.requestCascade, handleRetryStage: handleRunStage, handleAppearanceAction, handleCompilePreview, cascade,
   }
 }

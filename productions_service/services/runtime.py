@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 from storygraph.config import Config
 from storygraph.pipeline import Pipeline
+from storygraph.presets import resolve_production_presets
 from storygraph.repo import Repo
 from storygraph.schema import ProjectMeta
 from storygraph.store import (
@@ -83,38 +84,86 @@ def _seed_meta_from_firestore_doc(
     project_id: str, pdata: dict[str, object]
 ) -> tuple[ProjectMeta, str]:
     """Construct ProjectMeta and base_concept from a legacy Firestore document."""
-    base_concept = str(pdata.get("base_concept") or "")
+    base_concept = str(pdata.get("base_concept") or pdata.get("story_text") or "")
     ptype = str(pdata.get("type") or "movie")
     orient = str(pdata.get("orientation") or "16:9")
+    bundle = resolve_production_presets(
+        visual_style_id=str(pdata["visual_style_preset"])
+        if pdata.get("visual_style_preset")
+        else None,
+        color_palette_id=str(pdata["color_palette_preset"])
+        if pdata.get("color_palette_preset")
+        else None,
+        director_style_id=str(pdata["director_style_preset"])
+        if pdata.get("director_style_preset")
+        else None,
+        screenplay_style_id=str(pdata["screenplay_style_preset"])
+        if pdata.get("screenplay_style_preset")
+        else None,
+        music_style_id=str(pdata["music_style_preset"])
+        if pdata.get("music_style_preset")
+        else None,
+    )
+    auto_gates = pdata.get("auto_approve_gates")
     meta = ProjectMeta(
         id=project_id,
         name=str(pdata.get("name") or project_id),
         type=ptype if ptype in ("movie", "advertizement", "social") else "movie",  # type: ignore[arg-type]
         base_concept=base_concept,
         story_text=base_concept,
-        video_length=str(pdata.get("video_length") or "16"),
+        video_length=str(pdata.get("video_length") or "auto"),
         orientation=orient if orient in ("16:9", "9:16") else "16:9",  # type: ignore[arg-type]
         language=str(pdata.get("language") or "en-IN"),
-        auto_approve_gates=bool(pdata.get("auto_approve_gates", False)),
+        visual_style_preset=bundle.visual_style.id,
+        color_palette_preset=bundle.color_palette.id,
+        director_style_preset=bundle.director_style.id,
+        screenplay_style_preset=bundle.screenplay_style.id,
+        music_style_preset=bundle.music_style.id,
+        auto_approve_gates=bool(auto_gates) if auto_gates is not None else True,
     )
     return meta, base_concept
+
+
+def _sync_existing_meta_from_firestore(
+    repo: Repo, existing: ProjectMeta, pdata: dict[str, object]
+) -> None:
+    """Sync creative presets and brief metadata from `productions/{id}` into an existing `ProjectMeta`."""
+    seeded, _ = _seed_meta_from_firestore_doc(existing.id, pdata)
+    updates: dict[str, object] = {}
+    for k in (
+        "visual_style_preset",
+        "color_palette_preset",
+        "director_style_preset",
+        "screenplay_style_preset",
+        "music_style_preset",
+    ):
+        if pdata.get(k) and getattr(existing, k) != getattr(seeded, k):
+            updates[k] = getattr(seeded, k)
+    if updates:
+        repo.put_project_meta(existing.model_copy(update=updates))
+        sg = repo.get_style_guide()
+        if sg is not None:
+            repo.put_style_guide(sg.model_copy(update=updates))
 
 
 def _auto_seed_firestore_project(
     repo: Repo, store: FirestoreStore, cfg: Config, project_id: str
 ) -> None:
-    """Seed StoryGraph metadata from an existing Firestore production document when missing."""
+    """Seed or sync StoryGraph metadata from an existing Firestore production document."""
     try:
-        doc = store._root.get()
+        prod_doc = store._db.collection("productions").document(project_id).get()
+        doc = prod_doc if prod_doc.exists else store._root.get()
         if not doc.exists:
-            doc = store._db.collection("productions").document(project_id).get()
-        if doc.exists:
-            meta, base_concept = _seed_meta_from_firestore_doc(
-                project_id, doc.to_dict() or {}
-            )
+            return
+        pdata = doc.to_dict() or {}
+        existing = repo.get_project_meta()
+        if existing is None:
+            meta, base_concept = _seed_meta_from_firestore_doc(project_id, pdata)
             repo.put_project_meta(meta)
             repo.put_source_text(base_concept)
             Pipeline(repo=repo, cfg=cfg).ingest_story(base_concept)
+        else:
+            _sync_existing_meta_from_firestore(repo, existing, pdata)
     except Exception as exc:
         logger.warning(
             "Failed to auto-seed StoryGraph from Firestore",
@@ -133,7 +182,7 @@ def get_repo(project_id: str, cfg: Config | None = None) -> Repo:
     c = cfg or load_runtime_config()
     store, blobs = _build_store_and_blobs(project_id, c)
     repo = Repo(store=store, blobs=blobs)
-    if repo.get_project_meta() is None and isinstance(store, FirestoreStore):
+    if isinstance(store, FirestoreStore):
         _auto_seed_firestore_project(repo, store, c, project_id)
     return repo
 
@@ -178,6 +227,7 @@ def reset_storygraph_collections(repo: Repo) -> None:
                 update={
                     "status": "in_progress",
                     "current_stage": "S1_EXTRACT",
+                    "auto_approve_gates": True,
                     "final_video_uri": None,
                     "final_video_url": None,
                     "error_message": None,

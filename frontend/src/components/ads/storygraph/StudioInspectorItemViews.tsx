@@ -5,11 +5,13 @@ import type {
   StoryGraphAsset,
   StoryGraphAttributeValue,
   StoryGraphCastEntry,
+  StoryGraphScene,
 } from '@/types/project'
 import type {
   CompiledShotPreview,
   SelectedInspectorItem,
 } from './storyGraphStudioTypes'
+import { ShotLookPanel } from './ShotLookPanel'
 
 export const AppearanceInspectorView = ({
   item,
@@ -170,6 +172,16 @@ export const VideoRunInspectorView = ({
         <span>Setting: {formatQaPct(item.data.run.qa_scores.setting_match)}%</span>
         <span>Action: {formatQaPct(item.data.run.qa_scores.action_achieved)}%</span>
         <span>WER: {(item.data.run.qa_scores.dialogue_wer * 100).toFixed(1)}%</span>
+        {typeof item.data.run.qa_scores.physics_plausibility === 'number' && (
+          <span className="text-emerald-400">
+            Physics: {formatQaPct(item.data.run.qa_scores.physics_plausibility)}%
+          </span>
+        )}
+        {typeof item.data.run.qa_scores.object_permanence === 'number' && (
+          <span className="text-emerald-400">
+            Permanence: {formatQaPct(item.data.run.qa_scores.object_permanence)}%
+          </span>
+        )}
       </div>
     )}
 
@@ -189,11 +201,13 @@ export const ShotAndEntityInspectorView = ({
   busyAction,
   compiledPreviews,
   onCompilePreview,
+  scenes,
 }: {
   selectedItem: SelectedInspectorItem
   busyAction: string | null
   compiledPreviews: Record<string, CompiledShotPreview>
   onCompilePreview: (shotId: string) => void
+  scenes?: StoryGraphScene[]
 }) =>
   selectedItem.kind === 'shot' ? (
     <div className="space-y-3 text-xs">
@@ -222,6 +236,7 @@ export const ShotAndEntityInspectorView = ({
           {selectedItem.data.shot.exit_motion_vector || 'locked'}
         </div>
       </div>
+      <ShotLookPanel shot={selectedItem.data.shot} scenes={scenes} />
       {((selectedItem.data.shot.foley_sfx?.length || 0) > 0 ||
         (selectedItem.data.shot.environmental_sfx?.length || 0) > 0 ||
         (selectedItem.data.shot.action_focus_sfx?.length || 0) > 0) && (

@@ -105,6 +105,8 @@ export type ProjectStatus =
   | 'awaiting_g2'
   | 'awaiting_g3'
   | 'completed'
+  | 'completed_partial'
+  | 'needs_review'
   | 'failed'
 
 export interface SystemResourceInfo {

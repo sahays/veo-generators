@@ -9,7 +9,6 @@ import {
   Share2,
   Globe,
   CheckSquare,
-  Square,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button, Card } from '@/components/Common'
@@ -146,49 +145,26 @@ const IndicativeDurationCard = ({
   videoLength: ProjectFormData['video_length']
   setValue: UseFormSetValue<ProjectFormData>
 }) => {
-  const isAuto = videoLength === 'auto'
+  void profile
+  void videoLength
   return (
-    <Card title="Target Duration (Indicative)" icon={Clock}>
+    <Card title="Pacing & Duration" icon={Clock}>
       <div className="space-y-2.5">
-        <div className="flex items-center justify-between gap-2 pb-1 border-b border-border/50">
+        <div className="flex items-center justify-between gap-2 pb-1">
           <Button
             variant="unstyled"
             type="button"
-            onClick={() => setValue('video_length', isAuto ? profile.defaultDuration : 'auto')}
-            className={cn(
-              'inline-flex items-center gap-2 px-2.5 py-1.5 rounded-[5px] border text-xs font-bold transition-all',
-              isAuto
-                ? 'bg-accent/10 border-accent text-accent-dark shadow-sm'
-                : 'border-border text-muted-foreground hover:border-accent/40',
-            )}
+            onClick={() => setValue('video_length', 'auto')}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-[5px] border bg-accent/10 border-accent text-accent-dark shadow-sm text-xs font-bold transition-all"
           >
-            {isAuto ? <CheckSquare size={14} className="text-accent-dark" /> : <Square size={14} />}
-            <span>Auto (Let Story Content Decide Length)</span>
+            <CheckSquare size={14} className="text-accent-dark" />
+            <span>Auto — Story-Driven Length (No Time Cap)</span>
           </Button>
-          <span className="text-[10px] font-mono text-muted-foreground">
-            {isAuto ? 'Auto-Paced' : `${videoLength}s Target`}
-          </span>
+          <span className="text-[10px] font-mono text-muted-foreground">Unhurried Pacing</span>
         </div>
-        <div className="flex flex-wrap gap-2.5">
-          {profile.indicativeDurations.map((opt) => (
-            <Button
-              key={opt.value}
-              variant="unstyled"
-              type="button"
-              onClick={() => setValue('video_length', opt.value)}
-              className={cn(
-                'flex-1 min-w-[90px] px-3 py-2 rounded-[5px] border text-left transition-all',
-                videoLength === opt.value
-                  ? 'btn-primary text-white border-transparent'
-                  : 'border-border hover:border-accent/50 text-muted-foreground',
-              )}
-            >
-              <div className="text-xs font-bold">{opt.label}</div>
-              <div className="text-[9px] opacity-80">{opt.tag}</div>
-            </Button>
-          ))}
-        </div>
-        <p className="text-[10px] text-muted-foreground leading-snug">{profile.durationNote}</p>
+        <p className="text-[10px] text-muted-foreground leading-snug">
+          Each physical interaction step and dialogue beat receives its own unhurried 6–8s shot with zero artificial video length cap.
+        </p>
       </div>
     </Card>
   )
@@ -261,14 +237,13 @@ export const DurationAndAspectGrid = ({
 
 export const LanguageAndGateModeCard = ({
   language,
-  autoApproveGates,
   setValue,
 }: {
   language: ProjectFormData['language']
-  autoApproveGates: boolean
+  autoApproveGates?: boolean
   setValue: UseFormSetValue<ProjectFormData>
 }) => (
-  <Card title="Spoken Language & Studio Gate Mode" icon={Globe}>
+  <Card title="Spoken Language & Autonomous Pipeline Mode" icon={Globe}>
     <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {PRODUCTION_LANGUAGES.map((langOpt) => (
@@ -291,27 +266,14 @@ export const LanguageAndGateModeCard = ({
       </div>
       <div className="pt-3 border-t border-border/50 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-bold text-foreground">Human-in-the-Loop Gate Mode</p>
+          <p className="text-xs font-bold text-foreground">Autonomous Iterative Agent Pipeline (Auto Mode)</p>
           <p className="text-[10px] text-muted-foreground">
-            Pause for review at Gate G1 (Entities), Gate G2 (Reference Sheets), and Gate G3 (Shots & Prompts), or auto-approve all gates.
+            Agents autonomously review and redo upstream steps up to 3× before video rendering, followed by critical Physics & Object Permanence Video QA.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {[
-            { val: false, label: 'Interactive Gates (G1 · G2 · G3)' },
-            { val: true, label: 'Auto-Approve Gates' },
-          ].map((opt) => (
-            <Button
-              key={String(opt.val)}
-              type="button"
-              size="xs"
-              variant={autoApproveGates === opt.val ? 'primary' : 'outline'}
-              onClick={() => setValue('auto_approve_gates', opt.val)}
-            >
-              {opt.label}
-            </Button>
-          ))}
-        </div>
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/15 border border-emerald-500/35 text-emerald-400 text-[10px] font-mono font-bold uppercase">
+          Auto · 3× Review & Physics QA
+        </span>
       </div>
     </div>
   </Card>

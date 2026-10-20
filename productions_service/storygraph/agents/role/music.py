@@ -108,6 +108,8 @@ def run_music_director(
         visual_style_id=meta.visual_style_preset if meta else None,
         color_palette_id=meta.color_palette_preset if meta else None,
         director_style_id=meta.director_style_preset if meta else None,
+        screenplay_style_id=meta.screenplay_style_preset if meta else None,
+        music_style_id=meta.music_style_preset if meta else None,
     )
     scenes = ctx.repo.list_scenes()
     shots = ctx.repo.list_shots()

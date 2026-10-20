@@ -5,9 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
+from .clips.graph_checks import clip_stage_issues
 from .config import Config
+from .physics import verify_physical_causality
 from .repo import Repo
-from .schema import (
+from .schema import (  # fmt: skip
     Appearance,
     Asset,
     DialogueLine,
@@ -23,13 +25,8 @@ from .schema import (
 from .state import state_at
 
 _STAGE_RANK: Final[dict[str, int]] = {
-    "S1_EXTRACT": 1,
-    "S2_SCREENPLAY": 2,
-    "S3_DESIGN": 3,
-    "S4_SHOTS": 4,
-    "S5_MUSIC": 5,
-    "S6_VALIDATE": 6,
-}
+    "S1_EXTRACT": 1, "S2_SCREENPLAY": 2, "S3_DESIGN": 3, "S4_SHOTS": 4, "S5_MUSIC": 5, "S6_VALIDATE": 6,
+}  # fmt: skip
 
 _POS_COORD: Final[dict[str, int]] = {"left": -1, "center": 0, "right": 1}
 
@@ -425,6 +422,13 @@ def verify_storygraph(
         _verify_s1_extract(repo, idx, issues)
     if rank >= 2:
         _verify_s2_screenplay(idx, issues)
+        chk = rank >= 4
+        clip_args = (idx.scenes, idx.dialogues, idx.shots, chk)
+        cast_src = (list(idx.entities.values()), idx.appearances_by_entity)
+        issues.extend(clip_stage_issues(*clip_args, *cast_src))
+        verify_physical_causality(
+            idx.scenes, idx.events, idx.shots, idx.entities, issues, check_shots=chk
+        )
     if rank >= 3:
         _verify_s3_design(idx, issues)
     if rank >= 4:

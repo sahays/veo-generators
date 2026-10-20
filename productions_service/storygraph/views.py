@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from .errors import NotFound
+from .physics import resolve_prop_states_for_shot
 from .repo import Repo
 from .schema import (
     Appearance,
@@ -12,6 +13,7 @@ from .schema import (
     DialogueLine,
     Entity,
     Event,
+    GenerationRun,
     MusicCue,
     Scene,
     Shot,
@@ -62,6 +64,7 @@ class ShotView(BaseModel):
     prop_entities: dict[str, Entity] = Field(default_factory=dict)
     prop_appearances: dict[str, Appearance] = Field(default_factory=dict)
     prop_assets: dict[str, list[Asset]] = Field(default_factory=dict)
+    prop_states: dict[str, dict[str, str]] = Field(default_factory=dict)
     dialogue_lines: list[DialogueLine] = Field(default_factory=list)
     music_cue: MusicCue | None = None
     prev_shot_last_frame: Asset | None = None
@@ -188,6 +191,26 @@ def _resolve_props_for_shot(
     return prop_entities, prop_appearances, prop_assets
 
 
+def generation_run_rank(r: GenerationRun) -> tuple[int, int, float, int]:
+    """Return a deterministic comparison tuple ranking `GenerationRun` quality (higher is better)."""
+    is_approved = 1 if r.status == Status.APPROVED else 0
+    sc = r.qa_scores
+    if sc is None:
+        return (is_approved, 1, 0.0, int(r.attempt))
+    bad_frame = bool(
+        {"style_drift", "frozen_frame", "start_frame_bleed"} & set(sc.artifact_flags)
+    )
+    quality = (
+        float(sc.physics_plausibility)
+        + float(sc.object_permanence)
+        + float(sc.action_achieved)
+        + float(sc.setting_match)
+        + float(sc.wardrobe_match)
+        - 0.25 * len(sc.artifact_flags)
+    )
+    return (is_approved, 0 if bad_frame else 1, round(quality, 4), int(r.attempt))
+
+
 def _resolve_prev_shot_last_frame(repo: Repo, shot: Shot) -> Asset | None:
     if not shot.continue_from_last_frame:
         return None
@@ -197,10 +220,16 @@ def _resolve_prev_shot_last_frame(repo: Repo, shot: Shot) -> Asset | None:
     for idx, s in enumerate(scene_shots):
         if s.id == shot.id and idx > 0:
             prev_s = scene_shots[idx - 1]
-            runs = repo.list_generation_runs(shot_id=prev_s.id)
-            for r in reversed(runs):
-                if r.status == Status.APPROVED and r.extracted_last_frame_asset_id:
-                    return repo.get_asset(r.extracted_last_frame_asset_id)
+            runs = [
+                r
+                for r in repo.list_generation_runs(shot_id=prev_s.id)
+                if r.extracted_last_frame_asset_id
+            ]
+            for r in sorted(runs, key=generation_run_rank, reverse=True):
+                if generation_run_rank(r)[1] == 1 and r.extracted_last_frame_asset_id:
+                    ast = repo.get_asset(r.extracted_last_frame_asset_id)
+                    if ast is not None:
+                        return ast
     return None
 
 
@@ -253,6 +282,7 @@ def shot_view(repo: Repo, shot_id: str) -> ShotView:
         prop_entities=p_ents,
         prop_appearances=p_apps,
         prop_assets=p_assets,
+        prop_states=resolve_prop_states_for_shot(repo, scene, shot),
         dialogue_lines=dlines,
         music_cue=mcue,
         prev_shot_last_frame=_resolve_prev_shot_last_frame(repo, shot),

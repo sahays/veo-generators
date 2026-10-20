@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from .clips.graph_checks import collect_clip_issues
 from .config import Config
 from .repo import Repo
 from .schema import Shot, Status
@@ -207,8 +208,10 @@ def validate_shot(
         msg = f"Shot '{shot.id}' has continue_from_last_frame=True without matching previous shot location"
         issues.append(ValidationIssue("V11", "warn", shot.id, msg))
     if shot.stale:
-        msg = f"Shot '{shot.id}' is marked stale ({shot.stale_reason or 'upstream asset changed'})"
-        issues.append(ValidationIssue("V13", "error", shot.id, msg))
+        # Stale = existing clips are outdated; S8 re-renders it and assembly blocks it
+        # until then, so this must not block pre-render validation (S6).
+        msg = f"Shot '{shot.id}' is marked stale ({shot.stale_reason or 'upstream asset changed'}); S8 will re-render it"
+        issues.append(ValidationIssue("V13", "warn", shot.id, msg))
     return issues
 
 
@@ -252,4 +255,15 @@ def validate_all(repo: Repo, cfg: Config) -> list[ValidationIssue]:
         if ev.id not in covered_events:
             msg = f"Event '{ev.id}' (order {ev.story_order}) is not covered by any Shot"
             issues.append(ValidationIssue("V10", "warn", ev.id, msg))
+    clip_issues = collect_clip_issues(
+        repo.list_scenes(),
+        repo.list_dialogue(),
+        shots,
+        check_shots=True,
+        entities=repo.list_entities(),
+        appearances=repo.list_appearances(),
+    )
+    issues.extend(
+        ValidationIssue(ci.code, "error", ci.node_id, ci.message) for ci in clip_issues
+    )
     return issues

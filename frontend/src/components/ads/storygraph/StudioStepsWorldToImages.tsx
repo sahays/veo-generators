@@ -1,5 +1,4 @@
 import {
-  CheckCircle2,
   Sparkles,
   User,
   MapPin,
@@ -16,23 +15,17 @@ import type {
   StoryGraphEntity,
   StoryGraphEvent,
   StoryGraphEventEffect,
-  StoryGraphGate,
   StoryGraphScene,
   StoryGraphStateFact,
   StoryGraphStyleGuide,
 } from '@/types/project'
-import type { DesignFilter, SelectedInspectorItem } from './storyGraphStudioTypes'
-import { GateControlBar } from './StudioCommandHeader'
+import type { SelectedInspectorItem } from './storyGraphStudioTypes'
 
 export const StepWorldBibleSection = ({
   canWrite,
   busyAction,
   isRunningPipeline,
   onRunStage,
-  gateG1,
-  gateNoteG1,
-  onGateNoteG1Change,
-  onGateDecision,
   styleGuide,
   characters,
   locations,
@@ -47,10 +40,6 @@ export const StepWorldBibleSection = ({
   busyAction: string | null
   isRunningPipeline: boolean
   onRunStage: (stageId: string) => void
-  gateG1?: StoryGraphGate
-  gateNoteG1: string
-  onGateNoteG1Change: (val: string) => void
-  onGateDecision: (gateId: 'G1' | 'G2' | 'G3', decision: 'approve' | 'reject') => void
   styleGuide?: StoryGraphStyleGuide | null
   characters: StoryGraphEntity[]
   locations: StoryGraphEntity[]
@@ -61,20 +50,12 @@ export const StepWorldBibleSection = ({
   selectedItem: SelectedInspectorItem | null
   onSelectItem: (item: SelectedInspectorItem) => void
 }) => (
-  <div className="glass rounded-2xl p-6 md:p-7 border border-border/80 space-y-6">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
+  <div className="space-y-5">
+    <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <div className="flex items-center gap-2">
-          <span className="px-2.5 py-0.5 rounded bg-accent/15 text-accent-dark text-xs font-mono font-bold">
-            STEP 01 · S1_EXTRACT
-          </span>
-          <h3 className="text-base font-heading font-bold text-foreground">
-            World Bible, Canonical Entities & Continuity Timeline
-          </h3>
-        </div>
         <p className="text-xs text-muted-foreground mt-0.5">
           Click any Character, Location, or Object card to inspect its attributes, provenance, and
-          linked reference sheets in the right pane.
+          linked reference sheets in the details drawer.
         </p>
       </div>
       {canWrite && (
@@ -89,20 +70,6 @@ export const StepWorldBibleSection = ({
         </Button>
       )}
     </div>
-
-    <GateControlBar
-      gateId="G1"
-      stageId="S1_EXTRACT"
-      stageLabel="World Bible & Canonical Entities"
-      gate={gateG1}
-      canWrite={canWrite}
-      gateNote={gateNoteG1}
-      onGateNoteChange={onGateNoteG1Change}
-      busyAction={busyAction}
-      isRunningPipeline={isRunningPipeline}
-      onGateDecision={onGateDecision}
-      onRunStage={onRunStage}
-    />
 
     {styleGuide && (
       <Card title="Global StyleGuide (STORY_ARCHITECT)" icon={Sparkles}>
@@ -257,18 +224,9 @@ export const StepScreenplaySection = ({
   selectedItem: SelectedInspectorItem | null
   onSelectItem: (item: SelectedInspectorItem) => void
 }) => (
-  <div className="glass rounded-2xl p-6 md:p-7 border border-border/80 space-y-6">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
+  <div className="space-y-5">
+    <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <div className="flex items-center gap-2">
-          <span className="px-2.5 py-0.5 rounded bg-accent/15 text-accent-dark text-xs font-mono font-bold">
-            STEP 02 · S2_SCREENPLAY
-          </span>
-          <h3 className="text-base font-heading font-bold text-foreground">
-            Screenplay & Scene Dialogue Scripts ({scenes.length} Scenes · {dialogueLines.length}{' '}
-            Dialogue Lines)
-          </h3>
-        </div>
         <p className="text-xs text-muted-foreground mt-0.5">
           Click any scene card to inspect its full action beats, location plate, and dialogue
           breakdown in the right details pane.

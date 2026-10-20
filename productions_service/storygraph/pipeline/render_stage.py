@@ -2,19 +2,37 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
+from typing import Any
 
 from ..adapters.base import VideoGenerator, VLMProvider
+from ..adapters.media_frames import trim_leading_reference_or_static_frames
+from ..adapters.omni.package import build_ref_labels, to_render_package
 from ..agents.critic import evaluate_clip_qa
-from ..budget import select_references
+from ..budget import RefPlan, select_references
 from ..compile import Package, compile_shot
 from ..config import Config
+from ..qa.llm_rewrite import make_llm_rewriter
+from ..qa.retry_rewrite import ReasonRewriter, context_from_view, rewrite_retry_feedback
 from ..repo import Repo
 from ..schema import GenerationRun, Role, Shot, Status
+from ..shots import run_matches_shot
 from ..tools import write_tools as wt
 from ..tools.registry import ToolContext
-from ..views import shot_view
+from ..views import ShotView, shot_view
+
+logger = logging.getLogger(__name__)
+
+
+def _resolve_target_resolution(repo: Repo) -> str:
+    """Return '720p' when project render_quality is 'final', otherwise '360p' (draft default)."""
+    meta = repo.get_project_meta()
+    if meta and (meta.render_quality == "final" or meta.video_resolution == "720p"):
+        return "720p"
+    return "360p"
 
 
 def compile_all_shots(
@@ -22,6 +40,7 @@ def compile_all_shots(
 ) -> dict[str, Package]:
     """Deterministically compile all shots in the repository into render packages."""
     compiled: dict[str, Package] = {}
+    resolution = _resolve_target_resolution(repo)
     for shot in repo.list_shots():
         sv = shot_view(repo, shot.id)
         plan = select_references(sv, cfg, caps=video_gen.caps, repo=repo)
@@ -32,17 +51,89 @@ def compile_all_shots(
             caps=video_gen.caps,
             project_id=repo.project_id,
             attempt=1,
+            resolution=resolution,
         )
     return compiled
 
 
-def _store_rendered_clip(
-    repo: Repo, cfg: Config, shot_id: str, attempt: int, pkg: Package, clip_bytes: bytes
+def _load_conditioning_bytes(repo: Repo, pkg: Package) -> list[bytes]:
+    """Load reference and first-frame image bytes used to condition a video render package."""
+    out: list[bytes] = []
+    for uri in [
+        *pkg.reference_uris,
+        *([pkg.first_frame_uri] if pkg.first_frame_uri else []),
+    ]:
+        try:
+            out.append(repo.blobs.get_bytes(uri))
+        except Exception as exc:  # noqa: BLE001 - blob backends raise untyped errors
+            logger.info(
+                "Conditioning image unreadable; excluded from start-frame trim",
+                extra={
+                    "who": "storygraph.pipeline.render_stage",
+                    "where": "render_stage._load_conditioning_bytes",
+                    "what": "conditioning_image_skipped",
+                    "when": datetime.now(UTC).isoformat(),
+                    "why": str(exc),
+                    "how": "repo.blobs.get_bytes",
+                    "shot_id": pkg.shot_id,
+                    "uri": uri,
+                },
+            )
+    return out
+
+
+def _pop_fallback(video_gen: VideoGenerator, shot_id: str) -> dict[str, Any] | None:
+    """Fetch the adapter's fallback record for the render that just finished, if any."""
+    pop = getattr(video_gen, "pop_fallback", None)
+    record = pop(shot_id) if callable(pop) else None
+    return record.to_dict() if record is not None else None
+
+
+def _attach_fallback(
+    repo: Repo, run_node: GenerationRun, fallback: dict[str, Any] | None
 ) -> GenerationRun:
-    """Persist rendered video bytes to blob store and record the GenerationRun node."""
+    """Log the render fallback and persist it on the run."""
+    if not fallback:
+        return run_node
+    logger.warning(
+        "Clip rendered via fallback level %s",
+        fallback.get("fallback_level"),
+        extra={
+            "who": "storygraph.pipeline.render_stage",
+            "where": "render_stage._attach_fallback",
+            "what": "render_fallback_recorded",
+            "when": datetime.now(UTC).isoformat(),
+            "why": "; ".join(fallback.get("reasons", [])),
+            "how": "GeminiVideoGenerator.pop_fallback",
+            "project_id": repo.project_id,
+            "shot_id": run_node.shot_id,
+            "run_id": run_node.id,
+            "fallback_level": fallback.get("fallback_level"),
+            "refs_dropped": fallback.get("refs_dropped", []),
+        },
+    )
+    return run_node.model_copy(update={"render_fallback": fallback})
+
+
+def _store_rendered_clip(
+    repo: Repo,
+    cfg: Config,
+    shot_id: str,
+    attempt: int,
+    pkg: Package,
+    clip_bytes: bytes,
+    fallback: dict[str, Any] | None = None,
+    shot_content_hash: str | None = None,
+) -> GenerationRun:
+    """Persist rendered video bytes (after stripping any leading start-frame bleed) and record GenerationRun."""
+    has_cond = bool(pkg.reference_uris or pkg.first_frame_uri)
+    cond_bytes = _load_conditioning_bytes(repo, pkg) if has_cond else []
+    cleaned_bytes = trim_leading_reference_or_static_frames(
+        clip_bytes, ref_frames=cond_bytes, has_conditioning_image=has_cond
+    )
     clip_uri = repo.blobs.put_bytes(
         f"clips/{shot_id}_att{attempt}_{pkg.package_hash[:8]}.mp4",
-        clip_bytes,
+        cleaned_bytes,
         content_type="video/mp4",
     )
     signed_clip = (
@@ -64,9 +155,53 @@ def _store_rendered_clip(
         package_hash=pkg.package_hash,
         output_video_uri=clip_uri,
         output_video_signed_url=signed_clip,
+        shot_content_hash=shot_content_hash,
     )
+    run_node = _attach_fallback(repo, run_node, fallback)
     repo.add_generation_run(run_node)
     return run_node
+
+
+def _collect_retry_context(
+    repo: Repo, view: ShotView, llm: ReasonRewriter | None = None
+) -> tuple[list[str], bool]:
+    """Return `(retry targets, allow_composites)` from the shot's previous run of its current content."""
+    runs = [
+        r
+        for r in repo.list_generation_runs(shot_id=view.shot.id)
+        if run_matches_shot(r, view.shot)
+    ]
+    if not runs or runs[-1].qa_scores is None:
+        return [], True
+    sc = runs[-1].qa_scores
+    feedback = rewrite_retry_feedback(sc, context_from_view(view), llm)
+    no_comp_flags = {
+        "start_frame_bleed",
+        "prop_morphing",
+        "character_morphing",
+        "duplicate_prop",
+        "duplicate_character",
+    }
+    allow_comp = not bool(
+        no_comp_flags & set(sc.artifact_flags)
+        or any("duplicate_character" in f for f in sc.artifact_flags)
+    )
+    return feedback, allow_comp
+
+
+def _with_render_context(
+    repo: Repo, view: ShotView, plan: RefPlan, pkg: Package
+) -> Package:
+    """Attach reference identity labels and project safety context for the video adapter."""
+    meta = repo.get_project_meta()
+    return to_render_package(
+        pkg,
+        build_ref_labels(view, plan.selected_assets),
+        project_id=repo.project_id,
+        visual_style_preset=view.style_guide.visual_style_preset
+        or (meta.visual_style_preset if meta else ""),
+        language=meta.language if meta else "",
+    )
 
 
 def attempt_shot_render(
@@ -83,7 +218,17 @@ def attempt_shot_render(
     sv = shot_view(repo, shot.id)
     if drop_last_frame:
         sv = sv.model_copy(update={"prev_shot_last_frame": None})
-    plan = select_references(sv, cfg, caps=video_gen.caps, repo=repo)
+    llm = make_llm_rewriter(vlm) if cfg.qa.retry_rewrite_llm else None
+    retry_fb, allow_comp = (
+        _collect_retry_context(repo, sv, llm) if attempt > 1 else ([], True)
+    )
+    plan = select_references(
+        sv,
+        cfg,
+        caps=video_gen.caps,
+        repo=repo,
+        allow_composites=allow_comp,
+    )
     pkg = compile_shot(
         sv,
         plan,
@@ -91,14 +236,37 @@ def attempt_shot_render(
         caps=video_gen.caps,
         project_id=repo.project_id,
         attempt=attempt,
+        retry_feedback=retry_fb or None,
+        resolution=_resolve_target_resolution(repo),
     )
+    pkg = _with_render_context(repo, sv, plan, pkg)
     compiled_packages[shot.id] = pkg
     clip_bytes = video_gen.generate(pkg)
-    run_node = _store_rendered_clip(repo, cfg, shot.id, attempt, pkg, clip_bytes)
+    fallback = _pop_fallback(video_gen, shot.id)
+    run_node = _store_rendered_clip(
+        repo, cfg, shot.id, attempt, pkg, clip_bytes, fallback, sv.shot.content_hash
+    )
     qa_report = evaluate_clip_qa(repo, cfg, vlm, shot, run_node)
     if qa_report.passed and shot.stale:
         repo.put_shot(shot.model_copy(update={"stale": False, "stale_reason": None}))
     return qa_report.passed
+
+
+_SEVERE_RENDER_FLAGS: frozenset[str] = frozenset(
+    {
+        "style_drift",
+        "frozen_frame",
+        "start_frame_bleed",
+        "object_materialized",
+        "duplicate_prop",
+        "prop_part_missing",
+        "self_moving_object",
+        "prop_inverted",
+        "floating_object",
+        "teleportation",
+        "missing_character",
+    }
+)
 
 
 def _is_shot_already_valid(
@@ -108,16 +276,26 @@ def _is_shot_already_valid(
     shot: Shot,
     existing_runs: list[GenerationRun],
 ) -> bool:
-    """Return True if the shot already has a clean approved run and is not stale."""
-    if shot.stale or not existing_runs:
+    """Return True if the shot already has a clean approved run passing critical physics & permanence QA.
+
+    Only runs rendered from the shot's current content (`run_matches_shot`) count.
+    """
+    current_runs = [r for r in existing_runs if run_matches_shot(r, shot)]
+    if shot.stale or not current_runs:
         return False
-    last_run = existing_runs[-1]
+    last_run = current_runs[-1]
+    scores = last_run.qa_scores
+    if scores is not None:
+        if _SEVERE_RENDER_FLAGS & set(scores.artifact_flags):
+            return False
+        if (
+            scores.physics_plausibility < cfg.qa.physics_vlm_min
+            or scores.object_permanence < cfg.qa.permanence_vlm_min
+        ):
+            return False
     if last_run.status == Status.APPROVED:
         return True
     if not last_run.output_video_uri or cfg.video.provider == "mock":
-        return False
-    flags = set(last_run.qa_scores.artifact_flags) if last_run.qa_scores else set()
-    if {"style_drift", "frozen_frame"} & flags:
         return False
     return evaluate_clip_qa(repo, cfg, vlm, shot, last_run).passed
 
@@ -222,7 +400,7 @@ def _run_parallel_scene_groups(
 
 
 def evaluate_missing_qa(repo: Repo, cfg: Config, vlm: VLMProvider) -> None:
-    """Run VLM Critic QA on any shot whose latest GenerationRun lacks qa_scores."""
+    """Run VLM Critic QA on any shot whose latest GenerationRun lacks qa_scores or physics verification."""
     for shot in repo.list_shots():
         runs = repo.list_generation_runs(shot_id=shot.id)
         if runs and runs[-1].qa_scores is None:

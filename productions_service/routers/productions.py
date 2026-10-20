@@ -5,6 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Request
+from fastapi.concurrency import run_in_threadpool
+from services.assembly_service import (
+    AssembleMode,
+    assemble_project,
+    get_assembly_readiness,
+)
 from services.productions_service import (
     CreateProductionPayload,
     GateDecisionPayload,
@@ -32,33 +38,38 @@ async def create_production(
     body: CreateProductionPayload, request: Request
 ) -> dict[str, Any]:
     invite_code = request.headers.get("X-Invite-Code", "")
-    return create_production_project(body, invite_code)
+    return await run_in_threadpool(create_production_project, body, invite_code)
 
 
 @router.get("/api/v1/productions")
 async def list_productions(archived: bool = False) -> list[dict[str, Any]]:
-    return list_production_projects(archived=archived)
+    return await run_in_threadpool(list_production_projects, archived)
 
 
 @router.get("/api/v1/productions/{project_id}")
 @router.get("/api/v1/productions/{project_id}/graph")
 async def get_production(project_id: str) -> dict[str, Any]:
-    return get_production_project(project_id)
+    return await run_in_threadpool(get_production_project, project_id)
 
 
 @router.patch("/api/v1/productions/{project_id}")
 async def update_production(project_id: str, updates: dict[str, Any]) -> dict[str, Any]:
-    return update_production_project(project_id, updates)
+    return await run_in_threadpool(update_production_project, project_id, updates)
 
 
+@router.delete("/api/v1/productions/{project_id}")
 @router.post("/api/v1/productions/{project_id}/archive")
 async def archive_production(project_id: str) -> dict[str, Any]:
-    return update_production_project(project_id, {"archived": True})
+    return await run_in_threadpool(
+        update_production_project, project_id, {"archived": True}
+    )
 
 
 @router.post("/api/v1/productions/{project_id}/unarchive")
 async def unarchive_production(project_id: str) -> dict[str, Any]:
-    return update_production_project(project_id, {"archived": False})
+    return await run_in_threadpool(
+        update_production_project, project_id, {"archived": False}
+    )
 
 
 @router.post("/api/v1/productions/{project_id}/run")
@@ -66,7 +77,19 @@ async def run_production_pipeline(
     project_id: str,
     body: RunPipelinePayload | None = None,
 ) -> dict[str, Any]:
-    return run_pipeline_for_project(project_id, body=body)
+    return await run_in_threadpool(run_pipeline_for_project, project_id, body)
+
+
+@router.get("/api/v1/productions/{project_id}/assembly-readiness")
+async def get_production_assembly_readiness(project_id: str) -> dict[str, Any]:
+    return await run_in_threadpool(get_assembly_readiness, project_id)
+
+
+@router.post("/api/v1/productions/{project_id}/assemble")
+async def assemble_production(
+    project_id: str, mode: AssembleMode = "approved_only"
+) -> dict[str, Any]:
+    return await run_in_threadpool(assemble_project, project_id, mode)
 
 
 @router.post("/api/v1/productions/{project_id}/analyze")
@@ -74,7 +97,7 @@ async def analyze_production_compat(
     project_id: str,
     body: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return analyze_project_compat(project_id, body=body)
+    return await run_in_threadpool(analyze_project_compat, project_id, body)
 
 
 @router.post("/api/v1/productions/{project_id}/render")
@@ -82,7 +105,7 @@ async def render_production_compat(
     project_id: str,
     body: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return render_project_compat(project_id, body=body)
+    return await run_in_threadpool(render_project_compat, project_id, body)
 
 
 @router.post("/api/v1/productions/{project_id}/stages/{stage_id}/run")
@@ -90,8 +113,11 @@ async def run_single_stage(
     project_id: str,
     stage_id: str,
     force: bool = True,
+    quality: str | None = None,
 ) -> dict[str, Any]:
-    return run_project_stage(project_id, stage_id, force=force)
+    return await run_in_threadpool(
+        run_project_stage, project_id, stage_id, force, quality
+    )
 
 
 @router.post("/api/v1/productions/{project_id}/gates/{gate_id}/approve")
@@ -101,7 +127,9 @@ async def approve_production_gate(
     body: GateDecisionPayload | None = None,
     advance: bool = True,
 ) -> dict[str, Any]:
-    return approve_project_gate(project_id, gate_id, body=body, advance=advance)
+    return await run_in_threadpool(
+        approve_project_gate, project_id, gate_id, body, advance
+    )
 
 
 @router.post("/api/v1/productions/{project_id}/gates/{gate_id}/reject")
@@ -110,23 +138,27 @@ async def reject_production_gate(
     gate_id: str,
     body: GateDecisionPayload | None = None,
 ) -> dict[str, Any]:
-    return reject_project_gate(project_id, gate_id, body=body)
+    return await run_in_threadpool(reject_project_gate, project_id, gate_id, body)
 
 
 @router.post("/api/v1/productions/{project_id}/appearances/{appearance_id}/approve")
 async def approve_single_appearance(
     project_id: str, appearance_id: str
 ) -> dict[str, Any]:
-    return approve_project_appearance(project_id, appearance_id)
+    return await run_in_threadpool(
+        approve_project_appearance, project_id, appearance_id
+    )
 
 
 @router.post("/api/v1/productions/{project_id}/appearances/{appearance_id}/regenerate")
 async def regenerate_single_appearance(
     project_id: str, appearance_id: str
 ) -> dict[str, Any]:
-    return regenerate_project_appearance(project_id, appearance_id)
+    return await run_in_threadpool(
+        regenerate_project_appearance, project_id, appearance_id
+    )
 
 
 @router.post("/api/v1/productions/{project_id}/shots/{shot_id}/compile")
 async def compile_single_shot_preview(project_id: str, shot_id: str) -> dict[str, Any]:
-    return compile_project_shot_preview(project_id, shot_id)
+    return await run_in_threadpool(compile_project_shot_preview, project_id, shot_id)

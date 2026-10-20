@@ -7,9 +7,11 @@ from typing import Any
 
 from fastapi import HTTPException
 from storygraph.config import Config
+from storygraph.presets import resolve_production_presets
 from storygraph.repo import Repo
-from storygraph.schema import Asset, EntityType, Scene, StageRun
+from storygraph.schema import Asset, EntityType, GenerationRun, Scene, StageRun
 from storygraph.validate import validate_all
+from storygraph.views import generation_run_rank
 
 
 def _group_entities(repo: Repo) -> dict[str, list[dict[str, Any]]]:
@@ -65,20 +67,23 @@ def _build_assets_and_appearances(
 def _build_runs_and_shots(
     repo: Repo, sign_fn: Callable[[str], str]
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Serialize GenerationRun and Shot nodes, attaching `latest_run` to each shot."""
+    """Serialize GenerationRun and Shot nodes, attaching the highest-ranked `latest_run` to each shot."""
     runs_out: list[dict[str, Any]] = []
-    latest_run_by_shot: dict[str, dict[str, Any]] = {}
+    best_run_by_shot: dict[str, tuple[GenerationRun, dict[str, Any]]] = {}
     for r in repo.list_generation_runs():
         rd = r.model_dump(mode="json")
         if r.output_video_uri:
             rd["output_video_signed_url"] = sign_fn(r.output_video_uri)
         runs_out.append(rd)
-        latest_run_by_shot[r.shot_id] = rd
+        prev = best_run_by_shot.get(r.shot_id)
+        if prev is None or generation_run_rank(r) >= generation_run_rank(prev[0]):
+            best_run_by_shot[r.shot_id] = (r, rd)
 
     shots_out: list[dict[str, Any]] = []
     for sh in repo.list_shots():
         shd = sh.model_dump(mode="json")
-        shd["latest_run"] = latest_run_by_shot.get(sh.id)
+        best_pair = best_run_by_shot.get(sh.id)
+        shd["latest_run"] = best_pair[1] if best_pair else None
         shots_out.append(shd)
     return runs_out, shots_out
 
@@ -106,14 +111,15 @@ def _format_legacy_scene(
         if sc_shots and sc_shots[0].get("latest_run")
         else None
     )
+    t_end = t_cursor + dur
     return {
         "id": sc.id,
         "visual_description": sc.summary
         or f"{sc.heading} ({sc.time_of_day}, {sc.weather})",
         "narration": "",
         "music_description": sc.mood,
-        "timestamp_start": f"0:{t_cursor:02d}",
-        "timestamp_end": f"0:{t_cursor + dur:02d}",
+        "timestamp_start": f"{t_cursor // 60}:{t_cursor % 60:02d}",
+        "timestamp_end": f"{t_end // 60}:{t_end % 60:02d}",
         "thumbnail_url": thumb_url,
         "video_url": video_url,
         "metadata": {"location": sc.location_id, "mood": sc.mood},
@@ -175,6 +181,48 @@ def _build_usage_summary(
     }
 
 
+def _serialize_style_guide(repo: Repo) -> dict[str, Any] | None:
+    """Return the serialized StyleGuide synced with ProjectMeta's active creative presets."""
+    sg = repo.get_style_guide()
+    meta = repo.get_project_meta()
+    if sg is not None:
+        sgd = sg.model_dump(mode="json")
+        if meta is not None:
+            for k in (
+                "visual_style_preset",
+                "color_palette_preset",
+                "director_style_preset",
+                "screenplay_style_preset",
+                "music_style_preset",
+            ):
+                if getattr(meta, k, None):
+                    sgd[k] = getattr(meta, k)
+        return sgd
+    if meta is None:
+        return None
+    bundle = resolve_production_presets(
+        visual_style_id=meta.visual_style_preset,
+        color_palette_id=meta.color_palette_preset,
+        director_style_id=meta.director_style_preset,
+        screenplay_style_id=meta.screenplay_style_preset,
+        music_style_id=meta.music_style_preset,
+    )
+    return {
+        "id": "style_guide",
+        "visual_medium": bundle.visual_style.visual_medium,
+        "palette": list(bundle.color_palette.palette),
+        "lens_language": bundle.visual_style.lens_language,
+        "lighting_rules": f"{bundle.visual_style.lighting_rules} {bundle.color_palette.lighting_tint}".strip(),
+        "aspect_ratio": meta.orientation,
+        "avoid": list(bundle.visual_style.avoid),
+        "visual_style_preset": bundle.visual_style.id,
+        "color_palette_preset": bundle.color_palette.id,
+        "director_style_preset": bundle.director_style.id,
+        "screenplay_style_preset": bundle.screenplay_style.id,
+        "music_style_preset": bundle.music_style.id,
+    }
+
+
 def _build_story_graph_payload(
     repo: Repo,
     cfg: Config,
@@ -186,9 +234,8 @@ def _build_story_graph_payload(
     stage_runs: list[StageRun],
 ) -> dict[str, Any]:
     """Assemble the nested `story_graph` dictionary for the snapshot response."""
-    sg = repo.get_style_guide()
     return {
-        "style_guide": sg.model_dump(mode="json") if sg else None,
+        "style_guide": _serialize_style_guide(repo),
         "entities": _group_entities(repo),
         "events": [e.model_dump(mode="json") for e in repo.list_events()],
         "state_facts": [sf.model_dump(mode="json") for sf in repo.list_state_facts()],
@@ -237,6 +284,8 @@ def _build_project_envelope(
         "screenplay_style_preset": meta.screenplay_style_preset,
         "music_style_preset": meta.music_style_preset,
         "auto_approve_gates": meta.auto_approve_gates,
+        "render_quality": getattr(meta, "render_quality", "draft"),
+        "video_resolution": getattr(meta, "video_resolution", "360p"),
         "status": meta.status,
         "current_stage": meta.current_stage,
         "final_video_uri": meta.final_video_uri,

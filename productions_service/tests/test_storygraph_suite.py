@@ -12,6 +12,7 @@ from storygraph.adapters.mock import (
 )
 from storygraph.budget import select_references
 from storygraph.compile import compile_shot
+from storygraph.omni.spec import OmniClipSpec
 from storygraph.config import Config
 from storygraph.errors import BudgetExceeded, GateBlocked
 from storygraph.pipeline import Pipeline, Stage, approve_gate
@@ -53,7 +54,12 @@ def test_end_to_end_pipeline_gates_retries_and_idempotency(
     )
     _advance_pipeline_through_gates(pipe, tmp_repo)
     assert len(tmp_repo.list_entities(EntityType.CHARACTER)) >= 2
-    assert len(tmp_repo.list_appearances()) >= 4 and len(tmp_repo.list_shots()) >= 4
+    assert len(tmp_repo.list_appearances()) >= 4 and len(tmp_repo.list_shots()) >= 2
+    for sc in tmp_repo.list_scenes():
+        sc_shots = tmp_repo.list_shots(scene_id=sc.id)
+        assert sorted(s.clip_index or 0 for s in sc_shots) == [
+            c.clip_index for c in sc.clips
+        ]
 
     approve_gate(tmp_repo, "G3")
     completed_runs = pipe.run_until_gate_or_done()
@@ -121,7 +127,8 @@ def test_fastapi_productions_service_endpoints() -> None:
     )
     assert res_compile.status_code == 200
     compiled = res_compile.json()
-    assert "STYLE:" in compiled["compiled_prompt"] and compiled["package_hash"]
+    spec = OmniClipSpec.model_validate_json(compiled["compiled_prompt"])
+    assert spec.task == "render_video_clip" and compiled["package_hash"]
     res_g3 = client.post(f"/api/v1/productions/{pid}/gates/G3/approve")
     assert res_g3.status_code == 200
     snap_done = res_g3.json()
@@ -174,4 +181,102 @@ def test_epic_name_normalization_hindi_dialogue_and_deduplication(
         default_cfg,
         project_id="p_aranya",
     )
-    assert "Hindi (hi-IN)" in pkg.compiled_prompt
+    speech = OmniClipSpec.model_validate_json(pkg.compiled_prompt).speech or []
+    assert speech and all(s.lang == "hi-IN" for s in speech)
+
+
+def test_firestore_doc_preset_seeding_and_sync(
+    tmp_repo: Repo, default_cfg: Config
+) -> None:
+    from services.runtime import (
+        _seed_meta_from_firestore_doc,
+        _sync_existing_meta_from_firestore,
+    )
+    from services.snapshot import format_graph_snapshot
+
+    doc_data = {
+        "name": "Pip 2",
+        "type": "movie",
+        "base_concept": "Pip climbs a chair in the sunlit kitchen to reach a bowl of berries.",
+        "video_length": "auto",
+        "orientation": "16:9",
+        "language": "hi-IN",
+        "visual_style_preset": "ghibli_handpainted",
+        "color_palette_preset": "pastel_dreamy",
+        "director_style_preset": "kinetic_montage_whip_pan",
+        "screenplay_style_preset": "kinetic_action_relay",
+        "music_style_preset": "rhythmic_percussive_action_sfx",
+    }
+    seeded, _ = _seed_meta_from_firestore_doc("p-84rq6tk0", doc_data)
+    assert seeded.visual_style_preset == "ghibli_handpainted"
+    assert seeded.color_palette_preset == "pastel_dreamy"
+    assert seeded.director_style_preset == "kinetic_montage_whip_pan"
+    assert seeded.screenplay_style_preset == "kinetic_action_relay"
+    assert seeded.music_style_preset == "rhythmic_percussive_action_sfx"
+
+    # Simulate an older/defaulted ProjectMeta in storygraph_v1 and verify sync fixes it
+    tmp_repo.put_project_meta(
+        ProjectMeta(
+            id="p-84rq6tk0",
+            name="Pip 2",
+            base_concept=str(doc_data["base_concept"]),
+            story_text=str(doc_data["base_concept"]),
+        )
+    )
+    _sync_existing_meta_from_firestore(tmp_repo, tmp_repo.get_project_meta(), doc_data)
+    snap = format_graph_snapshot(tmp_repo, default_cfg)
+    assert snap["visual_style_preset"] == "ghibli_handpainted"
+    assert snap["color_palette_preset"] == "pastel_dreamy"
+    assert snap["director_style_preset"] == "kinetic_montage_whip_pan"
+    assert snap["screenplay_style_preset"] == "kinetic_action_relay"
+    assert snap["music_style_preset"] == "rhythmic_percussive_action_sfx"
+    sg = snap["story_graph"]["style_guide"]
+    assert sg["visual_style_preset"] == "ghibli_handpainted"
+    assert sg["color_palette_preset"] == "pastel_dreamy"
+    assert sg["director_style_preset"] == "kinetic_montage_whip_pan"
+    assert sg["screenplay_style_preset"] == "kinetic_action_relay"
+    assert sg["music_style_preset"] == "rhythmic_percussive_action_sfx"
+    assert snap["render_quality"] == "draft"
+    assert snap["video_resolution"] == "360p"
+
+
+def test_draft_360p_vs_final_720p_compilation(
+    tmp_repo: Repo, default_cfg: Config
+) -> None:
+    from storygraph.pipeline.render_stage import compile_all_shots
+
+    story = "Pip climbs a chair in the sunlit kitchen to reach a bowl of berries."
+    tmp_repo.put_project_meta(
+        ProjectMeta(
+            id="p_res_test",
+            name="Pip Resolution Test",
+            base_concept=story,
+            story_text=story,
+            auto_approve_gates=True,
+        )
+    )
+    video_gen = MockVideoGenerator(caps=default_cfg.video)
+    pipe = Pipeline(
+        repo=tmp_repo,
+        cfg=default_cfg,
+        image_gen=MockImageGenerator(),
+        video_gen=video_gen,
+        vlm=MockVLMProvider(),
+    )
+    pipe.run_until_gate_or_done(story_text=story, auto_approve_gates=True)
+
+    draft_pkgs = compile_all_shots(tmp_repo, default_cfg, video_gen)
+    assert draft_pkgs
+    first_shot_id = next(iter(draft_pkgs))
+    assert draft_pkgs[first_shot_id].resolution == "360p"
+
+    meta = tmp_repo.get_project_meta()
+    assert meta is not None
+    tmp_repo.put_project_meta(
+        meta.model_copy(update={"render_quality": "final", "video_resolution": "720p"})
+    )
+    final_pkgs = compile_all_shots(tmp_repo, default_cfg, video_gen)
+    assert final_pkgs[first_shot_id].resolution == "720p"
+    assert (
+        final_pkgs[first_shot_id].package_hash != draft_pkgs[first_shot_id].package_hash
+    )

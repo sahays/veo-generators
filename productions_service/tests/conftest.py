@@ -12,10 +12,12 @@ from storygraph.schema import (
     Appearance,
     Asset,
     CastInShot,
+    ClipScript,
     DialogueLine,
     Entity,
     EntityType,
     Event,
+    InteractionStep,
     Role,
     Scene,
     Shot,
@@ -75,6 +77,26 @@ def _seed_style_and_entities(repo: Repo) -> None:
             heading="INT. CAFE - NIGHT",
             location_id="loc_cafe",
             time_of_day="night",
+            interaction_steps=[
+                InteractionStep(
+                    step_index=1,
+                    actor_id="char_arjun",
+                    action="Arjun checks the brass compass",
+                    pre_state="Arjun stands at the counter",
+                    post_state="Arjun holds the compass level",
+                )
+            ],
+            clips=[
+                ClipScript(
+                    clip_index=1,
+                    duration_s=8.0,
+                    omni_prompt='Arjun checks the brass compass. Arjun says: "The compass points north."',
+                    step_indices=[1],
+                    dialogue_line_ids=["dlg_1"],
+                    opening_state="Arjun stands at the counter",
+                    closing_state="Arjun holds the compass level",
+                )
+            ],
         )
     )
 
@@ -192,11 +214,54 @@ def seed_valid_graph(repo: Repo) -> Shot:
             index_in_scene=1,
             story_order=15,
             covers_event_ids=["evt_1", "evt_2"],
-            duration_s=5.0,
+            duration_s=8.0,
+            clip_index=1,
             location_id="loc_cafe",
             cast=[CastInShot(entity_id="char_arjun", speaking=True)],
             prop_ids=["obj_compass"],
             beats=[beat],
             dialogue_ids=["dlg_1"],
+        )
+    )
+
+
+def set_scene_clips(
+    repo: Repo,
+    scene_id: str,
+    groups: list[list[int]],
+    steps: list[InteractionStep] | None = None,
+) -> None:
+    """Re-partition `scene_id` (optionally replacing its steps) into 8s clips over `groups`."""
+    scene = repo.get_scene(scene_id)
+    assert scene is not None
+    if steps is not None:
+        scene = scene.model_copy(update={"interaction_steps": steps})
+    clips = [
+        ClipScript(
+            clip_index=pos,
+            duration_s=8.0,
+            omni_prompt=f"Clip {pos}: Arjun continues the scene.",
+            step_indices=grp,
+            dialogue_line_ids=["dlg_1"] if pos == 1 else [],
+        )
+        for pos, grp in enumerate(groups, start=1)
+    ]
+    repo.put_scene(scene.model_copy(update={"clips": clips}))
+
+
+def add_clip_shot(
+    repo: Repo, base: Shot, shot_id: str, clip_index: int, story_order: int
+) -> Shot:
+    """Persist a silent follow-on copy of `base` blocking clip `clip_index`."""
+    return repo.put_shot(
+        base.model_copy(
+            update={
+                "id": shot_id,
+                "index_in_scene": clip_index,
+                "clip_index": clip_index,
+                "story_order": story_order,
+                "dialogue_ids": [],
+                "cast": [c.model_copy(update={"speaking": False}) for c in base.cast],
+            }
         )
     )

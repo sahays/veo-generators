@@ -6,7 +6,6 @@ import hashlib
 import json
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from enum import StrEnum
 from typing import Any
 
 from ..adapters.base import ImageGenerator, TTSProvider, VideoGenerator, VLMProvider
@@ -28,62 +27,25 @@ from ..agents.roles import (
     run_script_supervisor,
     run_story_architect,
 )
-from ..agents.stage_qa import run_stage_qa_and_remediate
-from ..assemble import assemble
+from ..agents.stage_qa import run_stage_qa_and_remediate, stages_to_redo_for_issues
 from ..compile import Package
 from ..config import Config
-from ..errors import BudgetExceeded, GateBlocked, ValidationFailed
+from ..errors import BudgetExceeded, GateBlocked, ShotsNotApproved, ValidationFailed
 from ..repo import Repo
 from ..schema import Role, StageRun, Status
 from ..state import rebuild_state_facts
 from ..tools.registry import ToolContext
 from ..validate import validate_all
+from .assemble_stage import project_status_after_stage, run_assemble_stage
 from .gates import GATE_FOR_STAGE, approve_gate, ensure_gate, require_gate
 from .render_stage import (
     compile_all_shots,
     evaluate_missing_qa,
     render_and_qa_shots,
 )
+from .stages import AUTHORING_STAGES, STAGE_ORDER, Stage
 
-
-class Stage(StrEnum):
-    S0_INGEST = "S0_INGEST"
-    S1_EXTRACT = "S1_EXTRACT"
-    S2_SCREENPLAY = "S2_SCREENPLAY"
-    S3_DESIGN = "S3_DESIGN"
-    S4_SHOTS = "S4_SHOTS"
-    S5_MUSIC = "S5_MUSIC"
-    S6_VALIDATE = "S6_VALIDATE"
-    S7_COMPILE = "S7_COMPILE"
-    S8_RENDER = "S8_RENDER"
-    S9_QA = "S9_QA"
-    S10_ASSEMBLE = "S10_ASSEMBLE"
-
-
-STAGE_ORDER: list[Stage] = [
-    Stage.S0_INGEST,
-    Stage.S1_EXTRACT,
-    Stage.S2_SCREENPLAY,
-    Stage.S3_DESIGN,
-    Stage.S4_SHOTS,
-    Stage.S5_MUSIC,
-    Stage.S6_VALIDATE,
-    Stage.S7_COMPILE,
-    Stage.S8_RENDER,
-    Stage.S9_QA,
-    Stage.S10_ASSEMBLE,
-]
-
-_AUTHORING_STAGES: frozenset[Stage] = frozenset(
-    {
-        Stage.S0_INGEST,
-        Stage.S1_EXTRACT,
-        Stage.S2_SCREENPLAY,
-        Stage.S3_DESIGN,
-        Stage.S4_SHOTS,
-        Stage.S5_MUSIC,
-    }
-)
+__all__ = ["STAGE_ORDER", "Pipeline", "Stage"]
 
 
 class Pipeline:
@@ -122,6 +84,8 @@ class Pipeline:
         )
         self.mock_llm = mock_llm
         self.compiled_packages: dict[str, Package] = {}
+        self._auto_approve_override: bool | None = None
+        self._allow_partial_assembly = False
 
     def _compute_stage_input_hash(self, stage: Stage) -> str:
         payload: dict[str, Any] = {
@@ -156,21 +120,24 @@ class Pipeline:
                 f"Project cumulative cost (${total_cost:.2f}) exceeds project_cost_cap_usd (${self.cfg.caps.project_cost_cap_usd:.2f})"
             )
 
-    def _update_project_stage_status(self, stage: Stage, error: str | None) -> None:
+    def _update_project_stage_status(
+        self, stage: Stage, error: str | None, needs_review: bool = False
+    ) -> None:
         meta = self.repo.get_project_meta()
         if not meta:
             return
-        status_val = (
-            "completed"
-            if stage == Stage.S10_ASSEMBLE and error is None
-            else ("failed" if error else "running")
+        is_s10 = stage == Stage.S10_ASSEMBLE
+        status_val = project_status_after_stage(
+            is_s10, meta.status, error, needs_review
         )
+        # A successful S10 keeps assemble()'s note (e.g. skipped shots in partial mode).
+        note = meta.error_message if is_s10 and error is None else error
         self.repo.put_project_meta(
             meta.model_copy(
                 update={
                     "current_stage": str(stage),
                     "status": status_val,
-                    "error_message": error,
+                    "error_message": note,
                 }
             )
         )
@@ -183,6 +150,7 @@ class Pipeline:
         tokens_out: int = 0,
         cost_usd: float = 0.0,
         error: str | None = None,
+        needs_review: bool = False,
     ) -> StageRun:
         if error is None:
             self._check_budget_caps(tokens_in + tokens_out, cost_usd)
@@ -199,7 +167,7 @@ class Pipeline:
             error=error,
         )
         saved = self.repo.record_stage_run(sr)
-        self._update_project_stage_status(stage, error)
+        self._update_project_stage_status(stage, error, needs_review)
         return saved
 
     def ingest_story(self, story_text: str) -> StageRun:
@@ -215,15 +183,24 @@ class Pipeline:
         except GateBlocked:
             raise
         except Exception as exc:
-            self._record_stage(st, ihash, error=str(exc))
+            review = isinstance(exc, ShotsNotApproved)
+            self._record_stage(st, ihash, error=str(exc), needs_review=review)
             raise
+
+    def assemble_approved_only(self) -> StageRun:
+        """Manually stitch only APPROVED shots (skipping blocking ones) as an S10 run."""
+        self._allow_partial_assembly = True
+        try:
+            return self.run_stage(Stage.S10_ASSEMBLE, force=True)
+        finally:
+            self._allow_partial_assembly = False
 
     def _execute_stage(self, st: Stage, ihash: str, force: bool = False) -> StageRun:
         if not force and st not in (Stage.S8_RENDER, Stage.S9_QA):
             prev_runs = self.repo.list_stage_runs(stage=str(st))
             if any(r.completed and r.input_hash == ihash for r in prev_runs):
                 return prev_runs[-1]
-        if st in _AUTHORING_STAGES:
+        if st in AUTHORING_STAGES:
             return self._execute_authoring_stage(st, ihash, force=force)
         return self._execute_production_stage(st, ihash)
 
@@ -233,7 +210,11 @@ class Pipeline:
         meta = self.repo.get_project_meta()
         aspect_ratio = meta.orientation if meta else "16:9"
         language = meta.language if meta else "en-IN"
-        auto_approve = meta.auto_approve_gates if meta else False
+        auto_approve = (
+            self._auto_approve_override
+            if self._auto_approve_override is not None
+            else (meta.auto_approve_gates if meta else True)
+        )
         story_text = self.repo.get_source_text() or (meta.base_concept if meta else "")
 
         if st == Stage.S0_INGEST:
@@ -349,16 +330,35 @@ class Pipeline:
             st, ihash, tokens_in=res.tokens_in, tokens_out=res.tokens_out, cost_usd=0.01
         )
 
-    def _execute_production_stage(self, st: Stage, ihash: str) -> StageRun:
-        require_gate(self.repo, "G3")
-        if st == Stage.S6_VALIDATE:
-            run_stage_qa_and_remediate(self.repo, self.cfg, str(Stage.S4_SHOTS))
+    def _review_and_redo_before_render(self, max_iterations: int = 3) -> None:
+        """Review upstream artifacts and redo responsible agent stages up to `max_iterations` times."""
+        for attempt in range(1, max_iterations + 1):
+            report = run_stage_qa_and_remediate(
+                self.repo, self.cfg, str(Stage.S5_MUSIC), max_iterations=max_iterations
+            )
             rebuild_state_facts(self.repo)
             errors = [
                 i for i in validate_all(self.repo, self.cfg) if i.severity == "error"
             ]
-            if errors:
-                raise ValidationFailed(errors)
+            open_crs = self.repo.list_change_requests(open_only=True)
+            if report.passed and not errors and not open_crs:
+                return
+            if attempt == max_iterations:
+                if errors:
+                    raise ValidationFailed(errors)
+                return
+            for up_st in stages_to_redo_for_issues(report.issues, errors, open_crs):
+                st_enum = Stage(up_st)
+                self._execute_authoring_stage(
+                    st_enum, self._compute_stage_input_hash(st_enum), force=True
+                )
+            for cr in open_crs:
+                self.repo.resolve_change_request(cr.id, "accepted")
+
+    def _execute_production_stage(self, st: Stage, ihash: str) -> StageRun:
+        require_gate(self.repo, "G3")
+        if st == Stage.S6_VALIDATE:
+            self._review_and_redo_before_render(max_iterations=3)
             return self._record_stage(st, ihash)
         if st == Stage.S7_COMPILE:
             self.compiled_packages.update(
@@ -376,7 +376,7 @@ class Pipeline:
                 st, ihash, tokens_in=200, tokens_out=100, cost_usd=0.02
             )
         if st == Stage.S10_ASSEMBLE:
-            assemble(self.repo)
+            run_assemble_stage(self.repo, self.cfg, self._allow_partial_assembly)
             return self._record_stage(st, ihash)
         raise ValueError(f"Unsupported stage: {st}")
 
@@ -386,11 +386,13 @@ class Pipeline:
         auto_approve_gates: bool | None = None,
     ) -> list[StageRun]:
         """Run the pipeline forward from the current state until blocked by an unapproved gate or finished."""
-        meta = self.repo.get_project_meta()
-        if auto_approve_gates is not None and meta is not None:
-            self.repo.put_project_meta(
-                meta.model_copy(update={"auto_approve_gates": auto_approve_gates})
-            )
+        if auto_approve_gates is not None:
+            self._auto_approve_override = auto_approve_gates
+            meta = self.repo.get_project_meta()
+            if meta is not None:
+                self.repo.put_project_meta(
+                    meta.model_copy(update={"auto_approve_gates": auto_approve_gates})
+                )
         if story_text is not None and not self.repo.get_source_text():
             self.ingest_story(story_text)
 

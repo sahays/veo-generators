@@ -1,4 +1,5 @@
 import type { Project } from '@/types/project'
+import type { AssembleMode, AssemblyReadiness } from '@/types/storygraph'
 import { createCrudClient } from '../core/_crud'
 import {
   API_BASE_URL,
@@ -144,9 +145,14 @@ export const projects = {
       options || {},
       'Failed to run StoryGraph pipeline',
     ),
-  runStage: (id: string, stageId: string) =>
+  runStage: (
+    id: string,
+    stageId: string,
+    force = true,
+    quality?: 'draft' | 'final',
+  ) =>
     postJson<JsonValue>(
-      `${API_BASE_URL}/productions/${id}/stages/${stageId}/run`,
+      `${API_BASE_URL}/productions/${id}/stages/${stageId}/run?force=${force}${quality ? `&quality=${quality}` : ''}`,
       {},
       `Failed to run stage ${stageId}`,
     ),
@@ -179,6 +185,17 @@ export const projects = {
       `${API_BASE_URL}/productions/${id}/shots/${shotId}/compile`,
       {},
       'Failed to compile shot prompt',
+    ),
+  getAssemblyReadiness: (id: string) =>
+    request<AssemblyReadiness>(
+      `${API_BASE_URL}/productions/${id}/assembly-readiness`,
+      'Failed to load assembly readiness',
+    ),
+  assembleApprovedShots: (id: string, mode: AssembleMode = 'approved_only') =>
+    postJson<JsonValue>(
+      `${API_BASE_URL}/productions/${id}/assemble?mode=${mode}`,
+      {},
+      'Failed to stitch approved shots',
     ),
   delete: projectsCrud.delete,
   archive: projectsCrud.archive,

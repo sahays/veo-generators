@@ -9,8 +9,9 @@ from storygraph.agents.roles import ScreenwriterOutput
 from storygraph.agents.runner import run_role
 from storygraph.budget import select_references
 from storygraph.compile import compile_shot
+from storygraph.omni.spec import OmniClipSpec
 from storygraph.config import Config
-from storygraph.errors import PermissionDenied, PromptTooLong, StructuredOutputError
+from storygraph.errors import PermissionDenied, StructuredOutputError
 from storygraph.repo import Repo
 from storygraph.schema import (
     Appearance,
@@ -247,7 +248,14 @@ def test_reference_budgeter_and_prompt_compiler_determinism(
         for _ in range(5)
     ]
     assert len({p.package_hash for p in pkgs}) == 1
-    assert 'Arjun (natural): "The compass points north."' in pkgs[0].compiled_prompt
+    full = OmniClipSpec.model_validate_json(pkgs[0].compiled_prompt)
+    assert [s.text for s in full.speech or []] == ["The compass points north."]
     tiny_caps = default_cfg.video.model_copy(update={"max_prompt_chars": 80})
-    with pytest.raises(PromptTooLong):
-        compile_shot(sv, plan_3, default_cfg, caps=tiny_caps, project_id="test_proj")
+    unrestricted_pkg = compile_shot(
+        sv, plan_3, default_cfg, caps=tiny_caps, project_id="test_proj"
+    )
+    trimmed = unrestricted_pkg.compiled_prompt
+    assert len(trimmed) <= len(pkgs[0].compiled_prompt)
+    small = OmniClipSpec.model_validate_json(trimmed)
+    assert small.sequence == full.sequence  # the action is never trimmed
+    assert small.speech == full.speech

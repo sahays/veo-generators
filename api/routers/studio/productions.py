@@ -40,13 +40,14 @@ register_crud_routes(
     resource_label="Production",
     getter=lambda rid: deps.firestore_svc.get_production(rid),
     updater=lambda rid, u: deps.firestore_svc.update_production(rid, u),
+    deleter=lambda rid: deps.firestore_svc.update_production(rid, {"archived": True}),
     lister=lambda include_archived=False: deps.firestore_svc.get_productions(
         include_archived=include_archived
     ),
     sign_one=sign_production_urls,
     sign_list=lambda p: sign_production_urls(p, thumbnails_only=True),
     include_patch=True,
-    include_delete=False,
+    include_delete=True,
     include_unarchive=True,
 )
 
@@ -72,6 +73,11 @@ def _apply_brief_fields(p: Project, body: dict[str, Any]) -> dict[str, Any]:
         "orientation",
         "language",
         "reference_image_url",
+        "visual_style_preset",
+        "color_palette_preset",
+        "director_style_preset",
+        "screenplay_style_preset",
+        "music_style_preset",
     )
     for field in fields:
         val = body.get(field)
@@ -267,6 +273,8 @@ def _ensure_storygraph_seeded(id: str) -> Any:
                 getattr(p, "visual_style_preset", None),
                 getattr(p, "color_palette_preset", None),
                 getattr(p, "director_style_preset", None),
+                getattr(p, "screenplay_style_preset", None),
+                getattr(p, "music_style_preset", None),
             )
             meta = ProjectMeta(
                 id=p.id,
@@ -309,10 +317,12 @@ async def run_story_graph_pipeline(id: str, body: dict[str, Any] = {}) -> Any:
 
 
 @router.post("/{id}/stages/{stage_id}/run")
-async def run_story_graph_stage(id: str, stage_id: str, force: bool = True) -> Any:
+async def run_story_graph_stage(
+    id: str, stage_id: str, force: bool = True, quality: str | None = None
+) -> Any:
     """Run a single StoryGraph stage for a production."""
     prod_main = _ensure_storygraph_seeded(id)
-    return await prod_main.run_single_stage(id, stage_id, force=force)
+    return await prod_main.run_single_stage(id, stage_id, force=force, quality=quality)
 
 
 @router.post("/{id}/gates/{gate_id}/approve")
@@ -360,3 +370,17 @@ async def compile_story_graph_shot(id: str, shot_id: str) -> Any:
     """Compile preview prompts for a single StoryGraph shot."""
     prod_main = _ensure_storygraph_seeded(id)
     return await prod_main.compile_single_shot_preview(id, shot_id)
+
+
+@router.get("/{id}/assembly-readiness")
+async def get_story_graph_assembly_readiness(id: str) -> Any:
+    """Return ready vs blocking shots for final assembly."""
+    prod_main = _ensure_storygraph_seeded(id)
+    return await prod_main.get_production_assembly_readiness(id)
+
+
+@router.post("/{id}/assemble")
+async def assemble_story_graph_production(id: str, mode: str = "approved_only") -> Any:
+    """Stitch the final video (`approved_only` skips blocking shots; `strict` requires all)."""
+    prod_main = _ensure_storygraph_seeded(id)
+    return await prod_main.assemble_production(id, mode)

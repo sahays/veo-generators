@@ -5,70 +5,53 @@ import {
   Terminal,
   RefreshCw,
   Loader2,
-  Play,
   AlertTriangle,
   Eye,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button, Card } from '@/components/Common'
 import type {
-  StoryGraphAsset,
   StoryGraphAuditEntry,
   StoryGraphBeat,
   StoryGraphChangeRequest,
   StoryGraphDialogueLine,
-  StoryGraphGate,
-  StoryGraphGenerationRun,
   StoryGraphMusicCue,
+  StoryGraphScene,
   StoryGraphShot,
   StoryGraphValidationIssue,
 } from '@/types/project'
 import type { SelectedInspectorItem } from './storyGraphStudioTypes'
-import { GateControlBar } from './StudioCommandHeader'
+import { ShotLookPanel } from './ShotLookPanel'
 
 export const StepShotBreakdownSection = ({
   shots,
   dialogueLines,
   musicCues,
+  scenes,
   canWrite,
   busyAction,
   isRunningPipeline,
   onRunStage,
-  gateG3,
-  gateNoteG3,
-  onGateNoteG3Change,
-  onGateDecision,
   selectedItem,
   onSelectItem,
 }: {
   shots: StoryGraphShot[]
   dialogueLines: StoryGraphDialogueLine[]
   musicCues: StoryGraphMusicCue[]
+  scenes?: StoryGraphScene[]
   canWrite: boolean
   busyAction: string | null
   isRunningPipeline: boolean
   onRunStage: (stageId: string) => void
-  gateG3?: StoryGraphGate
-  gateNoteG3: string
-  onGateNoteG3Change: (val: string) => void
-  onGateDecision: (gateId: 'G1' | 'G2' | 'G3', decision: 'approve' | 'reject') => void
   selectedItem: SelectedInspectorItem | null
   onSelectItem: (item: SelectedInspectorItem) => void
 }) => (
-  <div className="glass rounded-2xl p-6 md:p-7 border border-border/80 space-y-6">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
+  <div className="space-y-5">
+    <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <div className="flex items-center gap-2">
-          <span className="px-2.5 py-0.5 rounded bg-accent/15 text-accent-dark text-xs font-mono font-bold">
-            STEP 04 · S4_SHOTS + S5_MUSIC
-          </span>
-          <h3 className="text-base font-heading font-bold text-foreground">
-            Director Shot Breakdown, Camera Continuity & Music/SFX Cues
-          </h3>
-        </div>
         <p className="text-xs text-muted-foreground mt-0.5">
           Click any shot card to inspect its timed ActionBeats, cast appearances, and compiled
-          Jinja2 prompt in the right pane.
+          Jinja2 prompt in the details drawer.
         </p>
       </div>
       {canWrite && (
@@ -94,20 +77,6 @@ export const StepShotBreakdownSection = ({
         </div>
       )}
     </div>
-
-    <GateControlBar
-      gateId="G3"
-      stageId="S4_SHOTS"
-      stageLabel="Director Shot Breakdown & Music Cues"
-      gate={gateG3}
-      canWrite={canWrite}
-      gateNote={gateNoteG3}
-      onGateNoteChange={onGateNoteG3Change}
-      busyAction={busyAction}
-      isRunningPipeline={isRunningPipeline}
-      onGateDecision={onGateDecision}
-      onRunStage={onRunStage}
-    />
 
     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
       {shots.map((sh: StoryGraphShot) => {
@@ -149,6 +118,8 @@ export const StepShotBreakdownSection = ({
                 </span>
               )}
             </div>
+
+            <ShotLookPanel shot={sh} scenes={scenes} />
 
             <div className="space-y-2 text-xs">
               {(sh.beats || []).map((b: StoryGraphBeat, idx: number) => (
@@ -198,17 +169,9 @@ export const StepValidatorCompilerSection = ({
   isRunningPipeline: boolean
   onRunStage: (stageId: string) => void
 }) => (
-  <div className="glass rounded-2xl p-6 md:p-7 border border-border/80 space-y-6">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
+  <div className="space-y-5">
+    <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <div className="flex items-center gap-2">
-          <span className="px-2.5 py-0.5 rounded bg-accent/15 text-accent-dark text-xs font-mono font-bold">
-            STEP 05 · S6_VALIDATE + S7_COMPILE
-          </span>
-          <h3 className="text-base font-heading font-bold text-foreground">
-            Deterministic Continuity Validator (V1–V13) & Jinja2 Prompt Compiler
-          </h3>
-        </div>
       </div>
       {canWrite && (
         <div className="flex items-center gap-2">

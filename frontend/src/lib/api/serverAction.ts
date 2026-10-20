@@ -28,7 +28,7 @@ function resolveTargetUrl(path: string): string {
 
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   const isStoryGraphRoute =
-    /^\/api\/v1\/productions\/[^/]+\/(graph|run|stages\/|gates\/|appearances\/|shots\/)/.test(
+    /^\/api\/v1\/productions\/[^/]+\/(graph|run|stages\/|gates\/|appearances\/|shots\/|(assemble|assembly-readiness)(?=$|[/?]))/.test(
       normalizedPath,
     )
   const targetOrigin =
@@ -38,6 +38,23 @@ function resolveTargetUrl(path: string): string {
         ? productionsOrigin
         : fastapiOrigin
   return `${targetOrigin}${normalizedPath}`
+}
+
+function buildTimeoutResponse(err: unknown): ServerApiResponse {
+  const causeMsg =
+    err instanceof Error && err.cause instanceof Error
+      ? `${err.message} (${err.cause.message})`
+      : err instanceof Error
+        ? err.message
+        : 'Upstream request timed out or connection closed'
+  return {
+    status: 504,
+    ok: false,
+    retryAfter: null,
+    text: JSON.stringify({
+      detail: `Upstream request timed out while stage is still processing on server: ${causeMsg}`,
+    }),
+  }
 }
 
 /**
@@ -54,22 +71,24 @@ export async function serverApiRequest(
   const url = resolveTargetUrl(path)
   const headers = new Headers(headersRecord)
   if (body instanceof FormData) {
-    // Allow Node fetch to generate the multipart/form-data boundary header automatically
     headers.delete('content-type')
   }
 
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: body ?? undefined,
-    cache: 'no-store',
-  })
-
-  const text = await res.text()
-  return {
-    status: res.status,
-    ok: res.ok,
-    retryAfter: res.headers.get('Retry-After'),
-    text,
+  try {
+    const res = await fetch(url, {
+      method,
+      headers,
+      body: body ?? undefined,
+      cache: 'no-store',
+    })
+    return {
+      status: res.status,
+      ok: res.ok,
+      retryAfter: res.headers.get('Retry-After'),
+      text: await res.text(),
+    }
+  } catch (err) {
+    return buildTimeoutResponse(err)
   }
 }
+

@@ -1,7 +1,13 @@
-import { ShieldCheck, RefreshCw, Loader2, Play } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { ShieldCheck, RefreshCw, Loader2, Play, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button, Card } from '@/components/Common'
-import type { StoryGraphAsset, StoryGraphGenerationRun } from '@/types/project'
+import type {
+  RenderQuality,
+  StoryGraphAsset,
+  StoryGraphGenerationRun,
+  VideoResolution,
+} from '@/types/project'
 import type { SelectedInspectorItem } from './storyGraphStudioTypes'
 
 export const StepVideoRendersSection = ({
@@ -10,44 +16,72 @@ export const StepVideoRendersSection = ({
   activeGenerationRuns,
   assetsById,
   finalVideoUrl,
+  renderQuality = 'draft',
+  videoResolution = '360p',
   canWrite,
   busyAction,
   isRunningPipeline,
   onRunStage,
   selectedItem,
   onSelectItem,
+  assemblyPanel,
 }: {
   shotsCount: number
   generationRunsCount: number
   activeGenerationRuns: StoryGraphGenerationRun[]
   assetsById: Record<string, StoryGraphAsset>
   finalVideoUrl?: string
+  renderQuality?: RenderQuality
+  videoResolution?: VideoResolution
   canWrite: boolean
   busyAction: string | null
   isRunningPipeline: boolean
-  onRunStage: (stageId: string) => void
+  onRunStage: (stageId: string, quality?: 'draft' | 'final') => void
   selectedItem: SelectedInspectorItem | null
   onSelectItem: (item: SelectedInspectorItem) => void
-}) => (
-  <div className="glass rounded-2xl p-6 md:p-7 border border-border/80 space-y-6">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
+  /** Optional S10 readiness panel (blocking shots / approved-only stitch). */
+  assemblyPanel?: ReactNode
+}) => {
+  const isFinal720p = renderQuality === 'final' || videoResolution === '720p'
+  return (
+  <div className="space-y-5">
+    <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <div className="flex items-center gap-2">
-          <span className="px-2.5 py-0.5 rounded bg-accent/15 text-accent-dark text-xs font-mono font-bold">
-            STEP 06 · S8_RENDER + S9_QA + S10_ASSEMBLE
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={cn(
+              'px-2 py-0.5 rounded text-[11px] font-mono font-bold uppercase',
+              isFinal720p
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                : 'bg-amber-500/20 text-amber-400 border border-amber-500/30',
+            )}
+          >
+            {isFinal720p ? '720p Final' : '360p Draft'}
           </span>
-          <h3 className="text-base font-heading font-bold text-foreground">
-            Video Clip Renders, Multimodal VLM QA & Stitched Master Final Cut
-          </h3>
         </div>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Click any rendered shot clip below to inspect its Start Frame, Reference Sheets, End Frame, VLM QA telemetry, and compiled prompt in the right pane.
+          Drafts render at fast 360p with Gemini Omni; click &quot;Render 720p Final&quot; when ready to master in high definition.
         </p>
       </div>
       {canWrite && (
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="primary" size="xs" icon={busyAction === 'S8_RENDER' ? Loader2 : RefreshCw} disabled={busyAction !== null || isRunningPipeline || shotsCount === 0} onClick={() => onRunStage('S8_RENDER')}>
-            {generationRunsCount > 0 ? 'Re-Render Video Clips (S8)' : 'Render Video Clips (S8)'}
+          <Button
+            variant={generationRunsCount === 0 && !isFinal720p ? 'primary' : 'outline'}
+            size="xs"
+            icon={busyAction === 'S8_RENDER' ? Loader2 : RefreshCw}
+            disabled={busyAction !== null || isRunningPipeline || shotsCount === 0}
+            onClick={() => onRunStage('S8_RENDER', 'draft')}
+          >
+            {generationRunsCount > 0 ? 'Re-Render 360p Draft (S8)' : 'Render 360p Draft (S8)'}
+          </Button>
+          <Button
+            variant={generationRunsCount > 0 || isFinal720p ? 'primary' : 'outline'}
+            size="xs"
+            icon={busyAction === 'S8_RENDER' ? Loader2 : Sparkles}
+            disabled={busyAction !== null || isRunningPipeline || shotsCount === 0}
+            onClick={() => onRunStage('S8_RENDER', 'final')}
+          >
+            {isFinal720p && generationRunsCount > 0 ? 'Re-Render 720p Final (S8)' : 'Render 720p Final (S8)'}
           </Button>
           <Button variant="outline" size="xs" icon={busyAction === 'S9_QA' ? Loader2 : ShieldCheck} disabled={busyAction !== null || isRunningPipeline || generationRunsCount === 0} onClick={() => onRunStage('S9_QA')}>
             Run Clip QA (S9)
@@ -58,6 +92,8 @@ export const StepVideoRendersSection = ({
         </div>
       )}
     </div>
+
+    {assemblyPanel}
 
     {finalVideoUrl ? (
       <Card title="Final Stitched Master Cut (S10_ASSEMBLE)" icon={Play}>
@@ -119,4 +155,5 @@ export const StepVideoRendersSection = ({
       </div>
     )}
   </div>
-)
+  )
+}

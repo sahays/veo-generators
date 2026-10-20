@@ -8,6 +8,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from .clips.models import ClipScript, ShotLook
+
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
@@ -89,6 +91,8 @@ class StateEffect(BaseModel):
     attribute: Literal[
         "location",
         "sub_location",
+        "supported_by",
+        "orientation",
         "holding",
         "wearing",
         "injury",
@@ -165,7 +169,7 @@ class Asset(NodeBase):
 
 
 class InteractionStep(BaseModel):
-    """Atomic 1-action-at-a-time algorithmic screenplay step."""
+    """Atomic 1-action-at-a-time algorithmic screenplay step with Hoare-triple physical state."""
 
     step_index: int
     actor_id: str
@@ -177,6 +181,10 @@ class InteractionStep(BaseModel):
     action: str = ""
     description: str = ""
     detail: str = ""
+    pre_state: str = ""
+    contact_mechanics: str = ""
+    post_state: str = ""
+    supported_by: str = ""
     spatial_note: str = "center frame"
     emotional_beat: str = "focused"
     environment_reaction: str = ""
@@ -220,6 +228,7 @@ class Scene(NodeBase):
     summary: str = ""
     mood: str = ""
     interaction_steps: list[InteractionStep] = Field(default_factory=list)
+    clips: list[ClipScript] = Field(default_factory=list)  # screenwriter-owned
 
 
 class DialogueLine(NodeBase):
@@ -260,6 +269,8 @@ class ActionBeat(BaseModel):
     t_end_s: float
     description: str
     subject_ids: list[str] = Field(default_factory=list)
+    pre_state: str = ""
+    post_state: str = ""
 
 
 class CameraSpec(BaseModel):
@@ -293,6 +304,8 @@ class Shot(NodeBase):
     prop_ids: list[str] = Field(default_factory=list)
     prop_appearance_ids: dict[str, str] = Field(default_factory=dict)
     camera: CameraSpec = Field(default_factory=CameraSpec)
+    look: ShotLook | None = None  # director-owned cinematography look
+    clip_index: int | None = None  # 1:1 link to Scene.clips[*].clip_index
     beats: list[ActionBeat] = Field(default_factory=list)
     dialogue_ids: list[str] = Field(default_factory=list)
     music_cue_id: str | None = None
@@ -306,6 +319,7 @@ class Shot(NodeBase):
     ref_ids: list[str] = Field(default_factory=list)  # denormalized appearance IDs
     stale: bool = False
     stale_reason: str | None = None
+    content_hash: str | None = None  # render-relevant fingerprint (None = legacy)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -318,6 +332,8 @@ class QAReport(BaseModel):
     wardrobe_match: float = 1.0
     setting_match: float = 1.0
     action_achieved: float = 1.0
+    physics_plausibility: float = 1.0
+    object_permanence: float = 1.0
     continuity_prev_shot: float = 1.0
     dialogue_wer: float = 0.0
     artifact_flags: list[str] = Field(default_factory=list)
@@ -344,6 +360,8 @@ class GenerationRun(NodeBase):
     output_video_signed_url: str | None = None
     extracted_last_frame_asset_id: str | None = None
     qa_scores: QAReport | None = None
+    render_fallback: dict[str, Any] | None = None
+    shot_content_hash: str | None = None  # Shot.content_hash at render time
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -431,7 +449,9 @@ class ProjectMeta(BaseModel):
     director_style_preset: str = "wonder_spectacle"
     screenplay_style_preset: str = "algorithmic_wonder"
     music_style_preset: str = "symphonic_leitmotif"
-    auto_approve_gates: bool = False
+    auto_approve_gates: bool = True
+    render_quality: Literal["draft", "final"] = "draft"
+    video_resolution: Literal["360p", "720p"] = "360p"
     status: str = "draft"
     current_stage: str = "S0_INGEST"
     final_video_uri: str | None = None
@@ -439,25 +459,11 @@ class ProjectMeta(BaseModel):
     invite_code: str | None = None
     archived: bool = False
     error_message: str | None = None
+    skipped_shot_ids: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=_utc_now)
     updated_at: datetime = Field(default_factory=_utc_now)
 
 
 ALL_NODE_TYPES: dict[str, type[NodeBase]] = {
-    "Entity": Entity,
-    "Event": Event,
-    "StateFact": StateFact,
-    "Appearance": Appearance,
-    "Asset": Asset,
-    "StyleGuide": StyleGuide,
-    "Scene": Scene,
-    "DialogueLine": DialogueLine,
-    "MusicCue": MusicCue,
-    "Shot": Shot,
-    "GenerationRun": GenerationRun,
-    "ChangeRequest": ChangeRequest,
-    "Gate": Gate,
-    "StageRun": StageRun,
-    "AuditEntry": AuditEntry,
-    "StageQaReport": StageQaReport,
+    cls.__name__: cls for cls in NodeBase.__subclasses__()
 }

@@ -6,7 +6,7 @@ import hashlib
 import io
 from dataclasses import dataclass, field
 
-from PIL import Image, ImageDraw
+from PIL import Image
 
 from .config import Config, VideoProviderCfg
 from .repo import Repo
@@ -47,22 +47,16 @@ def _render_side_by_side_png(
     img_b: Image.Image,
     label_a: str = "LEFT",
     label_b: str = "RIGHT",
-    gutter: int = 16,
+    gutter: int = 8,
 ) -> bytes:
-    bar_h = 28
+    _ = (label_a, label_b)
     target_h = max(img_a.height, img_b.height, 256)
     w_a = max(1, int(img_a.width * (target_h / max(1, img_a.height))))
     w_b = max(1, int(img_b.width * (target_h / max(1, img_b.height))))
     total_w = w_a + gutter + w_b
-    canvas = Image.new("RGB", (total_w, target_h + bar_h), color=(255, 255, 255))
-    canvas.paste(img_a.resize((w_a, target_h)), (0, bar_h))
-    canvas.paste(img_b.resize((w_b, target_h)), (w_a + gutter, bar_h))
-    draw = ImageDraw.Draw(canvas)
-    draw.rectangle([(0, 0), (total_w, bar_h - 1)], fill=(24, 28, 36))
-    mid_x = w_a + gutter // 2
-    draw.line([(mid_x, 0), (mid_x, target_h + bar_h)], fill=(20, 20, 20), width=2)
-    draw.text((8, 6), f"LEFT: {label_a[:28]}", fill=(255, 255, 255))
-    draw.text((w_a + gutter + 8, 6), f"RIGHT: {label_b[:28]}", fill=(255, 255, 255))
+    canvas = Image.new("RGB", (total_w, target_h), color=(245, 245, 245))
+    canvas.paste(img_a.resize((w_a, target_h)), (0, 0))
+    canvas.paste(img_b.resize((w_b, target_h)), (w_a + gutter, 0))
     buf = io.BytesIO()
     canvas.save(buf, format="PNG")
     return buf.getvalue()
@@ -235,13 +229,15 @@ def _allocate_non_loc_pool(
     cfg: Config,
     repo: Repo | None,
     dropped_verbal: list[str],
+    allow_composites: bool = True,
 ) -> tuple[list[Asset], list[tuple[Asset, Asset]]]:
     high_pri = [c for c in remaining_pool if c.score >= 70 and c.asset is not None]
     composites_to_build: list[tuple[Asset, Asset]] = []
     selected_assets: list[Asset] = []
     used_ids: set[str] = set()
     while (
-        cfg.caps.max_composite_subjects >= 2
+        allow_composites
+        and cfg.caps.max_composite_subjects >= 2
         and (rem_high := [c for c in high_pri if c.entity_id not in used_ids])
         and len(rem_high) > (avail_for_non_loc - len(selected_assets)) >= 1
     ):
@@ -249,10 +245,9 @@ def _allocate_non_loc_pool(
             [c for c in rem_high if c.entity_type == "character"],
             key=lambda x: (x.screen_order, x.entity_id),
         )
-        pair_src = char_high if len(char_high) >= 2 else rem_high[:2]
-        if len(pair_src) < 2:
+        if len(char_high) < 2:
             break
-        c1, c2 = pair_src[0], pair_src[1]
+        c1, c2 = char_high[0], char_high[1]
         assert c1.asset is not None and c2.asset is not None
         composites_to_build.append((c1.asset, c2.asset))
         comp = (
@@ -277,6 +272,7 @@ def select_references(
     cfg: Config,
     caps: VideoProviderCfg | None = None,
     repo: Repo | None = None,
+    allow_composites: bool = True,
 ) -> RefPlan:
     """Deterministically rank candidate reference assets and fit within `caps.max_reference_images`."""
     provider_caps = caps or cfg.video
@@ -318,7 +314,12 @@ def select_references(
 
     avail = effective_slots - (1 if reserved_loc else 0)
     selected, composites = _allocate_non_loc_pool(
-        remaining_pool, avail, cfg, repo, dropped_verbal
+        remaining_pool,
+        avail,
+        cfg,
+        repo,
+        dropped_verbal,
+        allow_composites=allow_composites,
     )
     if reserved_loc and reserved_loc.asset is not None:
         selected.append(reserved_loc.asset)

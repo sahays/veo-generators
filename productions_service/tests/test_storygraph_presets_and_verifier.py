@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-from conftest import seed_valid_graph
+from conftest import add_clip_shot, seed_valid_graph, set_scene_clips
+from storygraph.agents.critic import _collect_qa_failures, _normalize_qa_report
 from storygraph.agents.role import run_script_supervisor, run_story_architect
 from storygraph.agents.stage_qa import list_stage_qa_reports, run_stage_qa_and_remediate
+from storygraph.budget import select_references
+from storygraph.compile import compile_shot
+from storygraph.omni.spec import OmniClipSpec
 from storygraph.config import Config
 from storygraph.graph_verifier import verify_storygraph
+from storygraph.pipeline import Pipeline, Stage
 from storygraph.presets import (
     COLOR_PALETTE_PRESETS,
     DIRECTOR_STYLE_PRESETS,
@@ -14,10 +19,23 @@ from storygraph.presets import (
     resolve_production_presets,
 )
 from storygraph.repo import Repo
-from storygraph.schema import Event, InteractionStep, ProjectMeta, Role, StateEffect
+from storygraph.schema import (
+    Appearance,
+    Entity,
+    EntityType,
+    Event,
+    InteractionStep,
+    ProjectMeta,
+    QAReport,
+    Role,
+    StateEffect,
+    Status,
+)
 from storygraph.state import rebuild_state_facts, state_at
+from storygraph.tools import write_tools as wt
 from storygraph.tools.registry import ToolContext
 from storygraph.validate import validate_all
+from storygraph.views import shot_view
 
 
 def test_presets_catalog_and_director_auto_binding() -> None:
@@ -170,3 +188,244 @@ def test_sublocation_event_effects_remediation(
     assert [
         i for i in validate_all(tmp_repo, default_cfg) if i.severity == "error"
     ] == []
+
+
+def test_physical_causality_and_backward_prop_liveness_closure(
+    tmp_repo: Repo, default_cfg: Config
+) -> None:
+    """Verify Hoare-triple state enrichment, backward prop liveness closure, and physics prompt compilation."""
+    shot1 = seed_valid_graph(tmp_repo)
+    scene = tmp_repo.get_scene(shot1.scene_id)
+    assert scene is not None
+    step1 = InteractionStep(
+        step_index=1,
+        actor_id="char_arjun",
+        interaction_type="prop",
+        target_id="obj_compass",
+        action="Arjun reaches out and places the brass compass onto the wooden table",
+        emotional_beat="focused",
+    )
+    step2 = step1.model_copy(
+        update={
+            "step_index": 2,
+            "action": "Arjun inspects the brass compass on the table",
+        }
+    )
+    tmp_repo.put_scene(
+        scene.model_copy(
+            update={
+                "interaction_steps": [step1, step2],
+                "shot_ids": [shot1.id, "shot_002"],
+            }
+        )
+    )
+    set_scene_clips(tmp_repo, scene.id, [[1], [2]])
+    tmp_repo.put_shot(shot1.model_copy(update={"prop_ids": []}))
+    add_clip_shot(tmp_repo, shot1, "shot_002", 2, 25)
+
+    issues = verify_storygraph(tmp_repo, default_cfg, through_stage="S4_SHOTS")
+    codes = {i.code for i in issues}
+    assert "missing_step_physics_state" in codes
+    assert "prop_permanence_gap" in codes
+
+    s4_report = run_stage_qa_and_remediate(tmp_repo, default_cfg, "S4_SHOTS")
+    assert s4_report.passed is True
+
+    healed_shot1 = tmp_repo.get_shot(shot1.id)
+    assert healed_shot1 is not None and "obj_compass" in healed_shot1.prop_ids
+    healed_scene = tmp_repo.get_scene(scene.id)
+    assert healed_scene is not None
+    enriched_step = healed_scene.interaction_steps[0]
+    assert enriched_step.pre_state and enriched_step.post_state
+    assert "Cafe" in enriched_step.supported_by
+
+    view1 = shot_view(tmp_repo, shot1.id)
+    plan1 = select_references(view1, default_cfg)
+    pkg1 = compile_shot(view1, plan1, default_cfg)
+    assert "Brass Compass" in pkg1.compiled_prompt
+    assert "PHYSICS" not in pkg1.compiled_prompt
+    assert "AVOID" not in pkg1.compiled_prompt
+
+
+def test_critic_physics_and_permanence_qa_rejection(default_cfg: Config) -> None:
+    """Verify Critic S9 QA flags materialization, inversion, floating objects, and low physics/permanence scores."""
+    raw = QAReport(
+        passed=True,
+        wardrobe_match=0.95,
+        setting_match=0.95,
+        action_achieved=0.90,
+        physics_plausibility=0.50,
+        object_permanence=0.40,
+        artifact_flags=["object_materialized", "prop_inverted", "floating_object"],
+    )
+    norm, severe = _normalize_qa_report(raw, default_cfg, is_mock=False)
+    assert {
+        "object_materialized",
+        "prop_inverted",
+        "floating_object",
+    }.issubset(severe)
+    failures = _collect_qa_failures(
+        norm, default_cfg, is_mock=False, severe_flags=severe
+    )
+    assert any("Physics plausibility" in f for f in failures)
+    assert any("Object permanence" in f for f in failures)
+    assert any("object_materialized" in f for f in failures)
+    assert any("prop_inverted" in f for f in failures)
+
+
+def test_auto_mode_and_iterative_agent_review_redo_before_render(
+    tmp_repo: Repo, default_cfg: Config
+) -> None:
+    """Verify auto_approve_gates defaults to True and S6_VALIDATE redoes upstream agent stages when issues exist."""
+    meta = ProjectMeta(
+        id="p_auto",
+        name="Auto Mode Test",
+        base_concept="Pip pulls a wooden chair to the kitchen table and climbs up.",
+        story_text="Pip pulls a wooden chair to the kitchen table and climbs up.",
+    )
+    assert meta.auto_approve_gates is True
+    tmp_repo.put_project_meta(meta)
+
+    pipe = Pipeline(repo=tmp_repo, cfg=default_cfg)
+    for st in (
+        Stage.S1_EXTRACT,
+        Stage.S2_SCREENPLAY,
+        Stage.S3_DESIGN,
+        Stage.S4_SHOTS,
+        Stage.S5_MUSIC,
+    ):
+        pipe.run_stage(st)
+
+    for sh in tmp_repo.list_shots():
+        tmp_repo.store.delete("shots", sh.id)
+    critic_ctx = ToolContext(repo=tmp_repo, role=Role.CRITIC, cfg=default_cfg)
+    wt.create_change_request(
+        critic_ctx,
+        to_role=Role.DIRECTOR,
+        target_node_id="scn_001",
+        reason="Missing shot breakdown for scene; redo S4_SHOTS",
+        proposed_patch={"action": "redo_shots"},
+    )
+    assert len(tmp_repo.list_shots()) == 0
+    assert len(tmp_repo.list_change_requests(open_only=True)) == 1
+
+    pipe.run_stage(Stage.S6_VALIDATE, force=True)
+    assert len(tmp_repo.list_shots()) >= 1
+    assert len(tmp_repo.list_change_requests(open_only=True)) == 0
+
+
+def test_archetype_conservation_voice_lock_and_critic_flags(
+    tmp_repo: Repo, default_cfg: Config
+) -> None:
+    """Verify data-driven prop states per clip, character permanence closure, voice, and QA flags."""
+    shot1 = seed_valid_graph(tmp_repo)
+    for eid, etype, name, desc in (
+        ("char_milo", EntityType.CHARACTER, "Milo", "Playful golden puppy"),
+        (
+            "obj_chair",
+            EntityType.OBJECT,
+            "Wooden Chair",
+            "Four-legged wooden chair with tall backrest",
+        ),
+        ("obj_towel", EntityType.OBJECT, "Kitchen Towel", "Checkered cloth towel"),
+        ("obj_bowl", EntityType.OBJECT, "Mixing Bowl", "Ceramic mixing bowl"),
+    ):
+        tmp_repo.put_entity(
+            Entity(
+                id=eid,
+                entity_type=etype,
+                canonical_name=name,
+                description=desc,
+                created_by=Role.STORY_ARCHITECT,
+            )
+        )
+        app_node = tmp_repo.add_appearance(
+            Appearance(
+                id=f"app_{eid}_default",
+                created_by=Role.DESIGNER,
+                status=Status.APPROVED,
+                entity_id=eid,
+                state_label="default",
+                visual_description=desc,
+            )
+        )
+        tmp_repo.update_appearance_status(
+            app_node.id,
+            Status.APPROVED,
+            asset_ids=["ast_char_arjun_trenchcoat_v1"],
+        )
+    scene = tmp_repo.get_scene(shot1.scene_id)
+    assert scene is not None
+    steps = [
+        InteractionStep(
+            step_index=1,
+            actor_id="char_arjun",
+            interaction_type="prop",
+            target_id="obj_chair",
+            action="walks to the wooden chair, pulls it beside the counter, and steps onto the seat",
+        ),
+        InteractionStep(
+            step_index=2,
+            actor_id="char_arjun",
+            interaction_type="prop",
+            target_id="obj_towel",
+            action="pulls the hanging kitchen towel into his hand",
+        ),
+        InteractionStep(
+            step_index=3,
+            actor_id="char_arjun",
+            interaction_type="prop",
+            target_id="obj_bowl",
+            action="sets down the mixing bowl on the kitchen counter",
+        ),
+        InteractionStep(
+            step_index=4,
+            actor_id="char_milo",
+            interaction_type="prop",
+            target_id="obj_chair",
+            action="returns the wooden chair to its original position beside the table",
+        ),
+    ]
+    set_scene_clips(tmp_repo, scene.id, [[1, 2], [3, 4]], steps)
+    add_clip_shot(tmp_repo, shot1, "shot_1b", 2, 16)
+    issues = verify_storygraph(tmp_repo, default_cfg, through_stage="S4_SHOTS")
+    codes = {i.code for i in issues}
+    assert "character_permanence_gap" in codes
+    assert "prop_permanence_gap" in codes
+
+    s4_report = run_stage_qa_and_remediate(tmp_repo, default_cfg, "S4_SHOTS")
+    assert s4_report.passed is True
+    healed_shot1 = tmp_repo.get_shot(shot1.id)
+    assert healed_shot1 is not None
+    assert "char_milo" in {c.entity_id for c in healed_shot1.cast}
+    assert {"obj_chair", "obj_towel", "obj_bowl"}.issubset(set(healed_shot1.prop_ids))
+
+    view1 = shot_view(tmp_repo, shot1.id)
+    plan1 = select_references(view1, default_cfg)
+    pkg1 = compile_shot(view1, plan1, default_cfg)
+    assert "NEVER" not in pkg1.compiled_prompt
+    # Clip 1 moves the chair and towel; the bowl is only touched in clip 2.
+    spec = OmniClipSpec.model_validate_json(pkg1.compiled_prompt)
+    moves = {o.name: o.moves for o in spec.objects or []}
+    assert (moves["Mixing Bowl"], moves["Wooden Chair"], moves["Kitchen Towel"]) == (
+        False,
+        True,
+        True,
+    )
+
+    raw_qa = QAReport(
+        passed=True,
+        artifact_flags=[
+            "start_frame_bleed",
+            "duplicate_prop",
+            "prop_part_missing",
+            "self_moving_object",
+        ],
+    )
+    _, severe = _normalize_qa_report(raw_qa, default_cfg, is_mock=False)
+    assert {
+        "start_frame_bleed",
+        "duplicate_prop",
+        "prop_part_missing",
+        "self_moving_object",
+    }.issubset(severe)

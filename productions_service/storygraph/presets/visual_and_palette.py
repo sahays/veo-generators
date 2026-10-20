@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace as _dc_replace
+
 from .models import ColorPalettePresetSpec, VisualStylePresetSpec
 
 VISUAL_STYLE_PRESETS: dict[str, VisualStylePresetSpec] = {
@@ -297,4 +299,6 @@ COLOR_PALETTE_PRESETS: dict[str, ColorPalettePresetSpec] = {
     ),
 }
 
-COLOR_PALETTE_PRESETS["vibrant_pop"] = COLOR_PALETTE_PRESETS["vibrant_saturated"]
+COLOR_PALETTE_PRESETS["vibrant_pop"] = _dc_replace(
+    COLOR_PALETTE_PRESETS["vibrant_saturated"], id="vibrant_pop"
+)

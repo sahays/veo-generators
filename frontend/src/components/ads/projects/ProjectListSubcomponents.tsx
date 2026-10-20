@@ -5,14 +5,10 @@ import {
   CheckCircle2,
   Clock,
   GitBranch,
-  Play,
   Sliders,
   Search,
   Layers,
   Eye,
-  Monitor,
-  Smartphone,
-  DollarSign,
 } from 'lucide-react'
 import type { Project } from '@/types/project'
 import { Button } from '@/components/Common'
@@ -145,20 +141,18 @@ export const ProjectListHeader = ({
 
 export const ProjectCardItem = ({
   project,
-  isSelected,
   canWrite,
-  onSelect,
   onDelete,
   onOpenStudio,
   onOpenSummary,
+  onEdit,
 }: {
   project: ExtendedProject
-  isSelected: boolean
   canWrite: boolean
-  onSelect: () => void
   onDelete: () => void
   onOpenStudio: () => void
   onOpenSummary: () => void
+  onEdit?: () => void
 }) => {
   const isDone = project.status === 'completed' || !!project.final_video_url
   const stageCode = project.current_stage || (isDone ? 'S10_ASSEMBLE' : 'S1_EXTRACT')
@@ -168,13 +162,8 @@ export const ProjectCardItem = ({
 
   return (
     <div
-      onClick={onSelect}
-      className={cn(
-        'cursor-pointer rounded-2xl overflow-hidden border transition-all flex flex-col justify-between group',
-        isSelected
-          ? 'ring-2 ring-accent bg-accent/10 border-accent shadow-xl'
-          : 'glass border-border/80 hover:border-accent/50',
-      )}
+      onClick={onOpenStudio}
+      className="cursor-pointer rounded-2xl overflow-hidden border glass border-border/80 hover:border-accent/50 transition-all flex flex-col justify-between group"
     >
       <div>
         <div className="aspect-video bg-muted relative overflow-hidden">
@@ -225,7 +214,7 @@ export const ProjectCardItem = ({
                 size="icon"
                 onClick={onDelete}
                 className="h-7 w-7 rounded-lg"
-                title="Delete Production"
+                title="Archive Production"
               >
                 <Trash2 size={13} />
               </Button>
@@ -266,132 +255,15 @@ export const ProjectCardItem = ({
         <Button size="xs" variant="primary" icon={GitBranch} onClick={onOpenStudio}>
           Open StoryGraph Studio
         </Button>
-        <Button size="xs" variant="outline" icon={Eye} onClick={onOpenSummary}>
-          Summary
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-export const ProductionInspectorPanel = ({
-  production,
-  canWrite,
-  onNavigate,
-}: {
-  production: ExtendedProject
-  canWrite: boolean
-  onNavigate: (path: string) => void
-}) => {
-  const thumbUrl = getProjectThumbnailUrl(production)
-
-  return (
-    <div className="glass rounded-2xl p-5 border border-border/80 space-y-5">
-      <div className="flex items-center justify-between border-b border-border/60 pb-3">
-        <div className="flex items-center gap-2">
-          <Sliders size={16} className="text-accent-dark" />
-          <h3 className="text-xs font-heading font-bold uppercase tracking-wider text-foreground">
-            Production Inspector
-          </h3>
-        </div>
-        <span className="text-[10px] font-mono text-muted-foreground">{production.id}</span>
-      </div>
-
-      <div className="aspect-video rounded-xl overflow-hidden bg-black border border-border">
-        {production.final_video_url ? (
-          <video
-            key={production.final_video_url}
-            controls
-            preload="metadata"
-            src={production.final_video_url}
-            className="w-full h-full"
-          />
-        ) : thumbUrl ? (
-          <img src={thumbUrl} alt={production.name} className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-muted-foreground">
-            <Play size={24} className="text-accent-dark" />
-            <span className="text-xs">Open Studio to run pipeline</span>
-          </div>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h4 className="text-lg font-heading font-bold text-foreground">{production.name}</h4>
-          <span className="px-2 py-0.5 rounded bg-accent/15 text-accent-dark text-[10px] font-mono font-bold uppercase">
-            {STAGE_LABELS[production.current_stage || ''] || production.status || 'Active'}
-          </span>
-        </div>
-        <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto pr-1">
-          {production.base_concept || 'No concept description provided.'}
-        </p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2.5 text-xs">
-        <div className="p-2.5 rounded-lg bg-muted/40 border border-border/60 flex items-center gap-2">
-          {production.orientation === '9:16' ? (
-            <Smartphone size={14} className="text-accent-dark" />
-          ) : (
-            <Monitor size={14} className="text-accent-dark" />
-          )}
-          <div>
-            <span className="text-[9px] font-mono uppercase text-muted-foreground block">
-              Aspect Ratio
-            </span>
-            <span className="font-mono font-bold">{production.orientation || '16:9'}</span>
-          </div>
-        </div>
-        <div className="p-2.5 rounded-lg bg-muted/40 border border-border/60 flex items-center gap-2">
-          <Clock size={14} className="text-accent-dark" />
-          <div>
-            <span className="text-[9px] font-mono uppercase text-muted-foreground block">
-              Target Duration
-            </span>
-            <span className="font-mono font-bold">{production.video_length || '32'}s</span>
-          </div>
-        </div>
-        {production.estimated_cost !== undefined && (
-          <div className="col-span-2 p-2.5 rounded-lg bg-muted/40 border border-border/60 flex items-center justify-between">
-            <span className="text-[10px] font-mono uppercase text-muted-foreground flex items-center gap-1">
-              <DollarSign size={12} className="text-emerald-400" /> Estimated Pipeline Cost
-            </span>
-            <span className="font-mono font-bold text-emerald-400">
-              ${Number(production.estimated_cost || 0).toFixed(4)}
-            </span>
-          </div>
-        )}
-      </div>
-
-      <div className="space-y-2 pt-2 border-t border-border/60">
-        <Button
-          variant="primary"
-          size="lg"
-          icon={GitBranch}
-          onClick={() => onNavigate(`/productions/${production.id}/script`)}
-          className="w-full"
-        >
-          Launch StoryGraph Studio (S1–S10)
-        </Button>
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            icon={Eye}
-            onClick={() => onNavigate(`/productions/${production.id}`)}
-          >
-            View Summary
-          </Button>
-          {canWrite && (
-            <Button
-              variant="outline"
-              size="sm"
-              icon={Sliders}
-              onClick={() => onNavigate(`/productions/${production.id}/edit`)}
-            >
-              Edit Story Brief
+        <div className="flex items-center gap-1.5">
+          {canWrite && onEdit && (
+            <Button size="xs" variant="outline" icon={Sliders} onClick={onEdit}>
+              Edit
             </Button>
           )}
+          <Button size="xs" variant="outline" icon={Eye} onClick={onOpenSummary}>
+            Summary
+          </Button>
         </div>
       </div>
     </div>

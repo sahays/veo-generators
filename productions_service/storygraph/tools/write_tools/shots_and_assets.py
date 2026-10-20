@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import logging
+from datetime import UTC, datetime
 from typing import Any
 
 from ...audit import append_audit
@@ -15,9 +17,11 @@ from ...schema import (
     CastInShot,
     Entity,
     Shot,
+    ShotLook,
     Status,
     StyleGuide,
 )
+from ...shots import compute_shot_content_hash, find_scene_clip
 from ..registry import (
     ToolContext,
     assert_asset_kind_allowed,
@@ -31,6 +35,8 @@ from .audio_and_qa import (
     record_clip_qa,
     set_shot_audio,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def register_asset(
@@ -202,6 +208,40 @@ def _parse_shot_inputs(
     return parsed_cast, parsed_cam, parsed_beats
 
 
+def _stamp_content_hash(ctx: ToolContext, prev: Shot | None, shot: Shot) -> Shot:
+    """Fingerprint `shot`; mark it stale when its render content differs from `prev`.
+
+    Unchanged content keeps the previous staleness verdict, so a no-op regeneration
+    neither invalidates approved clips nor clears an upstream-asset staleness flag.
+    """
+    scene = ctx.repo.get_scene(shot.scene_id)
+    clip = find_scene_clip(scene.clips, shot.clip_index) if scene else None
+    new_hash = compute_shot_content_hash(shot, clip)
+    if prev is None:
+        return shot.model_copy(update={"content_hash": new_hash})
+    if prev.content_hash == new_hash:
+        keep = {"stale": prev.stale, "stale_reason": prev.stale_reason}
+        return shot.model_copy(update={"content_hash": new_hash, **keep})
+    reason = f"Shot content changed by {ctx.role} regeneration"
+    logger.info(
+        "Shot content changed; existing clips invalidated",
+        extra={
+            "who": str(ctx.role),
+            "where": "write_tools.shots_and_assets._stamp_content_hash",
+            "what": "shot_marked_stale",
+            "when": datetime.now(UTC).isoformat(),
+            "why": reason,
+            "how": "sha256 render-content fingerprint mismatch",
+            "project_id": ctx.repo.project_id,
+            "shot_id": shot.id,
+            "prev_hash": prev.content_hash,
+            "new_hash": new_hash,
+        },
+    )
+    update = {"content_hash": new_hash, "stale": True, "stale_reason": reason}
+    return shot.model_copy(update=update)
+
+
 def put_shot(
     ctx: ToolContext,
     shot_id: str,
@@ -224,6 +264,8 @@ def put_shot(
     action_focus_sfx: list[str] | None = None,
     entry_motion_vector: str | None = None,
     exit_motion_vector: str | None = None,
+    look: ShotLook | dict[str, Any] | None = None,
+    clip_index: int | None = None,
 ) -> dict[str, Any]:
     assert_can_write(ctx.role, "Shot")
     prev = ctx.repo.get_shot(shot_id)
@@ -234,6 +276,11 @@ def put_shot(
         else (prev.music_cue_id if prev else None)
     )
     resolved_sfx = sfx if sfx is not None else (prev.sfx if prev else [])
+    parsed_look = (
+        (look if isinstance(look, ShotLook) else ShotLook.model_validate(look))
+        if look is not None
+        else (prev.look if prev else None)
+    )
     shot = Shot(
         id=shot_id,
         created_by=ctx.role,
@@ -247,6 +294,8 @@ def put_shot(
         cast=parsed_cast,
         prop_ids=prop_ids or [],
         camera=parsed_cam,
+        look=parsed_look,
+        clip_index=clip_index,
         beats=parsed_beats,
         dialogue_ids=dialogue_ids or [],
         music_cue_id=resolved_cue,
@@ -272,7 +321,7 @@ def put_shot(
         stale=False,
         stale_reason=None,
     )
-    saved = ctx.repo.put_shot(shot)
+    saved = ctx.repo.put_shot(_stamp_content_hash(ctx, prev, shot))
     for did in saved.dialogue_ids:
         dline = ctx.repo.get_dialogue(did)
         if dline and dline.shot_id != saved.id:

@@ -4,10 +4,8 @@ import { Button } from '@/components/Common'
 import type {
   StoryGraphAppearance,
   StoryGraphEntity,
-  StoryGraphGate,
 } from '@/types/project'
 import type { DesignFilter, SelectedInspectorItem } from './storyGraphStudioTypes'
-import { GateControlBar } from './StudioCommandHeader'
 
 export const StepVisualReferenceSheetsSection = ({
   appearancesCount,
@@ -19,10 +17,6 @@ export const StepVisualReferenceSheetsSection = ({
   busyAction,
   isRunningPipeline,
   onRunStage,
-  gateG2,
-  gateNoteG2,
-  onGateNoteG2Change,
-  onGateDecision,
   onAppearanceAction,
   selectedItem,
   onSelectItem,
@@ -36,27 +30,15 @@ export const StepVisualReferenceSheetsSection = ({
   busyAction: string | null
   isRunningPipeline: boolean
   onRunStage: (stageId: string) => void
-  gateG2?: StoryGraphGate
-  gateNoteG2: string
-  onGateNoteG2Change: (val: string) => void
-  onGateDecision: (gateId: 'G1' | 'G2' | 'G3', decision: 'approve' | 'reject') => void
   onAppearanceAction: (appearanceId: string, action: 'approve' | 'regenerate') => void
   selectedItem: SelectedInspectorItem | null
   onSelectItem: (item: SelectedInspectorItem) => void
 }) => (
-  <div className="glass rounded-2xl p-6 md:p-7 border border-border/80 space-y-6">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
+  <div className="space-y-5">
+    <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <div className="flex items-center gap-2">
-          <span className="px-2.5 py-0.5 rounded bg-accent/15 text-accent-dark text-xs font-mono font-bold">
-            STEP 03 · S3_DESIGN
-          </span>
-          <h3 className="text-base font-heading font-bold text-foreground">
-            Visual Design Studio — Character, Location & Prop Reference Images
-          </h3>
-        </div>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Click any reference sheet card to inspect high-res artwork, CRITIC VLM QA telemetry, and Approve/Regenerate controls in the right pane.
+          Click any reference sheet card to inspect high-res artwork, CRITIC VLM QA telemetry, and Approve/Regenerate controls in the details drawer.
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -79,20 +61,6 @@ export const StepVisualReferenceSheetsSection = ({
         )}
       </div>
     </div>
-
-    <GateControlBar
-      gateId="G2"
-      stageId="S3_DESIGN"
-      stageLabel="Character, Location & Object Reference Sheets"
-      gate={gateG2}
-      canWrite={canWrite}
-      gateNote={gateNoteG2}
-      onGateNoteChange={onGateNoteG2Change}
-      busyAction={busyAction}
-      isRunningPipeline={isRunningPipeline}
-      onGateDecision={onGateDecision}
-      onRunStage={onRunStage}
-    />
 
     <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-5">
       {filteredAppearances.map((appNode: StoryGraphAppearance) => {

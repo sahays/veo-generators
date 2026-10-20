@@ -10,7 +10,6 @@ import { useAdsProjectActions } from './projects/useAdsProjectActions'
 import {
   ProjectListHeader,
   ProjectCardItem,
-  ProductionInspectorPanel,
   type ExtendedProject,
   type ProjectStatusFilter,
 } from './projects/ProjectListSubcomponents'
@@ -66,14 +65,12 @@ function useProjectListData() {
   const [isLoading, setIsLoading] = useState(true)
   const [deleteTarget, setDeleteTarget] = useState<ExtendedProject | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
 
   useEffect(() => {
     projectsApi
       .list()
       .then((list) => {
         setProjects(list)
-        if (list.length > 0) setSelectedId(list[0].id)
       })
       .catch(() => null)
       .finally(() => setIsLoading(false))
@@ -83,35 +80,30 @@ function useProjectListData() {
     if (!deleteTarget) return
     setIsDeleting(true)
     try {
-      await projectsApi.delete(deleteTarget.id)
+      await projectsApi.archive(deleteTarget.id)
       const nextList = projects.filter((p) => p.id !== deleteTarget.id)
       setProjects(nextList)
-      if (selectedId === deleteTarget.id) setSelectedId(nextList[0]?.id ?? null)
       setDeleteTarget(null)
     } finally {
       setIsDeleting(false)
     }
   }
 
-  return { projects, isLoading, deleteTarget, setDeleteTarget, isDeleting, selectedId, setSelectedId, confirmDelete }
+  return { projects, isLoading, deleteTarget, setDeleteTarget, isDeleting, confirmDelete }
 }
 
 const ProjectListBody = ({
   isLoading,
   projectsCount,
   filteredProjects,
-  selectedProduction,
   canWrite,
-  onSelect,
   onDelete,
   onNavigate,
 }: {
   isLoading: boolean
   projectsCount: number
   filteredProjects: ExtendedProject[]
-  selectedProduction: ExtendedProject | null
   canWrite: boolean
-  onSelect: (id: string) => void
   onDelete: (p: ExtendedProject) => void
   onNavigate: (path: string) => void
 }) =>
@@ -128,30 +120,18 @@ const ProjectListBody = ({
   ) : projectsCount === 0 ? (
     <EmptyProductionsCard canWrite={canWrite} onNewProduction={() => onNavigate('/productions/new')} />
   ) : (
-    <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-      <div className="xl:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-5">
-        {filteredProjects.map((p) => (
-          <ProjectCardItem
-            key={p.id}
-            project={p}
-            isSelected={selectedProduction?.id === p.id}
-            canWrite={canWrite}
-            onSelect={() => onSelect(p.id)}
-            onDelete={() => onDelete(p)}
-            onOpenStudio={() => onNavigate(`/productions/${p.id}/script`)}
-            onOpenSummary={() => onNavigate(`/productions/${p.id}`)}
-          />
-        ))}
-      </div>
-      <div className="xl:col-span-4 xl:sticky xl:top-4">
-        {selectedProduction && (
-          <ProductionInspectorPanel
-            production={selectedProduction}
-            canWrite={canWrite}
-            onNavigate={onNavigate}
-          />
-        )}
-      </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+      {filteredProjects.map((p) => (
+        <ProjectCardItem
+          key={p.id}
+          project={p}
+          canWrite={canWrite}
+          onDelete={() => onDelete(p)}
+          onOpenStudio={() => onNavigate(`/productions/${p.id}/script`)}
+          onOpenSummary={() => onNavigate(`/productions/${p.id}`)}
+          onEdit={() => onNavigate(`/productions/${p.id}/edit`)}
+        />
+      ))}
     </div>
   )
 
@@ -169,8 +149,8 @@ const DeleteProductionModal = ({
   <Modal
     isOpen={!!deleteTarget}
     onClose={() => !isDeleting && onClose()}
-    title="Delete Production"
-    subtitle="This action will archive and remove this production from your active studio workspace."
+    title="Archive Production"
+    subtitle="This action will archive this production and remove it from your active studio workspace."
     maxWidth="max-w-md"
     footer={
       <>
@@ -183,13 +163,13 @@ const DeleteProductionModal = ({
           onClick={onConfirm}
           disabled={isDeleting}
         >
-          {isDeleting ? 'Deleting...' : 'Delete Production'}
+          {isDeleting ? 'Archiving...' : 'Archive Production'}
         </Button>
       </>
     }
   >
     <p className="text-sm text-muted-foreground">
-      Are you sure you want to delete{' '}
+      Are you sure you want to archive{' '}
       <strong className="text-foreground">{deleteTarget?.name || deleteTarget?.id}</strong>?
     </p>
   </Modal>
@@ -202,10 +182,6 @@ export const ProjectList = () => {
   const [statusFilter, setStatusFilter] = useState<ProjectStatusFilter>('all')
   const data = useProjectListData()
   const filteredProjects = useMemo(() => filterProjectList(data.projects, statusFilter, searchQuery), [data.projects, statusFilter, searchQuery])
-  const selectedProduction = useMemo(
-    () => filteredProjects.find((p) => p.id === data.selectedId) || data.projects.find((p) => p.id === data.selectedId) || filteredProjects[0] || null,
-    [filteredProjects, data.projects, data.selectedId],
-  )
   const completedCount = data.projects.filter((p) => p.status === 'completed' || !!p.final_video_url).length
 
   return (
@@ -216,8 +192,8 @@ export const ProjectList = () => {
         onStatusFilterChange={setStatusFilter} onNewProduction={() => navigate('/productions/new')}
       />
       <ProjectListBody
-        isLoading={data.isLoading} projectsCount={data.projects.length} filteredProjects={filteredProjects} selectedProduction={selectedProduction}
-        canWrite={canWrite} onSelect={data.setSelectedId} onDelete={data.setDeleteTarget} onNavigate={navigate}
+        isLoading={data.isLoading} projectsCount={data.projects.length} filteredProjects={filteredProjects}
+        canWrite={canWrite} onDelete={data.setDeleteTarget} onNavigate={navigate}
       />
       <DeleteProductionModal deleteTarget={data.deleteTarget} isDeleting={data.isDeleting} onClose={() => data.setDeleteTarget(null)} onConfirm={data.confirmDelete} />
     </motion.div>

@@ -6,7 +6,7 @@ import re
 
 from rapidfuzz import fuzz
 
-from ...schema import CastInShot, DialogueLine, EntityType
+from ...schema import ActionBeat, CastInShot, DialogueLine, EntityType, InteractionStep
 from .models import ShotDraft
 
 _EPIC_NAME_REPLACEMENTS: list[tuple[re.Pattern[str], str]] = [
@@ -183,8 +183,9 @@ def deduplicate_cast_positions(
             resolved[cid] = c.model_copy(update={"position": "background"})
             continue
         if len(cast_by_id) > 1 and desired in used_fg:
-            desired = next((s for s in slot_order if s not in used_fg), desired)
-        used_fg.add(desired)
+            desired = next((s for s in slot_order if s not in used_fg), "background")
+        if desired != "background":
+            used_fg.add(desired)
         prev_positions[cid] = desired
         resolved[cid] = c.model_copy(update={"position": desired})  # type: ignore[arg-type]
     return resolved
@@ -209,3 +210,106 @@ def expand_overbudget_shot_buckets(
         else:
             pairs.append((sh, dlgs))
     return pairs
+
+
+def _group_steps_into_clip_windows(
+    steps: list[InteractionStep],
+    max_window_s: float = 10.0,
+    max_steps_per_shot: int = 3,
+) -> list[list[InteractionStep]]:
+    """Pack sequential `InteractionStep` items into 8.0–10.0s clip windows (up to 3 steps per clip)."""
+    windows: list[list[InteractionStep]] = []
+    cur: list[InteractionStep] = []
+    cur_dur = 0.0
+    for st in steps:
+        hint = max(2.5, min(5.0, float(st.duration_hint_s or 3.5)))
+        if cur and (
+            len(cur) >= max_steps_per_shot or (cur_dur + hint) > max_window_s + 0.5
+        ):
+            windows.append(cur)
+            cur = []
+            cur_dur = 0.0
+        cur.append(st)
+        cur_dur += hint
+    if cur:
+        windows.append(cur)
+    return windows
+
+
+def _build_window_shot(
+    template_sh: ShotDraft,
+    win: list[InteractionStep],
+    location_id: str,
+    is_continuation: bool,
+) -> ShotDraft:
+    """Build an 8.0–10.0s `ShotDraft` covering a 1–3 step window `win`."""
+    raw_sum = sum(max(2.5, min(5.0, float(st.duration_hint_s or 3.5))) for st in win)
+    dur = max(8.0 if len(win) >= 2 else 6.0, min(10.0, round(raw_sum, 1)))
+    step_dur = round(dur / len(win), 2)
+    beats: list[ActionBeat] = []
+    for idx, st in enumerate(win):
+        t0 = round(idx * step_dur, 2)
+        t1 = round(dur if idx == len(win) - 1 else (idx + 1) * step_dur, 2)
+        subj = [
+            sid for sid in (st.actor_id, st.target_id) if sid and sid != location_id
+        ]
+        mech = st.contact_mechanics or st.supported_by
+        desc = f"{st.action} ({mech})" if mech else st.action
+        beats.append(
+            ActionBeat(
+                t_start_s=t0,
+                t_end_s=max(t0 + 0.5, t1),
+                description=desc,
+                subject_ids=subj,
+                pre_state=st.pre_state,
+                post_state=st.post_state,
+            )
+        )
+    return template_sh.model_copy(
+        update={
+            "duration_s": dur,
+            "beats": beats,
+            "continue_from_last_frame": is_continuation,
+        }
+    )
+
+
+def expand_unhurried_shots(
+    shots: list[ShotDraft],
+    steps: list[InteractionStep],
+    location_id: str,
+    is_live_llm: bool,
+) -> list[ShotDraft]:
+    """Pace shots into 8–10s video clip windows, splitting multi-action scenes across 8–10s clips."""
+    expanded: list[ShotDraft] = []
+    for sh in shots:
+        if len(sh.beats) > 3:
+            for b_idx in range(0, len(sh.beats), 3):
+                chunk = sh.beats[b_idx : b_idx + 3]
+                expanded.append(
+                    sh.model_copy(
+                        update={
+                            "beats": chunk,
+                            "duration_s": max(
+                                8.0, min(10.0, float(sh.duration_s or 8.0))
+                            ),
+                            "continue_from_last_frame": True
+                            if b_idx > 0
+                            else sh.continue_from_last_frame,
+                        }
+                    )
+                )
+        else:
+            expanded.append(sh)
+    windows = _group_steps_into_clip_windows(steps)
+    if is_live_llm and len(windows) > len(expanded) and expanded:
+        return [
+            _build_window_shot(
+                expanded[min(w_idx, len(expanded) - 1)],
+                win,
+                location_id,
+                is_continuation=(w_idx > 0),
+            )
+            for w_idx, win in enumerate(windows)
+        ]
+    return expanded

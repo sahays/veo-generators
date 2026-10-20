@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace as _dc_replace
+
 from .models import (
     DirectorPresetSpec,
     MusicPresetSpec,
@@ -170,7 +172,9 @@ for _alias, _target in (
     ("pressure_cooker_escalation", "razor_tension_duel"),
     ("kinetic_action_relay", "kinetic_heist_wit"),
 ):
-    SCREENPLAY_STYLE_PRESETS[_alias] = SCREENPLAY_STYLE_PRESETS[_target]
+    SCREENPLAY_STYLE_PRESETS[_alias] = _dc_replace(
+        SCREENPLAY_STYLE_PRESETS[_target], id=_alias
+    )
 
 for _alias, _target in (
     ("symphonic_leitmotif_natural_foley", "symphonic_leitmotif"),
@@ -180,17 +184,52 @@ for _alias, _target in (
     ("minimalist_ambient_hyper_real_foley", "hypnotic_minimalist_drone"),
     ("rhythmic_percussive_action_sfx", "percussive_street_funk"),
 ):
-    MUSIC_STYLE_PRESETS[_alias] = MUSIC_STYLE_PRESETS[_target]
+    MUSIC_STYLE_PRESETS[_alias] = _dc_replace(MUSIC_STYLE_PRESETS[_target], id=_alias)
 
-for _alias, _target in (
-    ("wonder_humanist_blocking", "wonder_spectacle"),
-    ("opulent_operatic_tableau", "operatic_maximalism"),
-    ("architectural_tension_realism", "cerebral_imax_tension"),
-    ("razor_tension_crash_zoom", "kinetic_wit_chapters"),
-    ("one_point_geometric_precision", "clinical_symmetry"),
-    ("kinetic_montage_whip_pan", "fast_cut_street_rhythm"),
+for _alias, _target, _sw_alias, _mus_alias in (
+    (
+        "wonder_humanist_blocking",
+        "wonder_spectacle",
+        "classical_causal_chain",
+        "symphonic_leitmotif_natural_foley",
+    ),
+    (
+        "opulent_operatic_tableau",
+        "operatic_maximalism",
+        "poetic_minimalist_ritual",
+        "classical_percussive_ornate_foley",
+    ),
+    (
+        "architectural_tension_realism",
+        "cerebral_imax_tension",
+        "nonlinear_puzzle_convergence",
+        "pulse_braam_tactile_foley",
+    ),
+    (
+        "razor_tension_crash_zoom",
+        "kinetic_wit_chapters",
+        "pressure_cooker_escalation",
+        "diegetic_drop_hyper_foley",
+    ),
+    (
+        "one_point_geometric_precision",
+        "clinical_symmetry",
+        "poetic_minimalist_ritual",
+        "minimalist_ambient_hyper_real_foley",
+    ),
+    (
+        "kinetic_montage_whip_pan",
+        "fast_cut_street_rhythm",
+        "kinetic_action_relay",
+        "rhythmic_percussive_action_sfx",
+    ),
 ):
-    DIRECTOR_STYLE_PRESETS[_alias] = DIRECTOR_STYLE_PRESETS[_target]
+    DIRECTOR_STYLE_PRESETS[_alias] = _dc_replace(
+        DIRECTOR_STYLE_PRESETS[_target],
+        id=_alias,
+        bound_screenplay_preset=_sw_alias,
+        bound_music_preset=_mus_alias,
+    )
 
 
 def resolve_production_presets(
