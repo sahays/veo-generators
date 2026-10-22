@@ -35,6 +35,10 @@ video:
   first_frame_mode: "tag"
   # "hybrid" (default; docs/eval/prompt_ab_v1.md winner) | "json" (legacy spec JSON).
   prompt_format: "hybrid"
+  # "keyframe_anchored" (default; v2 winner) | "keyframe_anchored_text" | "direct" |
+  # "keyframe_interp" | "animatic_edit" (see docs/eval/keyframe_strategy_v1.md).
+  render_strategy: "keyframe_anchored"
+  keyframe_stride_s: 3
 
   supports_audio_prompt: true
 
@@ -60,6 +64,18 @@ assembly:
   music_crossfade_s: 1.5
   duck_threshold: 0.05
   duck_ratio: 8.0
+
+# Voiceover sync (storygraph/audio/voice): re-voice each approved clip's dialogue with the
+# character's fixed Gemini TTS voice. "sync" since the v4 gate passed (docs/eval/voiceover_sync_v1.md).
+audio:
+  voiceover: "sync"         # off | sync
+  speech_removal: "duck"    # duck | demucs (optional torch runtime)
+  tts_model: "gemini-2.5-flash-tts"
+  duck_db: -26.0
+  pace_factor: 0.85         # TTS paced to 0.85x Omni's speech window
+  tempo_min: 0.8
+  tempo_max: 1.35
+  voice_lufs: -16.0
 
 # Video-eval gate (storygraph/eval): identical thresholds on every attempt.
 # Hard-gated dimensions block when score < threshold (with confidence >= min_confidence).

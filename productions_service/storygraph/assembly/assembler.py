@@ -114,14 +114,16 @@ def assemble(
     assembly_cfg: AssemblyCfg | None = None,
     duration_probe: DurationProbe = ffprobe_duration,
     normalizer: MasterNormalizer | None = None,
+    prefer_voiced: bool = False,
 ) -> str:
     """Stitch the winning APPROVED clip of each shot in story order and return the blob URI.
 
     After stitching, scene `MusicCue` audio (if any) is mixed under the result by
     `music_mixer` using each clip's probed duration; with no music assets or no mixer the
     stitched video is kept as-is. Finally `normalizer` (EBU R128 loudnorm) runs on the master.
+    `prefer_voiced` stitches each run's voiceover-synced clip when present (`audio.voiceover`).
     """
-    readiness = evaluate_shot_readiness(repo)
+    readiness = evaluate_shot_readiness(repo, prefer_voiced=prefer_voiced)
     if not readiness.ready_shots and not readiness.blocking:
         raise ValidationFailed(["Cannot assemble final video: no shots exist"])
     _guard_readiness(repo, readiness, allow_partial)

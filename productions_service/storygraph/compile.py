@@ -44,6 +44,10 @@ class Package:
     dropped_to_verbal: list[str] = field(default_factory=list)
     spec_json: str = ""
     prompt_format: PromptFormat = "json"
+    # Keyframe render strategies (storygraph/keyframes): `<LAST_FRAME>` target image for
+    # first/last-frame interpolation, and a `<VIDEO_0>` source video (1 fps animatic) to edit.
+    last_frame_uri: str | None = None
+    source_video_uri: str | None = None
 
     @property
     def spec_source(self) -> str:

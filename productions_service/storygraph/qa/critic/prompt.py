@@ -69,8 +69,12 @@ def build_critic_prompt(
             _step_lines(spec),
             (
                 "EXPECTED OBJECTS (each exactly one instance unless the spec says "
-                "otherwise; set in_frame_expected=false when the framing excludes the "
-                "object's location — out of frame is NOT missing):"
+                "otherwise; count instances in EVERY frame: max_instances_seen = most in "
+                "any frame (duplicates), min_instances_seen = fewest while its location "
+                "is in view (0 = it vanished; occluded / put inside something / panned "
+                "past is NOT vanished), citing t=…s; set in_frame_expected=false "
+                "when the framing excludes the object's location — out of frame is NOT "
+                "missing):"
             ),
             _object_lines(spec),
             f"EXPECTED CAMERA: size={cam.size} angle={cam.angle} move={cam.move}",

@@ -192,9 +192,9 @@ function buildDirectionToVideoCards(
       summaryText: 'Reviews work across agents, redoes upstream steps up to 3× if flaws are found, and compiles prompts.', inputsSummary: 'Complete StoryGraph (Entities, Scenes, Appearances, Shots, Audio Cues)', outputsSummary: 'Verified ShotPromptPackages with SHA-256 Hashes & Reference Assets',
     },
     {
-      id: 's8_s10_videos', stepNum: 'AGENT 06', stages: ['S8_RENDER', 'S9_QA', 'S10_ASSEMBLE'], primaryStage: 'S8_RENDER', title: 'Cinematographer & Master Editor', subtitle: 'VEO RENDER · PHYSICS VLM QA · FFMPEG CUT', icon: Play,
+      id: 's8_s10_videos', stepNum: 'AGENT 06', stages: ['S8_KEYFRAMES', 'S8_RENDER', 'S9_QA', 'S10_ASSEMBLE'], primaryStage: 'S8_RENDER', title: 'Cinematographer & Master Editor', subtitle: '1 FPS KEYFRAMES · VEO RENDER · PHYSICS VLM QA · FFMPEG CUT', icon: Play,
       metricPrimary: `${activeGenerationRuns.length}/${shots.length} Video Clips`, metricSecondary: finalVideoUrl ? 'Master Final Cut Stitched' : 'Awaiting Final Cut Render',
-      summaryText: 'Renders reference-conditioned Veo clips, critically QAs physics & object permanence, and stitches the master cut.', inputsSummary: 'Compiled ShotPromptPackages · Reference Sheets · Continuity Start Frames', outputsSummary: finalVideoUrl ? 'Stitched Master MP4 + Physics-Verified Shot Clips' : `${activeGenerationRuns.length} Rendered Shot Clips`,
+      summaryText: 'Directs 1 fps keyframes per clip, renders keyframe-conditioned Veo clips, critically QAs physics & object permanence, and stitches the master cut.', inputsSummary: 'Compiled ShotPromptPackages · Reference Sheets · 1 fps Keyframe Strips', outputsSummary: finalVideoUrl ? 'Stitched Master MP4 + Physics-Verified Shot Clips' : `${activeGenerationRuns.length} Rendered Shot Clips`,
     },
   ]
 }

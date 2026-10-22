@@ -28,6 +28,7 @@ from ..eval.gate import decide, gate_fingerprint
 from ..eval.mapping import to_qa_report
 from ..eval.media import media_signals
 from ..eval.metrics.video import VideoMetrics
+from ..keyframes.stage.ground_truth import keyframe_refs
 from ..eval.rubric import EvalRubric
 from ..qa.critic.checks import CriticThresholds, MediaSignals
 from ..qa.critic.legacy import (
@@ -143,7 +144,20 @@ def _reference_images(
         )
         kind: Literal["identity", "setting"] = "setting" if setting else "identity"
         refs.append(LabelledRef(label=label, kind=kind, entity_names=who, png=raw))
-    return refs
+    return refs + _keyframe_state_refs(repo, run.shot_id)
+
+
+def _keyframe_state_refs(repo: Repo, shot_id: str) -> list[LabelledRef]:
+    """Approved S8 keyframes as expected-state ground truth (object counts, wardrobe, layout)."""
+    return [
+        LabelledRef(
+            label=f"expected state keyframe at t={t}s of this clip (exact object counts, "
+            "outfits and positions; ground truth, not part of the clip)",
+            kind="setting",
+            png=png,
+        )
+        for t, png in keyframe_refs(repo, shot_id)
+    ]
 
 
 def _face_ids(sview: ShotView) -> dict[str, str]:

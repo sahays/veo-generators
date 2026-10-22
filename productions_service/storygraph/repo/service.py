@@ -26,6 +26,7 @@ from ..schema import (
     StateFact,
     Status,
     StyleGuide,
+    VoiceoverRecord,
 )
 from ..store.base import BlobStore, Filter, GraphStore
 from ..store.codec import decode, encode
@@ -324,6 +325,22 @@ class Repo:
         filters: list[Filter] = [("shot_id", "==", shot_id)] if shot_id else []
         rows = self.store.query("generation_runs", filters=filters, order_by="attempt")
         return [decode(r, GenerationRun) for r in rows]
+
+    def record_voiceover(self, run_id: str, record: VoiceoverRecord) -> GenerationRun:
+        """Attach a voiced clip to a run; `output_video_uri` (Omni original) is untouched."""
+        raw = self.store.get("generation_runs", run_id)
+        if not raw:
+            raise ValueError(f"GenerationRun {run_id} not found")
+        run = decode(raw, GenerationRun)
+        updated = run.model_copy(
+            update={
+                "voiced_video_uri": record.voiced_video_uri,
+                "voiceover": record,
+                "version": run.version + 1,
+            }
+        )
+        self.store.set("generation_runs", updated.id, encode(updated))
+        return updated
 
     def add_change_request(self, cr: ChangeRequest) -> ChangeRequest:
         if self.store.get("change_requests", cr.id) is not None:

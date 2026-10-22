@@ -8,6 +8,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from .base import NodeBase, Role, _utc_now
+from .voice import VoiceoverRecord
 
 PromptFormat = Literal[
     "json", "hybrid"
@@ -101,6 +102,9 @@ class GenerationRun(NodeBase):
     prompt_format: PromptFormat | None = (
         None  # None = legacy run (prompt was spec JSON)
     )
+    # Voiceover sync (append-only): fixed-voice TTS clip; `output_video_uri` stays the original.
+    voiced_video_uri: str | None = None
+    voiceover: VoiceoverRecord | None = None
 
 
 # ── Omni prompt versioning (one immutable row per distinct compiled spec) ────────

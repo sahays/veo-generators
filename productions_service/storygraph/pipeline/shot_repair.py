@@ -6,6 +6,9 @@ After the normal attempts fail, each repair attempt first classifies the latest 
   render it fresh. Falls back to the render route when nothing in the spec changed.
 - *render*-caused: diagnose a `RepairDirective` (attempt 1 targeted, attempt 2 escalated)
   and re-render with a new seed.
+- keyframe-first (`pipeline.keyframes.repair`): when keyframes drive rendering and the QA
+  shows state / prop / wardrobe defects, the shot's keyframes are re-derived first (cheap
+  image edits), then the clip re-renders; motion/action defects re-render only.
 If the shot still fails it is flagged `needs_manual_edit` with concise reasons.
 `Shot.repair_attempts` is incremented *before* each repair so the per-content-version
 budget can never be exceeded, even across crashes, concurrent requests or spec changes.
@@ -31,6 +34,7 @@ from ..repair import (
 )
 from ..schema import QAReport, Shot, Status
 from ..views import shot_view
+from .keyframes.repair import keyframe_route_applies, repair_keyframes
 from .repair_route import decide_route, regenerate_spec
 from .shot_attempt import (
     RenderDeps,
@@ -140,6 +144,13 @@ def _execute(
         shot_id,
         evidence=step.decision.evidence[:6],
     )
+    if keyframe_route_applies(deps.cfg, step.report) and repair_keyframes(
+        deps, shot_id, step.report
+    ):
+        attempt_no = next_attempt_number(deps.repo, shot_id)
+        return render_attempt(
+            deps, _current(deps, shot_id), attempt_no, False
+        ), "render"
     if step.decision.route == "spec":
         passed = _spec_route(deps, shot_id, step)
         if passed is not None:

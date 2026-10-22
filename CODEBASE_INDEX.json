@@ -1,5 +1,5 @@
 {
-  "total_files": 647,
+  "total_files": 732,
   "domain_packages": {
     "agents_service": 1,
     "api": 9,
@@ -17,16 +17,16 @@
     "api/tests": 40,
     "frontend/src": 1,
     "frontend/src/app": 3,
-    "frontend/src/components": 154,
-    "frontend/src/hooks": 6,
-    "frontend/src/lib": 27,
+    "frontend/src/components": 160,
+    "frontend/src/hooks": 7,
+    "frontend/src/lib": 28,
     "frontend/src/store": 5,
-    "frontend/src/types": 6,
+    "frontend/src/types": 7,
     "productions_service": 1,
     "productions_service/routers": 1,
-    "productions_service/services": 6,
-    "productions_service/storygraph": 206,
-    "productions_service/tests": 49,
+    "productions_service/services": 10,
+    "productions_service/storygraph": 263,
+    "productions_service/tests": 64,
     "scripts": 5,
     "scripts/checkers": 9,
     "workers": 13
@@ -65,6 +65,7 @@
     "frontend/src/components/ads/projects",
     "frontend/src/components/ads/storygraph",
     "frontend/src/components/ads/storygraph/cascade",
+    "frontend/src/components/ads/storygraph/keyframes",
     "frontend/src/components/ads/storygraph/repair",
     "frontend/src/components/ads/storygraph/shell",
     "frontend/src/components/ads/studio",
@@ -112,16 +113,25 @@
     "productions_service/storygraph/agents/role",
     "productions_service/storygraph/anchors",
     "productions_service/storygraph/assembly",
+    "productions_service/storygraph/audio/voice",
     "productions_service/storygraph/clips",
     "productions_service/storygraph/eval",
     "productions_service/storygraph/eval/calibration",
     "productions_service/storygraph/eval/dimensions",
     "productions_service/storygraph/eval/metrics",
+    "productions_service/storygraph/experiments/keyframe_ab",
     "productions_service/storygraph/experiments/prompt_ab",
     "productions_service/storygraph/experiments/prompt_ab/variants",
+    "productions_service/storygraph/experiments/voiceover_sync",
+    "productions_service/storygraph/keyframes/animate",
+    "productions_service/storygraph/keyframes/plan",
+    "productions_service/storygraph/keyframes/render",
+    "productions_service/storygraph/keyframes/stage",
     "productions_service/storygraph/lint",
     "productions_service/storygraph/omni",
     "productions_service/storygraph/pipeline",
+    "productions_service/storygraph/pipeline/keyframes",
+    "productions_service/storygraph/pipeline/post_render",
     "productions_service/storygraph/presets",
     "productions_service/storygraph/prompting",
     "productions_service/storygraph/qa",
@@ -138,8 +148,10 @@
     "productions_service/storygraph/tools/write_tools",
     "productions_service/storygraph/validation",
     "productions_service/tests",
+    "productions_service/tests/audio",
     "productions_service/tests/eval",
     "productions_service/tests/generalization",
+    "productions_service/tests/keyframes",
     "productions_service/tests/lint",
     "productions_service/tests/phase1",
     "productions_service/tests/phase2",
@@ -2947,7 +2959,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
-      "non_comment_lines": 255,
+      "non_comment_lines": 256,
       "classes": [],
       "functions": [
         "STAGE_LABELS",
@@ -3053,7 +3065,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
-      "non_comment_lines": 154,
+      "non_comment_lines": 157,
       "classes": [],
       "functions": [
         "StepVideoRendersSection"
@@ -3105,7 +3117,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
-      "non_comment_lines": 95,
+      "non_comment_lines": 110,
       "classes": [],
       "functions": [
         "RegenerateCascadeDialog"
@@ -3117,12 +3129,13 @@
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
-      "non_comment_lines": 65,
+      "non_comment_lines": 67,
       "classes": [],
       "functions": [
         "StageRenderQuality",
         "PipelineSubStage",
         "PIPELINE_SUB_STAGES",
+        "KEYFRAMES_STAGE",
         "CascadeRequest",
         "CascadeStep",
         "buildCascadePlan",
@@ -3189,6 +3202,93 @@
         "drawBackgroundAndRings",
         "drawGraphEdges3D",
         "drawGraphNodes3D"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/storygraph/keyframes/KeyframeBoardPanel.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 80,
+      "classes": [],
+      "functions": [
+        "KeyframeBoardPanelProps",
+        "KeyframeBoardPanel"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/storygraph/keyframes/KeyframeFrameDetail.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 79,
+      "classes": [],
+      "functions": [
+        "frameLockReason",
+        "KeyframeFrameRow",
+        "KeyframeVersionHistory"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/storygraph/keyframes/KeyframeRegenDialog.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 68,
+      "classes": [],
+      "functions": [
+        "RegenMode",
+        "RegenTarget",
+        "KeyframeRegenDialog"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/storygraph/keyframes/KeyframeStripCard.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 63,
+      "classes": [],
+      "functions": [
+        "KeyframeStripCard"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/storygraph/keyframes/KeyframeThumbs.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 30,
+      "classes": [],
+      "functions": [
+        "KeyframeStatusBadge",
+        "KeyframeThumb",
+        "KeyframeThumbRow"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/storygraph/keyframes/keyframeSummary.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 70,
+      "classes": [],
+      "functions": [
+        "BadgeTone",
+        "FRAME_STATUS_META",
+        "StripSummary",
+        "summarizeStrip",
+        "parseSharedFrom",
+        "lastFrameT",
+        "buildSuccessorIndex",
+        "regenerateImpact",
+        "keyframeRefreshKey"
       ],
       "endpoints": []
     },
@@ -3305,7 +3405,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
-      "non_comment_lines": 96,
+      "non_comment_lines": 105,
       "classes": [],
       "functions": [
         "StepSectionContext",
@@ -4793,6 +4893,20 @@
       "endpoints": []
     },
     {
+      "path": "frontend/src/hooks/useKeyframeBoard.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/hooks",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 60,
+      "classes": [],
+      "functions": [
+        "PendingRegen",
+        "KeyframeBoardState",
+        "useKeyframeBoard"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "frontend/src/hooks/usePolling.ts",
       "language": "typescript",
       "domain_package": "frontend/src/hooks",
@@ -5128,9 +5242,21 @@
       "language": "typescript",
       "domain_package": "frontend/src/lib",
       "tier": "Tier 3 (State Stores & Client Services)",
-      "non_comment_lines": 29,
+      "non_comment_lines": 30,
       "classes": [],
       "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/lib/api/keyframes.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 24,
+      "classes": [],
+      "functions": [
+        "keyframes"
+      ],
       "endpoints": []
     },
     {
@@ -5264,6 +5390,26 @@
         "AvatarLiveConfig",
         "STYLE_LABELS",
         "VOICE_TURN_MARKER"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/keyframes.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 42,
+      "classes": [],
+      "functions": [
+        "KeyframeFrameStatus",
+        "KeyframeSetStatus",
+        "KeyframeEditor",
+        "KEYFRAME_INSTRUCTION_MAX",
+        "KeyframeFrameView",
+        "KeyframeSetVersionView",
+        "KeyframeStripResponse",
+        "KeyframeBoardResponse",
+        "RegenerateKeyframePayload"
       ],
       "endpoints": []
     },
@@ -5440,7 +5586,7 @@
       "language": "python",
       "domain_package": "productions_service/routers",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 168,
+      "non_comment_lines": 191,
       "classes": [],
       "functions": [
         "create_production",
@@ -5465,7 +5611,10 @@
         "regenerate_production_shot",
         "list_production_shot_prompts",
         "create_production_shot_prompt",
-        "activate_production_shot_prompt"
+        "activate_production_shot_prompt",
+        "get_production_keyframes",
+        "get_production_shot_keyframes",
+        "regenerate_production_shot_keyframe"
       ],
       "endpoints": [
         "POST /api/v1/productions",
@@ -5492,7 +5641,10 @@
         "POST /api/v1/productions/{project_id}/shots/{shot_id}/regenerate",
         "GET /api/v1/productions/{project_id}/shots/{shot_id}/prompts",
         "POST /api/v1/productions/{project_id}/shots/{shot_id}/prompts",
-        "POST /api/v1/productions/{project_id}/shots/{shot_id}/prompts/{version_id}/activate"
+        "POST /api/v1/productions/{project_id}/shots/{shot_id}/prompts/{version_id}/activate",
+        "GET /api/v1/productions/{project_id}/keyframes",
+        "GET /api/v1/productions/{project_id}/shots/{shot_id}/keyframes",
+        "POST /api/v1/productions/{project_id}/shots/{shot_id}/keyframes/{t}/regenerate"
       ]
     },
     {
@@ -5509,11 +5661,67 @@
       "endpoints": []
     },
     {
+      "path": "productions_service/services/design_service.py",
+      "language": "python",
+      "domain_package": "productions_service/services",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 66,
+      "classes": [],
+      "functions": [
+        "approve_project_appearance",
+        "regenerate_project_appearance",
+        "compile_project_shot_preview"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/services/keyframe_cascade.py",
+      "language": "python",
+      "domain_package": "productions_service/services",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 20,
+      "classes": [],
+      "functions": [
+        "run_keyframes_cascade"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/services/keyframes_contract.py",
+      "language": "python",
+      "domain_package": "productions_service/services",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 42,
+      "classes": [
+        "KeyframeFrameView",
+        "KeyframeSetVersionView",
+        "KeyframeStripResponse",
+        "KeyframeBoardResponse",
+        "RegenerateKeyframePayload"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/services/keyframes_service.py",
+      "language": "python",
+      "domain_package": "productions_service/services",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 120,
+      "classes": [],
+      "functions": [
+        "get_shot_keyframes",
+        "get_keyframe_board",
+        "regenerate_shot_keyframe"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "productions_service/services/productions_service.py",
       "language": "python",
       "domain_package": "productions_service/services",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 396,
+      "non_comment_lines": 344,
       "classes": [
         "CreateProductionPayload",
         "RunPipelinePayload",
@@ -5529,10 +5737,7 @@
         "render_project_compat",
         "run_project_stage",
         "approve_project_gate",
-        "reject_project_gate",
-        "approve_project_appearance",
-        "regenerate_project_appearance",
-        "compile_project_shot_preview"
+        "reject_project_gate"
       ],
       "endpoints": []
     },
@@ -5557,7 +5762,7 @@
       "language": "python",
       "domain_package": "productions_service/services",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 136,
+      "non_comment_lines": 153,
       "classes": [
         "RepairShotsPayload"
       ],
@@ -5573,7 +5778,7 @@
       "language": "python",
       "domain_package": "productions_service/services",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 205,
+      "non_comment_lines": 206,
       "classes": [],
       "functions": [
         "load_runtime_config",
@@ -5683,6 +5888,22 @@
       "endpoints": []
     },
     {
+      "path": "productions_service/storygraph/adapters/gemini_tts.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 110,
+      "classes": [
+        "GeminiTTSSynthesizer"
+      ],
+      "functions": [
+        "pace_clause",
+        "tts_prompt",
+        "plausible_length"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "productions_service/storygraph/adapters/gemini_video.py",
       "language": "python",
       "domain_package": "productions_service/storygraph",
@@ -5738,7 +5959,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 3 (Shared Router Helpers)",
-      "non_comment_lines": 121,
+      "non_comment_lines": 130,
       "classes": [
         "LadderStep",
         "FallbackRecord"
@@ -5756,7 +5977,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 3 (Shared Router Helpers)",
-      "non_comment_lines": 123,
+      "non_comment_lines": 186,
       "classes": [
         "OmniRequest",
         "ImageSlots"
@@ -5775,7 +5996,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 3 (Shared Router Helpers)",
-      "non_comment_lines": 70,
+      "non_comment_lines": 73,
       "classes": [
         "RefLabel",
         "RenderPackage"
@@ -5858,7 +6079,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 4 (Feature Routers & Agents)",
-      "non_comment_lines": 243,
+      "non_comment_lines": 254,
       "classes": [
         "AssetCritiqueOutput"
       ],
@@ -6115,7 +6336,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 126,
+      "non_comment_lines": 127,
       "classes": [],
       "functions": [
         "assemble"
@@ -6175,7 +6396,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 130,
+      "non_comment_lines": 133,
       "classes": [
         "ReadyShot",
         "BlockingShot",
@@ -6184,6 +6405,7 @@
       ],
       "functions": [
         "story_ordered_shots",
+        "clip_uri",
         "evaluate_shot_readiness"
       ],
       "endpoints": []
@@ -6213,6 +6435,173 @@
       ],
       "functions": [
         "measure_clip_timings"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/audio/voice/archetype.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 70,
+      "classes": [],
+      "functions": [
+        "own_context",
+        "pronoun_gender",
+        "classify_archetype"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/audio/voice/catalog.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 27,
+      "classes": [],
+      "functions": [
+        "candidates"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/audio/voice/logs.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 14,
+      "classes": [],
+      "functions": [
+        "log_ctx"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/audio/voice/media.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 91,
+      "classes": [
+        "MediaTools"
+      ],
+      "functions": [
+        "run_ffmpeg",
+        "probe_duration",
+        "pcm_to_wav",
+        "extract_audio_args",
+        "trim_silence_args",
+        "mux_args"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/audio/voice/mix.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 36,
+      "classes": [],
+      "functions": [
+        "line_chain",
+        "build_mix_graph",
+        "mix_args"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/audio/voice/registry.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 99,
+      "classes": [],
+      "functions": [
+        "pick_voice_name",
+        "make_profile",
+        "assign_cast_voices",
+        "ensure_cast_voices",
+        "set_voice"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/audio/voice/separation.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 80,
+      "classes": [
+        "SpeechRemover",
+        "DuckRemover",
+        "DemucsRemover"
+      ],
+      "functions": [
+        "duck_filter",
+        "demucs_python",
+        "make_remover"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/audio/voice/sync.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 125,
+      "classes": [
+        "LineSynthesizer",
+        "SyncDeps",
+        "VoicedClip"
+      ],
+      "functions": [
+        "voice_clip"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/audio/voice/timefit.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 42,
+      "classes": [
+        "FitPlan"
+      ],
+      "functions": [
+        "plan_fit",
+        "place_lines"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/audio/voice/timing.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 59,
+      "classes": [
+        "SpeechLine",
+        "LineSlot"
+      ],
+      "functions": [
+        "line_slots",
+        "merge_windows",
+        "speech_windows"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/audio/voice/vad.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 56,
+      "classes": [],
+      "functions": [
+        "read_speech_band",
+        "voice_windows",
+        "detect_voice_windows"
       ],
       "endpoints": []
     },
@@ -6463,7 +6852,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 3 (Shared Router Helpers)",
-      "non_comment_lines": 199,
+      "non_comment_lines": 201,
       "classes": [
         "Package",
         "RenderedPrompt"
@@ -6479,7 +6868,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 1 (Models & Pure Config)",
-      "non_comment_lines": 184,
+      "non_comment_lines": 202,
       "classes": [
         "StoreCfg",
         "BlobCfg",
@@ -6489,6 +6878,7 @@
         "QACfg",
         "CapsCfg",
         "AssemblyCfg",
+        "AudioCfg",
         "DimensionGate",
         "GateConfig",
         "Config"
@@ -6501,7 +6891,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 1 (Models & Pure Config)",
-      "non_comment_lines": 42,
+      "non_comment_lines": 52,
       "classes": [
         "StoryGraphError",
         "PermissionDenied",
@@ -6513,9 +6903,12 @@
         "AlreadyExists",
         "NotFound",
         "DocTooLarge",
-        "StructuredOutputError"
+        "StructuredOutputError",
+        "ShotRepairError"
       ],
-      "functions": [],
+      "functions": [
+        "describe_exception"
+      ],
       "endpoints": []
     },
     {
@@ -6607,7 +7000,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 58,
+      "non_comment_lines": 66,
       "classes": [
         "ClipFeatures"
       ],
@@ -6749,7 +7142,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 56,
+      "non_comment_lines": 67,
       "classes": [
         "CharacterConsistency"
       ],
@@ -6882,12 +7275,13 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 73,
+      "non_comment_lines": 77,
       "classes": [],
       "functions": [
         "overall_score",
         "gate_fingerprint",
         "dimension_scores",
+        "demotable",
         "gating_defects",
         "decide"
       ],
@@ -7008,10 +7402,11 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 65,
+      "non_comment_lines": 73,
       "classes": [],
       "functions": [
         "identity_features",
+        "wardrobe_lines",
         "build_eval_prompt"
       ],
       "endpoints": []
@@ -7021,7 +7416,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 54,
+      "non_comment_lines": 69,
       "classes": [
         "FeatureCheck",
         "TemporalVerdict",
@@ -7030,6 +7425,7 @@
         "PhysicsIssue",
         "StyleVerdict",
         "ScriptVerdict",
+        "WardrobeCheck",
         "EvalRubric"
       ],
       "functions": [
@@ -7046,6 +7442,128 @@
       "classes": [],
       "functions": [
         "main"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/experiments/keyframe_ab/__main__.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 91,
+      "classes": [],
+      "functions": [
+        "main"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/experiments/keyframe_ab/contracts.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 66,
+      "classes": [
+        "RenderRecord",
+        "ObjectCount",
+        "CharacterObs",
+        "FrameObs",
+        "ClipObservation",
+        "ContinuityObs",
+        "ClipMetrics"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/experiments/keyframe_ab/export_repo.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 33,
+      "classes": [],
+      "functions": [
+        "load_export_repo"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/experiments/keyframe_ab/judge.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 95,
+      "classes": [],
+      "functions": [
+        "frames_1fps",
+        "observe_clip",
+        "continuity"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/experiments/keyframe_ab/metrics.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 28,
+      "classes": [],
+      "functions": [
+        "flicker",
+        "drift_metrics"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/experiments/keyframe_ab/packages.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 39,
+      "classes": [],
+      "functions": [
+        "latest_run",
+        "base_package"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/experiments/keyframe_ab/report.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 166,
+      "classes": [],
+      "functions": [
+        "run_report_stage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/experiments/keyframe_ab/runner.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 180,
+      "classes": [
+        "Chain",
+        "MatrixRenderer"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/experiments/keyframe_ab/scoring.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 80,
+      "classes": [
+        "ShotTruth"
+      ],
+      "functions": [
+        "eval_engine",
+        "score_clip"
       ],
       "endpoints": []
     },
@@ -7218,6 +7736,105 @@
       "endpoints": []
     },
     {
+      "path": "productions_service/storygraph/experiments/voiceover_sync/__main__.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 133,
+      "classes": [],
+      "functions": [
+        "main"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/experiments/voiceover_sync/cases.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 51,
+      "classes": [],
+      "functions": [
+        "load_cast",
+        "load_cases",
+        "cast_voices"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/experiments/voiceover_sync/contracts.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 53,
+      "classes": [
+        "ClipCase",
+        "LineEval",
+        "ClipEval",
+        "VoiceJudgement",
+        "MixJudgement",
+        "ExperimentReport"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/experiments/voiceover_sync/judge.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 75,
+      "classes": [],
+      "functions": [
+        "judge_same_voice",
+        "judge_mix"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/experiments/voiceover_sync/metrics.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 63,
+      "classes": [],
+      "functions": [
+        "decode_pcm",
+        "outside_level_db",
+        "median_f0",
+        "cut_excerpt"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/experiments/voiceover_sync/retry.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 52,
+      "classes": [
+        "RetryingTranscriber",
+        "RetryingSynthesizer"
+      ],
+      "functions": [
+        "with_backoff"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/experiments/voiceover_sync/runner.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 102,
+      "classes": [],
+      "functions": [
+        "evaluate_clip",
+        "run_case"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "productions_service/storygraph/graph_integrity.py",
       "language": "python",
       "domain_package": "productions_service/storygraph",
@@ -7247,6 +7864,330 @@
       "functions": [
         "build_graph_index",
         "verify_storygraph"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/animate/anchored.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 82,
+      "classes": [],
+      "functions": [
+        "render_anchored",
+        "anchor_times",
+        "timeline_lines"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/animate/factory.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 18,
+      "classes": [],
+      "functions": [
+        "wrap_render_strategy"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/animate/generator.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 129,
+      "classes": [
+        "KeyframeVideoGenerator"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/animate/media.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 82,
+      "classes": [],
+      "functions": [
+        "build_animatic",
+        "stitch"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/animate/sources.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 45,
+      "classes": [
+        "KeyframeSource",
+        "StoredSource",
+        "RenderingSource"
+      ],
+      "functions": [
+        "shared_copy"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/animate/strategies.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 129,
+      "classes": [],
+      "functions": [
+        "segment_actions",
+        "segment_prompt",
+        "animatic_prompt",
+        "interp_packages",
+        "animatic_package",
+        "plan_durations",
+        "anchored_package"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/animate/timing.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 27,
+      "classes": [],
+      "functions": [
+        "animatic_schedule",
+        "concat_manifest",
+        "segment_bounds"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/plan/graph_source.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 159,
+      "classes": [],
+      "functions": [
+        "build_plan_input"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/plan/lint.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 145,
+      "classes": [],
+      "functions": [
+        "lint_plan",
+        "lint_scene"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/plan/models.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 122,
+      "classes": [
+        "CastInput",
+        "ObjectInput",
+        "BeatSpan",
+        "StateSnapshot",
+        "CameraInput",
+        "PlanInput",
+        "CharacterKey",
+        "ObjectKey",
+        "CameraKey",
+        "Keyframe",
+        "KeyframePlan",
+        "LintIssue"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/plan/permanence.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 32,
+      "classes": [],
+      "functions": [
+        "backfill_established"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/plan/planner.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 219,
+      "classes": [],
+      "functions": [
+        "exposed_ids",
+        "objects_at",
+        "characters_at",
+        "camera_at",
+        "keyframe_delta",
+        "plan_hash",
+        "plan_keyframes"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/plan/timing.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 29,
+      "classes": [],
+      "functions": [
+        "allocate_spans",
+        "second_count",
+        "locate",
+        "snapshot_index"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/render/prompts.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 121,
+      "classes": [
+        "RefImage"
+      ],
+      "functions": [
+        "visible_names",
+        "reference_images",
+        "frame_description",
+        "initial_prompt",
+        "edit_prompt",
+        "retry_suffix",
+        "check_prompt"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/render/renderer.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 156,
+      "classes": [
+        "RenderedKeyframe",
+        "RendererCfg",
+        "_Attempt",
+        "KeyframeRenderer",
+        "RenderJob"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/render/sink.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 85,
+      "classes": [
+        "StoredKeyframe",
+        "KeyframeRecord",
+        "KeyframeSink",
+        "RepoKeyframeSink"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/render/validation.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 72,
+      "classes": [
+        "ObjectCount",
+        "CharacterSeen",
+        "PoseSeen",
+        "KeyframeCheck"
+      ],
+      "functions": [
+        "compare",
+        "parse_expected"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/stage/frames.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 42,
+      "classes": [],
+      "functions": [
+        "frame_status",
+        "state_summary",
+        "to_frame",
+        "to_rendered"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/stage/ground_truth.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 33,
+      "classes": [],
+      "functions": [
+        "is_state_defect",
+        "keyframe_defects",
+        "keyframe_refs"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/stage/regenerate.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 78,
+      "classes": [],
+      "functions": [
+        "regenerate_from"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/stage/stage.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 132,
+      "classes": [
+        "KeyframeStageDeps",
+        "KeyframeStageResult"
+      ],
+      "functions": [
+        "is_current",
+        "shared_start",
+        "build_set",
+        "flag_manual_edit",
+        "plan_shot",
+        "ensure_shot",
+        "run_scene",
+        "run_keyframe_stage"
       ],
       "endpoints": []
     },
@@ -7604,7 +8545,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 65,
+      "non_comment_lines": 68,
       "classes": [],
       "functions": [
         "open_critic_change_requests",
@@ -7642,6 +8583,34 @@
       "endpoints": []
     },
     {
+      "path": "productions_service/storygraph/pipeline/keyframes/repair.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 53,
+      "classes": [],
+      "functions": [
+        "keyframe_route_applies",
+        "first_editable",
+        "repair_keyframes"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/pipeline/keyframes/stage_adapter.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 35,
+      "classes": [],
+      "functions": [
+        "keyframe_deps",
+        "run_keyframes_stage",
+        "reset_keyframes"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "productions_service/storygraph/pipeline/lint_stage.py",
       "language": "python",
       "domain_package": "productions_service/storygraph",
@@ -7656,6 +8625,20 @@
         "remediate_pass",
         "llm_redo",
         "compile_and_lint"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/pipeline/post_render/voiceover_stage.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 105,
+      "classes": [],
+      "functions": [
+        "default_sync_deps",
+        "speech_lines",
+        "apply_voiceover"
       ],
       "endpoints": []
     },
@@ -7680,16 +8663,13 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 215,
+      "non_comment_lines": 175,
       "classes": [],
       "functions": [
         "compile_all_shots",
         "attempt_shot_render",
         "render_single_shot_with_qa",
-        "run_scene_groups",
-        "group_by_scene",
-        "render_and_qa_shots",
-        "evaluate_missing_qa"
+        "render_and_qa_shots"
       ],
       "endpoints": []
     },
@@ -7708,15 +8688,43 @@
       "endpoints": []
     },
     {
+      "path": "productions_service/storygraph/pipeline/requalify.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 82,
+      "classes": [],
+      "functions": [
+        "needs_qa",
+        "stale_approval",
+        "requalify_targets",
+        "evaluate_missing_qa"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "productions_service/storygraph/pipeline/runner.py",
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 376,
+      "non_comment_lines": 384,
       "classes": [
         "Pipeline"
       ],
       "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/pipeline/scene_parallel.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 21,
+      "classes": [],
+      "functions": [
+        "run_scene_groups",
+        "group_by_scene"
+      ],
       "endpoints": []
     },
     {
@@ -7741,7 +8749,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 177,
+      "non_comment_lines": 185,
       "classes": [
         "_RepairStep",
         "RepairRun"
@@ -7759,7 +8767,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 25,
+      "non_comment_lines": 26,
       "classes": [
         "Stage"
       ],
@@ -7913,7 +8921,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 55,
+      "non_comment_lines": 59,
       "classes": [],
       "functions": [
         "reference_label",
@@ -7927,7 +8935,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 142,
+      "non_comment_lines": 150,
       "classes": [
         "StepVerdict",
         "IdentityVerdict",
@@ -7948,13 +8956,15 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 63,
+      "non_comment_lines": 85,
       "classes": [],
       "functions": [
         "cites_timestamp",
         "mentions_out_of_frame",
+        "mentions_occlusion",
         "score_breach_severity",
         "object_severity",
+        "is_unconditional",
         "camera_severity",
         "cut_severity",
         "flag_severity"
@@ -8064,7 +9074,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 147,
+      "non_comment_lines": 174,
       "classes": [],
       "functions": [
         "repair_failed_shots",
@@ -8100,6 +9110,18 @@
       "endpoints": []
     },
     {
+      "path": "productions_service/storygraph/repo/keyframe_sets.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 96,
+      "classes": [
+        "KeyframeSetRepo"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
       "path": "productions_service/storygraph/repo/prompt_versions.py",
       "language": "python",
       "domain_package": "productions_service/storygraph",
@@ -8117,7 +9139,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 303,
+      "non_comment_lines": 318,
       "classes": [
         "Repo"
       ],
@@ -8145,7 +9167,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 1 (Models & Pure Config)",
-      "non_comment_lines": 322,
+      "non_comment_lines": 330,
       "classes": [
         "AttributeVal",
         "Entity",
@@ -8196,7 +9218,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 1 (Models & Pure Config)",
-      "non_comment_lines": 98,
+      "non_comment_lines": 101,
       "classes": [
         "QADefect",
         "DimensionScore",
@@ -8205,6 +9227,33 @@
         "GenerationRun",
         "PatchOp",
         "PromptVersion"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/schemas/keyframes.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 1 (Models & Pure Config)",
+      "non_comment_lines": 34,
+      "classes": [
+        "KeyframeFrame",
+        "KeyframeSet"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/schemas/voice.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 1 (Models & Pure Config)",
+      "non_comment_lines": 41,
+      "classes": [
+        "VoiceProfile",
+        "VoicedLine",
+        "VoiceoverRecord"
       ],
       "functions": [],
       "endpoints": []
@@ -8446,12 +9495,13 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 125,
+      "non_comment_lines": 131,
       "classes": [
         "ClipWindow"
       ],
       "functions": [
         "align_steps_to_events",
+        "scene_step_events",
         "scene_clip_windows"
       ],
       "endpoints": []
@@ -8804,6 +9854,94 @@
       "endpoints": []
     },
     {
+      "path": "productions_service/tests/audio/test_tts_prompt.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 19,
+      "classes": [],
+      "functions": [
+        "test_prompt_paces_to_target_with_a_single_directive_colon",
+        "test_audio_far_longer_than_the_line_is_implausible"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/audio/test_voice_registry.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 87,
+      "classes": [],
+      "functions": [
+        "test_archetypes_from_traits_and_pronouns_props_do_not_hide_sentences",
+        "test_selection_is_deterministic_order_independent_and_collision_free",
+        "test_existing_voice_is_never_reassigned_and_blocks_reuse",
+        "test_ensure_persists_once_and_set_voice_validates"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/audio/test_voice_sync.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 89,
+      "classes": [
+        "_Transcriber",
+        "_TTS",
+        "_Media",
+        "_RecordingRemover"
+      ],
+      "functions": [
+        "test_voice_clip_uses_fixed_voices_and_places_lines_in_graph"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/audio/test_voice_timing.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 62,
+      "classes": [],
+      "functions": [
+        "test_split_transcript_segments_merge_into_one_slot_and_missing_line_is_estimated",
+        "test_tempo_is_clamped_and_long_lines_shift_earlier_instead_of_being_cut",
+        "test_overrun_is_reported_when_no_free_space_remains",
+        "test_place_lines_keeps_lines_ordered_without_overlap",
+        "test_speech_windows_merge_and_duck_gain"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/audio/test_voice_vad.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 24,
+      "classes": [],
+      "functions": [
+        "test_whisper_level_burst_is_detected_and_short_gap_bridged",
+        "test_clicks_shorter_than_min_run_are_ignored"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/audio/test_voiceover_stage.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 88,
+      "classes": [],
+      "functions": [
+        "fake_voicing",
+        "test_voiced_clip_recorded_once_and_preferred_by_assembly",
+        "test_voiceover_off_or_mock_provider_is_noop"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "productions_service/tests/conftest.py",
       "language": "python",
       "domain_package": "productions_service/tests",
@@ -8866,6 +10004,24 @@
       "endpoints": []
     },
     {
+      "path": "productions_service/tests/eval/test_gate_strictness.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 126,
+      "classes": [],
+      "functions": [
+        "test_duplicate_key_prop_with_timestamp_blocks_despite_demotion",
+        "test_vanished_prop_with_timestamp_blocks",
+        "test_uncertain_object_defect_is_still_demoted",
+        "test_wardrobe_change_blocks_even_if_character_dimension_demotes",
+        "test_wardrobe_check_emits_high_change_with_subject_and_timestamps",
+        "test_mid_clip_disappearance_is_a_high_missing_object",
+        "test_occluded_or_contained_props_are_not_count_violations"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "productions_service/tests/eval/test_golden_agreement.py",
       "language": "python",
       "domain_package": "productions_service/tests",
@@ -8892,6 +10048,20 @@
       "functions": [
         "test_qareport_maps_dimensions_and_legacy_fields",
         "test_unscripted_character_blocks_via_defect_gate"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/eval/test_requalify_approved.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 84,
+      "classes": [],
+      "functions": [
+        "test_stale_approval_with_outfit_change_is_revoked_and_shot_blocks",
+        "test_approval_under_current_gate_is_not_rescored",
+        "test_stale_approval_that_still_passes_keeps_approval_with_new_gate"
       ],
       "endpoints": []
     },
@@ -9011,6 +10181,102 @@
       "classes": [],
       "functions": [
         "seed_two_locations"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/keyframes/test_keyframe_animatic.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 136,
+      "classes": [],
+      "functions": [
+        "test_animatic_schedule_centres_keyframes_and_sums_to_clip",
+        "test_concat_manifest_repeats_last_file_for_its_duration",
+        "test_segment_bounds_cover_clip_within_omni_limits",
+        "test_build_animatic_lasts_exactly_the_clip",
+        "test_animatic_shows_each_keyframe_at_its_second",
+        "test_stitch_trims_segments_to_planned_durations"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/keyframes/test_keyframe_planner.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 193,
+      "classes": [],
+      "functions": [
+        "test_one_keyframe_per_second_follows_graph_handoffs",
+        "test_every_object_exactly_once_and_constant_set",
+        "test_contained_objects_hidden_but_container_visible",
+        "test_held_object_behind_back_hidden_unless_beat_acts_on_it",
+        "test_wardrobe_constant_and_scene_handoff_clean",
+        "test_lint_flags_duplicates_vanishing_wardrobe_jumps_and_timeline",
+        "test_backfill_keeps_set_pieces_but_not_carried_in_props",
+        "test_graph_source_matches_clip_window"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/keyframes/test_keyframe_repair_route.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 34,
+      "classes": [],
+      "functions": [
+        "test_state_defects_select_keyframe_route_motion_defects_do_not",
+        "test_direct_strategy_never_routes_to_keyframes"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/keyframes/test_keyframe_stage.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 113,
+      "classes": [
+        "CountingImages"
+      ],
+      "functions": [
+        "test_last_keyframe_of_clip_is_first_of_next_and_never_regenerated",
+        "test_failing_checks_retry_twice_then_flag_manual_edit",
+        "test_regenerate_rederives_tail_and_cascades_to_next_clip",
+        "test_stored_source_ignores_sets_from_an_older_plan"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/keyframes/test_keyframe_validation.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 101,
+      "classes": [],
+      "functions": [
+        "test_matching_frame_has_no_issues_and_hidden_objects_are_not_required",
+        "test_duplicate_chest_and_vanished_cabinet_are_flagged",
+        "test_role_swap_and_outfit_change_are_flagged"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/keyframes/test_omni_frame_bindings.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 101,
+      "classes": [],
+      "functions": [
+        "test_first_last_frames_bound_before_identity_refs",
+        "test_last_frame_never_bound_without_first_frame",
+        "test_video_source_replaces_frames_and_keeps_identity_refs",
+        "test_fallback_keeps_video_until_text_only_and_records_drop",
+        "test_fallback_drops_both_frames_together"
       ],
       "endpoints": []
     },
@@ -9315,6 +10581,22 @@
         "test_out_of_frame_object_is_not_missing",
         "test_late_cut_is_trimmed_with_audio_in_sync",
         "test_early_cut_is_untrimmed_medium"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/repair/test_repair_failure_reporting.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 55,
+      "classes": [
+        "_CrashingVideo"
+      ],
+      "functions": [
+        "test_crash_with_empty_message_records_failed_run_with_type",
+        "test_domain_error_stays_422_with_readable_error",
+        "test_adapter_crash_names_the_shot_in_the_stage_run"
       ],
       "endpoints": []
     },

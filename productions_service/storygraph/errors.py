@@ -84,3 +84,20 @@ class DocTooLarge(StoryGraphError):
 
 class StructuredOutputError(StoryGraphError):
     """Raised when an LLM agent fails to emit valid structured output after retries."""
+
+
+def describe_exception(exc: BaseException) -> str:
+    """Readable, never-empty `Type: message` (KeyError args unquoted; '(no message)' if blank)."""
+    detail = (
+        ", ".join(str(a) for a in exc.args) if isinstance(exc, KeyError) else str(exc)
+    )
+    return f"{type(exc).__name__}: {detail.strip() or '(no message)'}"
+
+
+class ShotRepairError(StoryGraphError):
+    """A repair/regenerate pass crashed on one shot; carries the shot id and root cause."""
+
+    def __init__(self, shot_id: str, cause: BaseException) -> None:
+        self.shot_id = shot_id
+        self.cause = cause
+        super().__init__(f"shot {shot_id}: {describe_exception(cause)}")

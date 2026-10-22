@@ -25,6 +25,7 @@ export const StepVideoRendersSection = ({
   selectedItem,
   onSelectItem,
   assemblyPanel,
+  keyframesPanel,
 }: {
   shotsCount: number
   generationRunsCount: number
@@ -41,6 +42,8 @@ export const StepVideoRendersSection = ({
   onSelectItem: (item: SelectedInspectorItem) => void
   /** Optional S10 readiness panel (blocking shots / approved-only stitch). */
   assemblyPanel?: ReactNode
+  /** Optional S8_KEYFRAMES per-shot keyframe strips (shown above the render cards). */
+  keyframesPanel?: ReactNode
 }) => {
   const isFinal720p = renderQuality === 'final' || videoResolution === '720p'
   return (
@@ -92,6 +95,8 @@ export const StepVideoRendersSection = ({
         </div>
       )}
     </div>
+
+    {keyframesPanel}
 
     {assemblyPanel}
 

@@ -32,12 +32,14 @@ from ..compile import Package
 from ..config import Config
 from ..errors import BudgetExceeded, GateBlocked, ShotsNotApproved
 from ..graph_integrity import record_integrity_report
+from ..keyframes.animate.factory import wrap_render_strategy
 from ..repo import Repo
 from ..schema import Role, StageRun, Status
 from ..state import rebuild_state_facts
 from ..tools.registry import ToolContext
 from .assemble_stage import project_status_after_stage, run_assemble_stage
 from .gates import GATE_FOR_STAGE, approve_gate, ensure_gate, require_gate
+from .keyframes.stage_adapter import reset_keyframes, run_keyframes_stage
 from .lint_stage import MAX_LLM_ROUNDS, LintStageDeps, compile_and_lint
 from .render_stage import (
     evaluate_missing_qa,
@@ -83,6 +85,7 @@ class Pipeline:
         self.tts: TTSProvider = tts or (
             MockTTSProvider() if is_mock_img else CloudTTSProvider()
         )
+        self.video_gen = wrap_render_strategy(self.video_gen, repo, self.cfg)
         self.mock_llm = mock_llm
         self.compiled_packages: dict[str, Package] = {}
         self._auto_approve_override: bool | None = None
@@ -197,10 +200,12 @@ class Pipeline:
             self._allow_partial_assembly = False
 
     def _execute_stage(self, st: Stage, ihash: str, force: bool = False) -> StageRun:
-        if not force and st not in (Stage.S8_RENDER, Stage.S9_QA):
+        if not force and st not in (Stage.S8_KEYFRAMES, Stage.S8_RENDER, Stage.S9_QA):
             prev_runs = self.repo.list_stage_runs(stage=str(st))
             if any(r.completed and r.input_hash == ihash for r in prev_runs):
                 return prev_runs[-1]
+        if force and st == Stage.S8_KEYFRAMES:
+            reset_keyframes(self.repo)  # stage regenerate: derive every shot afresh
         if st in AUTHORING_STAGES:
             return self._execute_authoring_stage(st, ihash, force=force)
         return self._execute_production_stage(st, ihash)
@@ -371,6 +376,9 @@ class Pipeline:
         if st == Stage.S7_COMPILE:
             self._compile_and_lint()
             return self._record_stage(st, ihash)
+        if st == Stage.S8_KEYFRAMES:
+            cost = run_keyframes_stage(self.repo, self.cfg, self.image_gen, self.vlm)
+            return self._record_stage(st, ihash, cost_usd=cost)
         if st == Stage.S8_RENDER:
             render_and_qa_shots(
                 self.repo, self.cfg, self.video_gen, self.vlm, self.compiled_packages

@@ -153,30 +153,34 @@ def check_identities(
     return defects, scores
 
 
-def _object_issue(count: int, start_ok: bool, end_ok: bool) -> str | None:
-    """Classify one object verdict into a defect type (None when it matches the spec)."""
-    if count > 1:
+def _object_issue(verdict: ObjectVerdict) -> str | None:
+    """Classify one object verdict into a defect type (None when it matches the spec).
+
+    Duplicates (max > 1) and absences or mid-clip disappearances (max < 1 / min == 0) are
+    count violations; otherwise a start/end mismatch is a placement defect.
+    """
+    if verdict.max_instances_seen > 1:
         return "extra_object"
-    if count < 1:
+    if verdict.max_instances_seen < 1 or verdict.min_instances_seen == 0:
         return "missing_object"
-    if not (start_ok and end_ok):
+    if not (verdict.start_matches and verdict.end_matches):
         return "object_state"
     return None
 
 
 def _object_defect(obj: SpecObject, verdict: ObjectVerdict) -> QADefect | None:
     """One calibrated defect for an object verdict (framing-aware, evidence-gated)."""
-    kind = _object_issue(
-        verdict.max_instances_seen, verdict.start_matches, verdict.end_matches
-    )
+    kind = _object_issue(verdict)
     if kind is None:
         return None
     in_frame = obj.in_frame and verdict.in_frame_expected
     sev = object_severity(kind, in_frame, verdict.evidence)
     cause: Cause = "spec" if verdict.spec_conflict else "render"
     framing = "" if in_frame else "outside framing; "
+    low = verdict.min_instances_seen
+    seen = f"x{verdict.max_instances_seen}" + ("" if low is None else f" (min x{low})")
     msg = (
-        f"{framing}seen x{verdict.max_instances_seen}; spec start '{obj.start}' "
+        f"{framing}seen {seen}; spec start '{obj.start}' "
         f"end '{obj.end or obj.start}'; {verdict.evidence}"
     )
     return defect(kind, sev, obj.name, msg, cause)

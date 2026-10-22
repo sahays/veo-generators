@@ -29,6 +29,12 @@ from services.productions_service import (
     run_project_stage,
     update_production_project,
 )
+from services.keyframes_contract import RegenerateKeyframePayload
+from services.keyframes_service import (
+    get_keyframe_board,
+    get_shot_keyframes,
+    regenerate_shot_keyframe,
+)
 from services.prompt_versions_service import (
     HumanPromptPayload,
     activate_shot_prompt,
@@ -216,4 +222,27 @@ async def activate_production_shot_prompt(
 ) -> dict[str, Any]:
     return await run_in_threadpool(
         activate_shot_prompt, project_id, shot_id, version_id
+    )
+
+
+@router.get("/api/v1/productions/{project_id}/keyframes")
+async def get_production_keyframes(project_id: str) -> dict[str, Any]:
+    return await run_in_threadpool(get_keyframe_board, project_id)
+
+
+@router.get("/api/v1/productions/{project_id}/shots/{shot_id}/keyframes")
+async def get_production_shot_keyframes(
+    project_id: str, shot_id: str
+) -> dict[str, Any]:
+    return await run_in_threadpool(get_shot_keyframes, project_id, shot_id)
+
+
+@router.post(
+    "/api/v1/productions/{project_id}/shots/{shot_id}/keyframes/{t}/regenerate"
+)
+async def regenerate_production_shot_keyframe(
+    project_id: str, shot_id: str, t: int, body: RegenerateKeyframePayload | None = None
+) -> dict[str, Any]:
+    return await run_in_threadpool(
+        regenerate_shot_keyframe, project_id, shot_id, t, body
     )

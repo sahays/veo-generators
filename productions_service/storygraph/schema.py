@@ -27,6 +27,11 @@ from .schemas.generation import (  # noqa: F401 - re-exported public API
     QADefect,
     QAReport,
 )
+from .schemas.voice import (  # noqa: F401 - re-exported public API
+    VoicedLine,
+    VoiceoverRecord,
+    VoiceProfile,
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Layer 1 — Identity
@@ -46,6 +51,7 @@ class Entity(NodeBase):
     aliases: list[str] = Field(default_factory=list)
     attributes: dict[str, AttributeVal] = Field(default_factory=dict)
     voice_profile_id: str | None = None
+    voice: VoiceProfile | None = None  # fixed TTS voice (append-only; see audio/voice)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -117,6 +123,8 @@ class Asset(NodeBase):
         "composite_sheet",
         "first_frame",
         "audio",
+        "keyframe",
+        "animatic",
     ]
     uri: str
     signed_url: str | None = None

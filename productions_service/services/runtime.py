@@ -210,6 +210,7 @@ _RESETTABLE_COLLECTIONS: tuple[str, ...] = (
     "stage_runs",
     "stage_qa_reports",
     "prompt_versions",
+    "keyframe_sets",
 )
 
 

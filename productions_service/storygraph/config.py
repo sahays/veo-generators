@@ -104,6 +104,22 @@ class VideoProviderCfg(BaseModel):
     # Text sent to Omni: "hybrid" (prose beats + labelled block; prompt A/B v1 winner) or
     # "json" (legacy compact OmniClipSpec). The spec JSON is stored either way.
     prompt_format: PromptFormat = "hybrid"
+    # How a clip is animated (storygraph/keyframes; docs/eval/keyframe_strategy_v1.md):
+    # "keyframe_anchored" (default, v2 winner) = ONE request: <FIRST_FRAME>=kf0,
+    # <LAST_FRAME>=kfN + evenly spaced middle keyframes as timed state refs (S8_KEYFRAMES);
+    # "keyframe_anchored_text" = first/last + middle states as text;
+    # "direct" = one Omni request from the compiled prompt (pre-keyframe behaviour);
+    # "keyframe_interp" = chained <FIRST_FRAME>/<LAST_FRAME> interpolation between 1 fps
+    # graph keyframes every `keyframe_stride_s` seconds, stitched;
+    # "animatic_edit" = the 1 fps keyframe animatic sent as <VIDEO_0> to animate.
+    render_strategy: Literal[
+        "direct",
+        "keyframe_interp",
+        "animatic_edit",
+        "keyframe_anchored",
+        "keyframe_anchored_text",
+    ] = "keyframe_anchored"
+    keyframe_stride_s: int = Field(default=3, ge=3, le=10)
 
     supports_audio_prompt: bool = True
 
@@ -137,6 +153,26 @@ class AssemblyCfg(BaseModel):
     music_crossfade_s: float = 1.5
     duck_threshold: float = 0.05
     duck_ratio: float = 8.0
+
+
+class AudioCfg(BaseModel):
+    """Per-clip voiceover sync: re-voice dialogue with each character's fixed TTS voice.
+
+    `voiceover="sync"` (default since voiceover_sync_v1 v4 passed its gate); "off" keeps
+    Omni's own voices. `speech_removal`
+    picks how Omni's speech is removed: "duck" (`duck_db` over transcript + VAD windows) or
+    "demucs" (source separation; needs the optional demucs/torch runtime).
+    """
+
+    voiceover: Literal["off", "sync"] = "sync"
+    speech_removal: Literal["duck", "demucs"] = "duck"
+    tts_model: str = "gemini-2.5-flash-tts"
+    duck_db: float = Field(default=-26.0, le=0.0)
+    # TTS is asked to fit this fraction of Omni's speech window (leaves atempo headroom).
+    pace_factor: float = Field(default=0.85, gt=0.3, le=1.0)
+    tempo_min: float = Field(default=0.8, gt=0.5, le=1.0)
+    tempo_max: float = Field(default=1.35, ge=1.0, lt=2.0)
+    voice_lufs: float = -16.0
 
 
 DimensionName = Literal[
@@ -229,6 +265,7 @@ class Config(BaseModel):
     qa: QACfg = QACfg()
     caps: CapsCfg = CapsCfg()
     assembly: AssemblyCfg = AssemblyCfg()
+    audio: AudioCfg = AudioCfg()
     eval: GateConfig = Field(default_factory=lambda: GateConfig())
 
     @classmethod

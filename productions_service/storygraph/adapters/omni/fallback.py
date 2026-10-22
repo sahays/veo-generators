@@ -1,8 +1,9 @@
 """Explicit, logged fallback ladder for Omni interaction failures.
 
 Level 0 `primary`: profile-sanitised prompt + all labelled images.
-Level 1 `aggressive_single_ref`: aggressive rewrite + the single highest-priority identity image.
-Level 2 `text_to_video`: aggressive rewrite, no images.
+Level 1 `aggressive_single_ref`: aggressive rewrite + the single highest-priority identity image
+(first/last frames dropped; a `<VIDEO_0>` source video is kept — it is the content to edit).
+Level 2 `text_to_video`: aggressive rewrite, no images and no source video.
 Every downgrade is logged (who/where/what/when/why/how) and returned as a `FallbackRecord`
 so the pipeline can persist it on the `GenerationRun`.
 """
@@ -51,6 +52,7 @@ class FallbackRecord:
     refs_dropped: tuple[str, ...]
     first_frame_dropped: bool
     reasons: tuple[str, ...]
+    source_video_dropped: bool = False
     recorded_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def to_dict(self) -> dict[str, Any]:
@@ -73,7 +75,12 @@ def build_ladder(
 ) -> list[LadderStep]:
     """Return the ordered request ladder; every rung's spec binds only the images it sends."""
     primary = plan_image_slots(
-        package_labels(package), package.first_frame_uri, max_images, first_frame_mode
+        package_labels(package),
+        package.first_frame_uri,
+        max_images,
+        first_frame_mode,
+        package.last_frame_uri,
+        package.source_video_uri,
     )
     tokens = primary.ref_tokens()
     text = package.spec_source  # rebinding patches the spec, then re-renders the format
@@ -97,7 +104,9 @@ def build_ladder(
         ),
         LadderStep(
             "text_to_video",
-            build_omni_request(package, text, 0, "drop", tokens, aggressive),
+            build_omni_request(
+                package, text, 0, "drop", tokens, aggressive, keep_video=False
+            ),
         ),
     ]
 
@@ -123,6 +132,7 @@ def make_record(
         refs_dropped=tuple(u for u in primary.image_uris if u not in kept),
         first_frame_dropped=primary.first_frame_bound and not used.first_frame_bound,
         reasons=tuple(reasons),
+        source_video_dropped=bool(primary.video_uri) and not used.video_uri,
     )
 
 

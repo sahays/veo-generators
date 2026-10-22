@@ -48,6 +48,14 @@ class ObjectVerdict(BaseModel):
         )
     )
     max_instances_seen: int
+    min_instances_seen: int | None = Field(
+        default=None,
+        description=(
+            "Fewest instances in any frame while the object's location is in view "
+            "(0 = it disappears mid-clip). Occluded, put inside something, or panned "
+            "out of view still counts as present. Cite the timestamp in evidence."
+        ),
+    )
     start_matches: bool
     end_matches: bool
     evidence: str = Field(

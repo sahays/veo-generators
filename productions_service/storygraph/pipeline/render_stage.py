@@ -3,17 +3,14 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Sequence
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import TypeVar
 
 from ..adapters.base import VideoGenerator, VLMProvider
 from ..agents.critic import evaluate_clip_qa
 from ..budget import select_references
 from ..compile import Package, compile_shot
 from ..config import Config
-from ..eval.gate import gate_fingerprint
 from ..repo import Repo
 from ..schema import GenerationRun, Role, Shot, Status
 from ..shots import run_matches_shot
@@ -21,6 +18,8 @@ from ..tools import write_tools as wt
 from ..tools.registry import ToolContext
 from ..views import shot_view
 from .prompt_versioning import resolve_package
+from .requalify import evaluate_missing_qa, needs_qa
+from .scene_parallel import group_by_scene, run_scene_groups
 from .shot_attempt import (
     RenderDeps,
     _attach_fallback,
@@ -31,18 +30,19 @@ from .shot_attempt import (
 from .shot_repair import render_with_repairs
 
 logger = logging.getLogger(__name__)
-_T = TypeVar("_T")
-_MAX_SCENE_WORKERS = 4
 
 # Re-exported for callers/tests that import these helpers from the render stage.
 _resolve_target_resolution = resolve_target_resolution
+_needs_qa = needs_qa
 __all__ = [
     "_attach_fallback",
     "_collect_retry_context",
+    "_needs_qa",
     "_resolve_target_resolution",
     "attempt_shot_render",
     "compile_all_shots",
     "evaluate_missing_qa",
+    "group_by_scene",
     "render_and_qa_shots",
     "render_single_shot_with_qa",
     "run_scene_groups",
@@ -187,26 +187,6 @@ def render_single_shot_with_qa(
         )
 
 
-def run_scene_groups(
-    groups: Sequence[Sequence[Shot]],
-    chain: Callable[[Sequence[Shot]], _T],
-    parallel: bool,
-) -> list[_T]:
-    """Run `chain` per scene group: sequential within a scene, bounded-parallel across scenes."""
-    if not parallel or len(groups) <= 1:
-        return [chain(g) for g in groups]
-    with ThreadPoolExecutor(max_workers=min(_MAX_SCENE_WORKERS, len(groups))) as pool:
-        return list(pool.map(chain, groups))
-
-
-def group_by_scene(shots: list[Shot]) -> list[list[Shot]]:
-    """Group story-ordered shots by scene, preserving story order within each group."""
-    groups: dict[str, list[Shot]] = {}
-    for shot in shots:
-        groups.setdefault(shot.scene_id, []).append(shot)
-    return list(groups.values())
-
-
 def render_and_qa_shots(
     repo: Repo,
     cfg: Config,
@@ -229,35 +209,3 @@ def render_and_qa_shots(
 
     parallel = cfg.video.provider != "mock" and len(shots) > 1
     run_scene_groups(group_by_scene(shots), _chain, parallel)
-
-
-def _needs_qa(run: GenerationRun, gate_version: str) -> bool:
-    """Unjudged runs, or failed runs judged under an older gate configuration."""
-    qa = run.qa_scores
-    if qa is None:
-        return True
-    stale_gate = qa.gate_version != gate_version
-    return run.status == Status.FAILED and stale_gate and bool(run.output_video_uri)
-
-
-def evaluate_missing_qa(repo: Repo, cfg: Config, vlm: VLMProvider) -> None:
-    """S9: QA unjudged latest runs and re-judge failed ones whose gate config has changed."""
-    current = gate_fingerprint(cfg)
-    for shot in repo.list_shots():
-        runs = repo.list_generation_runs(shot_id=shot.id)
-        if runs and _needs_qa(runs[-1], current):
-            logger.info(
-                "S9 judging clip",
-                extra={
-                    "who": "storygraph.pipeline.render_stage",
-                    "where": "render_stage.evaluate_missing_qa",
-                    "what": "clip_qa_requalify",
-                    "when": datetime.now(UTC).isoformat(),
-                    "why": "unjudged or judged under an older gate",
-                    "how": "evaluate_clip_qa on the latest run (no re-render)",
-                    "project_id": repo.project_id,
-                    "shot_id": shot.id,
-                    "run_id": runs[-1].id,
-                },
-            )
-            evaluate_clip_qa(repo, cfg, vlm, shot, runs[-1])

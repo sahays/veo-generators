@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from ..qa.critic.rubric import ClipRubric
 
-EVAL_RUBRIC_VERSION = "eval-rubric-v1"
+EVAL_RUBRIC_VERSION = "eval-rubric-v2"
 PhysicsKind = Literal[
     "interpenetration", "floating", "self_moving", "gravity", "contact"
 ]
@@ -68,10 +68,29 @@ class ScriptVerdict(BaseModel):
     evidence: str = ""
 
 
+class WardrobeCheck(BaseModel):
+    """Garments + colours of one subject vs its REFERENCE / spec wardrobe, every frame."""
+
+    subject: str
+    garments_seen: str = Field(description="Garments and colours observed, per frame.")
+    matches_reference: bool = Field(
+        description="False if any garment/colour differs from REFERENCE or spec wardrobe."
+    )
+    changed_between_frames: bool = Field(
+        description="True if any garment/colour changes between frames of the clip."
+    )
+    timestamps_s: list[float] = Field(
+        default_factory=list,
+        description="Clip times where the mismatch/change is seen.",
+    )
+    evidence: str = Field(description="Observed fact with timestamps.")
+
+
 class EvalRubric(ClipRubric):
     """`ClipRubric` verdicts + one section per VLM-backed eval dimension."""
 
     feature_checks: list[FeatureCheck] = Field(default_factory=list)
+    wardrobe_checks: list[WardrobeCheck] = Field(default_factory=list)
     temporal: TemporalVerdict = Field(default_factory=TemporalVerdict)
     spatial: SpatialVerdict = Field(default_factory=SpatialVerdict)
     scene: SceneVerdict = Field(default_factory=SceneVerdict)

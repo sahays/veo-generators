@@ -15,7 +15,7 @@ from ...compile import Package
 from ...schema import Asset
 from ...views import ShotView
 
-RefRole = Literal["character", "composite", "location", "prop", "other"]
+RefRole = Literal["character", "composite", "location", "prop", "other", "keyframe"]
 
 
 @dataclass(frozen=True)
@@ -27,6 +27,9 @@ class RefLabel:
     names: tuple[str, ...]
     role: RefRole
     speaking: bool = False
+    t_s: float | None = (
+        None  # keyframe refs: the clip second this state reference shows
+    )
 
 
 @dataclass(frozen=True)

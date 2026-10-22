@@ -11,7 +11,13 @@ from typing import Any
 from fastapi import HTTPException
 from pydantic import BaseModel
 from storygraph.assembly import evaluate_shot_readiness
-from storygraph.errors import NotFound, StoryGraphError, ValidationFailed
+from storygraph.errors import (
+    NotFound,
+    ShotRepairError,
+    StoryGraphError,
+    ValidationFailed,
+    describe_exception,
+)
 from storygraph.pipeline import Pipeline, Stage
 from storygraph.repair import RepairReport
 from storygraph.repair.clip_edit import ClipEdit, edit_shot_clip
@@ -38,20 +44,23 @@ class RepairShotsPayload(BaseModel):
     shot_ids: list[str] | None = None
 
 
+def _extra(
+    what: str, why: str, how: str, project_id: str, **extra: Any
+) -> dict[str, Any]:
+    return {
+        "who": "productions_service",
+        "where": "services.repair_service",
+        "what": what,
+        "when": datetime.now(UTC).isoformat(),
+        "why": why,
+        "how": how,
+        "project_id": project_id,
+        **extra,
+    }
+
+
 def _log(what: str, why: str, how: str, project_id: str, **extra: Any) -> None:
-    logger.info(
-        what,
-        extra={
-            "who": "productions_service",
-            "where": "services.repair_service",
-            "what": what,
-            "when": datetime.now(UTC).isoformat(),
-            "why": why,
-            "how": how,
-            "project_id": project_id,
-            **extra,
-        },
-    )
+    logger.info(what, extra=_extra(what, why, how, project_id, **extra))
 
 
 def _pipe(project_id: str) -> Pipeline:
@@ -63,7 +72,8 @@ def _pipe(project_id: str) -> Pipeline:
 
 def _record(pipe: Pipeline, input_hash: str, done: bool, error: str | None) -> None:
     """Append an `S8_REPAIR` StageRun (start: completed=False; end: completed/error)."""
-    status = Status.FAILED if error else (Status.APPROVED if done else Status.DRAFT)
+    failed = error is not None
+    status = Status.FAILED if failed else (Status.APPROVED if done else Status.DRAFT)
     pipe.repo.record_stage_run(
         StageRun(
             id=f"sr_{REPAIR_STAGE}_{uuid.uuid4().hex[:8]}",
@@ -71,23 +81,39 @@ def _record(pipe: Pipeline, input_hash: str, done: bool, error: str | None) -> N
             status=status,
             stage=REPAIR_STAGE,
             input_hash=input_hash,
-            completed=done and error is None,
+            completed=done and not failed,
             error=error,
         )
     )
 
 
+def _http_status(exc: Exception) -> int:
+    """422 for domain errors (incl. a shot crash caused by one); 500 for unexpected crashes."""
+    root = exc.cause if isinstance(exc, ShotRepairError) else exc
+    return 422 if isinstance(root, (KeyError, StoryGraphError)) else 500
+
+
 def _tracked(
     pipe: Pipeline, label: str, run: Callable[[], RepairReport]
 ) -> RepairReport:
-    """Run a repair callable between start/end `S8_REPAIR` StageRun records."""
+    """Run a repair callable between start/end `S8_REPAIR` StageRun records.
+
+    Any exception closes the run as FAILED with `Type: message` (+ shot when known), so a
+    failed pass never leaves an open start record or an empty error behind.
+    """
     _record(pipe, label, False, None)
     try:
         report = run()
-    except (KeyError, StoryGraphError) as exc:
-        _record(pipe, label, False, str(exc))
-        _log("shot_repair_failed", str(exc), label, pipe.repo.project_id)
-        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        error = (
+            str(exc) if isinstance(exc, ShotRepairError) else describe_exception(exc)
+        )
+        _record(pipe, label, False, error)
+        logger.exception(
+            "shot_repair_failed",
+            extra=_extra("shot_repair_failed", error, label, pipe.repo.project_id),
+        )
+        raise HTTPException(status_code=_http_status(exc), detail=error) from exc
     _record(pipe, label, True, None)
     return report
 

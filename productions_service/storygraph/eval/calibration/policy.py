@@ -7,21 +7,26 @@ and `passes` mirrors `decide` exactly (asserted against `decide` in tests/eval).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ...config import GateConfig
 from ..contracts import EvalReport
+from ..gate import demotable
 
 
 @dataclass(frozen=True)
 class ClipFeatures:
-    """Gate inputs for one clip: per-dimension (score, confidence) and defect counts."""
+    """Gate inputs for one clip: per-dimension (score, confidence) and defect counts.
+
+    `hard_high` counts the HIGH defects of `high` that demotion may not touch.
+    """
 
     run_id: str
     shot_id: str
     scores: dict[str, tuple[float, float]]
     high: dict[str, int]
     medium: dict[str, int]
+    hard_high: dict[str, int] = field(default_factory=dict)
 
 
 def features(run_id: str, shot_id: str, report: EvalReport) -> ClipFeatures:
@@ -35,6 +40,10 @@ def features(run_id: str, shot_id: str, report: EvalReport) -> ClipFeatures:
         medium={
             k: sum(d.severity == "medium" for d in r.defects) for k, r in res.items()
         },
+        hard_high={
+            k: sum(d.severity == "high" and not demotable(d) for d in r.defects)
+            for k, r in res.items()
+        },
     )
 
 
@@ -42,8 +51,10 @@ def defect_counts(feat: ClipFeatures, cfg: GateConfig) -> tuple[int, int]:
     """(HIGH, MEDIUM) counts seen by the defect gate after per-dimension demotion."""
     high = medium = 0
     for dim, n in feat.high.items():
+        hard = feat.hard_high.get(dim, 0)
         if cfg.for_dimension(dim).demote_high_defects:  # type: ignore[arg-type]
-            medium += n
+            high += hard
+            medium += n - hard
         else:
             high += n
     return high, medium + sum(feat.medium.values())

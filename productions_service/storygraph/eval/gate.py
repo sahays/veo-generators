@@ -4,7 +4,8 @@ Thresholds come from `GateConfig` only (identical on every attempt). A hard gate
 only when the dimension's confidence reaches `min_confidence`, so an unmeasurable dimension
 cannot block on its own — its typed defects still go through the defect gate. Dimensions with
 `demote_high_defects` (golden-set calibration, docs/eval/eval_calibration_v1.md) feed their
-HIGH defects to the defect gate as MEDIUM.
+HIGH defects to the defect gate as MEDIUM — except unconditional defects (observed wardrobe
+changes, timestamped in-frame object count violations), which always block.
 """
 
 from __future__ import annotations
@@ -15,8 +16,12 @@ from dataclasses import replace
 from ..config import Config
 from ..qa.critic.checks import CriticThresholds
 from ..qa.critic.gate import GateDecision, gate
+from ..qa.critic.severity import is_unconditional
 from ..schema import DimensionScore, QADefect
 from .contracts import DimensionResult, GateConfig
+
+# Bump when gate *semantics* change without a config change (e.g. which defects may demote).
+GATE_RULES_VERSION = "rules-v2-never-demote-wardrobe-counts"
 
 
 def overall_score(results: dict[str, DimensionResult], cfg: GateConfig) -> float:
@@ -28,7 +33,7 @@ def overall_score(results: dict[str, DimensionResult], cfg: GateConfig) -> float
 
 def gate_fingerprint(cfg: Config) -> str:
     """Short stable hash of the eval gate config (changes whenever thresholds/rules change)."""
-    raw = cfg.eval.model_dump_json(exclude_none=False)
+    raw = f"{GATE_RULES_VERSION}|{cfg.eval.model_dump_json(exclude_none=False)}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
 
 
@@ -66,16 +71,21 @@ def dimension_scores(
     return out
 
 
+def demotable(d: QADefect) -> bool:
+    """HIGH defect that a `demote_high_defects` dimension may downgrade to MEDIUM."""
+    return d.severity == "high" and not is_unconditional(d.type, d.severity, d.evidence)
+
+
 def gating_defects(
     results: dict[str, DimensionResult], cfg: GateConfig
 ) -> list[QADefect]:
-    """Every defect, with HIGH demoted to MEDIUM for dimensions configured to demote."""
+    """Every defect, with demotable HIGH -> MEDIUM for dimensions configured to demote."""
     out: list[QADefect] = []
     for r in results.values():
         demote = cfg.for_dimension(r.dimension).demote_high_defects
         for d in r.defects:
-            high = demote and d.severity == "high"
-            out.append(d.model_copy(update={"severity": "medium"}) if high else d)
+            low = demote and demotable(d)
+            out.append(d.model_copy(update={"severity": "medium"}) if low else d)
     return out
 
 

@@ -153,8 +153,20 @@ def _clip_prompts(repo: Repo) -> dict[tuple[str, int], str]:
     }
 
 
-def evaluate_shot_readiness(repo: Repo) -> AssemblyReadiness:
-    """Classify every shot as ready (current-content APPROVED clip, not stale) or blocking."""
+def clip_uri(run: GenerationRun, prefer_voiced: bool) -> str | None:
+    """The clip S10 stitches: the voiceover-synced clip when preferred and present."""
+    if prefer_voiced and run.voiced_video_uri:
+        return run.voiced_video_uri
+    return run.output_video_uri
+
+
+def evaluate_shot_readiness(
+    repo: Repo, prefer_voiced: bool = False
+) -> AssemblyReadiness:
+    """Classify every shot as ready (current-content APPROVED clip, not stale) or blocking.
+
+    With `prefer_voiced`, a ready shot's `video_uri` is its voiced clip when one exists.
+    """
     shots = story_ordered_shots(repo)
     idx = _index_runs(
         repo.list_generation_runs(), {s.id: s.content_hash for s in shots}
@@ -164,12 +176,9 @@ def evaluate_shot_readiness(repo: Repo) -> AssemblyReadiness:
     prompts: dict[tuple[str, int], str] | None = None
     for shot in shots:
         win = idx.winners.get(shot.id)
-        if win is not None and win.output_video_uri and not shot.stale:
-            ready.append(
-                ReadyShot(
-                    shot_id=shot.id, run_id=win.id, video_uri=win.output_video_uri
-                )
-            )
+        uri = clip_uri(win, prefer_voiced) if win is not None else None
+        if win is not None and uri and not shot.stale:
+            ready.append(ReadyShot(shot_id=shot.id, run_id=win.id, video_uri=uri))
         else:
             prompts = _clip_prompts(repo) if prompts is None else prompts
             key = (

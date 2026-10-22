@@ -13,17 +13,19 @@ Scenes run in parallel; shots within a scene run sequentially.
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
+from functools import partial
 
 from ..adapters.base import VideoGenerator, VLMProvider
 from ..assembly.readiness import evaluate_shot_readiness, story_ordered_shots
 from ..config import Config
+from ..errors import ShotRepairError
 from ..pipeline.continuity_candidate import (
     approved_current_run,
     render_follower_candidate,
 )
-from ..pipeline.render_stage import group_by_scene, run_scene_groups
+from ..pipeline.scene_parallel import group_by_scene, run_scene_groups
 from ..pipeline.shot_attempt import RenderDeps, latest_current_run
 from ..pipeline.shot_repair import flag_for_manual_edit, render_with_repairs
 from ..repo import Repo
@@ -99,6 +101,32 @@ def _rerender_follower(
     return outcome.model_copy(update={"continuity_follower_of": origin})
 
 
+def _guarded(
+    deps: RenderDeps, shot_id: str, work: Callable[[], ShotRepairOutcome]
+) -> ShotRepairOutcome:
+    """Run one shot's repair; any crash becomes `ShotRepairError` naming the shot."""
+    try:
+        return work()
+    except ShotRepairError:
+        raise
+    except Exception as exc:
+        err = ShotRepairError(shot_id, exc)
+        logger.exception(
+            "shot_repair_crashed",
+            extra={
+                "who": "storygraph.repair.loop",
+                "where": f"repair.loop:{deps.repo.project_id}",
+                "what": "shot_repair_crashed",
+                "when": datetime.now(UTC).isoformat(),
+                "why": str(err),
+                "how": "exception escaped render_with_repairs / follower re-render",
+                "project_id": deps.repo.project_id,
+                "shot_id": shot_id,
+            },
+        )
+        raise err from exc
+
+
 def _cascade(
     deps: RenderDeps, scene_shots: Sequence[Shot], origin: str, done: set[str]
 ) -> list[ShotRepairOutcome]:
@@ -109,7 +137,9 @@ def _cascade(
     """
     out: list[ShotRepairOutcome] = []
     for follower in _followers(scene_shots, origin):
-        outcome = _rerender_follower(deps, follower, origin)
+        outcome = _guarded(
+            deps, follower.id, partial(_rerender_follower, deps, follower, origin)
+        )
         out.append(outcome)
         done.add(follower.id)
         if outcome.outcome != "approved" or outcome.candidate == "rejected":
@@ -130,7 +160,7 @@ def _scene_chain(
         if shot.id not in targets or shot.id in done:
             continue
         current = deps.repo.get_shot(shot.id) or shot
-        outcome = _process(deps, current, initial)
+        outcome = _guarded(deps, shot.id, partial(_process, deps, current, initial))
         out.append(outcome)
         done.add(shot.id)
         if outcome.outcome == "approved" and outcome.renders > 0:

@@ -10,6 +10,8 @@ import type {
 import { StepWorldBibleSection, StepScreenplaySection, StepVisualReferenceSheetsSection } from '../StudioStepsWorldToImages'
 import { StepShotBreakdownSection, StepValidatorCompilerSection, StepVideoRendersSection } from '../StudioStepsShotsToVideos'
 import { AssemblyReadinessPanel } from '../AssemblyReadinessPanel'
+import { KeyframeBoardPanel } from '../keyframes/KeyframeBoardPanel'
+import { KEYFRAMES_STAGE } from '../cascade/pipelineStages'
 
 export interface StepSectionContext {
   productionId: string
@@ -83,6 +85,13 @@ const renderVideos = (c: StepSectionContext) => (
     {...runProps(c)} {...selectProps(c)}
     shotsCount={(c.storyGraph?.shots || []).length} generationRunsCount={c.entityMaps.generationRuns.length} activeGenerationRuns={c.entityMaps.activeGenerationRuns}
     assetsById={c.entityMaps.assetsById} finalVideoUrl={c.finalVideoUrl} renderQuality={c.renderQuality} videoResolution={c.videoResolution}
+    keyframesPanel={
+      <KeyframeBoardPanel
+        productionId={c.productionId} stageRuns={c.storyGraph?.stage_runs || []} pipelineStatus={c.pipelineStatus}
+        canWrite={c.canWrite} isBusy={c.actions.busyAction !== null || c.actions.isRunningPipeline}
+        onRunKeyframes={() => c.actions.handleRunStage(KEYFRAMES_STAGE)}
+      />
+    }
     assemblyPanel={
       <AssemblyReadinessPanel
         productionId={c.productionId} pipelineStatus={c.pipelineStatus} activeGenerationRuns={c.entityMaps.activeGenerationRuns}

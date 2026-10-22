@@ -18,10 +18,14 @@ export const PIPELINE_SUB_STAGES: PipelineSubStage[] = [
   { id: 'S5_MUSIC', short: 'A4b', label: 'Music & Foley Director', role: 'MUSIC + FOLEY + SFX', stepGroup: 's4_s5_shots' },
   { id: 'S6_VALIDATE', short: 'A5', label: 'O(V+E) Graph Verifier', role: '3× REVIEW + REDO + V1–V13', stepGroup: 's6_s7_compile' },
   { id: 'S7_COMPILE', short: 'A5b', label: 'Prompt Compiler', role: 'BUDGETER + JINJA2', stepGroup: 's6_s7_compile' },
+  { id: 'S8_KEYFRAMES', short: 'A6a', label: 'Keyframe Director (1 fps)', role: 'NANO BANANA · VLM CHECK', stepGroup: 's8_s10_videos' },
   { id: 'S8_RENDER', short: 'A6', label: 'Cinematographer (Veo)', role: 'GEMINI OMNI / VEO', stepGroup: 's8_s10_videos' },
   { id: 'S9_QA', short: 'A6b', label: 'Physics & Clip VLM Critic', role: 'PHYSICS + PERMANENCE QA', stepGroup: 's8_s10_videos' },
   { id: 'S10_ASSEMBLE', short: 'A6c', label: 'Master Editor', role: 'FFMPEG ASSEMBLER', stepGroup: 's8_s10_videos' },
 ]
+
+/** S8_KEYFRAMES: per-clip 1 fps keyframe strips that condition the Veo render. */
+export const KEYFRAMES_STAGE = 'S8_KEYFRAMES'
 
 /** A user request to regenerate `stageId` (and everything downstream of it). */
 export interface CascadeRequest {
@@ -36,12 +40,12 @@ export interface CascadeStep {
   label: string
   force: boolean
   quality?: StageRenderQuality
-  /** True when the backend runs this stage itself (forced S8 cascades S9/S10 server-side). */
+  /** True when the backend runs this stage itself (forced S8_KEYFRAMES / S8_RENDER cascade the rest server-side). */
   serverRun: boolean
 }
 
 /** Stages whose forced run already cascades the rest of the pipeline on the server. */
-const SERVER_CASCADING_STAGES = new Set(['S8_RENDER'])
+const SERVER_CASCADING_STAGES = new Set([KEYFRAMES_STAGE, 'S8_RENDER'])
 
 /**
  * Ordered plan: the clicked stage runs with `force=true` (and the requested render

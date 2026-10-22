@@ -208,3 +208,50 @@ python -m storygraph.eval.calibration report --cache engine_scores_v1.jsonl \
 PNGs, previous-clip path and style guide. It was built from the labeler's cached clips and
 the Firestore exports. If Vertex rejects ADC with "requires a quota project", set
 `quota_project_id` in the credentials file.
+
+## Addendum (2026-10-22): wardrobe and key-prop counts always block
+
+**Why.** On p-0irbygdv, approved clips showed Ava's outfit changing and extra wooden chests
+or a vanished blue cabinet. `object_permanence.demote_high_defects` turned the timestamped
+HIGH `extra_object` into MEDIUM, and the character gate (`evidence_margin: 0.15`) had no
+explicit wardrobe check.
+
+**What changed.**
+- New eval rubric section `wardrobe_checks` (`eval-rubric-v2`). Each subject gets one
+  verdict: garments and colours compared with its REFERENCE or spec wardrobe across frames.
+  A mismatch or a mid-clip change emits a HIGH `wardrobe_change` defect with the subject
+  and timestamps.
+- `ObjectVerdict.min_instances_seen` (optional). A value of 0 while the object is in view
+  means the prop vanished, which is a `missing_object` count violation.
+- `qa.critic.severity.is_unconditional`: `wardrobe_change`, plus HIGH
+  `extra_object`/`missing_object` whose evidence cites `t=…s`, are never demoted.
+  `object_severity` only makes these HIGH for in-frame objects. Uncertain object defects
+  (no timestamp, outside framing, or `object_state`) can still be demoted.
+- `evidence_margin` is unchanged: a bare near-threshold character score still needs a
+  MEDIUM/HIGH defect to block. A `wardrobe_change` counts as that evidence.
+- The fast policy (`calibration/policy.py`) mirrors this with `ClipFeatures.hard_high`.
+- `gate_fingerprint` now includes `GATE_RULES_VERSION`, so changing gate rules without
+  touching thresholds still marks old verdicts as stale.
+
+**Golden v1 agreement (kids-draft, 66 clips, `decide`).**
+
+| gate | approved | precision | recall | F1 | accuracy |
+|---|---|---|---|---|---|
+| before (shipped) | 27 | 0.704 | 0.655 | 0.679 | 0.727 |
+| after, fixture as stored | 27 | 0.704 | 0.655 | 0.679 | 0.727 |
+| after, HIGH counts treated as timestamped | 26 | 0.692 | 0.621 | 0.655 | 0.712 |
+
+The fixture stores defect evidence as just the type name, so the timestamp test never fires
+on it. In live QA, a HIGH count defect is always timestamped by construction. The last row
+is therefore the realistic one: one golden-OK clip (`…_936d96`, a duplicate prop) now
+fails. All floors still hold (P ≥ 0.636, R ≥ 0.483, F1 ≥ 0.549). Wardrobe checks can't be
+replayed from the fixture, because they need a live re-score with `eval-rubric-v2`.
+
+### Follow-up: S9 re-scores stale approvals; occlusion is not disappearance
+- `pipeline/requalify.py`: S9 also live re-scores (no re-render) APPROVED runs of a shot's
+  current content when their `gate_version` is stale. A run that now blocks is set to
+  FAILED, and the repair loop then picks the shot up. Shots run scene-parallel with the
+  S8 bound (`pipeline/scene_parallel.py`). The log event is `approval_revoked`.
+- `object_severity`: a `missing_object` whose evidence explains the absence by occlusion,
+  containment, a closed drawer, motion blur or a camera pan is LOW, not a count violation.
+- Dry-run live re-score of p-0irbygdv's 13 approvals: nothing was written. See the report.

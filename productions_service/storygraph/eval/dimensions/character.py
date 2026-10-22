@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ...qa.critic.checks import check_identities, defect, norm01
-from ...qa.critic.severity import score_breach_severity
+from ...qa.critic.severity import WARDROBE_CHANGE, score_breach_severity
 from ...schema import QADefect
 from ..contracts import DimensionResult, EvalInput, Evidence
 from .base import VLM_CONFIDENCE, EvalContext, concrete, make_result, routed_flags
@@ -38,6 +38,19 @@ def _wardrobe_defects(ctx: EvalContext) -> list[QADefect]:
     ]
 
 
+def _wardrobe_change_defects(ctx: EvalContext) -> list[QADefect]:
+    """HIGH `wardrobe_change` per subject whose outfit mismatches REFERENCE or changes."""
+    out: list[QADefect] = []
+    for c in ctx.rubric.wardrobe_checks:
+        if c.matches_reference and not c.changed_between_frames:
+            continue
+        what = "changes between frames" if c.changed_between_frames else "differs"
+        stamps = ", ".join(f"t={t:.2f}s" for t in c.timestamps_s) or "t=unknown"
+        msg = f"outfit {what} vs REFERENCE at {stamps}; seen {c.garments_seen}; {c.evidence}"
+        out.append(defect(WARDROBE_CHANGE, "high", c.subject, msg))
+    return out
+
+
 def _embedding_notes(ctx: EvalContext) -> tuple[list[Evidence], float | None]:
     sim = ctx.metrics.similarity
     notes = [
@@ -63,6 +76,7 @@ class CharacterConsistency:
             *id_defects,
             *feat_defects,
             *_wardrobe_defects(ctx),
+            *_wardrobe_change_defects(ctx),
             *routed_flags(ctx, "character_consistency"),
         ]
         confidence = VLM_CONFIDENCE + (0.2 if embed is not None else 0.0)

@@ -28,7 +28,7 @@ function resolveTargetUrl(path: string): string {
 
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   const isStoryGraphRoute =
-    /^\/api\/v1\/productions\/[^/]+\/(graph|run|stages\/|gates\/|appearances\/|shots\/|(assemble|assembly-readiness)(?=$|[/?]))/.test(
+    /^\/api\/v1\/productions\/[^/]+\/(graph|run|stages\/|gates\/|appearances\/|shots\/|(keyframes|assemble|assembly-readiness)(?=$|[/?]))/.test(
       normalizedPath,
     )
   const targetOrigin =

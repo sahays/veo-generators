@@ -146,12 +146,24 @@ def _prelude_len(steps: list[InteractionStep], events: list[Event]) -> int:
     return next((j for j, ev in enumerate(events) if related(ev)), len(events))
 
 
-def scene_clip_windows(scene: Scene, events: list[Event]) -> dict[int, ClipWindow]:
-    """`clip_index -> ClipWindow` for every clip of `scene` (events are the scene's own)."""
+def _aligned(
+    scene: Scene, events: list[Event]
+) -> tuple[list[Event], int, dict[int, list[str]]]:
+    """(ordered scene events, prelude length, `step_index -> [event ids]`)."""
     ordered = sorted(events, key=lambda e: (e.story_order, e.id))
     steps = sorted(scene.interaction_steps, key=lambda s: s.step_index)
     head = _prelude_len(steps, ordered) if steps else 0
-    by_step = align_steps_to_events(steps, ordered[head:])
+    return ordered, head, align_steps_to_events(steps, ordered[head:])
+
+
+def scene_step_events(scene: Scene, events: list[Event]) -> dict[int, list[str]]:
+    """`step_index -> [event ids]` exactly as `scene_clip_windows` aligns them."""
+    return _aligned(scene, events)[2]
+
+
+def scene_clip_windows(scene: Scene, events: list[Event]) -> dict[int, ClipWindow]:
+    """`clip_index -> ClipWindow` for every clip of `scene` (events are the scene's own)."""
+    ordered, head, by_step = _aligned(scene, events)
     order_of = {e.id: e.story_order for e in ordered}
     if head:
         cursor = ordered[head - 1].story_order

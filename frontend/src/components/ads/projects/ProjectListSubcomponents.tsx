@@ -24,6 +24,7 @@ export const STAGE_LABELS: Record<string, string> = {
   S5_MUSIC: 'S5 · Music & SFX Cues',
   S6_VALIDATE: 'S6 · Validator V1–V13',
   S7_COMPILE: 'S7 · Prompt Compiler',
+  S8_KEYFRAMES: 'S8K · 1 fps Keyframes',
   S8_RENDER: 'S8 · Video Clip Render',
   S9_QA: 'S9 · Multimodal Clip QA',
   S10_ASSEMBLE: 'S10 · Master Final Cut',
