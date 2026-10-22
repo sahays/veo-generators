@@ -38,7 +38,7 @@ def prompts(tmp_repo: Repo, default_cfg: Config) -> dict[str, str]:
     for sid in ("shot_1", "shot_2"):
         view = shot_view(tmp_repo, sid)
         plan = select_references(view, default_cfg, repo=tmp_repo)
-        out[sid] = compile_shot(view, plan, default_cfg).compiled_prompt
+        out[sid] = compile_shot(view, plan, default_cfg).spec_json
     return out
 
 
@@ -74,7 +74,7 @@ def test_sequence_follows_clip_step_order_with_symbolic_ids(
     swapped = scene.clips[0].model_copy(update={"step_indices": [2, 1]})
     tmp_repo.put_scene(scene.model_copy(update={"clips": [swapped, scene.clips[1]]}))
     view = shot_view(tmp_repo, "shot_1")
-    spec = _spec(compile_shot(view, RefPlan(), default_cfg).compiled_prompt)
+    spec = _spec(compile_shot(view, RefPlan(), default_cfg).spec_json)
     seq = spec.sequence or []
     assert [(s.n, s.actor, s.verb) for s in seq] == [
         (1, "S2", "sniffs the puddle"),
@@ -125,7 +125,7 @@ def test_speech_only_for_speakers_and_lipsync_follows_mouth(
     assert shot is not None
     tmp_repo.put_shot(shot.model_copy(update={"dialogue_ids": ["dlg_pip", "dlg_milo"]}))
     view = shot_view(tmp_repo, "shot_1")
-    spec = _spec(compile_shot(view, RefPlan(), default_cfg).compiled_prompt)
+    spec = _spec(compile_shot(view, RefPlan(), default_cfg).spec_json)
     subj = {s.id: s for s in spec.subjects or []}
     speech = spec.speech or []
     assert [(s.speaker, s.text, s.after) for s in speech] == [
@@ -158,10 +158,10 @@ def test_ref_image_tokens_match_adapter_image_order(
     ]
     caps = default_cfg.video.model_copy(update={"max_reference_images": 3})
     pkg = compile_shot(view, RefPlan(selected_assets=assets), default_cfg, caps=caps)
-    spec = _spec(pkg.compiled_prompt)
+    spec = _spec(pkg.spec_json)
     labels = build_ref_labels(view, assets)
     req = build_omni_request(
-        to_render_package(pkg, labels, "p", "", ""), pkg.compiled_prompt, 3
+        to_render_package(pkg, labels, "p", "", ""), pkg.spec_source, 3
     )
     captions = [b["text"] for b in req.blocks[1:] if b["type"] == "text"]
     sent = {re.search(r"<(IMAGE_REF_\d)>", c).group(1): c for c in captions}  # type: ignore[union-attr]
@@ -258,13 +258,13 @@ def test_retry_targets_kept_and_budget_trims_identity_not_sequence(
     view = shot_view(tmp_repo, "shot_1")
     goal = "After Pip takes the towel, the wall peg is empty"
     full = compile_shot(view, RefPlan(), default_cfg, retry_feedback=[goal])
-    assert len(full.compiled_prompt) <= 2500
-    budget = len(full.compiled_prompt) - 200
+    assert len(full.spec_json) <= 2500
+    budget = len(full.spec_json) - 200
     caps = default_cfg.video.model_copy(update={"max_prompt_chars": budget})
     trimmed = compile_shot(
         view, RefPlan(), default_cfg, caps=caps, retry_feedback=[goal]
     )
-    big, small = _spec(full.compiled_prompt), _spec(trimmed.compiled_prompt)
-    assert small.must_achieve == [goal] and len(trimmed.compiled_prompt) <= budget
+    big, small = _spec(full.spec_json), _spec(trimmed.spec_json)
+    assert small.must_achieve == [goal] and len(trimmed.spec_json) <= budget
     assert small.sequence == big.sequence and small.speech == big.speech
     assert trimmed.package_hash != full.package_hash

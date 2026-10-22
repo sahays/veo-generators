@@ -9,6 +9,8 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, Field
 
+from .omni.spec import PromptFormat
+
 
 class StoreCfg(BaseModel):
     backend: str = "memory"  # "memory" | "firestore"
@@ -99,6 +101,9 @@ class VideoProviderCfg(BaseModel):
     # Omni binds the previous shot's last frame via the `<FIRST_FRAME>` prompt tag ("tag");
     # "drop" omits it and relies on the text continuity state.
     first_frame_mode: Literal["tag", "drop"] = "tag"
+    # Text sent to Omni: "hybrid" (prose beats + labelled block; prompt A/B v1 winner) or
+    # "json" (legacy compact OmniClipSpec). The spec JSON is stored either way.
+    prompt_format: PromptFormat = "hybrid"
 
     supports_audio_prompt: bool = True
 
@@ -150,31 +155,39 @@ DimensionName = Literal[
 
 
 class DimensionGate(BaseModel):
-    """Per-dimension gate: score floor, weight in the overall score, hard-gate flag."""
+    """Per-dimension gate: score floor, weight in the overall score, hard-gate flag.
+
+    `demote_high_defects` makes this dimension's HIGH defects count as MEDIUM in the defect
+    gate (for detectors that golden-set calibration found too imprecise to block alone).
+    """
 
     threshold: float = Field(default=0.6, ge=0.0, le=1.0)
     weight: float = Field(default=0.05, ge=0.0)
     hard_gate: bool = False
+    demote_high_defects: bool = False
 
 
 def _default_dimension_gates() -> dict[DimensionName, DimensionGate]:
-    """Code defaults (mirrors `config/default.yaml: eval.dimensions`)."""
-    spec: dict[DimensionName, tuple[float, float, bool]] = {
-        "character_consistency": (0.65, 0.16, True),
-        "temporal_consistency": (0.6, 0.10, True),
-        "spatial_consistency": (0.5, 0.05, False),
-        "scene_consistency": (0.6, 0.07, False),
-        "object_permanence": (0.6, 0.12, True),
-        "physical_plausibility": (0.6, 0.07, False),
-        "action_adherence": (0.6, 0.14, True),
-        "camera_adherence": (0.0, 0.03, False),
-        "style_consistency": (0.6, 0.06, False),
-        "audio": (0.5, 0.05, False),
-        "script_adherence": (0.6, 0.15, True),
+    """Code defaults (mirrors `config/default.yaml: eval.dimensions`, golden-v1 calibrated).
+
+    Tuple: (threshold, weight, hard_gate, demote_high_defects).
+    """
+    spec: dict[DimensionName, tuple[float, float, bool, bool]] = {
+        "character_consistency": (0.7, 0.16, True, False),
+        "temporal_consistency": (0.6, 0.10, True, False),
+        "spatial_consistency": (0.5, 0.05, False, False),
+        "scene_consistency": (0.6, 0.07, False, False),
+        "object_permanence": (0.6, 0.12, True, True),
+        "physical_plausibility": (0.6, 0.07, False, False),
+        "action_adherence": (0.6, 0.14, False, True),
+        "camera_adherence": (0.0, 0.03, False, False),
+        "style_consistency": (0.6, 0.06, False, False),
+        "audio": (0.5, 0.05, False, False),
+        "script_adherence": (0.6, 0.15, False, False),
     }
     return {
-        k: DimensionGate(threshold=t, weight=w, hard_gate=h)
-        for k, (t, w, h) in spec.items()
+        k: DimensionGate(threshold=t, weight=w, hard_gate=h, demote_high_defects=d)
+        for k, (t, w, h, d) in spec.items()
     }
 
 
@@ -186,7 +199,7 @@ class GateConfig(BaseModel):
     )
     overall_threshold: float = Field(default=0.65, ge=0.0, le=1.0)
     min_confidence: float = Field(default=0.3, ge=0.0, le=1.0)
-    max_medium_defects: int = 2
+    max_medium_defects: int = 3
 
     def for_dimension(self, name: DimensionName) -> DimensionGate:
         """Gate for `name`; camera adherence is never a hard gate."""

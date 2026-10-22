@@ -29,7 +29,7 @@ def test_confident_hard_gate_blocks_low_confidence_does_not(
         _thr(default_cfg),
     )
     assert not blocked.passed and blocked.failure_reasons == [
-        "character_consistency 0.50 below 0.65 (hard gate)"
+        "character_consistency 0.50 below 0.70 (hard gate)"
     ]
     unsure, _, _ = decide(
         _results(character_consistency=(0.5, 0.1), **good),

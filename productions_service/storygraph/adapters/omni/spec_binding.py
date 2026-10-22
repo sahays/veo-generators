@@ -12,21 +12,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from pydantic import ValidationError
+from ...omni.render import parse_spec, render_prompt
+from ...omni.spec import ContinuitySpec, OmniClipSpec, PromptFormat
 
-from ...omni.spec import ContinuitySpec, OmniClipSpec
+__all__ = ["Sanitizer", "bind_prompt", "parse_spec", "rebind_spec"]
 
 Sanitizer = Callable[[str], str]
 _REF_CONSTRAINT = "refs_are_identity_only"
 _FF_CONSTRAINT = "first_frame_is_opening_frame"
-
-
-def parse_spec(prompt: str) -> OmniClipSpec | None:
-    """Parse a compiled prompt as an `OmniClipSpec`, or None for non-spec text."""
-    try:
-        return OmniClipSpec.model_validate_json(prompt)
-    except ValidationError:
-        return None
 
 
 def _rebind_list(items: list[Any] | None, remap: dict[str, str]) -> list[Any] | None:
@@ -81,12 +74,16 @@ def _sanitize_tree(node: Any, sanitize: Sanitizer) -> Any:
 
 
 def bind_prompt(
-    prompt: str, remap: dict[str, str], first_frame: bool, sanitize: Sanitizer
+    prompt: str,
+    remap: dict[str, str],
+    first_frame: bool,
+    sanitize: Sanitizer,
+    fmt: PromptFormat = "json",
 ) -> str:
-    """Rebind + sanitize a spec prompt and re-render it; plain text is only sanitized."""
+    """Rebind + sanitize spec JSON and re-render it in `fmt`; plain text is only sanitized."""
     spec = parse_spec(prompt)
     if spec is None:
         return sanitize(prompt)
     bound = rebind_spec(spec, remap, first_frame)
     cleaned = _sanitize_tree(bound.model_dump(exclude_none=True), sanitize)
-    return OmniClipSpec.model_validate(cleaned).render()
+    return render_prompt(OmniClipSpec.model_validate(cleaned), fmt)

@@ -119,7 +119,7 @@ def test_spec_caused_failure_regenerates_clip_spec_instead_of_reseeding(
     assert outcome.outcome == "approved" and outcome.routes == ["spec"]
     assert report.to_payload()["outcomes"][0]["routes"] == ["spec"]  # type: ignore[index]
     assert len(respec_calls) == 1 and len(video.calls) == 2
-    repaired = video.calls[1].compiled_prompt
+    repaired = video.calls[1].spec_json
     assert _NEW_PROMPT in repaired, "render used the regenerated clip spec"
     assert "objects_persist_whole_take" not in repaired, (
         "no render directive on spec route"
@@ -143,7 +143,7 @@ def test_render_caused_failure_keeps_directive_route(
         tmp_repo, default_cfg, video, MockVLMProvider()
     ).outcomes
     assert outcome.routes == ["render"] and not respec_calls
-    assert "single_consistent_art_style" in video.calls[1].compiled_prompt
+    assert "single_consistent_art_style" in video.calls[1].spec_json
 
 
 def test_spec_route_respects_two_repair_cap_then_flags(

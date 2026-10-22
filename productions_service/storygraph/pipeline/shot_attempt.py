@@ -196,6 +196,8 @@ def _store_rendered_clip(
         shot_content_hash=shot_content_hash,
         clip_trim=_clip_trim_record(trim),
         prompt_version_id=prompt_version_id,
+        spec_json=pkg.spec_source,
+        prompt_format=pkg.prompt_format if pkg.spec_json else "json",
     )
     run_node = _attach_fallback(repo, run_node, fallback)
     repo.add_generation_run(run_node)

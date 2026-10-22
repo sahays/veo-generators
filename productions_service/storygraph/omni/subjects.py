@@ -13,11 +13,11 @@ from ..views import ShotView
 from .sequence import speech_anchor
 from .spec import SpeechSpec, StepSpec, SubjectSpec
 from .symbols import ImageBindings, Symbols
-from .text import IdResolver, clean, condense_identity, first_sentence, humanize
+from .text import clause_cut, clean, condense_identity, humanize, strip_null_lead
 from .voice import Speaker, build_speaker, language_code
 
 _WARDROBE_LABELS: Final[frozenset[str]] = frozenset({"default", "none", "normal"})
-_TRIMMED_WARDROBE_CHARS: Final[int] = 90
+_TRIMMED_WARDROBE_WORDS: Final[int] = 16
 
 
 def build_speakers(view: ShotView, sym: Symbols) -> dict[str, Speaker]:
@@ -37,13 +37,15 @@ def build_speakers(view: ShotView, sym: Symbols) -> dict[str, Speaker]:
 
 
 def _wardrobe(raw: str, full: bool) -> str:
-    """Wardrobe text ('default' is a state label, not wardrobe); first clause when trimmed."""
-    text = humanize(raw)
+    """Wardrobe text ('default' is a state label, not wardrobe); first clauses when trimmed.
+
+    A leading null label ('None; unclad chassis ...') is dropped and trimming always ends
+    on a clause boundary, so identity never ships a half phrase (prompt A/B v1, §5).
+    """
+    text = strip_null_lead(humanize(raw))
     if text.lower() in _WARDROBE_LABELS:
         return ""
-    return (
-        text if full else first_sentence(text, IdResolver({}), _TRIMMED_WARDROBE_CHARS)
-    )
+    return text if full else clause_cut(text, _TRIMMED_WARDROBE_WORDS)
 
 
 def _subject(

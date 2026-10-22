@@ -76,7 +76,7 @@ def build_ladder(
         package_labels(package), package.first_frame_uri, max_images, first_frame_mode
     )
     tokens = primary.ref_tokens()
-    text = package.compiled_prompt
+    text = package.spec_source  # rebinding patches the spec, then re-renders the format
 
     def base(text: str) -> str:
         return sanitize_prompt(text, profile)

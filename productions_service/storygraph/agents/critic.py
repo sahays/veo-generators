@@ -38,6 +38,7 @@ from ..qa.critic.legacy import (
 )
 from ..qa.critic.prompt import reference_label
 from ..repo import Repo
+from ..repo.prompt_versions import PromptVersionRepo
 from ..schema import GenerationRun, QAReport, Role, Shot, Status
 from ..tools import write_tools as wt
 from ..tools.registry import ToolContext
@@ -261,7 +262,7 @@ def _eval_input(
     style = sview.style_guide.visual_medium if sview.style_guide else ""
     return EvalInput(
         clip_bytes=_safe_blob_bytes(repo, run.output_video_uri, b"mock_mp4"),
-        spec_json=run.compiled_prompt,
+        spec_json=PromptVersionRepo(repo.store).spec_for_run(run),
         refs=_reference_images(repo, run, sview),
         prev_last_frame=prev_png or None,
         style_guide=style,

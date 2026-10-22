@@ -60,7 +60,7 @@ def test_qareport_maps_dimensions_and_legacy_fields(
     assert report.rubric_version.startswith("video-eval-v1/")
 
 
-def test_unscripted_character_blocks_via_script_hard_gate(
+def test_unscripted_character_blocks_via_defect_gate(
     tmp_repo: Repo, default_cfg: Config
 ) -> None:
     shot = seed_valid_graph(tmp_repo)
@@ -75,4 +75,6 @@ def test_unscripted_character_blocks_via_script_hard_gate(
     [d] = [d for d in report.defects if d.type == "unscripted_character"]
     assert (d.severity, d.subject) == ("high", "Cat")
     dim = next(s for s in report.dimension_scores if s.dimension == "script_adherence")
-    assert dim.hard_gate and dim.score < 1.0
+    # script_adherence is not a hard gate after golden-v1 calibration; the HIGH defect blocks
+    assert not dim.hard_gate and dim.score < 1.0
+    assert any("unscripted_character" in r for r in report.failure_reasons)

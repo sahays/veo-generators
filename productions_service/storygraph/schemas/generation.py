@@ -9,6 +9,10 @@ from pydantic import BaseModel, Field
 
 from .base import NodeBase, Role, _utc_now
 
+PromptFormat = Literal[
+    "json", "hybrid"
+]  # text sent to Omni: legacy spec JSON | V3 hybrid
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Layer 5 — Generation & QA
 # ─────────────────────────────────────────────────────────────────────────────
@@ -91,6 +95,11 @@ class GenerationRun(NodeBase):
     shot_content_hash: str | None = None  # Shot.content_hash at render time
     clip_trim: ClipTrim | None = None  # set when a late hard cut was trimmed off
     prompt_version_id: str | None = None  # PromptVersion the clip was rendered from
+    # `compiled_prompt` is the exact text sent; the critic reads expectations from the spec.
+    spec_json: str | None = None  # OmniClipSpec JSON the prompt was rendered from
+    prompt_format: PromptFormat | None = (
+        None  # None = legacy run (prompt was spec JSON)
+    )
 
 
 # ── Omni prompt versioning (one immutable row per distinct compiled spec) ────────
@@ -128,3 +137,6 @@ class PromptVersion(NodeBase):
     run_ids: list[str] = Field(default_factory=list)
     shot_content_hash: str | None = None  # Shot.content_hash the spec was authored for
     created_at: datetime = Field(default_factory=_utc_now)
+    # Derived view of `spec_json` actually sent to Omni (refreshed if the format changes).
+    rendered_prompt: str | None = None
+    prompt_format: PromptFormat | None = None

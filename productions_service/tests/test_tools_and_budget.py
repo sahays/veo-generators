@@ -248,14 +248,14 @@ def test_reference_budgeter_and_prompt_compiler_determinism(
         for _ in range(5)
     ]
     assert len({p.package_hash for p in pkgs}) == 1
-    full = OmniClipSpec.model_validate_json(pkgs[0].compiled_prompt)
+    full = OmniClipSpec.model_validate_json(pkgs[0].spec_json)
     assert [s.text for s in full.speech or []] == ["The compass points north."]
     tiny_caps = default_cfg.video.model_copy(update={"max_prompt_chars": 80})
     unrestricted_pkg = compile_shot(
         sv, plan_3, default_cfg, caps=tiny_caps, project_id="test_proj"
     )
-    trimmed = unrestricted_pkg.compiled_prompt
-    assert len(trimmed) <= len(pkgs[0].compiled_prompt)
+    trimmed = unrestricted_pkg.spec_json
+    assert len(trimmed) <= len(pkgs[0].spec_json)
     small = OmniClipSpec.model_validate_json(trimmed)
     assert small.sequence == full.sequence  # the action is never trimmed
     assert small.speech == full.speech

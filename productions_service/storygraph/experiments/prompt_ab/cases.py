@@ -128,7 +128,7 @@ def build_case(src: CaseSource) -> ShotCase:
         project_id=src.project_id,
         shot_id=str(src.run["shot_id"]),
         category=src.category,
-        spec_json=str(src.run["compiled_prompt"]),
+        spec_json=str(src.run.get("spec_json") or src.run["compiled_prompt"]),
         labels=labels,
         first_frame_uri=src.first_frame_uri,
         prev_frame_path=src.prev_frame_path,

@@ -117,7 +117,7 @@ def test_compiled_prompt_uses_omni_prompt_verbatim_and_look(
     _with_look(tmp_repo)
     view = shot_view(tmp_repo, "shot_1")
     pkg = compile_shot(view, select_references(view, default_cfg), default_cfg)
-    spec = OmniClipSpec.model_validate_json(pkg.compiled_prompt)
+    spec = OmniClipSpec.model_validate_json(pkg.spec_json)
     assert spec.summary == view.scene.clips[0].omni_prompt
     assert not _RANGE_RE.search(pkg.compiled_prompt)
     assert spec.look is not None and spec.look.mood == "wary resolve"

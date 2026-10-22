@@ -1,8 +1,10 @@
 """Lenient, typed view of the compiled `OmniClipSpec` JSON used as the critic's ground truth.
 
-The critic judges a clip ONLY against the spec that was actually sent to the renderer
-(`GenerationRun.compiled_prompt`). Parsing is dict-based so additive spec-schema changes from
-other phases never break QA; symbolic ids (`S#`, `O#`, `L#`) are resolved to display names.
+The critic judges a clip ONLY against the spec the sent prompt was rendered from
+(`GenerationRun.spec_json` / `PromptVersion.spec_json`; never the rendered hybrid prose —
+legacy runs carried the JSON in `compiled_prompt`). Parsing is dict-based so additive
+spec-schema changes from other phases never break QA; symbolic ids (`S#`, `O#`, `L#`) are
+resolved to display names.
 """
 
 from __future__ import annotations
@@ -202,9 +204,10 @@ def _from_dict(data: dict[str, Any], raw: str) -> CriticSpec:
     )
 
 
-def parse_compiled_spec(compiled_prompt: str) -> CriticSpec:
-    """Parse `GenerationRun.compiled_prompt`; non-JSON prompts yield an unparsed spec."""
-    text = (compiled_prompt or "").strip()
+def parse_compiled_spec(spec_json: str) -> CriticSpec:
+    """Parse a run's spec JSON (`PromptVersionRepo.spec_for_run`); non-JSON yields an
+    unparsed spec (e.g. if rendered hybrid prose were passed by mistake)."""
+    text = (spec_json or "").strip()
     try:
         data = json.loads(text)
     except (json.JSONDecodeError, ValueError):

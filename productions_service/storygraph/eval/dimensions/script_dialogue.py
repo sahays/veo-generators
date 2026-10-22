@@ -4,13 +4,23 @@ from __future__ import annotations
 
 from ...qa.critic.checks import defect
 from ...schema import QADefect
-from ..metrics.dialogue import DialogueMatch, LineMatch, ScriptedLine
+from ..metrics.dialogue import MIN_LINE_SIM, DialogueMatch, LineMatch, ScriptedLine
 from .base import EvalContext
 
-TEXT_OK_SIM = 0.8
-TEXT_BAD_SIM = 0.6
+TEXT_OK_SIM = 0.85
 TRANSCRIPT_CONFIDENCE = 0.85
 VLM_ONLY_CONFIDENCE = 0.4
+
+
+def _text_defect(m: LineMatch, at: str, heard: str) -> QADefect | None:
+    """>= TEXT_OK_SIM: spoken as scripted; partial: MEDIUM render; below MIN_LINE_SIM: HIGH."""
+    if m.similarity >= TEXT_OK_SIM:
+        return None
+    said = m.line.text[:80]
+    msg = f"{at} heard '{heard}' vs scripted '{said}' (sim {m.similarity:.2f})"
+    if m.similarity >= MIN_LINE_SIM:
+        return defect("line_partial", "medium", m.line.speaker, msg, "render")
+    return defect("line_text_mismatch", "high", m.line.speaker, msg)
 
 
 def _line_defects(m: LineMatch, duration_s: float) -> list[QADefect]:
@@ -21,11 +31,8 @@ def _line_defects(m: LineMatch, duration_s: float) -> list[QADefect]:
         return [defect("line_missing", "high", who, msg)]
     at = f"t={m.segment.t_start:.2f}s"
     heard = m.segment.text[:80]
-    out: list[QADefect] = []
-    if m.similarity < TEXT_OK_SIM:
-        sev = "high" if m.similarity < TEXT_BAD_SIM else "medium"
-        msg = f"{at} heard '{heard}' vs scripted '{said}' (sim {m.similarity:.2f})"
-        out.append(defect("line_text_mismatch", sev, who, msg))
+    text = _text_defect(m, at, heard)
+    out: list[QADefect] = [text] if text else []
     if not m.lang_ok:
         msg = f"{at} '{heard}' not in scripted language '{m.line.lang}'"
         out.append(defect("wrong_language", "high", who, msg))

@@ -12,9 +12,10 @@ from storygraph.adapters.mock import MockVLMProvider
 from storygraph.adapters.transcribe import Transcript, TranscriptSegment
 from storygraph.config import Config
 from storygraph.eval.contracts import EvalInput
+from storygraph.eval.dimensions.script_dialogue import _dialogue_from_transcript
 from storygraph.eval.engine import EvalEngine
 from storygraph.eval.metrics.bundle import scripted_lines
-from storygraph.eval.metrics.dialogue import match_dialogue
+from storygraph.eval.metrics.dialogue import ScriptedLine, match_dialogue
 from storygraph.qa.critic.checks import CriticThresholds
 
 LINES = scripted_lines(SPEC)
@@ -57,6 +58,79 @@ def test_extra_and_out_of_order_speech() -> None:
     assert [m.in_order for m in match.lines].count(False) == 1
     assert all(m.segment is not None for m in match.lines)
     assert [s.text for s in match.extra] == ["यह कौन है"]
+
+
+def _span(t0: float, t1: float, text: str, speaker: str = "Pip") -> TranscriptSegment:
+    return TranscriptSegment(t_start=t0, t_end=t1, text=text, speaker=speaker)
+
+
+CORD = ScriptedLine(
+    "Pip", "en-IN", "The binding cord is freed; now surrender your quiet cargo."
+)
+SPHERE = ScriptedLine(
+    "Pip", "en-IN", "Behold the crimson sphere, freed from wooden shadows."
+)
+
+
+def _kinds(
+    lines: list[ScriptedLine], segs: list[TranscriptSegment]
+) -> set[tuple[str, str]]:
+    defects, _ = _dialogue_from_transcript(
+        match_dialogue(lines, Transcript(segments=segs)), 8.0
+    )
+    return {(d.type, d.severity) for d in defects}
+
+
+def test_transcriber_split_lines_merge_into_one_match() -> None:
+    """p-0irbygdv: Omni spoke both lines verbatim; the transcriber split each in two."""
+    segs = [
+        _span(1.05, 2.40, "The binding cord is freed."),
+        _span(3.25, 4.60, "Now surrender your quiet cargo."),
+        _span(5.20, 6.00, "Behold the crimson sphere,", speaker=""),
+        _span(6.24, 7.50, "freed from wooden shadows."),
+    ]
+    match = match_dialogue([CORD, SPHERE], Transcript(segments=segs))
+    assert [m.span for m in match.lines] == [(0, 2), (2, 4)]
+    assert all(m.similarity >= 0.95 and m.in_order for m in match.lines)
+    assert match.extra == [] and match.order_ok
+    assert _kinds([CORD, SPHERE], segs) == set()
+
+
+def test_partial_line_is_medium_render_defect() -> None:
+    segs = [_span(3.25, 4.60, "Now surrender your quiet cargo.")]
+    defects, _ = _dialogue_from_transcript(
+        match_dialogue([CORD], Transcript(segments=segs)), 8.0
+    )
+    assert [(d.type, d.severity, d.likely_cause) for d in defects] == [
+        ("line_partial", "medium", "render")
+    ]
+
+
+def test_genuinely_different_line_is_high_and_unscripted() -> None:
+    segs = [_span(1.0, 3.0, "Where did my little brass key go this morning?")]
+    assert _kinds([CORD], segs) == {
+        ("line_missing", "high"),
+        ("unscripted_speech", "medium"),
+    }
+
+
+def test_split_merge_respects_gap_and_speaker_and_keeps_real_extras() -> None:
+    far = [
+        _span(0.0, 1.0, "The binding cord is freed."),
+        _span(3.0, 4.0, "Now surrender your quiet cargo."),
+    ]
+    assert match_dialogue([CORD], Transcript(segments=far)).lines[0].span != (0, 2)
+    other = [far[0], _span(1.5, 2.5, "Now surrender your quiet cargo.", speaker="Ava")]
+    assert match_dialogue([CORD], Transcript(segments=other)).lines[0].span != (0, 2)
+    segs = [
+        _span(1.05, 2.40, "The binding cord is freed."),
+        _span(3.25, 4.60, "Now surrender your quiet cargo."),
+        _span(4.00, 4.40, "uh huh", speaker=""),
+        _span(6.50, 8.00, "I will hide the key under the stool."),
+    ]
+    match = match_dialogue([CORD], Transcript(segments=segs))
+    assert match.lines[0].span == (0, 2)
+    assert [s.text for s in match.extra] == ["I will hide the key under the stool."]
 
 
 class _FixedTranscriber:

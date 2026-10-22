@@ -1,4 +1,4 @@
-"""Deterministic shot compiler (`compile_shot`): typed `OmniClipSpec` rendered as compact JSON."""
+"""Deterministic shot compiler (`compile_shot`): typed `OmniClipSpec` + its rendered Omni prompt."""
 
 from __future__ import annotations
 
@@ -13,6 +13,8 @@ from .budget import RefPlan
 from .clips.prompt_ctx import resolve_shot_clip
 from .config import Config, VideoProviderCfg
 from .omni.builder import DESC_LEVELS, build_spec
+from .omni.render import render_prompt
+from .omni.spec import OmniClipSpec, PromptFormat
 from .omni.symbols import ImageBindings
 from .repair.models import RepairDirective
 from .views import ShotView
@@ -23,6 +25,10 @@ _log = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class Package:
+    """Render package. `compiled_prompt` is the exact text sent to Omni (rendered in
+    `prompt_format`); `spec_json` is the typed `OmniClipSpec` it was rendered from, the
+    source of truth for lint, prompt versions, adapter rebinding and eval expectations."""
+
     shot_id: str
     compiled_prompt: str
     negative_prompt: str
@@ -36,6 +42,22 @@ class Package:
     package_hash: str
     resolution: str = "360p"
     dropped_to_verbal: list[str] = field(default_factory=list)
+    spec_json: str = ""
+    prompt_format: PromptFormat = "json"
+
+    @property
+    def spec_source(self) -> str:
+        """Spec JSON (legacy packages carried the spec JSON as `compiled_prompt`)."""
+        return self.spec_json or self.compiled_prompt
+
+
+@dataclass(frozen=True)
+class RenderedPrompt:
+    """The spec JSON, the text rendered from it, and the format used."""
+
+    spec_json: str
+    text: str
+    fmt: PromptFormat
 
 
 def _derive_seed(project_id: str, shot_id: str, attempt: int = 1) -> int:
@@ -79,47 +101,47 @@ def _log_budget(view: ShotView, event: str, what: str, why: str, how: str) -> No
     )
 
 
-def _render_within_budget(
+def _spec_within_budget(
     view: ShotView,
     bindings: ImageBindings,
     max_chars: int | None = None,
     retry_feedback: list[str] | None = None,
     repair: RepairDirective | None = None,
-) -> str:
-    """Render the spec, trimming identity/extras level by level (never sequence/speech)."""
+) -> OmniClipSpec:
+    """Build the spec, trimming identity/extras level by level (never sequence/speech)."""
     budget = max_chars or OMNI_TARGET_CHARS
     clip = resolve_shot_clip(view.scene, view.shot)
     extra = tuple(repair.constraint_tokens) if repair else ()
     first_level = min(repair.min_desc_level if repair else 0, len(DESC_LEVELS) - 1)
-    prompt = ""
+    size = 0
     for level in range(first_level, len(DESC_LEVELS)):
-        policy = DESC_LEVELS[level]
-        prompt = build_spec(
-            view, clip, bindings, policy, retry_feedback, extra
-        ).render()
-        if len(prompt) <= budget:
-            return prompt
+        spec = build_spec(
+            view, clip, bindings, DESC_LEVELS[level], retry_feedback, extra
+        )
+        size = len(spec.render())
+        if size <= budget:
+            return spec
         _log_budget(
             view,
             "omni_spec_trimmed",
             "description level exceeded soft budget",
-            f"{len(prompt)} > {budget} chars",
+            f"{size} > {budget} chars",
             f"DESC_LEVELS {level} -> {level + 1}",
         )
     _log_budget(
         view,
         "omni_spec_over_budget",
         "spec still over soft budget at minimum description level",
-        f"{len(prompt)} > {budget} chars (sequence/speech are never trimmed)",
+        f"{size} > {budget} chars (sequence/speech are never trimmed)",
         "sent as-is",
     )
-    return prompt
+    return spec
 
 
 def _compute_package_hash(
     view: ShotView,
     plan: RefPlan,
-    prompt: str,
+    rendered: RenderedPrompt,
     negative_prompt: str,
     seed: int,
     resolution: str = "360p",
@@ -129,7 +151,9 @@ def _compute_package_hash(
     canonical_payload = json.dumps(
         {
             "shot_id": view.shot.id,
-            "omni_spec": prompt,
+            "omni_spec": rendered.spec_json,
+            "rendered_prompt": rendered.text,
+            "prompt_format": rendered.fmt,
             "negative_prompt": negative_prompt,
             "ref_shas": [a.sha256 for a in plan.selected_assets],
             "first_frame_sha": plan.first_frame.sha256 if plan.first_frame else None,
@@ -178,28 +202,31 @@ def compile_shot(
     resolution: str = "360p",
     repair: RepairDirective | None = None,
 ) -> Package:
-    """Render the deterministic Omni spec package from ShotView + RefPlan within the budget.
+    """Build the deterministic Omni spec from ShotView + RefPlan within the budget and
+    render it in the provider's `prompt_format` (spec JSON + rendered text both kept).
 
     `repair` (QA repair attempt) adds positive constraint tokens and targets, starts the
     budget walk at a condensed identity level and may lock the camera static.
     """
     provider_caps = caps or cfg.video
     view = _repair_view(view, repair)
-    prompt = _render_within_budget(
+    spec = _spec_within_budget(
         view,
         image_bindings(view, plan, provider_caps),
         provider_caps.max_prompt_chars,
         retry_feedback=_merge_targets(retry_feedback, repair),
         repair=repair,
     )
+    fmt = provider_caps.prompt_format
+    rendered = RenderedPrompt(spec.render(), render_prompt(spec, fmt), fmt)
     negative_prompt = ", ".join(view.style_guide.avoid)
     seed = _derive_seed(project_id, view.shot.id, attempt=attempt)
     pkg_hash = _compute_package_hash(
-        view, plan, prompt, negative_prompt, seed, resolution=resolution
+        view, plan, rendered, negative_prompt, seed, resolution=resolution
     )
     return Package(
         shot_id=view.shot.id,
-        compiled_prompt=prompt,
+        compiled_prompt=rendered.text,
         negative_prompt=negative_prompt,
         reference_asset_ids=[a.id for a in plan.selected_assets],
         reference_uris=[a.uri for a in plan.selected_assets],
@@ -211,4 +238,6 @@ def compile_shot(
         package_hash=pkg_hash,
         resolution=resolution,
         dropped_to_verbal=list(plan.dropped_to_verbal),
+        spec_json=rendered.spec_json,
+        prompt_format=fmt,
     )

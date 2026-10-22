@@ -30,7 +30,7 @@ from storygraph.views import shot_view
 
 def _spec(repo: Repo, cfg: Config, shot_id: str) -> OmniClipSpec:
     pkg = compile_shot(shot_view(repo, shot_id), RefPlan(), cfg)
-    return OmniClipSpec.model_validate_json(pkg.compiled_prompt)
+    return OmniClipSpec.model_validate_json(pkg.spec_json)
 
 
 def _case(repo: Repo, shot_id: str, spec: OmniClipSpec) -> LintCase:

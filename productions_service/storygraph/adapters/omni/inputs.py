@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from ...compile import Package
+from ...omni.spec import PromptFormat
 from .package import RefLabel, RenderPackage
 from .spec_binding import Sanitizer, bind_prompt
 
@@ -150,14 +151,18 @@ def build_omni_request(
 ) -> OmniRequest:
     """Role-tag header + spec bound to the sent images + interleaved (label, image) blocks.
 
-    `prompt` is the compiled spec (or legacy text); `bound_tokens` is the asset_id ->
-    `IMAGE_REF_k` map the compiler used (None = this request's own plan).
+    `prompt` is the spec JSON (`Package.spec_source`) or legacy plain text; `bound_tokens`
+    is the asset_id -> `IMAGE_REF_k` map the compiler used (None = this request's own plan).
+    The rebound spec is re-rendered in `package.prompt_format` (legacy packages without
+    `spec_json` keep JSON), so the text always names exactly the images this rung sends.
     """
     slots = plan_image_slots(
         package_labels(package), package.first_frame_uri, max_images, first_frame_mode
     )
     ff_uri, refs = slots.first_frame_uri, slots.refs
-    body = bind_prompt(prompt, _remap(slots, bound_tokens), bool(ff_uri), sanitize)
+    fmt: PromptFormat = package.prompt_format if package.spec_json else "json"
+    remap = _remap(slots, bound_tokens)
+    body = bind_prompt(prompt, remap, bool(ff_uri), sanitize, fmt)
     header = _role_header(bool(ff_uri), len(refs))
     blocks: list[dict[str, Any]] = [
         {"type": "text", "text": "\n".join(p for p in (header, body) if p)}

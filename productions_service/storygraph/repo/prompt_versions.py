@@ -15,12 +15,14 @@ from typing import Any, Final
 from ..errors import NotFound
 from ..prompting.json_diff import diff_specs, spec_hash
 from ..schema import (
+    GenerationRun,
     PatchOp,
     PromptVersion,
     PromptVersionAuthor,
     PromptVersionStatus,
     Role,
 )
+from ..schemas.generation import PromptFormat
 from ..store.base import Filter, GraphStore
 from ..store.codec import decode, encode
 
@@ -45,6 +47,10 @@ class PromptDraft:
     parent_id: str | None = None
     shot_content_hash: str | None = None
     patch: list[PatchOp] | None = None
+    rendered_prompt: str | None = (
+        None  # text sent to Omni (None: rendered at render time)
+    )
+    prompt_format: PromptFormat | None = None
 
 
 def _log(what: str, why: str, how: str, **extra: Any) -> None:
@@ -130,11 +136,28 @@ class PromptVersionRepo:
         parent = self.get(draft.parent_id)
         return diff_specs(parent.spec_json, draft.spec_json) if parent else None
 
+    def _refresh_rendered(self, pv: PromptVersion, draft: PromptDraft) -> PromptVersion:
+        """Update the derived rendered text (never the spec) when it differs."""
+        if draft.rendered_prompt is None or (
+            pv.rendered_prompt == draft.rendered_prompt
+            and pv.prompt_format == draft.prompt_format
+        ):
+            return pv
+        return self._put(
+            pv.model_copy(
+                update={
+                    "rendered_prompt": draft.rendered_prompt,
+                    "prompt_format": draft.prompt_format,
+                }
+            )
+        )
+
     def create(self, draft: PromptDraft, activate: bool = True) -> PromptVersion:
         """Store a new immutable version, or reuse the shot's version with the same spec hash."""
         digest = spec_hash(draft.spec_json)
         existing = self.find_by_hash(draft.shot_id, digest)
         if existing is not None:
+            existing = self._refresh_rendered(existing, draft)
             reused = (
                 self._activate(existing)
                 if activate and existing.status != "active"
@@ -162,6 +185,8 @@ class PromptVersionRepo:
             patch=self._patch_for(draft),
             reason=draft.reason,
             shot_content_hash=draft.shot_content_hash,
+            rendered_prompt=draft.rendered_prompt,
+            prompt_format=draft.prompt_format,
         )
         stored = self._activate(pv) if activate else self._put(pv)
         _log(
@@ -224,3 +249,11 @@ class PromptVersionRepo:
             prompt_version_id=version_id,
         )
         return activated
+
+    def spec_for_run(self, run: GenerationRun) -> str:
+        """Spec JSON a run was rendered from: the run's own copy, else its PromptVersion's,
+        else `compiled_prompt` (legacy JSON-era runs sent the spec JSON itself)."""
+        if run.spec_json:
+            return run.spec_json
+        pv = self.get(run.prompt_version_id) if run.prompt_version_id else None
+        return pv.spec_json if pv else run.compiled_prompt

@@ -119,7 +119,7 @@ def test_compiled_render_links_run_and_records_result(
     shot = seed_valid_graph(tmp_repo)
     video, run = _render(tmp_repo, default_cfg, shot)
     pv = _versions(tmp_repo).require(run.prompt_version_id or "")
-    assert pv.author == "compiler" and pv.spec_json == video.calls[-1].compiled_prompt
+    assert pv.author == "compiler" and pv.spec_json == video.calls[-1].spec_json
     assert pv.run_ids == [run.id] and pv.eval_score == pytest.approx(0.82)
     assert pv.eval_summary and pv.eval_summary["dimensions"] == {"identity": 0.9}
 
@@ -129,15 +129,13 @@ def test_render_uses_active_human_version(
 ) -> None:
     shot = seed_valid_graph(tmp_repo)
     _, first = _render(tmp_repo, default_cfg, shot)
-    edited = json.loads(first.compiled_prompt) | {"summary": "human-tuned summary"}
+    edited = json.loads(first.spec_json) | {"summary": "human-tuned summary"}
     current = tmp_repo.get_shot(shot.id) or shot
     human_id = _human_version(
         tmp_repo, current, json.dumps(edited), current.content_hash
     )
     video, run = _render(tmp_repo, default_cfg, current)
-    assert (
-        json.loads(video.calls[-1].compiled_prompt)["summary"] == "human-tuned summary"
-    )
+    assert json.loads(video.calls[-1].spec_json)["summary"] == "human-tuned summary"
     assert run.prompt_version_id == human_id
     assert run.package_hash != first.package_hash
     assert _versions(tmp_repo).active_for_shot(shot.id).id == human_id  # type: ignore[union-attr]
@@ -152,7 +150,7 @@ def test_content_change_supersedes_human_version(
     pv = _versions(tmp_repo).require(run.prompt_version_id or "")
     assert pv.author == "compiler" and pv.parent_id == human_id
     assert pv.reason == "shot content changed"
-    assert video.calls[-1].compiled_prompt != _SPEC_A
+    assert video.calls[-1].spec_json != _SPEC_A
     assert _versions(tmp_repo).require(human_id).status == "superseded"
 
 

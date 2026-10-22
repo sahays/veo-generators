@@ -227,7 +227,7 @@ def test_dialogue_partitioning_and_speaker_binding(
     pkg = compile_shot(
         sv, select_references(sv, default_cfg, repo=tmp_repo), default_cfg
     )
-    spec = OmniClipSpec.model_validate_json(pkg.compiled_prompt)
+    spec = OmniClipSpec.model_validate_json(pkg.spec_json)
     subj = {s.name: s for s in spec.subjects or []}
     speakers = {s.speaker for s in spec.speech or []}
     shabari = next(s for s in subj.values() if s.screen_pos == "left")
@@ -263,10 +263,10 @@ def test_compile_budget_preserves_identity_and_props(
     caps = default_cfg.video.model_copy(update={"max_prompt_chars": 950})
     pkg = compile_shot(sv, plan, default_cfg, caps=caps)
     full = compile_shot(sv, plan, default_cfg)
-    spec = OmniClipSpec.model_validate_json(pkg.compiled_prompt)
-    whole = OmniClipSpec.model_validate_json(full.compiled_prompt)
-    assert len(pkg.compiled_prompt) < len(full.compiled_prompt)
-    assert "cotton-candy blue" in full.compiled_prompt  # trimmed only under budget
+    spec = OmniClipSpec.model_validate_json(pkg.spec_json)
+    whole = OmniClipSpec.model_validate_json(full.spec_json)
+    assert len(pkg.spec_json) < len(full.spec_json)
+    assert "cotton-candy blue" in full.spec_json  # trimmed only under budget
     assert spec.sequence == whole.sequence and spec.speech == whole.speech
     assert "Brass Compass" in {o.name for o in spec.objects or []}
 
@@ -326,7 +326,7 @@ def test_first_frame_slot_reservation_and_ordering(
     )
     imgs = [
         b
-        for b in _build_omni_input_blocks(pkg, pkg.compiled_prompt, max_refs=3)
+        for b in _build_omni_input_blocks(pkg, pkg.spec_source, max_refs=3)
         if b["type"] == "image"
     ]
     assert len(imgs) == 3 and imgs[0]["uri"] == "gs://b/lf.png"

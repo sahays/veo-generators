@@ -405,7 +405,7 @@ def test_archetype_conservation_voice_lock_and_critic_flags(
     pkg1 = compile_shot(view1, plan1, default_cfg)
     assert "NEVER" not in pkg1.compiled_prompt
     # Clip 1 moves the chair and towel; the bowl is only touched in clip 2, so it is absent.
-    spec = OmniClipSpec.model_validate_json(pkg1.compiled_prompt)
+    spec = OmniClipSpec.model_validate_json(pkg1.spec_json)
     moves = {o.name: o.moves for o in spec.objects or []}
     assert (
         moves["Wooden Chair"] and moves["Kitchen Towel"] and "Mixing Bowl" not in moves

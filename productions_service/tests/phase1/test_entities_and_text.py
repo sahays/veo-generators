@@ -68,7 +68,7 @@ def test_identity_survives_a_tiny_budget(tmp_repo: Repo, default_cfg: Config) ->
     seed_kitchen(tmp_repo)
     default_cfg.video.max_prompt_chars = 200  # forces the deepest trim level
     pkg = compile_shot(shot_view(tmp_repo, "shot_4_2"), RefPlan(), default_cfg)
-    spec = OmniClipSpec.model_validate_json(pkg.compiled_prompt)
+    spec = OmniClipSpec.model_validate_json(pkg.spec_json)
     named = [*(spec.subjects or []), *(spec.objects or [])]
     assert named and all(e.identity for e in named)
     assert spec.look is None or spec.look.composition is None  # extras trimmed first

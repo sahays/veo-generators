@@ -16,6 +16,7 @@ from ..omni.spec import ObjectSpec, ObjectState, OmniClipSpec
 from ..omni.symbols import Symbols
 from ..timeline.handling import head_noun, step_text
 from ..timeline.locomotion import is_key_action, step_locomotion
+from .content_rules import CONTENT_RULES
 from .models import LintCase, LintIssue, issue
 from .text_rules import TEXT_RULES
 
@@ -273,4 +274,5 @@ RULES: Final[tuple[Rule, ...]] = (
     rule_adjacency,
     rule_continuity,
     *TEXT_RULES,
+    *CONTENT_RULES,
 )

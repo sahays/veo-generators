@@ -63,7 +63,7 @@ def lint_packages(repo: Repo, packages: dict[str, Package]) -> list[LintIssue]:
     prev_scene, prev_spec = "", None
     shots = _scene_order([s for s in repo.list_shots() if s.id in packages])
     for shot in shots:
-        spec = OmniClipSpec.model_validate_json(packages[shot.id].compiled_prompt)
+        spec = OmniClipSpec.model_validate_json(packages[shot.id].spec_source)
         prev = prev_spec if shot.scene_id == prev_scene else None
         out += lint_spec(_case(repo, shot, spec, prev))
         prev_scene, prev_spec = shot.scene_id, spec
@@ -75,7 +75,7 @@ def _compile_spec(repo: Repo, cfg: Config, shot: Shot) -> OmniClipSpec:
     view = shot_view(repo, shot.id)
     plan = select_references(view, cfg, caps=cfg.video, repo=repo)
     pkg = compile_shot(view, plan, cfg, caps=cfg.video, project_id=repo.project_id)
-    return OmniClipSpec.model_validate_json(pkg.compiled_prompt)
+    return OmniClipSpec.model_validate_json(pkg.spec_source)
 
 
 def lint_shot(repo: Repo, cfg: Config, shot_id: str) -> list[LintIssue]:

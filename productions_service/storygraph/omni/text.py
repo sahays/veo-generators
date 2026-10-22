@@ -7,7 +7,7 @@ from typing import Final
 
 from ..clips.species import own_sentences
 from ..clips.text import strip_timestamps
-from ..timeline.placement import cut_phrase
+from ..timeline.placement import cut_phrase, ends_dangling
 
 _ID_RE: Final[re.Pattern[str]] = re.compile(
     r"\b(obj|char|loc|prop|ast|shot|scn|evt|app|dlg|comp)_[A-Za-z0-9_]+\b"
@@ -28,7 +28,7 @@ _SPACE_BEFORE_PUNCT_RE: Final[re.Pattern[str]] = re.compile(r"\s+([,.;:!?])")
 _EMPTY_PARENS_RE: Final[re.Pattern[str]] = re.compile(r"\(\s*\)")
 _SPACES_RE: Final[re.Pattern[str]] = re.compile(r"\s{2,}")
 _STYLE_PHRASE_RE: Final[re.Pattern[str]] = re.compile(
-    r"\b(?:rendered|animated|painted|drawn|illustrated|designed|outlined|framed|depicted|styled)"
+    r"(?:\b[A-Za-z]+-)?\b(?:rendered|animated|painted|drawn|illustrated|designed|outlined|framed|depicted|styled)"
     r"\s+(?:in|with|by|using)\b[^,.;]*",
     re.IGNORECASE,
 )
@@ -40,6 +40,14 @@ _STYLE_NOUN_RE: Final[re.Pattern[str]] = re.compile(
 _SENTENCE_END: Final[str] = ".!?\u2026\"'"
 _REPEAT_RE: Final[re.Pattern[str]] = re.compile(
     r"\b([A-Za-z][\w'-]*)(?:\s+\1\b)+", re.IGNORECASE
+)
+_CLAUSE_RE: Final[re.Pattern[str]] = re.compile(
+    r"\s*[,;:]\s+|\s+(?=(?:with|featuring|wearing|and|plus)\s)", re.IGNORECASE
+)
+_FIRST_SENTENCE_RE: Final[re.Pattern[str]] = re.compile(r"(?<=[.!?])\s+")
+_MIN_FRAGMENT_WORDS: Final[int] = 2
+_NULL_LEAD_RE: Final[re.Pattern[str]] = re.compile(
+    r"^(?:none|n/a|null|default)\s*[;:,.-]\s*", re.IGNORECASE
 )
 
 
@@ -138,11 +146,17 @@ def condense_identity(
     if max_sentences <= 0:
         return ""
     text = clean(description, resolver)
-    kept = [s for s in (_strip_style(x) for x in own_sentences(text, other_names)) if s]
+    kept = [
+        s
+        for s in (_strip_style(x) for x in own_sentences(text, other_names))
+        if is_whole(s)
+    ]
     if (
         not kept
     ):  # every sentence names someone else: keep the first one (identity floor)
-        kept = [s for s in (_strip_style(x) for x in own_sentences(text, [])) if s][:1]
+        kept = [
+            s for s in (_strip_style(x) for x in own_sentences(text, [])) if is_whole(s)
+        ][:1]
     body = " ".join(sentence(s) for s in kept[:max_sentences])
     if not re.search(r"[A-Za-z]", body):  # style-only text: keep the raw first sentence
         body = first_sentence(text, resolver)
@@ -154,6 +168,46 @@ def first_sentence(text: str | None, resolver: IdResolver, max_chars: int = 160)
     cleaned = clean(text, resolver)
     head = re.split(r"(?<=[.!?])\s+", cleaned, maxsplit=1)[0] if cleaned else ""
     return _cap_chars(head.rstrip("."), max_chars).rstrip(".")
+
+
+def is_truncated(text: str | None) -> bool:
+    """True for cut-off text: ends on a hyphen ('Hand-.') or a dangling function word."""
+    body = (text or "").strip().rstrip(".!?").strip()
+    return body.endswith("-") or (bool(body) and ends_dangling(body))
+
+
+def is_whole(text: str | None) -> bool:
+    """False for fragments: truncated text or a lone word ('Hand-.', 'A')."""
+    body = (text or "").strip().rstrip(".!?").strip()
+    return len(body.split()) >= _MIN_FRAGMENT_WORDS and not is_truncated(body)
+
+
+def clause_cut(text: str | None, max_words: int) -> str:
+    """First sentence of `text`, cut at the last clause boundary within `max_words`.
+
+    Never cuts mid-word or mid-phrase; falls back to whole words without a dangling
+    function word only when the first clause alone is longer than `max_words`.
+    """
+    head = _FIRST_SENTENCE_RE.split((text or "").strip(), maxsplit=1)[0]
+    head = head.rstrip(".!? ")
+    if len(head.split()) > max_words:
+        cuts = [m.start() for m in _CLAUSE_RE.finditer(head)]
+        fit = [p for p in cuts if 0 < p and len(head[:p].split()) <= max_words]
+        head = head[: fit[-1]] if fit else " ".join(head.split()[:max_words])
+        head = _drop_trailing_fragment(head)
+    return "" if is_truncated(head) else head
+
+
+def _drop_trailing_fragment(text: str) -> str:
+    words = text.rstrip(" ,;:").split()
+    while words and (words[-1].endswith("-") or ends_dangling(" ".join(words))):
+        words.pop()
+    return " ".join(words)
+
+
+def strip_null_lead(text: str | None) -> str:
+    """'None; unclad chassis' -> 'unclad chassis' (a null label before real text)."""
+    return _NULL_LEAD_RE.sub("", (text or "").strip()).strip()
 
 
 def humanize(value: str) -> str:

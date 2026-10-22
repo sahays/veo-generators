@@ -123,7 +123,7 @@ def test_attempt_two_escalates_and_compiles_stabilised_spec(
     assert all("loc_cafe" not in a.depicts_entity_ids for a in plan.selected_assets)
     assert plan.first_frame is None
     pkg = compile_shot(view, plan, default_cfg, repair=d)
-    spec = json.loads(pkg.compiled_prompt)
+    spec = json.loads(pkg.spec_json)
     assert spec["camera"]["move"] == "static"
     assert {"camera_locked_static", "single_consistent_art_style"} <= set(
         spec["constraints"]
@@ -141,8 +141,8 @@ def test_repair_loop_stops_at_first_qa_pass(
     (outcome,) = report.outcomes
     assert outcome.outcome == "approved" and outcome.renders == 2
     assert len(video.calls) == 2 and _shot(tmp_repo).repair_attempts == 1
-    assert "constraints" in video.calls[1].compiled_prompt
-    assert "screen_positions_locked" in video.calls[1].compiled_prompt
+    assert "constraints" in video.calls[1].spec_json
+    assert "screen_positions_locked" in video.calls[1].spec_json
     assert video.calls[0].seed != video.calls[1].seed
     assert evaluate_shot_readiness(tmp_repo).is_complete
 

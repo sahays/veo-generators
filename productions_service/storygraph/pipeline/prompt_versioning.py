@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from typing import Any, Generic, TypeVar
 
 from ..compile import Package
+from ..omni.render import render_spec_json
 from ..repo import Repo
 from ..repo.prompt_versions import PromptDraft, PromptVersionRepo
 from ..schema import GenerationRun, PromptVersion, QAReport, Shot
@@ -33,7 +34,8 @@ _FALLBACK_SCORE_FIELDS: tuple[str, ...] = (
 
 @dataclass(frozen=True)
 class VersionedPackage(Generic[_P]):
-    """Render package whose `compiled_prompt` is exactly the `version.spec_json`."""
+    """Render package whose `spec_json` is exactly `version.spec_json` and whose
+    `compiled_prompt` is that spec rendered in the package's prompt format."""
 
     package: _P
     version: PromptVersion
@@ -66,9 +68,14 @@ def _override_applies(active: PromptVersion | None, shot: Shot) -> bool:
 
 
 def _with_spec(pkg: _P, pv: PromptVersion) -> _P:
-    """Swap the compiled prompt for the version's spec; re-derive the package hash."""
-    digest = hashlib.sha256(f"{pkg.package_hash}:{pv.spec_hash}".encode()).hexdigest()
-    return replace(pkg, compiled_prompt=pv.spec_json, package_hash=digest)
+    """Render the version's spec in the package's format; re-derive the package hash."""
+    text = render_spec_json(pv.spec_json, pkg.prompt_format)
+    digest = hashlib.sha256(
+        f"{pkg.package_hash}:{pv.spec_hash}:{pkg.prompt_format}:{text}".encode()
+    ).hexdigest()
+    return replace(
+        pkg, compiled_prompt=text, spec_json=pv.spec_json, package_hash=digest
+    )
 
 
 def resolve_package(
@@ -85,7 +92,8 @@ def resolve_package(
             "active non-compiler version",
             active,
         )
-        return VersionedPackage(_with_spec(pkg, active), active)
+        out = _with_spec(pkg, active)
+        return VersionedPackage(out, _record_rendered(versions, active, out))
     why = (
         reason
         if active is None or active.author == "compiler"
@@ -94,14 +102,30 @@ def resolve_package(
     pv = versions.create(
         PromptDraft(
             shot_id=shot.id,
-            spec_json=pkg.compiled_prompt,
+            spec_json=pkg.spec_source,
             author="compiler",
             reason=why,
             parent_id=active.id if active else None,
             shot_content_hash=shot.content_hash,
+            rendered_prompt=pkg.compiled_prompt,
+            prompt_format=pkg.prompt_format,
         )
     )
     return VersionedPackage(pkg, pv)
+
+
+def _record_rendered(
+    versions: PromptVersionRepo, pv: PromptVersion, pkg: Package
+) -> PromptVersion:
+    """Persist the text an override version renders to (derived; spec unchanged)."""
+    draft = PromptDraft(
+        shot_id=pv.shot_id,
+        spec_json=pv.spec_json,
+        author=pv.author,
+        rendered_prompt=pkg.compiled_prompt,
+        prompt_format=pkg.prompt_format,
+    )
+    return versions.create(draft, activate=False)
 
 
 def summarize_report(report: QAReport | None) -> tuple[float | None, dict[str, Any]]:

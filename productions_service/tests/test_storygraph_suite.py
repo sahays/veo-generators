@@ -127,7 +127,7 @@ def test_fastapi_productions_service_endpoints() -> None:
     )
     assert res_compile.status_code == 200
     compiled = res_compile.json()
-    spec = OmniClipSpec.model_validate_json(compiled["compiled_prompt"])
+    spec = OmniClipSpec.model_validate_json(compiled["spec_json"])
     assert spec.task == "render_video_clip" and compiled["package_hash"]
     res_g3 = client.post(f"/api/v1/productions/{pid}/gates/G3/approve")
     assert res_g3.status_code == 200
@@ -181,7 +181,7 @@ def test_epic_name_normalization_hindi_dialogue_and_deduplication(
         default_cfg,
         project_id="p_aranya",
     )
-    speech = OmniClipSpec.model_validate_json(pkg.compiled_prompt).speech or []
+    speech = OmniClipSpec.model_validate_json(pkg.spec_json).speech or []
     assert speech and all(s.lang == "hi-IN" for s in speech)
 
 
