@@ -73,7 +73,7 @@ def voice_profile(
         return attrs["voice_profile"].strip()
     if traits.kind == ActorKind.ROBOT:
         return _ROBOT_VOICE
-    if traits.kind == ActorKind.ANIMAL:
+    if traits.kind in (ActorKind.ANIMAL, ActorKind.HYBRID):
         if not traits.can_speak:
             return f"non-verbal {traits.species or 'animal'} {traits.vocalization}"
         return f"expressive {traits.species or 'creature'} voice"

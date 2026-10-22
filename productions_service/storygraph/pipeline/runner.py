@@ -27,15 +27,15 @@ from ..agents.roles import (
     run_script_supervisor,
     run_story_architect,
 )
-from ..agents.stage_qa import run_stage_qa_and_remediate, stages_to_redo_for_issues
+from ..agents.stage_qa import run_stage_qa_and_remediate
 from ..compile import Package
 from ..config import Config
-from ..errors import BudgetExceeded, GateBlocked, ShotsNotApproved, ValidationFailed
+from ..errors import BudgetExceeded, GateBlocked, ShotsNotApproved
+from ..graph_integrity import record_integrity_report
 from ..repo import Repo
 from ..schema import Role, StageRun, Status
 from ..state import rebuild_state_facts
 from ..tools.registry import ToolContext
-from ..validate import validate_all
 from .assemble_stage import project_status_after_stage, run_assemble_stage
 from .gates import GATE_FOR_STAGE, approve_gate, ensure_gate, require_gate
 from .lint_stage import MAX_LLM_ROUNDS, LintStageDeps, compile_and_lint
@@ -44,6 +44,7 @@ from .render_stage import (
     render_and_qa_shots,
 )
 from .stages import AUTHORING_STAGES, STAGE_ORDER, Stage
+from .validate_stage import ValidateStageDeps, review_and_redo
 
 __all__ = ["STAGE_ORDER", "Pipeline", "Stage"]
 
@@ -323,6 +324,7 @@ class Pipeline:
         md_ctx = ToolContext(repo=self.repo, role=Role.MUSIC_DIRECTOR, cfg=self.cfg)
         res = run_music_director(md_ctx, mock_llm=self.mock_llm)
         run_stage_qa_and_remediate(self.repo, self.cfg, str(st))
+        record_integrity_report(self.repo)
         ensure_gate(self.repo, "G3", str(Stage.S5_MUSIC))
         if auto_approve:
             approve_gate(self.repo, "G3", reviewer="auto_approve")
@@ -330,30 +332,24 @@ class Pipeline:
             st, ihash, tokens_in=res.tokens_in, tokens_out=res.tokens_out, cost_usd=0.01
         )
 
-    def _review_and_redo_before_render(self, max_iterations: int = 3) -> None:
-        """Review upstream artifacts and redo responsible agent stages up to `max_iterations` times."""
-        for attempt in range(1, max_iterations + 1):
-            report = run_stage_qa_and_remediate(
-                self.repo, self.cfg, str(Stage.S5_MUSIC), max_iterations=max_iterations
+    def _redo_stages(self, stages: list[str]) -> None:
+        for up_st in stages:
+            st_enum = Stage(up_st)
+            self._execute_authoring_stage(
+                st_enum, self._compute_stage_input_hash(st_enum), force=True
             )
-            rebuild_state_facts(self.repo)
-            errors = [
-                i for i in validate_all(self.repo, self.cfg) if i.severity == "error"
-            ]
-            open_crs = self.repo.list_change_requests(open_only=True)
-            if report.passed and not errors and not open_crs:
-                return
-            if attempt == max_iterations:
-                if errors:
-                    raise ValidationFailed(errors)
-                return
-            for up_st in stages_to_redo_for_issues(report.issues, errors, open_crs):
-                st_enum = Stage(up_st)
-                self._execute_authoring_stage(
-                    st_enum, self._compute_stage_input_hash(st_enum), force=True
-                )
-            for cr in open_crs:
-                self.repo.resolve_change_request(cr.id, "accepted")
+
+    def _review_and_redo_before_render(self, max_iterations: int = 3) -> None:
+        """S6: redo responsible stages, then demote non-blocking issues (never dead-ends)."""
+        meta = self.repo.get_project_meta()
+        deps = ValidateStageDeps(
+            repo=self.repo,
+            cfg=self.cfg,
+            redo_stages=self._redo_stages,
+            language=meta.language if meta else "en",
+            mock_llm=self.mock_llm,
+        )
+        review_and_redo(deps, max_iterations=max_iterations)
 
     def _compile_and_lint(self, max_llm_rounds: int = MAX_LLM_ROUNDS) -> None:
         """S7: compile + lint; deterministic remediation, then scene-scoped S2/S4 redo."""

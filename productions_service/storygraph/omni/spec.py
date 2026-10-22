@@ -32,7 +32,7 @@ ConstraintToken = Literal[
     "lipsync_active_speaker_only",
     RepairToken,
 ]
-ActorKindToken = Literal["robot", "animal", "person"]
+ActorKindToken = Literal["robot", "animal", "hybrid", "person"]
 
 
 class _Spec(BaseModel):

@@ -259,18 +259,21 @@ class CameraSpec(BaseModel):
 
 
 class ShotLintIssue(BaseModel):
-    """A spec-linter finding attached to its shot (S7), for UI display.
+    """A validation / spec-linter finding attached to its shot, for UI display.
 
-    `status="auto_fixed"` records a deterministic S7 remediation (`fix` says what changed);
-    `status="open"` is still blocking and was routed to `route` (S2 screenwriter / S4 director).
+    `status="auto_fixed"` records a deterministic remediation (`fix` says what changed);
+    `status="open"` is still blocking and was routed to `route` (S2 screenwriter / S4 director);
+    `status="demoted"` survived every remediation round and was downgraded to a warning so
+    the pipeline continues (`fix` says why). `source` is the stage that recorded it.
     """
 
     code: str
     message: str
     route: Literal["S2", "S4"]
     severity: Literal["error", "warn"] = "error"
-    status: Literal["open", "auto_fixed"] = "open"
+    status: Literal["open", "auto_fixed", "demoted"] = "open"
     fix: str = ""
+    source: Literal["S6", "S7"] = "S7"
 
 
 class Shot(NodeBase):

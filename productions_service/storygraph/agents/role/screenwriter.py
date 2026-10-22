@@ -291,6 +291,8 @@ def _kind_label(tr: ActorTraits | None) -> str:
     """Human-readable actor kind for the screenwriter prompt."""
     if tr is None:
         return "person"
+    if tr.kind == ActorKind.HYBRID:
+        return f"{tr.species or 'hybrid being'} (anthropomorphic: speaks like a person)"
     if tr.kind == ActorKind.ANIMAL:
         sp = tr.species or "animal"
         return (

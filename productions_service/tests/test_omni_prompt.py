@@ -193,9 +193,7 @@ def test_species_validation_flags_wrong_vocalizer_only(tmp_repo: Repo) -> None:
     scene = tmp_repo.get_scene("scn_1")
     assert scene is not None
     bad = scene.clips[1].model_copy(
-        update={
-            "omni_prompt": "Pip kneels, barks a warning at Milo. Pip hears Milo bark."
-        }
+        update={"omni_prompt": "Pip kneels and barks at Milo. Pip hears Milo bark."}
     )
     scene = scene.model_copy(update={"clips": [scene.clips[0], bad]})
     ents = tmp_repo.list_entities()

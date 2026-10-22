@@ -16,6 +16,7 @@ from .errors import ValidationFailed
 from .repo import Repo
 from .schema import Appearance, Event, Role, Scene, StateFact, Status
 from .timeline.clip_events import ClipWindow, scene_clip_windows
+from .timeline.scene_entry import SceneEntry, plan_scene_entries
 
 _log = logging.getLogger(__name__)
 
@@ -93,7 +94,7 @@ def normalize_scene_timeline(repo: Repo) -> None:
 
 
 def _new_fact(
-    seq: int, ev: Event, entity_id: str, attribute: str, value: str
+    seq: int, order: int, cause: str, entity_id: str, attribute: str, value: str
 ) -> StateFact:
     return StateFact(
         id=f"sf_{seq:04d}",
@@ -101,45 +102,88 @@ def _new_fact(
         entity_id=entity_id,
         attribute=attribute,
         value=value,
-        valid_from_order=ev.story_order,
+        valid_from_order=order,
         valid_to_order=None,
-        caused_by_event_id=ev.id,
+        caused_by_event_id=cause,
         status=Status.APPROVED,
     )
 
 
-def rebuild_state_facts(repo: Repo) -> list[StateFact]:
-    """Replay Events in story_order into half-open [from, to) StateFact intervals.
+class _Replay:
+    """Half-open [from, to) interval builder; restating the current value is a no-op."""
 
-    An effect that restates the current value is a no-op and opens no new interval.
+    def __init__(self) -> None:
+        self.open: dict[tuple[str, str], StateFact] = {}
+        self.closed: list[StateFact] = []
+        self.seq = 0
+        self.skipped = 0
+        self.entries = 0
+
+    def value(self, entity_id: str, attribute: str) -> str | None:
+        fact = self.open.get((entity_id, attribute))
+        return fact.value if fact else None
+
+    def apply(
+        self, entity_id: str, attribute: str, value: str | None, order: int, cause: str
+    ) -> bool:
+        key = (entity_id, attribute)
+        prev = self.open.get(key)
+        if prev is not None and prev.value == value:
+            self.skipped += 1
+            return False
+        if prev is not None:
+            self.closed.append(
+                self.open.pop(key).model_copy(update={"valid_to_order": order})
+            )
+        if value is not None:
+            self.seq += 1
+            self.open[key] = _new_fact(self.seq, order, cause, *key, value)
+        return True
+
+    def enter(self, entry: SceneEntry) -> None:
+        """Relocate present cast (and what they hold) that is known to be elsewhere."""
+        for cid in entry.cast:
+            held = self.value(cid, "holding")
+            for eid in (cid, held) if held else (cid,):
+                loc = self.value(eid, "location")
+                if loc and loc != entry.location_id:
+                    self.apply(
+                        eid, "location", entry.location_id, entry.order, entry.cause
+                    )
+                    self.entries += 1
+
+    def facts(self) -> list[StateFact]:
+        return self.closed + list(self.open.values())
+
+
+def rebuild_state_facts(repo: Repo) -> list[StateFact]:
+    """Replay Events (and implicit scene entries) in story order into StateFact intervals.
+
+    An effect that restates the current value is a no-op and opens no new interval. A
+    scene entry at order `o` is applied before any Event effect at the same order.
     """
     normalize_scene_timeline(repo)
     events = sorted(repo.list_events(), key=lambda e: (e.story_order, e.id))
-    open_facts: dict[tuple[str, str], StateFact] = {}
-    closed: list[StateFact] = []
-    seq, skipped = 0, 0
+    entries = plan_scene_entries(
+        repo.list_scenes(), events, repo.list_shots(), repo.list_entities()
+    )
+    replay, cursor = _Replay(), 0
     for ev in events:
+        while cursor < len(entries) and entries[cursor].order <= ev.story_order:
+            replay.enter(entries[cursor])
+            cursor += 1
         for eff in ev.effects:
-            key = (eff.entity_id, eff.attribute)
-            prev = open_facts.get(key)
-            if prev is not None and prev.value == eff.new_value:
-                skipped += 1
-                continue
-            if prev is not None:
-                closed.append(
-                    open_facts.pop(key).model_copy(
-                        update={"valid_to_order": ev.story_order}
-                    )
-                )
-            if eff.new_value is not None:
-                seq += 1
-                open_facts[key] = _new_fact(
-                    seq, ev, eff.entity_id, eff.attribute, eff.new_value
-                )
-    all_facts = closed + list(open_facts.values())
+            replay.apply(
+                eff.entity_id, eff.attribute, eff.new_value, ev.story_order, ev.id
+            )
+    for entry in entries[cursor:]:
+        replay.enter(entry)
+    all_facts = replay.facts()
     repo.replace_all_state_facts(all_facts)
     _log_state(
-        f"{len(all_facts)} facts", f"{skipped} no-op effects dropped", "event replay"
+        f"{len(all_facts)} facts ({replay.entries} implicit scene-entry relocations)",
+        f"{replay.skipped} no-op effects dropped",
+        "event replay + scene-entry relocation",
     )
     return all_facts
 

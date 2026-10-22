@@ -1,8 +1,11 @@
 """Screenplay rule: actions and vocalizations must match the actor's species.
 
-Only animals bark/meow/neigh…; non-speaking actors (animals unless the story makes them
-talk) carry no dialogue lines or speech verbs. Codes are `S2_*` so a violation routes the
-scene back to the Screenwriter.
+Only animals (and hybrid/anthropomorphic beings) bark/meow/neigh…; non-speaking actors
+(animals unless the story makes them talk) carry no dialogue lines or speech verbs. Noun
+uses ("the tree's rough bark") and speech idioms ("barks an order", "roars with laughter")
+are not vocalizations (`verb_use`). Codes are `S2_*`: a violation is rewritten by the
+Screenwriter for that scene with the message as feedback, and is never a permanent block
+(S6 demotes it to a shot warning when remediation runs out).
 """
 
 from __future__ import annotations
@@ -13,9 +16,16 @@ from typing import Final
 from ..schema import DialogueLine, Scene
 from .species import ActorKind, ActorTraits
 from .validation import ClipIssue
+from .verb_use import is_vocalization
 
 CODE_SPECIES_ACTION: Final[str] = "S2_CLIP_SPECIES_ACTION"
 CODE_MUTE_SPEAKER: Final[str] = "S2_CLIP_MUTE_SPEAKER"
+SPECIES_CODES: Final[frozenset[str]] = frozenset(
+    {CODE_SPECIES_ACTION, CODE_MUTE_SPEAKER}
+)
+_MAY_VOCALIZE: Final[frozenset[ActorKind]] = frozenset(
+    {ActorKind.ANIMAL, ActorKind.HYBRID}
+)
 
 _ANIMAL_ONLY_RE: Final[re.Pattern[str]] = re.compile(
     r"\b(?:bark(?:s|ed|ing)?|woof(?:s|ed|ing)?|meow(?:s|ed|ing)?|miaow(?:s|ed)?|"
@@ -30,86 +40,87 @@ _SPEECH_RE: Final[re.Pattern[str]] = re.compile(
 _SENTENCE_RE: Final[re.Pattern[str]] = re.compile(r"[^.!?]+[.!?]?")
 
 
-def _nearest_actor(
-    sentence: str, upto: int, name_re: re.Pattern[str], ids: dict[str, str]
-) -> str | None:
-    """Return the entity id of the last character named before offset `upto` in `sentence`."""
-    hits = [m for m in name_re.finditer(sentence, 0, upto)]
-    return ids.get(hits[-1].group(0).lower()) if hits else None
+class _Names:
+    """Case-insensitive matcher over actor names (with their ids)."""
 
+    def __init__(self, traits: dict[str, ActorTraits], names: dict[str, str]) -> None:
+        self.ids = {
+            n.lower(): eid for eid, n in names.items() if eid in traits and n.strip()
+        }
+        alt = "|".join(re.escape(n) for n in sorted(self.ids, key=len, reverse=True))
+        self.pattern = re.compile(rf"\b(?:{alt})\b", re.IGNORECASE) if alt else None
+        self.words = frozenset(w for n in self.ids for w in n.split())
 
-def _prompt_issues(
-    scene_id: str,
-    label: str,
-    prompt: str,
-    traits: dict[str, ActorTraits],
-    names: dict[str, str],
-) -> list[ClipIssue]:
-    """Flag animal-only vocal verbs whose nearest preceding subject is not an animal."""
-    ids = {n.lower(): eid for eid, n in names.items() if eid in traits and n.strip()}
-    if not ids:
-        return []
-    alt = "|".join(re.escape(n) for n in sorted(ids, key=len, reverse=True))
-    name_re = re.compile(rf"\b(?:{alt})\b", re.IGNORECASE)
-    issues: list[ClipIssue] = []
-    for sent in _SENTENCE_RE.findall(prompt):
-        for verb in _ANIMAL_ONLY_RE.finditer(sent):
-            actor = _nearest_actor(sent, verb.start(), name_re, ids)
-            if actor and traits[actor].kind != ActorKind.ANIMAL:
-                msg = f"{label}: {names[actor]} ({traits[actor].kind}) cannot '{verb.group(0)}' — only animals do."
-                issues.append(ClipIssue(CODE_SPECIES_ACTION, scene_id, msg))
-    return issues
-
-
-def _name_matcher(
-    traits: dict[str, ActorTraits], names: dict[str, str]
-) -> tuple[re.Pattern[str] | None, dict[str, str]]:
-    """Build a case-insensitive regex over known actor names plus a lowercase name→id map."""
-    ids = {n.lower(): eid for eid, n in names.items() if eid in traits and n.strip()}
-    if not ids:
-        return None, ids
-    alt = "|".join(re.escape(n) for n in sorted(ids, key=len, reverse=True))
-    return re.compile(rf"\b(?:{alt})\b", re.IGNORECASE), ids
+    def nearest(self, sentence: str, upto: int) -> str | None:
+        """Entity id of the last character named before offset `upto`."""
+        if self.pattern is None:
+            return None
+        hits = list(self.pattern.finditer(sentence, 0, upto))
+        return self.ids.get(hits[-1].group(0).lower()) if hits else None
 
 
 def _verb_subjects(
     text: str,
     verb_re: re.Pattern[str],
     default_actor: str,
-    matcher: re.Pattern[str] | None,
-    ids: dict[str, str],
+    names: _Names,
+    literal: bool,
 ) -> list[tuple[str, str]]:
-    """Return `(subject_id, verb)` for each verb match, subject = nearest preceding named actor."""
+    """`(subject_id, verb)` per verb match; subject = nearest preceding named actor.
+
+    With `literal`, noun uses and speech idioms are skipped.
+    """
     found: list[tuple[str, str]] = []
     for sent in _SENTENCE_RE.findall(text):
         for verb in verb_re.finditer(sent):
-            subject = (
-                _nearest_actor(sent, verb.start(), matcher, ids) if matcher else None
-            )
+            if literal and not is_vocalization(
+                sent, verb.start(), verb.end(), names.words
+            ):
+                continue
+            subject = names.nearest(sent, verb.start())
             found.append((subject or default_actor, verb.group(0)))
     return found
 
 
-def _step_issues(
-    scene: Scene, traits: dict[str, ActorTraits], names: dict[str, str]
+def _vocal_issues(
+    scene_id: str,
+    label: str,
+    text: str,
+    default_actor: str,
+    ctx: tuple[dict[str, ActorTraits], dict[str, str], _Names],
 ) -> list[ClipIssue]:
-    matcher, ids = _name_matcher(traits, names)
+    traits, names, matcher = ctx
+    issues: list[ClipIssue] = []
+    for subj, verb in _verb_subjects(
+        text, _ANIMAL_ONLY_RE, default_actor, matcher, True
+    ):
+        tr = traits.get(subj)
+        if tr is not None and tr.kind not in _MAY_VOCALIZE:
+            msg = (
+                f"{label}: {names.get(subj, subj)} ({tr.kind}) cannot '{verb}' literally — "
+                f"only animals do; rewrite as speech or an action fitting a {tr.kind}."
+            )
+            issues.append(ClipIssue(CODE_SPECIES_ACTION, scene_id, msg))
+    return issues
+
+
+def _step_issues(
+    scene: Scene, ctx: tuple[dict[str, ActorTraits], dict[str, str], _Names]
+) -> list[ClipIssue]:
+    traits, names, matcher = ctx
     issues: list[ClipIssue] = []
     for st in scene.interaction_steps:
         if st.actor_id not in traits:
             continue
         text = st.action or st.description
-        for subj, verb in _verb_subjects(
-            text, _ANIMAL_ONLY_RE, st.actor_id, matcher, ids
+        label = f"Step {st.step_index}"
+        issues.extend(_vocal_issues(scene.id, label, text, st.actor_id, ctx))
+        for subj, _verb in _verb_subjects(
+            text, _SPEECH_RE, st.actor_id, matcher, False
         ):
             tr = traits.get(subj)
-            if tr is not None and tr.kind != ActorKind.ANIMAL:
-                msg = f"Step {st.step_index}: {names.get(subj, subj)} ({tr.kind}) cannot '{verb}' — only animals do."
-                issues.append(ClipIssue(CODE_SPECIES_ACTION, scene.id, msg))
-        for subj, _verb in _verb_subjects(text, _SPEECH_RE, st.actor_id, matcher, ids):
-            tr = traits.get(subj)
             if tr is not None and not tr.can_speak:
-                msg = f"Step {st.step_index}: {names.get(subj, subj)} is non-verbal ({tr.vocalization} only)."
+                msg = f"{label}: {names.get(subj, subj)} is non-verbal ({tr.vocalization} only)."
                 issues.append(ClipIssue(CODE_MUTE_SPEAKER, scene.id, msg))
     return issues
 
@@ -121,10 +132,11 @@ def validate_species_rules(
     names: dict[str, str],
 ) -> list[ClipIssue]:
     """Run species/vocalization rules over one scene's steps, clip prompts and dialogue."""
-    issues = _step_issues(scene, traits, names)
+    ctx = (traits, names, _Names(traits, names))
+    issues = _step_issues(scene, ctx)
     for clip in scene.clips:
         label = f"Clip {clip.clip_index}"
-        issues.extend(_prompt_issues(scene.id, label, clip.omni_prompt, traits, names))
+        issues.extend(_vocal_issues(scene.id, label, clip.omni_prompt, "", ctx))
     for dl in dialogues:
         tr = traits.get(dl.speaker_id)
         if tr is not None and not tr.can_speak:

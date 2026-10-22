@@ -7,7 +7,8 @@ Order per round:
 3. record open + auto-fixed issues on every shot (`Shot.lint_issues`);
 4. if blocking issues remain, re-run S2 (screenwriter, then director) or S4 (director) ONLY
    for the affected scenes with the exact lint messages as prompt feedback.
-After `max_llm_rounds` redo rounds, `ValidationFailed` carries the remaining issues.
+After `max_llm_rounds` redo rounds the remaining issues are demoted to shot warnings
+(`status="demoted"`); only unrenderable shots raise `ValidationFailed` (no dead ends).
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ from ..repo import Repo
 from ..schema import Role
 from ..state import rebuild_state_facts
 from ..tools.registry import ToolContext
+from ..validation.renderable import unrenderable_issues
 from .render_stage import compile_all_shots
 
 _log = logging.getLogger(__name__)
@@ -136,15 +138,37 @@ def compile_and_lint(
     deps: LintStageDeps, max_llm_rounds: int = MAX_LLM_ROUNDS
 ) -> dict[str, Package]:
     """Run S7; return compiled packages or raise `ValidationFailed` with the issue list."""
+    rebuild_state_facts(
+        deps.repo
+    )  # specs must never compile against stale clip windows
     fixes: list[AppliedFix] = []
     for rnd in range(max_llm_rounds + 1):
         lp = remediate_pass(deps, lint_pass(deps, fixes))
         fixes = lp.fixes
-        record_shot_lint(deps.repo, lp.issues, fixes)
         errors = blocking(lp.issues)
+        final = rnd == max_llm_rounds
+        record_shot_lint(deps.repo, lp.issues, fixes, demoted=final)
         if not errors:
             return lp.packages
-        if rnd == max_llm_rounds:
-            raise ValidationFailed(errors)
+        if final:
+            return _demote_or_block(deps, lp, errors)
         llm_redo(deps, errors)
     raise ValidationFailed([])  # unreachable: the loop returns or raises
+
+
+def _demote_or_block(
+    deps: LintStageDeps, lp: LintPass, errors: list[LintIssue]
+) -> dict[str, Package]:
+    """No dead ends: only unrenderable shots block; other lint errors were demoted."""
+    blocking_shots = unrenderable_issues(deps.repo)
+    if blocking_shots:
+        raise ValidationFailed(
+            [f"{i.code} {i.node_id}: {i.message}" for i in blocking_shots]
+        )
+    _log_event(
+        f"demoted {len(errors)} lint errors on {len({e.shot_id for e in errors})} shots",
+        "remediation rounds exhausted; lint findings are quality issues, not unrenderable",
+        "Shot.lint_issues status=demoted severity=warn",
+        deps,
+    )
+    return lp.packages

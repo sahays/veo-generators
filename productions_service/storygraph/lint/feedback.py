@@ -27,7 +27,19 @@ class SceneFeedback:
         return bool(self.screenwriter)
 
 
-def _open_record(issue: LintIssue) -> ShotLintIssue:
+DEMOTED_REASON = "survived every S7 remediation round; demoted so rendering continues"
+
+
+def _open_record(issue: LintIssue, demoted: bool) -> ShotLintIssue:
+    if demoted and issue.severity == "error":
+        return ShotLintIssue(
+            code=issue.code,
+            message=issue.message,
+            route=issue.route,
+            severity="warn",
+            status="demoted",
+            fix=DEMOTED_REASON,
+        )
     return ShotLintIssue(
         code=issue.code,
         message=issue.message,
@@ -37,20 +49,23 @@ def _open_record(issue: LintIssue) -> ShotLintIssue:
 
 
 def record_shot_lint(
-    repo: Repo, issues: list[LintIssue], fixes: list[AppliedFix]
+    repo: Repo, issues: list[LintIssue], fixes: list[AppliedFix], demoted: bool = False
 ) -> int:
     """Store open issues + this run's auto-fixes on each shot; returns shots rewritten.
 
-    `lint_issues` is not render content, so the content hash / staleness are untouched.
+    With `demoted`, remaining errors are stored as `status="demoted"` warnings. S6
+    records (`source="S6"`) are kept. `lint_issues` is not render content, so the content
+    hash / staleness are untouched.
     """
     per_shot: dict[str, list[ShotLintIssue]] = defaultdict(list)
     for fx in fixes:
         per_shot[fx.shot_id].append(fx.record())
     for issue in issues:
-        per_shot[issue.shot_id].append(_open_record(issue))
+        per_shot[issue.shot_id].append(_open_record(issue, demoted))
     written = 0
     for shot in repo.list_shots():
-        records = per_shot.get(shot.id, [])
+        kept = [r for r in shot.lint_issues if r.source == "S6"]
+        records = [*kept, *per_shot.get(shot.id, [])]
         if records != shot.lint_issues:
             repo.put_shot(shot.model_copy(update={"lint_issues": records}))
             written += 1

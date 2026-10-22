@@ -98,10 +98,54 @@ def _closing_order(repo: Repo, shot: Shot) -> int:
     return max([shot.story_order, *orders])
 
 
+def _opening_order(shot: Shot) -> int:
+    """Post-state order before the clip's first Event (`ClipWindow.open_at`)."""
+    return shot.story_order - 1 if shot.covers_event_ids else shot.story_order
+
+
+def _enters_in_clip(repo: Repo, shot: Shot, entity_id: str) -> bool:
+    """True when an Event this clip plays moves `entity_id` into the shot location."""
+    return any(
+        f.entity_id == entity_id
+        and f.attribute == "location"
+        and f.new_value == shot.location_id
+        for eid in shot.covers_event_ids
+        if (ev := repo.get_event(eid))
+        for f in ev.effects
+    )
+
+
+def _check_v3_location(
+    repo: Repo, shot: Shot, entity_id: str, issues: list[ValidationIssue]
+) -> None:
+    """Cast must open the clip at the shot location (scene-entry relocation applies,
+    entrances played by the clip are allowed) and still be there when it closes."""
+    opening, close = _opening_order(shot), _closing_order(repo, shot)
+    ent_loc = state_at(repo, entity_id, opening).get("location")
+    if (
+        ent_loc
+        and ent_loc != shot.location_id
+        and not _enters_in_clip(repo, shot, entity_id)
+    ):
+        msg = (
+            f"Shot '{shot.id}': cast '{entity_id}' is at location '{ent_loc}' when the clip "
+            f"opens (order {opening}), not shot location '{shot.location_id}', and no Event "
+            f"in this clip moves them there"
+        )
+        issues.append(ValidationIssue("V3", "error", shot.id, msg))
+        return
+    end_loc = state_at(repo, entity_id, close).get("location")
+    if end_loc and end_loc != shot.location_id:
+        msg = (
+            f"Shot '{shot.id}': cast '{entity_id}' ends the clip at '{end_loc}' (order "
+            f"{close}), not shot location '{shot.location_id}'"
+        )
+        issues.append(ValidationIssue("V3", "error", shot.id, msg))
+
+
 def _check_v2_v3_v5_cast_states(
     repo: Repo, shot: Shot, issues: list[ValidationIssue]
 ) -> None:
-    close = _closing_order(repo, shot)
     for cast_item in shot.cast:
         st = state_at(repo, cast_item.entity_id, shot.story_order)
         wearing = st.get("wearing")
@@ -113,14 +157,7 @@ def _check_v2_v3_v5_cast_states(
                     f"but shot uses appearance state_label '{app.state_label}'"
                 )
                 issues.append(ValidationIssue("V2", "error", shot.id, msg))
-        for order in dict.fromkeys((shot.story_order, close)):
-            ent_loc = state_at(repo, cast_item.entity_id, order).get("location")
-            if ent_loc and ent_loc != shot.location_id:
-                msg = (
-                    f"Cast '{cast_item.entity_id}' is at location '{ent_loc}' at order {order}, "
-                    f"not shot location '{shot.location_id}'"
-                )
-                issues.append(ValidationIssue("V3", "error", shot.id, msg))
+        _check_v3_location(repo, shot, cast_item.entity_id, issues)
         if st.get("alive_present") == "false":
             msg = f"Cast '{cast_item.entity_id}' has alive_present=='false' at order {shot.story_order}"
             issues.append(ValidationIssue("V5", "error", shot.id, msg))

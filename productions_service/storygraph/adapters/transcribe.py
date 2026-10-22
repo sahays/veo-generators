@@ -30,6 +30,17 @@ class Transcript(BaseModel):
     available: bool = True
 
 
+class TranscriptPayload(BaseModel):
+    """Model-facing response schema: `segments` is required; availability is decided by us."""
+
+    segments: list[TranscriptSegment] = Field(
+        description="Every utterance in order; empty list only if nobody speaks."
+    )
+
+
+FALLBACK_TRANSCRIBE_MODEL = "gemini-3.1-pro-preview"
+
+
 class Transcriber(Protocol):
     def transcribe(
         self, clip_bytes: bytes, speakers: list[str], lang_hints: list[str]
@@ -50,9 +61,13 @@ class GeminiTranscriber:
     """Cheap separate transcription call; results cached per clip digest."""
 
     def __init__(
-        self, model: str = "gemini-3.8-flash", project: str | None = None
+        self,
+        model: str = "gemini-3.8-flash",
+        project: str | None = None,
+        fallback_model: str | None = FALLBACK_TRANSCRIBE_MODEL,
     ) -> None:
         self.model = model
+        self.fallback_model = fallback_model
         self.project = project or os.getenv("GOOGLE_CLOUD_PROJECT")
         self.location = os.getenv("GEMINI_REGION", "global")
         self._cache: BoundedCache[Transcript] = BoundedCache(128)
@@ -64,11 +79,14 @@ class GeminiTranscriber:
         cached = self._cache.get(key)
         if cached is not None:
             return cached
-        result = self._call(clip_bytes, _transcribe_prompt(speakers, lang_hints))
+        prompt = _transcribe_prompt(speakers, lang_hints)
+        result = self._call(clip_bytes, prompt, self.model)
+        if not result.segments and self.fallback_model:
+            result = self._call(clip_bytes, prompt, self.fallback_model)
         self._cache.put(key, result)
         return result
 
-    def _call(self, clip_bytes: bytes, prompt: str) -> Transcript:
+    def _call(self, clip_bytes: bytes, prompt: str, model: str) -> Transcript:
         from google import genai
         from google.genai import types
 
@@ -77,19 +95,18 @@ class GeminiTranscriber:
                 vertexai=True, project=self.project, location=self.location
             )
             resp = client.models.generate_content(
-                model=self.model,
+                model=model,
                 contents=[
                     types.Part.from_bytes(data=clip_bytes, mime_type="video/mp4"),
                     prompt,
                 ],
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
-                    response_schema=Transcript,
+                    response_schema=TranscriptPayload,
                     temperature=0.0,
                 ),
             )
         except Exception as exc:
-            raise StoryGraphError(
-                f"GeminiTranscriber ({self.model}) failed: {exc}"
-            ) from exc
-        return Transcript.model_validate_json(resp.text or '{"segments": []}')
+            raise StoryGraphError(f"GeminiTranscriber ({model}) failed: {exc}") from exc
+        payload = TranscriptPayload.model_validate_json(resp.text or '{"segments": []}')
+        return Transcript(segments=payload.segments)

@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import HTTPException
 from storygraph.config import Config
+from storygraph.graph_integrity import build_integrity_report
 from storygraph.presets import resolve_production_presets
 from storygraph.repo import Repo
 from storygraph.repo.prompt_versions import PromptVersionRepo
@@ -256,6 +257,7 @@ def _build_story_graph_payload(
         "stage_runs": [sr.model_dump(mode="json") for sr in stage_runs],
         "stage_qa_reports": repo.store.query("stage_qa_reports"),
         "validation_issues": [i.to_dict() for i in validate_all(repo, cfg)],
+        "graph_integrity": build_integrity_report(repo).to_dict(),
         "change_requests": [
             cr.model_dump(mode="json")
             for cr in repo.list_change_requests(open_only=False)

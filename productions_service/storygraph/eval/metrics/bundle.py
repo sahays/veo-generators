@@ -114,12 +114,36 @@ def compute_metrics(
         else SimilarityMetrics()
     )
     transcript = _transcribe(transcriber, clip, lines, inp.shot_id)
+    audio = measure_audio_levels(clip) if decoded else None
+    transcript = _guard_empty_transcript(transcript, lines, audio, inp.shot_id)
     return MetricBundle(
         probe=probe,
         video=compute_video_metrics(probe, float(clip_spec.get("duration_s") or 0.0)),
-        audio=measure_audio_levels(clip) if decoded else None,
+        audio=audio,
         similarity=sim,
         lines=lines,
         transcript=transcript,
         dialogue=match_dialogue(lines, transcript) if transcript.available else None,
     )
+
+
+_AUDIBLE_MEAN_DB = -50.0
+
+
+def _guard_empty_transcript(
+    transcript: Transcript,
+    lines: list[ScriptedLine],
+    audio: AudioLevels | None,
+    shot_id: str,
+) -> Transcript:
+    """No segments on an audible clip with scripted lines = transcriber miss, not silence."""
+    audible = audio is not None and audio.mean_db > _AUDIBLE_MEAN_DB
+    if transcript.available and not transcript.segments and lines and audible:
+        _log_degraded(
+            "transcription_empty_on_audible_clip",
+            f"mean_db={audio.mean_db if audio else None}",
+            "GeminiTranscriber",
+            shot_id,
+        )
+        return Transcript(available=False)
+    return transcript

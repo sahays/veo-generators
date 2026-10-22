@@ -13,7 +13,6 @@ from kitchen_seed import seed_kitchen
 
 from storygraph.adapters.mock import MockVideoGenerator
 from storygraph.config import Config
-from storygraph.errors import ValidationFailed
 from storygraph.pipeline import lint_stage
 from storygraph.pipeline.lint_stage import LintStageDeps, compile_and_lint
 from storygraph.repo import Repo
@@ -102,7 +101,7 @@ class _Calls:
     director: list[tuple[str, list[str]]] = field(default_factory=list)
 
 
-def test_unfixable_issue_reauthors_only_its_scene_with_feedback_then_raises(
+def test_unfixable_issue_reauthors_only_its_scene_with_feedback_then_demotes(
     tmp_repo: Repo, default_cfg: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     seed_kitchen(tmp_repo)
@@ -119,8 +118,8 @@ def test_unfixable_issue_reauthors_only_its_scene_with_feedback_then_raises(
 
     monkeypatch.setattr(lint_stage, "run_screenwriter_for_scene", _sw)
     monkeypatch.setattr(lint_stage, "run_director_for_scene", _dr)
-    with pytest.raises(ValidationFailed, match="S2_CLIP_LINT_UNKNOWN_TARGET shot_4_2"):
-        compile_and_lint(_deps(tmp_repo, default_cfg))
+    packages = compile_and_lint(_deps(tmp_repo, default_cfg))
+    assert "shot_4_2" in packages  # no dead end: the renderable shot still compiles
     assert [s for s, _ in calls.screenwriter] == ["scn_4", "scn_4"]
     assert len(calls.director) == 2
     assert all(
@@ -129,6 +128,6 @@ def test_unfixable_issue_reauthors_only_its_scene_with_feedback_then_raises(
     )
     shot = tmp_repo.get_shot("shot_4_2")
     assert shot is not None
-    assert ("S2_CLIP_LINT_UNKNOWN_TARGET", "open") in {
-        (r.code, r.status) for r in shot.lint_issues
+    assert ("S2_CLIP_LINT_UNKNOWN_TARGET", "demoted", "warn") in {
+        (r.code, r.status, r.severity) for r in shot.lint_issues
     }

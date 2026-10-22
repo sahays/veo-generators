@@ -1,8 +1,12 @@
-"""Deterministic actor-kind detection (robot / animal / person) from an entity's OWN identity text.
+"""Deterministic actor-kind detection (robot / animal / hybrid / person) from an entity's OWN text.
 
-Whole-word regexes only (so "delicate" never matches "cat"), applied to the entity's name,
+Whole-word regexes only (so "delicate" never matches "cat"), applied first to an explicit
+kind attribute (`species`, `kind`, `creature_type`, `race`), then to the entity's name,
 aliases, attributes and the sentences of its own description that do not mention other
-characters. Attribute overrides: `can_speak`, `has_mouth` ("true"/"false").
+characters. HYBRID covers mythic / anthropomorphic beings (vanara, centaur, mermaid,
+humanoid or clothed animals…): they speak and may also vocalize like their animal side;
+a hybrid term wins over person words in the same text ("vanara prince" is a vanara).
+Attribute overrides: `can_speak`, `has_mouth` ("true"/"false").
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ from ..schema import Appearance, Entity, EntityType
 class ActorKind(StrEnum):
     ROBOT = "robot"
     ANIMAL = "animal"
+    HYBRID = "hybrid"
     PERSON = "person"
 
 
@@ -26,7 +31,17 @@ def _words_re(words: tuple[str, ...]) -> re.Pattern[str]:
 
 
 _ROBOT_RE: Final[re.Pattern[str]] = _words_re(
-    ("robots?", "robotic", "androids?", "droids?", "automatons?", "cyborgs?", "mecha")
+    (
+        "robots?",
+        "robotic",
+        "androids?",
+        "droids?",
+        "automatons?",
+        "cyborgs?",
+        "mecha",
+        "mechanical",
+        "clockwork",
+    )
 )
 # species word -> non-verbal vocalization family
 _ANIMAL_SOUNDS: Final[dict[str, str]] = {
@@ -74,6 +89,29 @@ _SPEAKING_CREATURE_RE: Final[re.Pattern[str]] = _words_re(
         "mythic",
         "anthropomorphic",
     )
+)
+_HYBRID_RE: Final[re.Pattern[str]] = _words_re(
+    (
+        "vanaras?", "centaurs?", "merm(?:aid|an|en|aids)", "minotaurs?", "satyrs?",
+        "fauns?", "werewol(?:f|ves)", "nagas?", "naginis?", "garudas?", "kinnaras?",
+        "yakshas?", "rakshas(?:a|as|i)", "asuras?", "gandharvas?", "humanoids?",
+        "anthropomorphic", "beast-?folk", "harp(?:y|ies)", "sphinx(?:es)?", "elf",
+        "elves", "dwarf", "dwarves", "goblins?", "ogres?", "trolls?", "fair(?:y|ies)",
+        "sprites?", "pix(?:ie|ies)", "nymphs?", "dryads?",
+    )
+)  # fmt: skip
+# Cues that an animal is anthropomorphic (clothed, upright, hands): it becomes HYBRID.
+_ANTHRO_RE: Final[re.Pattern[str]] = re.compile(
+    r"\b(?:dhoti|robes?|tunic|armou?r|armlets?|vestments|cloak|waistcoat|"
+    r"walks? upright|bipedal|on two legs)\b",
+    re.IGNORECASE,
+)
+_KIND_KEYS: Final[tuple[str, ...]] = (
+    "species",
+    "kind",
+    "creature_type",
+    "race",
+    "being",
 )
 _PERSON_RE: Final[re.Pattern[str]] = _words_re(
     (
@@ -163,7 +201,10 @@ def _override(attrs: dict[str, str], key: str, default: bool) -> bool:
 
 
 def _classify(text: str) -> tuple[ActorKind, str] | None:
-    """Return (kind, species) for one evidence tier: the earliest-mentioned kind wins."""
+    """Return (kind, species) for one evidence tier: hybrid terms win, else earliest kind."""
+    hybrid = _HYBRID_RE.search(text)
+    if hybrid:
+        return ActorKind.HYBRID, hybrid.group(0).lower()
     hits: list[tuple[int, ActorKind, str]] = []
     for kind, pattern in ((ActorKind.ROBOT, _ROBOT_RE), (ActorKind.PERSON, _PERSON_RE)):
         m = pattern.search(text)
@@ -183,14 +224,34 @@ def has_mouth_evidence(text: str, kind: ActorKind = ActorKind.ROBOT) -> bool:
     visor, screen or LED faces never count."""
     if _MOUTHLESS_RE.search(text):
         return False
-    return kind == ActorKind.PERSON or bool(_MOUTH_RE.search(text))
+    humanlike = kind in (ActorKind.PERSON, ActorKind.HYBRID)
+    return humanlike or bool(_MOUTH_RE.search(text))
+
+
+def _anthropomorphize(
+    found: tuple[ActorKind, str], text: str, attrs: dict[str, str]
+) -> tuple[ActorKind, str]:
+    """An animal described as clothed / upright / anthropomorphic is a HYBRID being."""
+    kind, species = found
+    clothed = bool(attrs.get("attire", "").strip()) or bool(_ANTHRO_RE.search(text))
+    return (
+        (ActorKind.HYBRID, species) if kind == ActorKind.ANIMAL and clothed else found
+    )
 
 
 def detect_traits(tiers: list[str], attrs: dict[str, str]) -> ActorTraits:
-    """Classify from evidence tiers in priority order (first decisive tier wins; default person)."""
+    """Classify from evidence tiers in priority order (first decisive tier wins; default person).
+
+    An explicit kind attribute (`species`, `kind`, …) is the first tier.
+    """
     text = " ".join([*tiers, *attrs.values()])
-    found = next((c for t in tiers if t.strip() and (c := _classify(t))), None)
-    kind, species = found or (ActorKind.PERSON, "")
+    explicit = " ".join(attrs.get(k, "") for k in _KIND_KEYS)
+    found = next(
+        (c for t in (explicit, *tiers) if t.strip() and (c := _classify(t))), None
+    )
+    kind, species = (
+        _anthropomorphize(found, text, attrs) if found else (ActorKind.PERSON, "")
+    )
     mouth = _override(attrs, "has_mouth", has_mouth_evidence(text, kind))
     talks = kind != ActorKind.ANIMAL or bool(_SPEAKING_CREATURE_RE.search(text))
     return ActorTraits(kind, species, _override(attrs, "can_speak", talks), mouth)
