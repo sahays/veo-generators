@@ -56,12 +56,24 @@ def overall(feat: ClipFeatures, cfg: GateConfig) -> float:
     return round(sum(w * s for w, s in pairs) / total, 3) if total else 0.0
 
 
+def _blocks(
+    feat: ClipFeatures, dim: str, score: float, threshold: float, margin: float | None
+) -> bool:
+    if score >= threshold:
+        return False
+    if margin is None:
+        return True
+    evidence = feat.high.get(dim, 0) + feat.medium.get(dim, 0) > 0
+    return evidence or score < threshold - margin
+
+
 def hard_gate_failures(feat: ClipFeatures, cfg: GateConfig) -> list[str]:
-    """Dimensions whose confident hard gate is below threshold."""
+    """Dimensions whose confident hard gate blocks (evidence-aware, same as `gate.decide`)."""
     out: list[str] = []
     for dim, (score, conf) in feat.scores.items():
         g = cfg.for_dimension(dim)  # type: ignore[arg-type]
-        if g.hard_gate and conf >= cfg.min_confidence and score < g.threshold:
+        enforced = g.hard_gate and conf >= cfg.min_confidence
+        if enforced and _blocks(feat, dim, score, g.threshold, g.evidence_margin):
             out.append(dim)
     return out
 

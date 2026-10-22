@@ -1,5 +1,5 @@
 {
-  "total_files": 646,
+  "total_files": 647,
   "domain_packages": {
     "agents_service": 1,
     "api": 9,
@@ -26,7 +26,7 @@
     "productions_service/routers": 1,
     "productions_service/services": 6,
     "productions_service/storygraph": 206,
-    "productions_service/tests": 48,
+    "productions_service/tests": 49,
     "scripts": 5,
     "scripts/checkers": 9,
     "workers": 13
@@ -5858,7 +5858,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 4 (Feature Routers & Agents)",
-      "non_comment_lines": 242,
+      "non_comment_lines": 243,
       "classes": [
         "AssetCritiqueOutput"
       ],
@@ -6479,7 +6479,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 1 (Models & Pure Config)",
-      "non_comment_lines": 176,
+      "non_comment_lines": 184,
       "classes": [
         "StoreCfg",
         "BlobCfg",
@@ -6607,7 +6607,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 48,
+      "non_comment_lines": 58,
       "classes": [
         "ClipFeatures"
       ],
@@ -6882,10 +6882,11 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 60,
+      "non_comment_lines": 73,
       "classes": [],
       "functions": [
         "overall_score",
+        "gate_fingerprint",
         "dimension_scores",
         "gating_defects",
         "decide"
@@ -7679,7 +7680,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 193,
+      "non_comment_lines": 215,
       "classes": [],
       "functions": [
         "compile_all_shots",
@@ -8195,7 +8196,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 1 (Models & Pure Config)",
-      "non_comment_lines": 97,
+      "non_comment_lines": 98,
       "classes": [
         "QADefect",
         "DimensionScore",
@@ -8845,6 +8846,22 @@
         "test_thresholds_come_from_config",
         "test_overall_threshold_blocks_weak_soft_dimensions",
         "test_yaml_gate_matches_code_defaults"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/eval/test_gate_evidence.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 61,
+      "classes": [],
+      "functions": [
+        "test_near_threshold_character_score_without_defect_does_not_block",
+        "test_near_threshold_with_identity_defect_still_blocks",
+        "test_far_below_threshold_blocks_without_defect",
+        "test_s9_rejudges_only_failed_runs_from_an_older_gate",
+        "test_gate_fingerprint_changes_with_thresholds"
       ],
       "endpoints": []
     },

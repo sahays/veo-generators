@@ -65,6 +65,7 @@ class QAReport(BaseModel):
     # Video-eval engine outputs (append-only).
     dimension_scores: list[DimensionScore] = Field(default_factory=list)
     eval_overall: float | None = None
+    gate_version: str | None = None
 
 
 class ClipTrim(BaseModel):

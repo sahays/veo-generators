@@ -9,8 +9,10 @@ HIGH defects to the defect gate as MEDIUM.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import replace
 
+from ..config import Config
 from ..qa.critic.checks import CriticThresholds
 from ..qa.critic.gate import GateDecision, gate
 from ..schema import DimensionScore, QADefect
@@ -24,10 +26,29 @@ def overall_score(results: dict[str, DimensionResult], cfg: GateConfig) -> float
     return round(sum(w * s for w, s in pairs) / total, 3) if total else 0.0
 
 
+def gate_fingerprint(cfg: Config) -> str:
+    """Short stable hash of the eval gate config (changes whenever thresholds/rules change)."""
+    raw = cfg.eval.model_dump_json(exclude_none=False)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+
+
+def _has_evidence(r: DimensionResult) -> bool:
+    return any(d.severity in ("medium", "high") for d in r.defects)
+
+
+def _blocks(r: DimensionResult, threshold: float, margin: float | None) -> bool:
+    """Below-threshold blocks; with a margin, near-threshold scores also need a defect."""
+    if r.score >= threshold:
+        return False
+    if margin is None:
+        return True
+    return _has_evidence(r) or r.score < threshold - margin
+
+
 def dimension_scores(
     results: dict[str, DimensionResult], cfg: GateConfig
 ) -> list[DimensionScore]:
-    """Per-dimension gate outcome (passed unless a confident hard gate is below threshold)."""
+    """Per-dimension gate outcome (passed unless a confident hard gate blocks)."""
     out: list[DimensionScore] = []
     for r in results.values():
         g = cfg.for_dimension(r.dimension)
@@ -39,7 +60,7 @@ def dimension_scores(
                 confidence=r.confidence,
                 threshold=g.threshold,
                 hard_gate=g.hard_gate,
-                passed=not enforced or r.score >= g.threshold,
+                passed=not enforced or not _blocks(r, g.threshold, g.evidence_margin),
             )
         )
     return out

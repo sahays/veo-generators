@@ -13,6 +13,7 @@ from ..agents.critic import evaluate_clip_qa
 from ..budget import select_references
 from ..compile import Package, compile_shot
 from ..config import Config
+from ..eval.gate import gate_fingerprint
 from ..repo import Repo
 from ..schema import GenerationRun, Role, Shot, Status
 from ..shots import run_matches_shot
@@ -230,9 +231,33 @@ def render_and_qa_shots(
     run_scene_groups(group_by_scene(shots), _chain, parallel)
 
 
+def _needs_qa(run: GenerationRun, gate_version: str) -> bool:
+    """Unjudged runs, or failed runs judged under an older gate configuration."""
+    qa = run.qa_scores
+    if qa is None:
+        return True
+    stale_gate = qa.gate_version != gate_version
+    return run.status == Status.FAILED and stale_gate and bool(run.output_video_uri)
+
+
 def evaluate_missing_qa(repo: Repo, cfg: Config, vlm: VLMProvider) -> None:
-    """Run VLM Critic QA on any shot whose latest GenerationRun lacks qa_scores or physics verification."""
+    """S9: QA unjudged latest runs and re-judge failed ones whose gate config has changed."""
+    current = gate_fingerprint(cfg)
     for shot in repo.list_shots():
         runs = repo.list_generation_runs(shot_id=shot.id)
-        if runs and runs[-1].qa_scores is None:
+        if runs and _needs_qa(runs[-1], current):
+            logger.info(
+                "S9 judging clip",
+                extra={
+                    "who": "storygraph.pipeline.render_stage",
+                    "where": "render_stage.evaluate_missing_qa",
+                    "what": "clip_qa_requalify",
+                    "when": datetime.now(UTC).isoformat(),
+                    "why": "unjudged or judged under an older gate",
+                    "how": "evaluate_clip_qa on the latest run (no re-render)",
+                    "project_id": repo.project_id,
+                    "shot_id": shot.id,
+                    "run_id": runs[-1].id,
+                },
+            )
             evaluate_clip_qa(repo, cfg, vlm, shot, runs[-1])

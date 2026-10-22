@@ -24,7 +24,7 @@ from ..adapters.transcribe import GeminiTranscriber
 from ..config import Config
 from ..eval.contracts import EvalInput, LabelledRef
 from ..eval.engine import Collected, EvalEngine
-from ..eval.gate import decide
+from ..eval.gate import decide, gate_fingerprint
 from ..eval.mapping import to_qa_report
 from ..eval.media import media_signals
 from ..eval.metrics.video import VideoMetrics
@@ -290,6 +290,7 @@ def evaluate_clip_qa(
         report = _grade_legacy(got.raw, cfg, is_mock, signals)
     else:
         report = grade_eval(engine, inp, got, got.raw, sview)
+    report = report.model_copy(update={"gate_version": gate_fingerprint(cfg)})
     lf_id = _register_last_frame(
         repo, cfg, shot, run, got.probe.last_frame_png, passed=report.passed
     )

@@ -165,6 +165,10 @@ class DimensionGate(BaseModel):
     weight: float = Field(default=0.05, ge=0.0)
     hard_gate: bool = False
     demote_high_defects: bool = False
+    # When set, a hard gate below `threshold` blocks only if the dimension also reported a
+    # MEDIUM/HIGH defect, or its score is below `threshold - evidence_margin` (score scales
+    # are style-dependent, so a bare near-threshold score is not evidence of a defect).
+    evidence_margin: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 def _default_dimension_gates() -> dict[DimensionName, DimensionGate]:
@@ -185,8 +189,15 @@ def _default_dimension_gates() -> dict[DimensionName, DimensionGate]:
         "audio": (0.5, 0.05, False, False),
         "script_adherence": (0.6, 0.15, False, False),
     }
+    margins: dict[DimensionName, float] = {"character_consistency": 0.15}
     return {
-        k: DimensionGate(threshold=t, weight=w, hard_gate=h, demote_high_defects=d)
+        k: DimensionGate(
+            threshold=t,
+            weight=w,
+            hard_gate=h,
+            demote_high_defects=d,
+            evidence_margin=margins.get(k),
+        )
         for k, (t, w, h, d) in spec.items()
     }
 
