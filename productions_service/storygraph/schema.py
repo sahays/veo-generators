@@ -129,6 +129,7 @@ class Asset(NodeBase):
         "audio",
         "keyframe",
         "animatic",
+        "scene_plate",  # S8_KEYFRAMES locked empty-set plate (one per scene + spec hash)
     ]
     uri: str
     signed_url: str | None = None

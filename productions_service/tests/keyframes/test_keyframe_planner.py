@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from conftest import seed_valid_graph
+
 from storygraph.keyframes.plan.graph_source import build_plan_input
 from storygraph.keyframes.plan.lint import lint_plan, lint_scene
 from storygraph.keyframes.plan.models import (
@@ -151,7 +152,10 @@ def test_held_object_behind_back_hidden_unless_beat_acts_on_it() -> None:
 
 def test_wardrobe_constant_and_scene_handoff_clean() -> None:
     first = plan_keyframes(_input())
-    second_inp = _input().model_copy(update={"shot_id": "shot_2", "clip_index": 2})
+    end_x = {c.entity_id: c.x for c in first.keyframes[-1].characters}
+    second_inp = _input().model_copy(
+        update={"shot_id": "shot_2", "clip_index": 2, "start_x": end_x}
+    )
     second_inp.snapshots = [_input().snapshots[-1]] * 3
     second = plan_keyframes(second_inp)
     assert {
@@ -170,10 +174,13 @@ def test_lint_flags_duplicates_vanishing_wardrobe_jumps_and_timeline() -> None:
     frames[2].objects.append(frames[2].objects[0])  # duplicate chest-style drift
     frames[5].objects = [o for o in frames[5].objects if o.entity_id != "obj_cabinet"]
     frames[6].characters[0].wardrobe = "red coat"
-    frames[7].characters[0].position = "right"  # left -> right in one second
+    frames[7].characters[0].x = frames[6].characters[0].x + 0.68  # teleport
     frames[9].objects[0].holder_id = "char_a"
     bad = plan.model_copy(update={"keyframes": frames})
-    codes = {i.code for i in lint_plan(bad, inp)}
+    issues = lint_plan(bad, inp)
+    codes = {i.code for i in issues}
+    jumps = {(i.t, i.entity_id) for i in issues if i.code == "position_jump"}
+    assert (7, "char_a") in jumps and all(eid == "char_a" for _, eid in jumps)
     assert codes >= {
         "object_duplicate",
         "object_count",

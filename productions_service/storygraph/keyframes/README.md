@@ -7,13 +7,27 @@ the whole clip from text.
 
 ## Production: stage S8_KEYFRAMES (between S7_COMPILE and S8_RENDER)
 
-* `stage/stage.py` `run_keyframe_stage`: scenes in parallel, clips in order. An N-second clip
-  gets N+1 keyframes. **Frame 0 of clip k+1 is frame N of clip k** (same asset,
-  `shared_from="<shot>@tNN"`, never regenerated); the first clip of a scene starts from the
-  identity and location sheets. A current set (same plan hash, same shared start) is reused.
-* Checks: a VLM check against graph state *and* the previous keyframe (`unexpected_changes`),
-  with ≤2 regenerations. Frames still failing are `manual_edit` → the shot gets
-  `needs_manual_edit` (render skips it until edited: the shot repair policy).
+* `stage/stage.py` `run_keyframe_stage`: scenes in parallel, clips in order. Per scene
+  (`stage/scene_plans.py`): plan every clip, derive the **set pieces** (objects present in
+  every clip, never held / acted on / moved: `plate/spec.py`), build or reuse (by spec hash)
+  ONE locked empty-set **scene plate** (`plate/build.py`, VLM-checked: no people, every set
+  piece exactly once; its layout = set-piece x centres), then re-plan the clips against that
+  layout with character x carried from clip to clip. An N-second clip gets N+1 keyframes.
+  **Frame 0 of clip k+1 is frame N of clip k** (same asset, `shared_from`, never
+  regenerated). A current set (same plan hash, same plate, same shared start) is reused.
+* Constant depth, no edit chain: every keyframe is generated from [plate, one labelled ref
+  board with every present character/prop sheet (`plate/refboard.py`, no refs dropped),
+  previous frame as pose-only reference] — never an edit of an edit, so nothing compounds.
+* Checks: (1) deterministic **drift guard** vs the plate (`render/drift.py`, no VLM): Lab
+  ΔE on 64×36 static cells (character columns masked), chroma/contrast ratios → reject and
+  regenerate; (2) structured per-entity VLM check (`render/validation.py`: present / count /
+  x region / own pose / outfit, short issue each). ≤2 regenerations; frames still failing are
+  `manual_edit` → shot `needs_manual_edit`.
+* Failures are isolated and visible: a shot (or scene) whose derivation raises gets a failed
+  `KeyframeSet` (no frames, `failure_reason`), the shot is flagged, a 5W1H ERROR is logged and
+  the rest continues. Transient provider errors are retried with back-off (`render/retry.py`).
+  Keyframe/plate assets are written directly with content-addressed ids (no contended
+  versioning transaction — the likely cause of the silently missing scenes).
 * Storage: `schemas/keyframes.py` `KeyframeSet` (Firestore `keyframe_sets`, versioned like
   PromptVersion, one `active` per shot) + `Asset(kind="keyframe")` PNGs in GCS
   (`repo/keyframe_sets.py`). StageRun + 5W1H logs.
@@ -30,10 +44,10 @@ the whole clip from text.
   shot (`frontend/src/components/ads/storygraph/keyframes/`).
 
 ```
-StoryGraph ──► plan/ (pure)  ──► render/ (image model + VLM)  ──► animate/ (Omni)
- state_at,      KeyframePlan      keyframe 0 from sheets,          direct | keyframe_interp
- clip window,   t = 0..N @1fps    t>0 = EDIT of t-1 by delta,      | animatic_edit
- steps/events   + lint            VLM check, ≤2 retries, assets
+StoryGraph ──► plan/ (pure) ──► plate/ (scene plate) ──► render/ ──────────► animate/ (Omni)
+ state_at,      KeyframePlan     set pieces, layout     plate+board(+pose)   keyframe_anchored
+ clip window,   t=0..N @1fps,    1 image / scene        drift guard, VLM     | interp | animatic
+ steps/events   x tracks, lint   (cached by spec hash)  check, ≤2 retries
 ```
 
 ## plan/ — pure, deterministic
@@ -44,25 +58,25 @@ StoryGraph ──► plan/ (pure)  ──► render/ (image model + VLM)  ──
 | `graph_source.py` | read-only resolver: clip window, per-beat `StateSnapshot`s (`state_at` at open, after each beat's aligned Events, at close), wardrobe from `Appearance`, identity sheets from `Asset`s |
 | `permanence.py` | back-fills set pieces the State Engine only "establishes" mid-clip (the chest under the workbench) so they never pop in |
 | `timing.py` | seconds per beat ∝ `duration_hint_s`; `locate(t)` by binary search; snapshot switches at the beat midpoint |
-| `planner.py` | `plan_keyframes(inp)`: per second → characters (wardrobe, pose phrase, position, holdings), objects alive (each exactly once, holder/placement/visibility from graph), setting, camera, and the delta vs t-1 |
-| `lint.py` | `lint_plan` / `lint_scene`: object set changes only with a graph change, no duplicates, ≤1 column jump/s, wardrobe constant per scene, t=0/t=N equal clip open/close state, clean shot hand-offs |
+| `motion.py` | per-second character x: beat anchors (actor walks beside its target during the beat), linear in-betweens, ≤`MAX_STEP_X`/s |
+| `planner.py` | `plan_keyframes(inp)`: per second → characters (wardrobe, own-action pose phrase, x, holdings), objects alive (each exactly once, holder/placement/visibility from graph), setting, camera, and the delta vs t-1 |
+| `lint.py` | `lint_plan` / `lint_scene`: object set changes only with a graph change, no duplicates, ≤`MAX_STEP_X` x jump/s, wardrobe constant per scene, t=0/t=N equal clip open/close state, clean shot hand-offs |
 
 Second 0 is the clip's opening state and the last second its closing state *by
 construction*; lint re-verifies it against the input snapshots.
 
 ## render/
 
-`KeyframeRenderer.render(inp, plan, seed_png=None)`:
-1. keyframe 0 = image generation from character sheets + location plate + focus prop sheets
-   + full plan text (or, for clip k+1, a re-framing **edit** of clip k's final keyframe);
-2. keyframe t>0 = **image edit** of keyframe t-1 carrying only `frame.delta`
-   (empty delta → previous image reused, no call);
-3. every generated keyframe is checked by a cheap VLM (`validation.KeyframeCheck`: object
-   counts, presence, outfit) and regenerated up to `max_retries` (2) times with the issues
-   fed back; the best attempt is kept;
-4. stored via `RepoKeyframeSink` as versioned `Asset(kind="keyframe")`
-   `ast_kf_<shot>_t<tt>_vN`; `qa_notes` links shot id, prompt version id, plan hash, attempts
-   and remaining issues. Animatics are `Asset(kind="animatic")`.
+`KeyframeRenderer.render(inp, plan, RenderJob(plate=ScenePlate(...), shared_first=...))`:
+1. each second with a non-empty delta: prompt (`prompts.frame_prompt`) enumerates every
+   present character (board tile, x region, wardrobe, own pose, holdings), drawn props, fixed
+   set pieces and hidden objects; images = plate, ref board, previous frame (pose only);
+2. drift guard → structured VLM check → ≤`max_retries` regenerations (drifted attempts are
+   never preferred); empty delta → previous image reused;
+3. stored via `RepoKeyframeSink` as `Asset(kind="keyframe")`
+   `ast_kf_<shot>_<plan8>_t<tt>_<sha8>`; `qa_notes` links shot, prompt version, plan hash,
+   attempts, issues and drift metrics. Plates are `Asset(kind="scene_plate")`
+   `ast_plate_<scene>_<spec key>` with the layout in `qa_notes`.
 
 Image model: `ImageGenerator` (`GeminiImageGenerator`, `STORYBOARD_MODEL`, default
 `gemini-nano-banana-2.1`).
@@ -89,3 +103,8 @@ the source video until the text-only rung (recorded as `source_video_dropped`).
 
 `python -m storygraph.experiments.keyframe_ab --stage keyframes|render|judge|report …` —
 see `docs/eval/keyframe_strategy_v1.md` for method and results.
+
+`python -m storygraph.experiments.keyframe_plate --export-dir D --project-id P --scenes …
+--before-dir B --out O` — runs the real S8 scene code on an exported production in memory
+(reads refs from GCS, writes only to `O`), then writes before/after contact sheets and
+`metrics.json` (manual-edit rate, drift vs scene anchor, missing entities).

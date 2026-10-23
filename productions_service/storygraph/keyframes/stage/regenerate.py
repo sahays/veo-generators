@@ -1,7 +1,8 @@
 """Human regenerate/edit of one keyframe: re-derive t..N, then cascade through the scene.
 
 Frames before `t` are kept; frame `t` is re-derived (with the optional human instruction) and
-every later frame re-chained from it, as a new `KeyframeSet` version. Because frame N always
+every later frame regenerated from the scene plate (previous frame as pose reference only), as
+a new `KeyframeSet` version. Because frame N always
 changes, the following clips of the scene re-derive from the new shared start frame. Every
 touched shot is marked stale (its clip must re-render) with a fresh repair budget.
 """
@@ -15,13 +16,19 @@ from ...schemas.keyframes import KeyframeSet
 from ...shots.repair_state import mark_stale_and_reset
 from ..render.renderer import RenderedKeyframe, RenderJob
 from .frames import to_frame, to_rendered
-from .stage import KeyframeStageDeps, ensure_shot, flag_manual_edit, plan_shot
+from .stage import (
+    KeyframeStageDeps,
+    SceneContext,
+    ensure_shot,
+    flag_manual_edit,
+    scene_context,
+)
 
 
 def _prior(
     deps: KeyframeStageDeps, ks: KeyframeSet, t: int
 ) -> tuple[RenderedKeyframe, ...]:
-    """Kept frames < t; only frame t-1 needs pixels (it is the edit source)."""
+    """Kept frames < t; only frame t-1 needs pixels (pose reference for frame t)."""
     out = [to_rendered(f) for f in ks.frames[:t]]
     if out:
         last = ks.frames[t - 1]
@@ -47,13 +54,25 @@ def _validate(ks: KeyframeSet | None, plan_hash: str, t: int) -> KeyframeSet:
     return ks
 
 
+def _context(deps: KeyframeStageDeps, scene: Scene) -> SceneContext:
+    ctx = scene_context(deps, scene)
+    if ctx is None:
+        raise NotFound(f"scene {scene.id} has no clips")
+    return ctx
+
+
 def _rederive(
-    deps: KeyframeStageDeps, scene: Scene, shot: Shot, t: int, instruction: str
+    deps: KeyframeStageDeps, ctx: SceneContext, shot: Shot, t: int, instruction: str
 ) -> KeyframeSet:
     sets = KeyframeSetRepo(deps.repo.store)
-    inp, plan = plan_shot(deps.repo, scene, shot)
+    sp = ctx.plans.get(shot.id)
+    if sp is None:
+        raise NotFound(f"shot {shot.id} is not a clip")
+    inp, plan = sp.inp, sp.plan
     active = _validate(sets.active_for_shot(shot.id), plan.plan_hash, t)
-    job = RenderJob(prior=_prior(deps, active, t), start=t, instruction=instruction)
+    job = RenderJob(
+        plate=ctx.plate, prior=_prior(deps, active, t), start=t, instruction=instruction
+    )
     frames = deps.renderer.render(inp, plan, job)
     stored = [
         to_frame(rk, plan.at(rk.t), deps.max_retries, human=rk.t >= t) for rk in frames
@@ -84,7 +103,8 @@ def regenerate_from(
     scene = deps.repo.get_scene(shot.scene_id) if shot else None
     if shot is None or scene is None:
         raise NotFound(f"shot {shot_id} not found")
-    ks = _rederive(deps, scene, shot, t, instruction.strip())
+    ctx = _context(deps, scene)
+    ks = _rederive(deps, ctx, shot, t, instruction.strip())
     if reset_repair:
         _touch(deps, shot, ks, f"keyframe t={t} regenerated")
     prev = ks
@@ -94,7 +114,7 @@ def regenerate_from(
         if s.clip_index is not None and s.clip_index > (shot.clip_index or 0)
     ]
     for nxt in sorted(later, key=lambda s: s.clip_index or 0):
-        prev, rendered = ensure_shot(deps, scene, nxt, prev)
+        prev, rendered = ensure_shot(deps, ctx, nxt, prev)
         if rendered:
             _touch(
                 deps, nxt, prev, f"previous clip keyframes changed ({shot_id} t={t})"

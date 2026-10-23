@@ -23,6 +23,7 @@ from .models import (
     PlanInput,
     StateSnapshot,
 )
+from .motion import COLUMN_X, tracks
 from .timing import locate, second_count, snapshot_index
 
 _HIDDEN_PLACE = ("inside", "hidden", "concealed", "buried")
@@ -111,16 +112,18 @@ def objects_at(
                 holder_id=holder,
                 visible=obj.entity_id in exposed or _visible(st, holder_state),
                 in_frame=in_frame,
+                x=None if holder else inp.layout.get(obj.entity_id),
             )
         )
     return out
 
 
 def _actor_pose(beat: BeatSpan, phase: float) -> str:
+    """Only this character's own action (scene-level pre/post state text is never a pose)."""
     if phase <= 0.0:
-        return f"about to act: {beat.pre_state or beat.action}"
+        return f"about to: {beat.action}"
     if phase >= 1.0:
-        return f"action complete: {beat.post_state or beat.action}"
+        return f"has just finished: {beat.action}"
     stage = next(label for bound, label in _STAGES if phase < bound or bound == 1.0)
     return f"{stage} {beat.action}"
 
@@ -139,9 +142,14 @@ def _pose(
 
 
 def characters_at(
-    inp: PlanInput, beat: BeatSpan | None, phase: float, snap: StateSnapshot
+    inp: PlanInput,
+    beat: BeatSpan | None,
+    phase: float,
+    snap: StateSnapshot,
+    xs: dict[str, float] | None = None,
 ) -> list[CharacterKey]:
     names = _names(inp)
+    xs = xs or {}
     out: list[CharacterKey] = []
     for cast in inp.cast:
         held = snap.states.get(cast.entity_id, {}).get("holding")
@@ -154,6 +162,7 @@ def characters_at(
                 position=cast.position,
                 holding=[held] if held else [],
                 ref_asset_id=cast.ref_asset_id,
+                x=xs.get(cast.entity_id, COLUMN_X[cast.position]),
             )
         )
     return out
@@ -184,8 +193,8 @@ def _char_delta(
     out: list[str] = []
     if cur.pose != prev.pose:
         out.append(f"{cur.name}: {cur.pose}")
-    if cur.position != prev.position:
-        out.append(f"{cur.name} moves to frame {cur.position}")
+    if abs(cur.x - prev.x) > 0.02:
+        out.append(f"{cur.name} moves to x={cur.x:.2f} of the frame width")
     if cur.holding != prev.holding:
         held = ", ".join(names.get(h, h) for h in cur.holding)
         out.append(
@@ -227,7 +236,7 @@ def keyframe_delta(prev: Keyframe, cur: Keyframe, names: dict[str, str]) -> list
     return out
 
 
-def _keyframe(inp: PlanInput, t: int, last_t: int) -> Keyframe:
+def _keyframe(inp: PlanInput, t: int, last_t: int, xs: dict[str, float]) -> Keyframe:
     spans = [(b.t_start, b.t_end) for b in inp.beats]
     beat_idx, phase = locate(float(t) if t < last_t else inp.duration_s, spans)
     snap_idx = 0 if t == 0 else len(inp.snapshots) - 1 if t == last_t else None
@@ -240,7 +249,7 @@ def _keyframe(inp: PlanInput, t: int, last_t: int) -> Keyframe:
         beat_index=beat_idx,
         phase=phase,
         snapshot_index=snap_idx,
-        characters=characters_at(inp, beat, phase, snap),
+        characters=characters_at(inp, beat, phase, snap, xs),
         objects=objects_at(inp, snap, exposed_ids(inp, beat)),
         setting=_setting(inp),
         camera=camera_at(inp, t / last_t if last_t else 0.0),
@@ -256,9 +265,10 @@ def plan_keyframes(inp: PlanInput) -> KeyframePlan:
     """Build the 1 fps `KeyframePlan` for one clip (t = 0..round(duration))."""
     last_t = second_count(inp.duration_s) - 1
     names = _names(inp)
+    paths = tracks(inp, last_t)
     frames: list[Keyframe] = []
     for t in range(last_t + 1):
-        frame = _keyframe(inp, t, last_t)
+        frame = _keyframe(inp, t, last_t, {cid: xs[t] for cid, xs in paths.items()})
         if frames:
             frame = frame.model_copy(
                 update={"delta": keyframe_delta(frames[-1], frame, names)}

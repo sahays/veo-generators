@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+from functools import cache
 from pathlib import Path
 
 from google.cloud import storage
@@ -20,8 +21,10 @@ from ...adapters.vlm import GeminiVLMProvider
 from ...config import VideoProviderCfg
 from ...keyframes.animate.generator import KeyframeVideoGenerator
 from ...keyframes.animate.sources import RenderingSource
-from ...keyframes.render.renderer import KeyframeRenderer, RendererCfg
+from ...keyframes.plate.build import PlateBuilder
+from ...keyframes.render.renderer import KeyframeRenderer, RendererCfg, ScenePlate
 from ...keyframes.render.sink import RepoKeyframeSink
+from ...keyframes.stage.stage import KeyframeStageDeps, scene_context
 from ...repo import Repo
 from ...store import GcsBlobStore
 from .contracts import VariantId
@@ -78,14 +81,24 @@ def _generator(repo: Repo, args: argparse.Namespace) -> KeyframeVideoGenerator:
     )
     inner = GeminiVideoGenerator(caps=caps, project=args.gcp_project, location="global")
     sink = RepoKeyframeSink(repo)
+    images = GeminiImageGenerator(model=image_model, project=args.gcp_project)
+    vlm = GeminiVLMProvider("gemini-3.8-flash", project=args.gcp_project)
     renderer = KeyframeRenderer(
-        GeminiImageGenerator(model=image_model, project=args.gcp_project),
-        GeminiVLMProvider("gemini-3.8-flash", project=args.gcp_project),
-        sink,
-        repo.blobs.get_bytes,
-        RendererCfg(model=image_model),
+        images, vlm, sink, repo.blobs.get_bytes, RendererCfg(model=image_model)
     )
-    return KeyframeVideoGenerator(inner, repo, RenderingSource(renderer), sink, caps)
+    builder = PlateBuilder(images, vlm, repo.blobs.get_bytes, "16:9")
+    deps = KeyframeStageDeps(repo, renderer, sink, builder, image_model)
+
+    @cache
+    def plate_for(scene_id: str) -> ScenePlate:
+        scene = repo.get_scene(scene_id)
+        ctx = scene_context(deps, scene) if scene else None
+        if ctx is None:
+            raise ValueError(f"scene {scene_id} has no clips")
+        return ctx.plate
+
+    source = RenderingSource(renderer, plate_for)
+    return KeyframeVideoGenerator(inner, repo, source, sink, caps)
 
 
 def _shot_ids(repo: Repo, scene_id: str) -> tuple[str, ...]:

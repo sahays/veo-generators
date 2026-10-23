@@ -19,6 +19,8 @@ export interface KeyframeFrameView {
   edited_by: KeyframeEditor
   /** Graph state at t: who does what / holds what. */
   state_summary: string
+  /** Deterministic drift vs the locked scene plate (bad_fraction, chroma_ratio, contrast_ratio). */
+  drift: Record<string, number>
 }
 
 export interface KeyframeSetVersionView {
@@ -39,6 +41,8 @@ export interface KeyframeStripResponse {
   needs_manual_edit: boolean
   /** Graph changed since this set was derived. */
   stale: boolean
+  /** Set when derivation failed: no frames, the shot is blocked until S8_KEYFRAMES re-runs. */
+  failure_reason: string
   frames: KeyframeFrameView[]
   versions: KeyframeSetVersionView[]
 }

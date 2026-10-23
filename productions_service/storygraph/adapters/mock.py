@@ -48,6 +48,9 @@ class MockImageGenerator:
         )
         digest = hashlib.sha256(f"{prompt}:{seed}".encode()).digest()
         w, h = (360, 640) if aspect_ratio == "9:16" else (self.width, self.height)
+        anchored = _anchored_copy(prompt, reference_images, (w, h), digest)
+        if anchored is not None:
+            return anchored
         color = (30 + (digest[0] % 160), 40 + (digest[1] % 160), 60 + (digest[2] % 160))
         img = Image.new("RGB", (w, h), color=color)
         draw = ImageDraw.Draw(img)
@@ -59,6 +62,28 @@ class MockImageGenerator:
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         return buf.getvalue()
+
+
+# S8_KEYFRAMES requests anchored on a locked scene plate (image 1) must reproduce it.
+_ANCHOR_MARK = "LOCKED SCENE PLATE"
+
+
+def _anchored_copy(
+    prompt: str, refs: list[bytes] | None, size: tuple[int, int], digest: bytes
+) -> bytes | None:
+    """The anchor image (resized) with one digest pixel, or None when not anchored."""
+    if _ANCHOR_MARK not in prompt or not refs:
+        return None
+    try:
+        img = Image.open(io.BytesIO(refs[0])).convert("RGB").resize(size)
+    except (OSError, ValueError):
+        return None
+    img.putpixel(
+        (digest[3] % size[0], digest[4] % size[1]), (digest[5], digest[6], digest[7])
+    )
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def _render_slate_image(package: Package, digest: bytes) -> Image.Image:

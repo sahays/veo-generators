@@ -32,6 +32,8 @@ class KeyframeFrame(BaseModel):
     shared_from: str | None = None  # "<shot_id>@t<N>" (previous clip's last frame)
     edited_by: KeyframeAuthor = "pipeline"
     state_summary: str = ""
+    # Deterministic drift vs the scene plate (bad_fraction, chroma_ratio, contrast_ratio).
+    drift: dict[str, float] = Field(default_factory=dict)
 
 
 class KeyframeSet(NodeBase):
@@ -48,6 +50,12 @@ class KeyframeSet(NodeBase):
     needs_manual_edit: bool = False
     reason: str = ""
     parent_id: str | None = None
+    plate_asset_id: str | None = (
+        None  # the locked scene plate every frame is anchored on
+    )
+    failure_reason: str = (
+        ""  # set when derivation failed: no frames, shot blocked + visible
+    )
 
     @property
     def last(self) -> KeyframeFrame:

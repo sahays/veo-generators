@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+
 from storygraph.keyframes.animate.media import build_animatic, stitch
 from storygraph.keyframes.animate.timing import (
     animatic_schedule,

@@ -97,6 +97,10 @@ class PlanInput(BaseModel):
     beats: list[BeatSpan] = Field(default_factory=list)
     snapshots: list[StateSnapshot] = Field(default_factory=list)
     prompt_version_id: str = ""
+    # Scene layout from the locked scene plate: entity id -> horizontal centre (0..1).
+    layout: dict[str, float] = Field(default_factory=dict)
+    # Character x at t=0 carried over from the previous clip's last keyframe (continuity).
+    start_x: dict[str, float] = Field(default_factory=dict)
 
 
 class CharacterKey(BaseModel):
@@ -107,6 +111,7 @@ class CharacterKey(BaseModel):
     position: ScreenPos
     holding: list[str] = Field(default_factory=list)
     ref_asset_id: str | None = None
+    x: float = 0.5  # horizontal centre in the frame (0 = left edge, 1 = right edge)
 
 
 class ObjectKey(BaseModel):
@@ -119,6 +124,7 @@ class ObjectKey(BaseModel):
     visible: bool = True
     in_frame: bool = True
     count: int = 1
+    x: float | None = None  # from the scene layout (set pieces / placed props)
 
 
 class CameraKey(BaseModel):

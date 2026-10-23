@@ -24,11 +24,10 @@ from ...compile import Package
 from ...config import VideoProviderCfg
 from ...errors import StoryGraphError
 from ...repo import Repo
-from ..plan.graph_source import build_plan_input
 from ..plan.models import KeyframePlan, PlanInput
-from ..plan.planner import plan_keyframes
 from ..render.renderer import RenderedKeyframe
 from ..render.sink import KeyframeSink
+from ..stage.scene_plans import shot_plan
 from . import media, strategies
 from .sources import KeyframeSource
 from .timing import segment_bounds
@@ -64,8 +63,7 @@ class KeyframeVideoGenerator:
         scene = self.repo.get_scene(shot.scene_id) if shot else None
         if shot is None or scene is None:
             raise StoryGraphError(f"keyframe strategy: unknown shot {shot_id}")
-        inp = build_plan_input(self.repo, scene, shot)
-        return inp, plan_keyframes(inp)
+        return shot_plan(self.repo, scene, shot)
 
     def keyframes(self, inp: PlanInput, plan: KeyframePlan) -> list[RenderedKeyframe]:
         frames = self.source.frames(inp, plan)

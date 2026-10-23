@@ -10,15 +10,14 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException
+
 from storygraph.errors import NotFound, StoryGraphError, ValidationFailed
-from storygraph.keyframes.plan.graph_source import build_plan_input
-from storygraph.keyframes.plan.planner import plan_keyframes
 from storygraph.keyframes.stage.regenerate import regenerate_from
+from storygraph.keyframes.stage.scene_plans import stored_scene_plans
 from storygraph.pipeline.keyframes.stage_adapter import keyframe_deps
 from storygraph.repo import Repo
 from storygraph.repo.keyframe_sets import KeyframeSetRepo
 from storygraph.schema import Shot
-from storygraph.schemas.keyframes import KeyframeSet
 
 from .keyframes_contract import (
     KeyframeBoardResponse,
@@ -57,20 +56,24 @@ def _repo(project_id: str) -> Repo:
     return repo
 
 
-def _is_stale(repo: Repo, shot: Shot, ks: KeyframeSet) -> bool:
-    scene = repo.get_scene(shot.scene_id)
-    if scene is None or shot.clip_index is None:
-        return True
-    try:
-        return (
-            plan_keyframes(build_plan_input(repo, scene, shot)).plan_hash
-            != ks.plan_hash
-        )
-    except ValueError:
-        return True
+def _current_hashes(repo: Repo, scene_ids: set[str]) -> dict[str, str]:
+    """`shot id -> current plan hash` (one scene-level planning pass per scene)."""
+    out: dict[str, str] = {}
+    for scene_id in sorted(scene_ids):
+        scene = repo.get_scene(scene_id)
+        if scene is None:
+            continue
+        try:
+            plans = stored_scene_plans(repo, scene)
+        except ValueError:
+            continue
+        out |= {sid: sp.plan.plan_hash for sid, sp in plans.items()}
+    return out
 
 
-def _strip(repo: Repo, shot: Shot, sets: KeyframeSetRepo) -> KeyframeStripResponse:
+def _strip(
+    repo: Repo, shot: Shot, sets: KeyframeSetRepo, current: dict[str, str]
+) -> KeyframeStripResponse:
     versions = sets.list_for_shot(shot.id)
     active = next((v for v in reversed(versions) if v.set_status == "active"), None)
     base = KeyframeStripResponse(
@@ -97,7 +100,8 @@ def _strip(repo: Repo, shot: Shot, sets: KeyframeSetRepo) -> KeyframeStripRespon
             "version": active.version,
             "plan_hash": active.plan_hash,
             "needs_manual_edit": active.needs_manual_edit,
-            "stale": _is_stale(repo, shot, active),
+            "stale": current.get(shot.id) != active.plan_hash,
+            "failure_reason": active.failure_reason,
             "frames": frames,
             "versions": history,
         }
@@ -109,17 +113,23 @@ def get_shot_keyframes(project_id: str, shot_id: str) -> dict[str, Any]:
     shot = repo.get_shot(shot_id)
     if shot is None:
         raise HTTPException(status_code=404, detail=f"Shot {shot_id} not found")
-    return _strip(repo, shot, KeyframeSetRepo(repo.store)).model_dump(mode="json")
+    current = _current_hashes(repo, {shot.scene_id})
+    return _strip(repo, shot, KeyframeSetRepo(repo.store), current).model_dump(
+        mode="json"
+    )
 
 
 def get_keyframe_board(project_id: str) -> dict[str, Any]:
     repo = _repo(project_id)
     sets = KeyframeSetRepo(repo.store)
     shots = sorted(repo.list_shots(), key=lambda s: (s.scene_id, s.clip_index or 0))
+    current = _current_hashes(repo, {s.scene_id for s in shots})
     board = KeyframeBoardResponse(
         project_id=project_id,
         strategy=load_runtime_config().video.render_strategy,
-        shots=[_strip(repo, s, sets) for s in shots if s.clip_index is not None],
+        shots=[
+            _strip(repo, s, sets, current) for s in shots if s.clip_index is not None
+        ],
     )
     return board.model_dump(mode="json")
 

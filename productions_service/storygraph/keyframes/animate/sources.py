@@ -8,13 +8,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from typing import Protocol
 
 from ...repo import Repo
 from ...repo.keyframe_sets import KeyframeSetRepo
 from ..plan.models import KeyframePlan, PlanInput
-from ..render.renderer import KeyframeRenderer, RenderedKeyframe, RenderJob
+from ..render.renderer import KeyframeRenderer, RenderedKeyframe, RenderJob, ScenePlate
 from ..stage.frames import to_rendered
 
 
@@ -49,8 +50,10 @@ def shared_copy(last: RenderedKeyframe, from_shot: str) -> RenderedKeyframe:
 class RenderingSource:
     """Render-on-demand source (cached per plan hash) for offline experiments."""
 
-    def __init__(self, renderer: KeyframeRenderer) -> None:
-        self.renderer = renderer
+    def __init__(
+        self, renderer: KeyframeRenderer, plate_for: Callable[[str], ScenePlate]
+    ) -> None:
+        self.renderer, self.plate_for = renderer, plate_for
         self._frames: dict[str, list[RenderedKeyframe]] = {}
         self._last: dict[tuple[str, int], tuple[str, RenderedKeyframe]] = {}
 
@@ -64,7 +67,9 @@ class RenderingSource:
             prev = self._last.get((plan.scene_id, plan.clip_index - 1))
             shared = shared_copy(prev[1], prev[0]) if prev else None
             self._frames[plan.plan_hash] = self.renderer.render(
-                inp, plan, RenderJob(shared_first=shared)
+                inp,
+                plan,
+                RenderJob(plate=self.plate_for(plan.scene_id), shared_first=shared),
             )
         frames = self._frames[plan.plan_hash]
         self._last[(plan.scene_id, plan.clip_index)] = (plan.shot_id, frames[-1])

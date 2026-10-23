@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ...adapters.base import ImageGenerator, VLMProvider
 from ...config import Config
+from ...keyframes.plate.build import PlateBuilder
 from ...keyframes.render.renderer import KeyframeRenderer, RendererCfg
 from ...keyframes.render.sink import RepoKeyframeSink
 from ...keyframes.stage.stage import KeyframeStageDeps, run_keyframe_stage
@@ -17,14 +18,22 @@ USD_PER_KEYFRAME = 0.04
 def keyframe_deps(
     repo: Repo, cfg: Config, image_gen: ImageGenerator, vlm: VLMProvider
 ) -> KeyframeStageDeps:
+    sink, aspect = RepoKeyframeSink(repo), _aspect(repo)
     renderer = KeyframeRenderer(
         image_gen,
         vlm,
-        RepoKeyframeSink(repo),
+        sink,
         repo.blobs.get_bytes,
-        RendererCfg(model=cfg.image.model, aspect_ratio=_aspect(repo)),
+        RendererCfg(model=cfg.image.model, aspect_ratio=aspect),
     )
-    return KeyframeStageDeps(repo=repo, renderer=renderer)
+    plates = PlateBuilder(image_gen, vlm, repo.blobs.get_bytes, aspect)
+    return KeyframeStageDeps(
+        repo=repo,
+        renderer=renderer,
+        plates=sink,
+        plate_builder=plates,
+        plate_model=cfg.image.model,
+    )
 
 
 def _aspect(repo: Repo) -> str:

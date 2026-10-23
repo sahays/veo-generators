@@ -21,8 +21,8 @@ from ...keyframes.stage.ground_truth import keyframe_defects
 from ...keyframes.stage.regenerate import regenerate_from
 from ...repo.keyframe_sets import KeyframeSetRepo
 from ...schema import QAReport
-from .stage_adapter import keyframe_deps
 from ..shot_attempt import RenderDeps
+from .stage_adapter import keyframe_deps
 
 _log = logging.getLogger(__name__)
 

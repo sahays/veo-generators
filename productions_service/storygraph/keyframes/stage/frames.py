@@ -40,6 +40,7 @@ def to_frame(
         shared_from=rk.shared_from,
         edited_by="human" if human else "pipeline",
         state_summary=state_summary(plan_frame),
+        drift=dict(rk.metrics),
     )
 
 
@@ -53,4 +54,5 @@ def to_rendered(frame: KeyframeFrame, png: bytes = b"") -> RenderedKeyframe:
         issues=tuple(frame.issues),
         reused=frame.shared_from is not None,
         shared_from=frame.shared_from,
+        metrics=dict(frame.drift),
     )

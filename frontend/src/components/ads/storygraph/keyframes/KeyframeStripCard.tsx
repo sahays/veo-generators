@@ -24,6 +24,13 @@ const ManualEditBanner = () => (
   </div>
 )
 
+const FailureBanner = ({ reason }: { reason: string }) => (
+  <div className="flex gap-2 rounded-lg border border-red-500/50 bg-red-500/10 p-2.5 text-xs text-red-300">
+    <AlertOctagon size={14} className="mt-0.5 shrink-0" />
+    <p>Keyframe derivation failed for this clip: <span className="font-mono">{reason}</span>. Re-run S8_KEYFRAMES once the cause is fixed.</p>
+  </div>
+)
+
 const StripTitle = ({ strip }: { strip: KeyframeStripResponse }) => (
   <span className="flex flex-wrap items-center gap-2">
     <span className="font-mono text-xs font-bold text-foreground">{strip.shot_id}</span>
@@ -40,7 +47,7 @@ export const KeyframeStripCard = ({ strip, canWrite, isBusy, pending, onAction }
   const isPendingStrip = pending?.shotId === strip.shot_id
   return (
     <div className={cn('space-y-2 rounded-2xl border p-3', strip.needs_manual_edit ? 'border-red-500/60 bg-red-500/5 shadow-lg shadow-red-500/10' : 'border-border/70 bg-card/80')}>
-      {strip.needs_manual_edit && <ManualEditBanner />}
+      {strip.failure_reason ? <FailureBanner reason={strip.failure_reason} /> : strip.needs_manual_edit && <ManualEditBanner />}
       <Disclosure
         title={<StripTitle strip={strip} />}
         summary={<span className="text-[11px] text-muted-foreground">{summary.label}</span>}

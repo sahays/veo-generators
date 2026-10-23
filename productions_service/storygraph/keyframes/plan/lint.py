@@ -18,13 +18,13 @@ from collections.abc import Sequence
 from typing import Literal
 
 from .models import (
-    SCREEN_RANK,
     Keyframe,
     KeyframePlan,
     LintIssue,
     PlanInput,
     StateSnapshot,
 )
+from .motion import MAX_STEP_X
 from .planner import objects_at
 
 _StateKey = dict[str, str | None]
@@ -74,18 +74,17 @@ def _count_changes(
 def _position_jumps(
     plan: KeyframePlan, prev: Keyframe, cur: Keyframe
 ) -> list[LintIssue]:
-    before = {c.entity_id: SCREEN_RANK[c.position] for c in prev.characters}
+    before = {c.entity_id: c.x for c in prev.characters}
     return [
         LintIssue(
             code="position_jump",
             shot_id=plan.shot_id,
             t=cur.t,
             entity_id=c.entity_id,
-            message=f"{c.name} jumps to {c.position} at t={cur.t}",
+            message=f"{c.name} moves {abs(c.x - before[c.entity_id]):.2f} frame widths at t={cur.t}",
         )
         for c in cur.characters
-        if c.entity_id in before
-        and abs(SCREEN_RANK[c.position] - before[c.entity_id]) > 1
+        if c.entity_id in before and abs(c.x - before[c.entity_id]) > MAX_STEP_X + 1e-6
     ]
 
 
@@ -150,14 +149,14 @@ def lint_plan(plan: KeyframePlan, inp: PlanInput | None = None) -> list[LintIssu
 def _handoff(prev: KeyframePlan, cur: KeyframePlan) -> list[LintIssue]:
     end, start = prev.keyframes[-1], cur.keyframes[0]
     a, b = _object_state(end), _object_state(start)
-    pos_a = {c.entity_id: c.position for c in end.characters}
+    pos_a = {c.entity_id: round(c.x, 2) for c in end.characters}
     diffs = [
         oid for oid in sorted(set(a) | set(b)) if a.get(oid, "∅") != b.get(oid, "∅")
     ]
     diffs += [
         c.entity_id
         for c in start.characters
-        if c.entity_id in pos_a and pos_a[c.entity_id] != c.position
+        if c.entity_id in pos_a and pos_a[c.entity_id] != round(c.x, 2)
     ]
     return [
         LintIssue(

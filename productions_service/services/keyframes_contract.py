@@ -34,6 +34,7 @@ class KeyframeFrameView(BaseModel):
     )
     edited_by: Literal["pipeline", "human"] = "pipeline"
     state_summary: str = ""  # graph state at t: who does what / holds what
+    drift: dict[str, float] = Field(default_factory=dict)  # vs the locked scene plate
 
 
 class KeyframeSetVersionView(BaseModel):
@@ -53,6 +54,7 @@ class KeyframeStripResponse(BaseModel):
     plan_hash: str = ""
     needs_manual_edit: bool = False
     stale: bool = False  # graph changed since this set was derived
+    failure_reason: str = ""  # derivation failed: no frames, shot blocked until re-run
     frames: list[KeyframeFrameView] = Field(default_factory=list)
     versions: list[KeyframeSetVersionView] = Field(default_factory=list)
 
