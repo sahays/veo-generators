@@ -84,3 +84,25 @@ def cut_excerpt(src: Path, window: Window, out: Path) -> bytes:
     args = ["-ss", f"{window[0]:.3f}", "-to", f"{window[1]:.3f}", "-i", str(src)]
     run_ffmpeg([*args, "-vn", "-ac", "1", "-ar", str(SR), str(out)])
     return out.read_bytes()
+
+
+MAX_LAG_S = 0.2
+
+
+def bed_lag_ms(orig: Signal, voiced: Signal, windows: list[Window]) -> float | None:
+    """Lag (ms) maximizing cross-correlation of the two beds outside speech (FFT, O(n log n)).
+
+    0 means the SFX bed is sample-aligned with the original picture-synced audio.
+    """
+    n = min(len(orig), len(voiced))
+    keep = ~_mask(n, windows)
+    a, b = orig[:n] * keep, voiced[:n] * keep
+    if float(np.dot(a, a)) < 1e-6 or float(np.dot(b, b)) < 1e-6:
+        return None
+    size = 1 << (2 * n - 1).bit_length()
+    corr = np.fft.irfft(np.fft.rfft(a, size) * np.conj(np.fft.rfft(b, size)), size)
+    max_lag = int(MAX_LAG_S * SR)
+    lags = np.concatenate((corr[: max_lag + 1], corr[-max_lag:]))
+    idx = int(np.argmax(lags))
+    lag = idx if idx <= max_lag else idx - len(lags)
+    return round(1000.0 * lag / SR, 1)

@@ -33,7 +33,8 @@ SETTING: Small Workshop <IMAGE_REF_2>, dusk
 CAMERA: Medium close-up, at eye level, 35mm lens. The camera slowly dollies in toward Pip.
 DIALOGUE:
 - after beat 1, Ava (Hindi, warm low voice): "चाबी मिल गई!"
-No other characters. No extra or duplicate props. No text, captions or subtitles."""
+No other characters. No extra or duplicate props. No text, captions or subtitles. \
+No background music."""
 
 _TOKEN_RE = re.compile(
     r"\b(?:MCU|ECU|MS|WS|dolly_in|camera_locked_static|single_continuous_take)\b"
@@ -58,7 +59,7 @@ def test_ab_construction_rules() -> None:
         r"^- Pip <IMAGE_REF_0>: ", block, re.MULTILINE
     )  # tag right after name
     assert not _TOKEN_RE.search(text)  # plain cinematography words, no machine tokens
-    assert block.rstrip().endswith("No text, captions or subtitles.")
+    assert block.rstrip().endswith("No background music.")  # guide track: no music
     assert word_count(text) <= WORD_TARGET[1]
 
 

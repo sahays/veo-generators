@@ -8,6 +8,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from .base import NodeBase, Role, _utc_now
+from .stems import StemSet
 from .voice import VoiceoverRecord
 
 PromptFormat = Literal[
@@ -105,6 +106,9 @@ class GenerationRun(NodeBase):
     # Voiceover sync (append-only): fixed-voice TTS clip; `output_video_uri` stays the original.
     voiced_video_uri: str | None = None
     voiceover: VoiceoverRecord | None = None
+    stems: StemSet | None = (
+        None  # audio.mode=stems: dialogue/SFX stems (guide track only)
+    )
 
 
 # ── Omni prompt versioning (one immutable row per distinct compiled spec) ────────

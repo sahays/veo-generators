@@ -76,14 +76,14 @@ const renderShots = (c: StepSectionContext) => (
 const renderPrompts = (c: StepSectionContext) => (
   <StepValidatorCompilerSection
     {...runProps(c)}
-    validationIssues={c.storyGraph?.validation_issues || []} changeRequests={c.storyGraph?.change_requests || []} auditLog={c.storyGraph?.audit_log || []}
+    productionId={c.productionId} validationIssues={c.storyGraph?.validation_issues || []} changeRequests={c.storyGraph?.change_requests || []} auditLog={c.storyGraph?.audit_log || []}
   />
 )
 
 const renderVideos = (c: StepSectionContext) => (
   <StepVideoRendersSection
     {...runProps(c)} {...selectProps(c)}
-    shotsCount={(c.storyGraph?.shots || []).length} generationRunsCount={c.entityMaps.generationRuns.length} activeGenerationRuns={c.entityMaps.activeGenerationRuns}
+    shotsCount={(c.storyGraph?.shots || []).length} generationRunsCount={c.entityMaps.generationRunsTotal} activeGenerationRuns={c.entityMaps.activeGenerationRuns}
     assetsById={c.entityMaps.assetsById} finalVideoUrl={c.finalVideoUrl} renderQuality={c.renderQuality} videoResolution={c.videoResolution}
     keyframesPanel={
       <KeyframeBoardPanel

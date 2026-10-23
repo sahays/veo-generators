@@ -6,7 +6,6 @@ import {
   RefreshCw,
   Loader2,
   AlertTriangle,
-  Eye,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button, Card } from '@/components/Common'
@@ -22,6 +21,7 @@ import type {
 } from '@/types/project'
 import type { SelectedInspectorItem } from './storyGraphStudioTypes'
 import { ShotLookPanel } from './ShotLookPanel'
+import { AuditLogCard } from './details/AuditLogCard'
 
 export const StepShotBreakdownSection = ({
   shots,
@@ -153,6 +153,7 @@ export const StepShotBreakdownSection = ({
 )
 
 export const StepValidatorCompilerSection = ({
+  productionId,
   validationIssues,
   changeRequests,
   auditLog,
@@ -161,6 +162,7 @@ export const StepValidatorCompilerSection = ({
   isRunningPipeline,
   onRunStage,
 }: {
+  productionId: string
   validationIssues: StoryGraphValidationIssue[]
   changeRequests: StoryGraphChangeRequest[]
   auditLog: StoryGraphAuditEntry[]
@@ -248,26 +250,7 @@ export const StepValidatorCompilerSection = ({
         )}
       </Card>
 
-      <Card title={`Role-Agent Mutation Audit Log (${auditLog.length} Entries)`} icon={Eye}>
-        <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
-          {auditLog.map((ae: StoryGraphAuditEntry) => (
-            <div
-              key={ae.id}
-              className="p-2.5 rounded bg-muted/30 border border-border/40 text-[11px] flex items-center justify-between gap-2"
-            >
-              <div>
-                <span className="px-1.5 py-0.5 rounded bg-accent/10 text-accent-dark font-mono font-bold mr-2">
-                  {ae.role}
-                </span>
-                <span className="font-mono text-foreground">{ae.tool}</span>
-                <span className="text-muted-foreground ml-2">
-                  → {ae.target_id} (v{ae.after_version})
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
+      <AuditLogCard productionId={productionId} recent={auditLog} />
     </div>
   </div>
 )

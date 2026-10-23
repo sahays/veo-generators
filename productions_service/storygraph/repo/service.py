@@ -25,6 +25,7 @@ from ..schema import (
     StageRun,
     StateFact,
     Status,
+    StemSet,
     StyleGuide,
     VoiceoverRecord,
 )
@@ -326,21 +327,24 @@ class Repo:
         rows = self.store.query("generation_runs", filters=filters, order_by="attempt")
         return [decode(r, GenerationRun) for r in rows]
 
-    def record_voiceover(self, run_id: str, record: VoiceoverRecord) -> GenerationRun:
-        """Attach a voiced clip to a run; `output_video_uri` (Omni original) is untouched."""
+    def _update_run(self, run_id: str, updates: dict[str, object]) -> GenerationRun:
         raw = self.store.get("generation_runs", run_id)
         if not raw:
             raise ValueError(f"GenerationRun {run_id} not found")
         run = decode(raw, GenerationRun)
-        updated = run.model_copy(
-            update={
-                "voiced_video_uri": record.voiced_video_uri,
-                "voiceover": record,
-                "version": run.version + 1,
-            }
-        )
+        updated = run.model_copy(update={**updates, "version": run.version + 1})
         self.store.set("generation_runs", updated.id, encode(updated))
         return updated
+
+    def record_voiceover(self, run_id: str, record: VoiceoverRecord) -> GenerationRun:
+        """Attach a voiced clip to a run; `output_video_uri` (Omni original) is untouched."""
+        return self._update_run(
+            run_id, {"voiced_video_uri": record.voiced_video_uri, "voiceover": record}
+        )
+
+    def record_stems(self, run_id: str, stems: StemSet) -> GenerationRun:
+        """Attach dialogue/SFX stems to a run (append-only; remix without re-render)."""
+        return self._update_run(run_id, {"stems": stems})
 
     def add_change_request(self, cr: ChangeRequest) -> ChangeRequest:
         if self.store.get("change_requests", cr.id) is not None:

@@ -15,16 +15,18 @@ from ...audio.voice.separation import make_remover
 from ...audio.voice.sync import SyncDeps
 from ...config import AudioCfg
 from ...errors import StoryGraphError
-from ...schemas.voice import SpeechRemoval, VoiceProfile
+from ...schemas.voice import VoiceProfile
 from .cases import cast_voices, load_cases, load_cast
-from .contracts import ClipCase, ClipEval, ExperimentReport
+from .contracts import ClipCase, ClipEval, ExperimentReport, Variant
 from .judge import judge_same_voice
 from .metrics import cut_excerpt
 from .retry import RetryingSynthesizer, RetryingTranscriber, with_backoff
 from .runner import run_case
 
+VARIANTS: tuple[Variant, ...] = ("duck", "demucs", "stems")
 
-def _deps(removers: list[SpeechRemoval], project: str) -> dict[SpeechRemoval, SyncDeps]:
+
+def _deps(removers: list[Variant], project: str) -> dict[Variant, SyncDeps]:
     media = MediaTools()
     # No pro fallback: flash is ~17 s per clip, the fallback took minutes per call.
     transcriber = RetryingTranscriber(
@@ -32,7 +34,12 @@ def _deps(removers: list[SpeechRemoval], project: str) -> dict[SpeechRemoval, Sy
     )
     tts = RetryingSynthesizer(GeminiTTSSynthesizer(project=project))
     return {
-        r: SyncDeps(transcriber, tts, make_remover(r, AudioCfg().duck_db, media), media)
+        r: SyncDeps(
+            transcriber,
+            tts,
+            make_remover("duck" if r == "stems" else r, AudioCfg().duck_db, media),
+            media,
+        )
         for r in removers
     }
 
@@ -85,7 +92,7 @@ def _consistency(
 def _safe_case(
     case: ClipCase,
     voices: dict[str, VoiceProfile],
-    deps: dict[SpeechRemoval, SyncDeps],
+    deps: dict[Variant, SyncDeps],
     out: Path,
 ) -> list[ClipEval]:
     """One case; a persistent API failure skips the clip instead of losing the run."""
@@ -120,9 +127,8 @@ def main() -> None:
     cast, source = load_cast(args.export)
     cases = load_cases(args.export, args.clips, cast)
     voices = cast_voices(cast, source, cases)
-    removers: list[SpeechRemoval] = [
-        r for r in ("duck", "demucs") if r in args.removers.split(",")
-    ]
+    wanted = args.removers.split(",")
+    removers: list[Variant] = [v for v in VARIANTS if v in wanted]
     deps = _deps(removers, args.project)
     report = ExperimentReport(
         voices={k: f"{v.voice_name} ({v.archetype})" for k, v in voices.items()}

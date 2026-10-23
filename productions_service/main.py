@@ -10,7 +10,8 @@ import logging
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
-from routers import productions_router
+from fastapi.middleware.gzip import GZipMiddleware
+from routers import details_router, productions_router
 from services import build_pipeline, get_repo
 
 load_dotenv()
@@ -21,6 +22,10 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Veo Generators — Story-to-Video Graph Productions Service",
 )
+# Snapshot JSON compresses ~7x; the Next.js server-action fetch negotiates gzip transparently.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+# Static `.../shots/{shot_id}/runs` must not be shadowed by a parameterised productions route.
+app.include_router(details_router)
 app.include_router(productions_router)
 
 __all__ = ["app", "build_pipeline", "get_repo"]

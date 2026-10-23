@@ -13,14 +13,23 @@ from pathlib import Path
 
 from ...adapters.transcribe import Transcriber, Transcript
 from ...audio.voice.logs import log_ctx
+from ...audio.stems import (
+    DemucsSfx,
+    RenderTools,
+    StemAudio,
+    StemDeps,
+    build_stems,
+    render_stem_clip,
+)
 from ...audio.voice.sync import SyncDeps, VoicedClip, voice_clip
 from ...audio.voice.timing import merge_windows, speech_windows
 from ...config import AudioCfg
 from ...eval.metrics.dialogue import ScriptedLine, match_dialogue
-from ...schemas.voice import SpeechRemoval, VoiceProfile
-from .contracts import ClipCase, ClipEval, LineEval
+from ...schemas.stems import StemMix
+from ...schemas.voice import VoiceProfile
+from .contracts import ClipCase, ClipEval, LineEval, Variant
 from .judge import judge_mix
-from .metrics import decode_pcm, median_f0, outside_level_db
+from .metrics import bed_lag_ms, decode_pcm, median_f0, outside_level_db
 from .retry import with_backoff
 
 logger = logging.getLogger(__name__)
@@ -57,7 +66,7 @@ def _line_evals(
 
 def evaluate_clip(
     case: ClipCase,
-    remover: SpeechRemoval,
+    remover: Variant,
     vc: VoicedClip,
     voiced_path: Path,
     transcriber: Transcriber,
@@ -81,25 +90,50 @@ def evaluate_clip(
         placements=vc.lines,
         bed_orig_db=outside_level_db(decode_pcm(case.path), windows),
         bed_voiced_db=outside_level_db(decode_pcm(voiced_path), windows),
+        sfx_lag_ms=bed_lag_ms(decode_pcm(case.path), decode_pcm(voiced_path), windows),
         extra_speech=[s.text for s in match_dialogue(scripted, voiced_t).extra],
         mix=with_backoff(lambda: judge_mix(vc.video), "judge_mix"),
+    )
+
+
+def _stems_clip(
+    case: ClipCase, voices: dict[str, VoiceProfile], deps: SyncDeps
+) -> VoicedClip:
+    """audio.mode=stems: guide-timed TTS dialogue stem + demucs SFX stem, no Omni voice."""
+    clip = case.path.read_bytes()
+    cfg = AudioCfg(mode="stems")
+    sfx = DemucsSfx(residual_db=cfg.residual_db, media=deps.media)
+    built = build_stems(
+        clip, case.lines, voices, cfg, StemDeps(deps, sfx), case.clip_id
+    )
+    mix = StemMix(dialogue_uri="", sfx_uri="")
+    tools = RenderTools(media=deps.media)
+    video = render_stem_clip(clip, StemAudio(built.dialogue, built.sfx), mix, tools)
+    return VoicedClip(video, built.lines, built.transcript, "duck")
+
+
+def _variant_clip(
+    case: ClipCase, voices: dict[str, VoiceProfile], name: Variant, deps: SyncDeps
+) -> VoicedClip:
+    if name == "stems":
+        return _stems_clip(case, voices, deps)
+    cfg = AudioCfg(mode="voiceover_duck", speech_removal=name)
+    return voice_clip(
+        case.path.read_bytes(), case.lines, voices, cfg, deps, case.clip_id
     )
 
 
 def run_case(
     case: ClipCase,
     voices: dict[str, VoiceProfile],
-    deps_by_remover: dict[SpeechRemoval, SyncDeps],
+    deps_by_remover: dict[Variant, SyncDeps],
     out_dir: Path,
 ) -> list[ClipEval]:
     """Voice one clip with every remover; save `<out>/<remover>/<clip>.mp4` and evaluate."""
     evals: list[ClipEval] = []
     for name, deps in deps_by_remover.items():
-        cfg = AudioCfg(voiceover="sync", speech_removal=name)
         started = time.monotonic()
-        vc = voice_clip(
-            case.path.read_bytes(), case.lines, voices, cfg, deps, case.clip_id
-        )
+        vc = _variant_clip(case, voices, name, deps)
         runtime = time.monotonic() - started
         path = out_dir / name / f"{case.clip_id}.mp4"
         path.parent.mkdir(parents=True, exist_ok=True)

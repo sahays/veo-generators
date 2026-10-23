@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY productions_service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# Bake the htdemucs weights (~80 MB) into the image: no cold-start download (audio.mode=stems).
+RUN python -c "from demucs.pretrained import get_model; get_model('htdemucs')"
 
 COPY productions_service/storygraph ./storygraph
 COPY productions_service/routers ./routers

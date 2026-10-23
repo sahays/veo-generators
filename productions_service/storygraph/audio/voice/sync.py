@@ -118,6 +118,43 @@ def _log_result(shot_ref: str, lines: list[VoicedLine], remover: str) -> None:
     )
 
 
+@dataclass(frozen=True)
+class GuideTracks:
+    """Omni's clip used as a timing guide: transcript, line placement and TTS lines."""
+
+    clip_s: float
+    transcript: Transcript
+    slots: list[LineSlot]
+    plans: list[FitPlan]
+    line_paths: list[Path]
+    orig_audio: Path  # Omni's original audio (WAV)
+    windows: list[Window]  # where Omni speaks (transcript + slots + VAD)
+    lines: list[VoicedLine]
+
+
+def prepare_guide(
+    src: Path,
+    lines: list[SpeechLine],
+    voices: dict[str, VoiceProfile],
+    cfg: AudioCfg,
+    deps: SyncDeps,
+) -> GuideTracks:
+    """Transcribe the guide, align + synthesize + time-fit every line (shared by all modes)."""
+    work = src.parent
+    clip_s = deps.media.probe(src)
+    names = sorted({ln.speaker_name for ln in lines})
+    langs = sorted({ln.lang for ln in lines})
+    transcript = deps.transcriber.transcribe(src.read_bytes(), names, langs)
+    slots = line_slots(lines, transcript, clip_s)
+    paths, lengths = _synth_lines(slots, voices, deps, work, cfg.pace_factor)
+    plans = place_lines(slots, lengths, clip_s, (cfg.tempo_min, cfg.tempo_max))
+    orig = work / "orig.wav"
+    deps.media.run(extract_audio_args(src, orig))
+    windows = speech_windows(transcript, slots, deps.vad(orig))
+    voiced = _voiced_lines(slots, plans, voices)
+    return GuideTracks(clip_s, transcript, slots, plans, paths, orig, windows, voiced)
+
+
 def voice_clip(
     clip: bytes,
     lines: list[SpeechLine],
@@ -126,26 +163,15 @@ def voice_clip(
     deps: SyncDeps,
     shot_ref: str = "",
 ) -> VoicedClip:
-    """Return a new clip whose dialogue is re-voiced; SFX/ambience bed kept."""
+    """Return a new clip whose dialogue is re-voiced; SFX/ambience bed kept (ducked)."""
     with tempfile.TemporaryDirectory(prefix="voiceover_") as tmp:
         work = Path(tmp)
         src = work / "clip.mp4"
         src.write_bytes(clip)
-        clip_s = deps.media.probe(src)
-        names = sorted({ln.speaker_name for ln in lines})
-        transcript = deps.transcriber.transcribe(
-            clip, names, sorted({ln.lang for ln in lines})
-        )
-        slots = line_slots(lines, transcript, clip_s)
-        paths, lengths = _synth_lines(slots, voices, deps, work, cfg.pace_factor)
-        plans = place_lines(slots, lengths, clip_s, (cfg.tempo_min, cfg.tempo_max))
-        orig = work / "orig.wav"
-        deps.media.run(extract_audio_args(src, orig))
-        windows = speech_windows(transcript, slots, deps.vad(orig))
-        bed = deps.remover.remove(orig, windows, work)
+        g = prepare_guide(src, lines, voices, cfg, deps)
+        bed = deps.remover.remove(g.orig_audio, g.windows, work)
         mixed, out = work / "mixed.wav", work / "voiced.mp4"
-        deps.media.run(mix_args(bed, paths, plans, cfg.voice_lufs, mixed))
-        deps.media.run(mux_args(src, mixed, out, clip_s))
-        voiced = _voiced_lines(slots, plans, voices)
-        _log_result(shot_ref, voiced, deps.remover.name)
-        return VoicedClip(out.read_bytes(), voiced, transcript, deps.remover.name)
+        deps.media.run(mix_args(bed, g.line_paths, g.plans, cfg.voice_lufs, mixed))
+        deps.media.run(mux_args(src, mixed, out, g.clip_s))
+        _log_result(shot_ref, g.lines, deps.remover.name)
+        return VoicedClip(out.read_bytes(), g.lines, g.transcript, deps.remover.name)

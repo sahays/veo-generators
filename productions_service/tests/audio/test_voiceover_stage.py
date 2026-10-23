@@ -8,7 +8,9 @@ from storygraph.adapters.transcribe import Transcript
 from storygraph.assembly import assemble, evaluate_shot_readiness
 from storygraph.audio.voice.sync import VoicedClip
 from storygraph.config import Config
-from storygraph.pipeline.post_render import voiceover_stage
+from storygraph.audio.stems import BuiltStems
+from storygraph.pipeline.post_render import stems_stage, voiceover_stage
+from storygraph.pipeline.post_render.dispatch import apply_audio_post
 from storygraph.repo import Repo
 from storygraph.schema import GenerationRun, ProjectMeta, Role, Status
 
@@ -40,7 +42,7 @@ def _approved_run(repo: Repo) -> GenerationRun:
 def _sync_cfg() -> Config:
     cfg = Config()
     cfg.video.provider = "gemini"
-    cfg.audio.voiceover = "sync"
+    cfg.audio.mode = "voiceover_duck"
     return cfg
 
 
@@ -91,7 +93,7 @@ def test_voiceover_off_or_mock_provider_is_noop(
 ) -> None:
     _approved_run(tmp_repo)
     off = _sync_cfg()
-    off.audio.voiceover = "off"
+    off.audio.mode = "omni"
     mock = _sync_cfg()
     mock.video.provider = "mock"
     assert voiceover_stage.apply_voiceover(tmp_repo, off) == []
@@ -102,3 +104,27 @@ def test_voiceover_off_or_mock_provider_is_noop(
         .ready_shots[0]
         .video_uri.endswith("shot_1_1.mp4")
     )
+
+
+def test_stems_mode_records_stems_once_and_skips_voiceover(
+    tmp_repo: Repo, monkeypatch: pytest.MonkeyPatch, fake_voicing: list[str]
+) -> None:
+    run = _approved_run(tmp_repo)
+    built = BuiltStems(b"DIA", b"SFX", 8.0, [], Transcript())
+    monkeypatch.setattr(stems_stage, "build_stems", lambda *a, **k: built)
+    monkeypatch.setattr(stems_stage, "default_stem_deps", lambda cfg: _FakeStemDeps())
+    cfg = _sync_cfg()
+    cfg.audio.mode = "stems"
+    assert apply_audio_post(tmp_repo, cfg) == [run.id]
+    assert (
+        apply_audio_post(tmp_repo, cfg) == []
+    )  # stems stored; remix needs no re-render
+    stored = tmp_repo.list_generation_runs(run.shot_id)[0]
+    assert stored.stems is not None and stored.voiced_video_uri is None
+    assert tmp_repo.blobs.get_bytes(stored.stems.sfx_uri) == b"SFX"
+    assert fake_voicing == []  # voiceover_duck path never ran
+
+
+class _FakeStemDeps:
+    class sfx:  # noqa: N801 - minimal stand-in for StemDeps.sfx
+        name = "demucs"

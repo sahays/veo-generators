@@ -18,6 +18,7 @@ import type {
 import { useAdsProjectActions } from '../projects/useAdsProjectActions'
 import { PIPELINE_SUB_STAGES } from './cascade/pipelineStages'
 import { runStageWithRecovery, type StudioProjectsApi } from './cascade/stageRunner'
+import { allEntities, auxiliaryAssetCount, generationRunsTotal, indexAssets } from './details/snapshotSelectors'
 import { useStageCascade } from './cascade/useStageCascade'
 
 export type ActiveStepId =
@@ -128,21 +129,21 @@ export function deriveEntityAndAssetMaps(storyGraph: StoryGraphData | undefined,
   const characters = storyGraph?.entities?.characters || []
   const locations = storyGraph?.entities?.locations || []
   const objects = storyGraph?.entities?.objects || []
-  const entityMap = Object.fromEntries((storyGraph?.entities?.all || []).map((e) => [e.id, e]))
+  const entityMap = Object.fromEntries(allEntities(storyGraph).map((e) => [e.id, e]))
   const appearances = (storyGraph?.appearances || []).filter((a) => a.status !== 'superseded')
   const approvedAppearancesCount = appearances.filter((a) => a.status === 'approved').length
   const filteredAppearances = appearances.filter((a) => designFilter === 'all' || entityMap[a.entity_id]?.entity_type === designFilter)
-  const allAssets = storyGraph?.assets || []
-  const assetsById = Object.fromEntries(allAssets.map((a) => [a.id, a]))
-  const auxiliaryAssets = allAssets.filter((a) => a.kind === 'composite_sheet' || a.kind === 'first_frame')
+  const assetsById = indexAssets(storyGraph)
   const generationRuns = storyGraph?.generation_runs || []
+  // The server already returns one active run per shot; this also tolerates legacy full-history snapshots.
   const latestRunByShotId: Record<string, StoryGraphGenerationRun> = {}
   for (const r of generationRuns) {
     if (!latestRunByShotId[r.shot_id] || r.attempt >= latestRunByShotId[r.shot_id].attempt) latestRunByShotId[r.shot_id] = r
   }
   return {
     characters, locations, objects, entityMap, appearances, approvedAppearancesCount,
-    filteredAppearances, assetsById, auxiliaryAssets, generationRuns, activeGenerationRuns: Object.values(latestRunByShotId),
+    filteredAppearances, assetsById, auxiliaryAssetsCount: auxiliaryAssetCount(storyGraph), generationRuns,
+    generationRunsTotal: generationRunsTotal(storyGraph), activeGenerationRuns: Object.values(latestRunByShotId),
   }
 }
 
@@ -151,8 +152,8 @@ function buildWorldToDesignCards(
   entityMaps: ReturnType<typeof deriveEntityAndAssetMaps>,
 ): MacroStepCardDef[] {
   const scenes = storyGraph?.scenes || [], events = storyGraph?.events || [], dialogueLines = storyGraph?.dialogue_lines || []
-  const totalInteractionSteps = scenes.reduce((acc, sc) => acc + (sc.interaction_steps?.length || 0), 0)
-  const { characters, locations, objects, appearances, approvedAppearancesCount, auxiliaryAssets } = entityMaps
+  const totalInteractionSteps = scenes.reduce((acc, sc) => acc + (sc.interaction_step_count ?? sc.interaction_steps?.length ?? 0), 0)
+  const { characters, locations, objects, appearances, approvedAppearancesCount, auxiliaryAssetsCount } = entityMaps
   return [
     {
       id: 's1_world', stepNum: 'AGENT 01', stages: ['S1_EXTRACT'], primaryStage: 'S1_EXTRACT', title: 'Story Architect & Supervisor', subtitle: 'WORLD BIBLE · ENTITIES · STYLE LOCK', icon: User,
@@ -166,7 +167,7 @@ function buildWorldToDesignCards(
     },
     {
       id: 's3_images', stepNum: 'AGENT 03', stages: ['S3_DESIGN'], primaryStage: 'S3_DESIGN', title: 'Visual Design Studio', subtitle: '9.2 CHARACTER & 9.3 SCENE ANCHORS', icon: Sparkles,
-      metricPrimary: `${appearances.length} Reference Sheets`, metricSecondary: `${approvedAppearancesCount}/${appearances.length} Approved · ${auxiliaryAssets.length} Composites`,
+      metricPrimary: `${appearances.length} Reference Sheets`, metricSecondary: `${approvedAppearancesCount}/${appearances.length} Approved · ${auxiliaryAssetsCount} Composites`,
       summaryText: 'Generates character identity sheets, location plates, and hero props verified by VLM Critic.', inputsSummary: 'Entity Visual Attributes · StyleGuide Medium · Color Palette Swatches', outputsSummary: `${approvedAppearancesCount} Approved Reference Anchors for Downstream Conditioning`,
     },
   ]
@@ -188,7 +189,7 @@ function buildDirectionToVideoCards(
     },
     {
       id: 's6_s7_compile', stepNum: 'AGENT 05', stages: ['S6_VALIDATE', 'S7_COMPILE'], primaryStage: 'S7_COMPILE', title: 'Graph Verifier & Prompt Compiler', subtitle: '3× ITERATIVE REVIEW · V1–V13 · JINJA2', icon: ShieldCheck,
-      metricPrimary: validationIssues.length === 0 ? 'O(V+E) Graph Verified' : `${validationIssues.length} Graph Alerts`, metricSecondary: `${qaReports.length} Stage Reviews · ${auditLog.length} Audits`,
+      metricPrimary: validationIssues.length === 0 ? 'O(V+E) Graph Verified' : `${validationIssues.length} Graph Alerts`, metricSecondary: `${qaReports.length} Stage Reviews · ${auditLog.length} Recent Audits`,
       summaryText: 'Reviews work across agents, redoes upstream steps up to 3× if flaws are found, and compiles prompts.', inputsSummary: 'Complete StoryGraph (Entities, Scenes, Appearances, Shots, Audio Cues)', outputsSummary: 'Verified ShotPromptPackages with SHA-256 Hashes & Reference Assets',
     },
     {

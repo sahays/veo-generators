@@ -71,7 +71,8 @@ def judge_mix(clip: bytes, project: str | None = None) -> MixJudgement:
         "the original sound bed. Report: residual_voice = a second, quieter voice audible "
         "under/around the main dialogue ('none', 'faint', 'clear'); sfx_present = whether "
         "non-speech sound effects/ambience are audible; mix_naturalness 0..1 (does the "
-        "dialogue sit naturally in the scene, no pumping/gaps); notes = one sentence."
+        "dialogue sit naturally in the scene, no pumping/gaps); sfx_sync 0..1 = do sound "
+        "effects line up with the on-screen actions; notes = one sentence."
     )
     try:
         resp = client.models.generate_content(

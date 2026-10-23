@@ -65,14 +65,19 @@ assembly:
   duck_threshold: 0.05
   duck_ratio: 8.0
 
-# Voiceover sync (storygraph/audio/voice): re-voice each approved clip's dialogue with the
-# character's fixed Gemini TTS voice. "sync" since the v4 gate passed (docs/eval/voiceover_sync_v1.md).
+# Clip audio (storygraph/audio): "stems" = Omni audio is a timing guide only; final audio is
+# fixed-voice TTS dialogue + demucs SFX stem + S5 music ducked under dialogue in S10.
+# Winner of docs/eval/voiceover_sync_v1.md v5 (0 leftover Omni voice, SFX kept).
 audio:
-  voiceover: "sync"         # off | sync
+  mode: "stems"             # omni | voiceover_duck | stems
   speech_removal: "duck"    # duck | demucs (optional torch runtime)
   tts_model: "gemini-2.5-flash-tts"
   duck_db: -26.0
   pace_factor: 0.85         # TTS paced to 0.85x Omni's speech window
+  residual_db: -24.0        # stems: SFX stem ducked where demucs vocals are active
+  dialogue_lufs: -16.0
+  sfx_lufs: -24.0
+  music_lufs: -26.0
   tempo_min: 0.8
   tempo_max: 1.35
   voice_lufs: -16.0

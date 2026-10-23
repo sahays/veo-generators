@@ -12,6 +12,8 @@ import type {
   SelectedInspectorItem,
 } from './storyGraphStudioTypes'
 import { ShotLookPanel } from './ShotLookPanel'
+import { RunAttemptsPanel } from './details/RunAttemptsPanel'
+import { SceneStepsPanel } from './details/SceneStepsPanel'
 
 export const AppearanceInspectorView = ({
   item,
@@ -100,8 +102,10 @@ function formatQaPct(val: number): string {
 
 export const VideoRunInspectorView = ({
   item,
+  productionId,
 }: {
   item: Extract<SelectedInspectorItem, { kind: 'video_run' }>
+  productionId: string
 }) => (
   <div className="space-y-3">
     {item.data.run.output_video_signed_url && (
@@ -185,14 +189,7 @@ export const VideoRunInspectorView = ({
       </div>
     )}
 
-    <div className="space-y-1">
-      <span className="text-[10px] font-mono font-bold uppercase text-muted-foreground">
-        Compiled Shot Prompt
-      </span>
-      <pre className="p-2.5 rounded-lg bg-black/80 text-emerald-300 text-[10px] font-mono max-h-48 overflow-y-auto whitespace-pre-wrap border border-emerald-500/20">
-        {item.data.run.compiled_prompt}
-      </pre>
-    </div>
+    <RunAttemptsPanel productionId={productionId} shotId={item.data.run.shot_id} runId={item.data.run.id} />
   </div>
 )
 
@@ -202,12 +199,14 @@ export const ShotAndEntityInspectorView = ({
   compiledPreviews,
   onCompilePreview,
   scenes,
+  productionId,
 }: {
   selectedItem: SelectedInspectorItem
   busyAction: string | null
   compiledPreviews: Record<string, CompiledShotPreview>
   onCompilePreview: (shotId: string) => void
   scenes?: StoryGraphScene[]
+  productionId: string
 }) =>
   selectedItem.kind === 'shot' ? (
     <div className="space-y-3 text-xs">
@@ -320,23 +319,6 @@ export const ShotAndEntityInspectorView = ({
       </span>
       <h5 className="text-sm font-bold text-foreground">{selectedItem.data.scene.heading}</h5>
       <p className="text-muted-foreground leading-relaxed">{selectedItem.data.scene.summary}</p>
-      {(selectedItem.data.scene.interaction_steps?.length || 0) > 0 && (
-        <div className="space-y-1 pt-1">
-          <span className="text-[10px] font-mono font-bold uppercase text-accent-dark block">
-            Algorithmic Interaction Steps (1 Action / Step)
-          </span>
-          {selectedItem.data.scene.interaction_steps?.map((st) => (
-            <div
-              key={st.step_index}
-              className="p-2 rounded bg-muted/40 border border-border/60 text-[10px] font-mono space-y-0.5"
-            >
-              <div className="font-bold text-foreground">
-                #{st.step_index} {st.actor_id} → {st.action_verb} → {st.target_id || st.target_kind}
-              </div>
-              <div className="text-muted-foreground">{st.description}</div>
-            </div>
-          ))}
-        </div>
-      )}
+      <SceneStepsPanel productionId={productionId} scene={selectedItem.data.scene} />
     </div>
   ) : null

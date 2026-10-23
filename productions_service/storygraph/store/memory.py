@@ -33,6 +33,23 @@ def _matches_filter(doc: dict[str, Any], flt: Filter) -> bool:
     raise ValueError(f"Unsupported filter operator: {op!r}")
 
 
+def apply_query(
+    docs: list[dict[str, Any]],
+    filters: list[Filter] | None = None,
+    order_by: str | None = None,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    """Filter, sort (`-field` = descending, None last) and limit `docs` with Firestore semantics."""
+    rows = [d for d in docs if all(_matches_filter(d, f) for f in (filters or []))]
+    if order_by:
+        desc = order_by.startswith("-")
+        key_field = order_by[1:] if desc else order_by
+        rows.sort(
+            key=lambda d: (d.get(key_field) is None, d.get(key_field)), reverse=desc
+        )
+    return rows[:limit] if limit is not None else rows
+
+
 class _MemoryBatch(BatchWriter):
     def __init__(self, store: MemoryStore) -> None:
         self._store = store
@@ -108,21 +125,10 @@ class MemoryStore:
         limit: int | None = None,
     ) -> list[dict[str, Any]]:
         with self._lock:
-            docs = [
-                copy.deepcopy(d)
-                for d in self._data.get(collection, {}).values()
-                if all(_matches_filter(d, f) for f in (filters or []))
-            ]
-        if order_by:
-            desc = order_by.startswith("-")
-            key_field = order_by[1:] if desc else order_by
-            docs.sort(
-                key=lambda d: (d.get(key_field) is None, d.get(key_field)),
-                reverse=desc,
+            docs = apply_query(
+                list(self._data.get(collection, {}).values()), filters, order_by, limit
             )
-        if limit is not None:
-            docs = docs[:limit]
-        return docs
+            return [copy.deepcopy(d) for d in docs]
 
     @contextmanager
     def batch(self) -> Iterator[BatchWriter]:

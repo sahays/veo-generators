@@ -42,8 +42,11 @@ FIRST_FRAME_LINE: Final[str] = (
 OBJECTS_HEADER: Final[str] = (
     "OBJECTS (each exactly one; never duplicated, never disappears):"
 )
+# Omni audio is a timing guide (audio.mode=stems); music comes from S5/S10, so ask for
+# none — keeps music out of the separated SFX stem.
 NEGATIVES: Final[str] = (
-    "No other characters. No extra or duplicate props. No text, captions or subtitles."
+    "No other characters. No extra or duplicate props. No text, captions or subtitles. "
+    "No background music."
 )
 WORD_TARGET: Final[tuple[int, int]] = (150, 250)
 CLOTHED_DEFAULT: Final[str] = "fully clothed exactly as in the reference image"

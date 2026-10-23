@@ -183,8 +183,24 @@ class FirestoreStore:
         # Push first filter to Firestore (single-field index is automatic); evaluate remaining filters & sort in-memory to avoid composite-index errors
         f0_field, f0_op, f0_val = flt_list[0]
         q = q.where(filter=FieldFilter(f0_field, f0_op, f0_val))
+        if self._is_single_field_range(flt_list, order_by):
+            desc = str(order_by).startswith("-")
+            direction = (
+                firestore.Query.DESCENDING if desc else firestore.Query.ASCENDING
+            )
+            q = q.order_by(f0_field, direction=direction)
+            q = q.limit(limit) if limit is not None else q
+            return [snap.to_dict() for snap in q.stream() if snap.exists]
         rows = [snap.to_dict() for snap in q.stream() if snap.exists]
         return self._filter_and_sort_rows(rows, flt_list[1:], order_by, limit)
+
+    @staticmethod
+    def _is_single_field_range(flt_list: list[Filter], order_by: str | None) -> bool:
+        """True when one `<=`/`>=` filter orders on its own field (servable by the automatic index)."""
+        if len(flt_list) != 1 or not order_by:
+            return False
+        field, op, _ = flt_list[0]
+        return op in ("<=", ">=") and order_by.lstrip("-") == field
 
     @contextmanager
     def batch(self) -> Iterator[BatchWriter]:

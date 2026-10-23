@@ -1,5 +1,13 @@
 import type { Project } from '@/types/project'
-import type { AssembleMode, AssemblyReadiness, ShotClipEdit, ShotRepairReport } from '@/types/storygraph'
+import type {
+  AssembleMode,
+  AssemblyReadiness,
+  AuditLogPage,
+  ShotClipEdit,
+  ShotRepairReport,
+  ShotRunHistory,
+  StoryGraphScene,
+} from '@/types/storygraph'
 import { createCrudClient } from '../core/_crud'
 import { requestWithValidation } from '../core/validationError'
 import {
@@ -139,6 +147,21 @@ export const projects = {
     request<JsonValue>(
       `${API_BASE_URL}/productions/${id}/graph`,
       'Failed to load story graph',
+    ),
+  getShotRuns: (id: string, shotId: string) =>
+    request<ShotRunHistory>(
+      `${API_BASE_URL}/productions/${id}/shots/${encodeURIComponent(shotId)}/runs`,
+      'Failed to load run attempts',
+    ),
+  getAuditLog: (id: string, cursor?: string | null, limit = 30) =>
+    request<AuditLogPage>(
+      `${API_BASE_URL}/productions/${id}/graph/audit-log?${buildQS({ limit: String(limit), cursor: cursor || undefined })}`,
+      'Failed to load audit log',
+    ),
+  getSceneDetail: (id: string, sceneId: string) =>
+    request<StoryGraphScene>(
+      `${API_BASE_URL}/productions/${id}/graph/scenes/${encodeURIComponent(sceneId)}`,
+      'Failed to load scene detail',
     ),
   runStoryGraph: (
     id: string,

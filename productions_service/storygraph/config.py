@@ -156,15 +156,18 @@ class AssemblyCfg(BaseModel):
 
 
 class AudioCfg(BaseModel):
-    """Per-clip voiceover sync: re-voice dialogue with each character's fixed TTS voice.
+    """Clip audio post-production (docs/eval/voiceover_sync_v1.md, docs/eval/audio_stems_v1.md).
 
-    `voiceover="sync"` (default since voiceover_sync_v1 v4 passed its gate); "off" keeps
-    Omni's own voices. `speech_removal`
-    picks how Omni's speech is removed: "duck" (`duck_db` over transcript + VAD windows) or
-    "demucs" (source separation; needs the optional demucs/torch runtime).
+    `mode`:
+      * "omni"           keep Omni's audio as rendered (voices change between clips).
+      * "voiceover_duck" fixed-voice TTS over Omni's bed, Omni speech ducked (`duck_db`
+                         over transcript + VAD windows) or removed by `speech_removal`.
+      * "stems"          Omni audio is a guide track only; final audio = dialogue stem
+                         (fixed-voice TTS) + SFX stem (demucs no_vocals, residual voice
+                         ducked by `residual_db`) + S5 music ducked under dialogue in S10.
     """
 
-    voiceover: Literal["off", "sync"] = "sync"
+    mode: Literal["omni", "voiceover_duck", "stems"] = "stems"  # stems won v5 (see doc)
     speech_removal: Literal["duck", "demucs"] = "duck"
     tts_model: str = "gemini-2.5-flash-tts"
     duck_db: float = Field(default=-26.0, le=0.0)
@@ -173,6 +176,16 @@ class AudioCfg(BaseModel):
     tempo_min: float = Field(default=0.8, gt=0.5, le=1.0)
     tempo_max: float = Field(default=1.35, ge=1.0, lt=2.0)
     voice_lufs: float = -16.0
+    # stems mode
+    residual_db: float = Field(default=-24.0, le=0.0)  # SFX stem inside vocal activity
+    dialogue_lufs: float = -16.0
+    sfx_lufs: float = -24.0
+    music_lufs: float = -26.0
+
+    @property
+    def voiceover_on(self) -> bool:
+        """True for the modes that replace Omni's voices."""
+        return self.mode != "omni"
 
 
 DimensionName = Literal[

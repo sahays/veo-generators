@@ -17,6 +17,7 @@ const KIND_TITLES: Record<SelectedInspectorItem['kind'], string> = {
 }
 
 export interface StudioInspectorDrawerProps {
+  productionId: string
   selectedItem: SelectedInspectorItem | null
   onClose: () => void
   canWrite: boolean
@@ -32,7 +33,7 @@ const InspectorBody = (p: StudioInspectorDrawerProps & { selectedItem: SelectedI
   if (item.kind === 'appearance') {
     return <AppearanceInspectorView item={item} canWrite={p.canWrite} busyAction={p.busyAction} onAppearanceAction={p.onAppearanceAction} />
   }
-  if (item.kind === 'video_run') return <VideoRunInspectorView item={item} />
+  if (item.kind === 'video_run') return <VideoRunInspectorView item={item} productionId={p.productionId} />
   if (item.kind === 'shot' || item.kind === 'entity' || item.kind === 'scene') {
     return (
       <ShotAndEntityInspectorView
@@ -41,6 +42,7 @@ const InspectorBody = (p: StudioInspectorDrawerProps & { selectedItem: SelectedI
         compiledPreviews={p.compiledPreviews}
         onCompilePreview={p.onCompilePreview}
         scenes={p.storyGraph?.scenes}
+        productionId={p.productionId}
       />
     )
   }

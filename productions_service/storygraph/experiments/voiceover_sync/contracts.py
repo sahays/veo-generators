@@ -12,6 +12,9 @@ from ...audio.voice.timing import SpeechLine
 from ...schemas.voice import VoicedLine
 
 
+Variant = Literal["duck", "demucs", "stems"]
+
+
 @dataclass(frozen=True)
 class ClipCase:
     clip_id: str
@@ -42,6 +45,7 @@ class ClipEval(BaseModel):
     bed_voiced_db: float | None = None
     extra_speech: list[str] = Field(default_factory=list)  # unscripted words heard
     mix: MixJudgement | None = None
+    sfx_lag_ms: float | None = None  # bed cross-correlation lag vs the original (sync)
 
 
 class VoiceJudgement(BaseModel):
@@ -62,6 +66,10 @@ class MixJudgement(BaseModel):
     )
     sfx_present: bool = Field(description="Non-speech SFX/ambience audible.")
     mix_naturalness: float = Field(description="0..1 natural dialogue-in-scene mix.")
+    sfx_sync: float = Field(
+        default=0.0,
+        description="0..1: sound effects line up with the on-screen actions.",
+    )
     notes: str = Field(description="One sentence.")
 
 

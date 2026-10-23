@@ -13,3 +13,9 @@ pillow
 httpx
 python-dotenv
 numpy
+# audio.mode=stems: Demucs (htdemucs) SFX/voice separation on CPU (docs/eval/audio_stems_v1.md)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.1+cpu
+torchaudio==2.11.0+cpu
+demucs==4.1.0
+soundfile

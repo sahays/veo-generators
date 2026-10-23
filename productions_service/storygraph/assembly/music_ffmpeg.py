@@ -54,9 +54,12 @@ def _segment_sources(
 
 
 def build_mix_filter(
-    segments: list[SceneSegment], cfg: AssemblyCfg
+    segments: list[SceneSegment], cfg: AssemblyCfg, keyed: bool = False
 ) -> tuple[list[int], str]:
-    """Build the filter graph; returns (segment indices that are ffmpeg inputs 1..N, graph)."""
+    """Build the filter graph; returns (segment indices that are ffmpeg inputs 1..N, graph).
+
+    `keyed`: the sidechain key is the extra last input (dialogue stem), not the clip audio.
+    """
     xf = _crossfade_s(segments, cfg) if len(segments) > 1 else 0.0
     inputs, chains = _segment_sources(segments, xf)
     label = "s0"
@@ -66,7 +69,11 @@ def build_mix_filter(
         label = nxt
     chains += [
         f"[{label}]volume={cfg.music_gain:.3f}[score]",
-        "[0:a]asplit=2[dia][key]",
+        *(
+            [f"[{len(inputs) + 1}:a]{_AFMT}[key]", "[0:a]anull[dia]"]
+            if keyed
+            else ["[0:a]asplit=2[dia][key]"]
+        ),
         (
             f"[score][key]sidechaincompress=threshold={cfg.duck_threshold}"
             f":ratio={cfg.duck_ratio}:attack=20:release=400[ducked]"
@@ -77,14 +84,17 @@ def build_mix_filter(
 
 
 def _mix_command(
-    tmp: Path, segments: list[SceneSegment], cfg: AssemblyCfg
+    tmp: Path, segments: list[SceneSegment], cfg: AssemblyCfg, key: bytes | None
 ) -> list[str]:
-    inputs, graph = build_mix_filter(segments, cfg)
+    inputs, graph = build_mix_filter(segments, cfg, keyed=key is not None)
     cmd = ["ffmpeg", "-y", "-i", str(tmp / "video.mp4")]
     for seg_idx in inputs:
         music_path = tmp / f"music_{seg_idx:03d}.bin"
         music_path.write_bytes(segments[seg_idx].audio or b"")
         cmd += ["-stream_loop", "-1", "-i", str(music_path)]
+    if key is not None:
+        (tmp / "duck_key.wav").write_bytes(key)
+        cmd += ["-i", str(tmp / "duck_key.wav")]
     return [
         *cmd,
         "-filter_complex",
@@ -106,13 +116,13 @@ def _mix_command(
 
 
 def _run_mix(
-    video: bytes, segments: list[SceneSegment], cfg: AssemblyCfg
+    video: bytes, segments: list[SceneSegment], cfg: AssemblyCfg, key: bytes | None
 ) -> bytes | str:
     """Return mixed bytes, or an error string describing the ffmpeg failure."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
         (tmp / "video.mp4").write_bytes(video)
-        cmd = _mix_command(tmp, segments, cfg)
+        cmd = _mix_command(tmp, segments, cfg, key)
         try:
             proc = subprocess.run(
                 cmd, capture_output=True, timeout=_FFMPEG_TIMEOUT_S, check=False
@@ -132,7 +142,10 @@ def _run_mix(
 
 
 def ffmpeg_music_mixer(
-    video: bytes, segments: list[SceneSegment], cfg: AssemblyCfg
+    video: bytes,
+    segments: list[SceneSegment],
+    cfg: AssemblyCfg,
+    duck_key: bytes | None = None,
 ) -> bytes:
     """Mix the score under `video`; on any ffmpeg error log it and keep the unscored video."""
     if shutil.which("ffmpeg") is None:
@@ -141,7 +154,7 @@ def ffmpeg_music_mixer(
             extra=_log_ctx("music_mix_unavailable", "ffmpeg not on PATH"),
         )
         return video
-    result = _run_mix(video, segments, cfg)
+    result = _run_mix(video, segments, cfg, duck_key)
     if isinstance(result, bytes):
         return result
     logger.error(

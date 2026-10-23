@@ -87,7 +87,7 @@ def test_voice_clip_uses_fixed_voices_and_places_lines_in_graph() -> None:
         "char_pip": VoiceProfile(voice_name="Puck"),
         "char_ava": VoiceProfile(voice_name="Kore"),
     }
-    out = voice_clip(b"mp4", lines, voices, AudioCfg(voiceover="sync"), deps)
+    out = voice_clip(b"mp4", lines, voices, AudioCfg(mode="voiceover_duck"), deps)
 
     assert tts.calls == [
         ("The seal shall break.", "Puck", "en-IN", pytest.approx(1.7)),  # 0.85 x window

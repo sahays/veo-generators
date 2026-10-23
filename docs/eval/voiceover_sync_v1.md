@@ -4,6 +4,59 @@
 sound different from shot to shot. Can we keep Omni's picture/timing but re-voice every
 scripted line with one fixed TTS voice per character?
 
+## v5 — stem-based audio (`audio.mode: stems`) — **new default**
+
+Omni always renders audio (there is no audio-off flag and no audio references), and it
+lip-syncs only to speech it generates itself. So dialogue stays in the prompt, and Omni's
+audio is used as a **guide track** only: it supplies the line timing (transcribe +
+`align_lines`) and never reaches the final mix. Final clip = Omni picture + our stems:
+
+- **Dialogue stem:** the fixed-voice TTS, placed on the guide timings (0.85× pace, atempo
+  ≤ 1.35), over silence.
+- **SFX stem:** demucs `htdemucs` `no_vocals` of the guide. Residual voice is ducked by
+  −24 dB wherever the separated *vocals* stem is active (VAD on vocals, so SFX never
+  trigger it) or the transcript places speech.
+- **Music:** the S5 `MusicCue` bed in S10, sidechain-ducked under the **dialogue stem
+  only** (a stitched dialogue key track), not under the SFX.
+- **Mixer:** one typed `StemMix` contract (stem URIs, gains, LUFS targets: dialogue −16,
+  SFX −24 with a +6 dB boost cap, music −26), rendered in S10. Stems are stored per
+  `GenerationRun.stems`, so a remix never re-renders.
+- **Prompt:** "No background music." added to the Omni negatives, so the guide track has
+  no music to leak into the SFX stem.
+
+**SFX source decision (a/b/c).** Option (b), graph-driven SFX, needs a model that
+generates foley. On aug18-25-3 the only Google audio-generation models are `lyria-002`
+(Vertex predict) and `lyria-3-clip-preview` (Gemini API, AUDIO+TEXT). Both returned
+**music** for the prompt "single brass key clink on a workbench": per the Gemini judge,
+lyria-002 produced a 36 s trap beat and lyria-3 a 30 s ambient/electronic track, with no
+clink in either. `gemini-*-tts` and native-audio Live are speech-only. So (b) and the
+hybrid (c) are not feasible today, and **(a) demucs** is the SFX source.
+
+### Results (same 6 p-0irbygdv clips; `exp_stems/` vs v4 `exp_v4/`)
+
+| Metric | voiceover_duck (v4) | **stems (v5)** |
+|---|---|---|
+| Leftover Omni voice (Gemini listening) | 1/6 faint | **0/6** |
+| Bed level outside speech vs original | −12 to −13.5 dB on 3/6, −3.5 dB on 1/6 | +4.9 to +6.2 dB on 5/6 (SFX brought up to −24 LUFS, boost capped); −8.2 dB on 1/6 (scn_003_02, demucs) |
+| SFX present (judge) | 5/6 | 5/6 (scn_007_02's original bed is silent, −54 dB) |
+| SFX sync to picture (judge, 0–1) | — | 0.85–0.95 on 5/6; cross-correlation lag −5 ms on 6/6 (< 1 frame) |
+| Mix naturalness (judge, mean) | 0.79 | 0.76 (scn_007_02 0.35: dry, no bed; others 0.80–0.88) |
+| Lines heard complete / median overrun | 7/7 / 0.0 s | 7/7 / 0.0 s |
+| Same-voice: Pip / Ava (Omni → ours) | 0.33 → 1.0 / 0.65 → 1.0 | 0.35 → 1.0 / 0.40 → 1.0 |
+| Latency per clip | 13–20 s | 22–36 s (demucs 8.3 s wall, 2.6 cores, 1.37 GB RSS; the rest is Gemini transcribe + TTS) |
+| Productions image | 1.16 GB | **2.23 GB (+1.07 GB:** torch 2.14.1+cpu, torchaudio, demucs 4.1, htdemucs weights baked in) |
+| Cloud Run fit | — | fits the productions service (4 vCPU / 8 GiB); ≈ 8 vCPU-s per clip, about $0.0002 |
+
+**Decision:** stems beats voiceover_duck on SFX preservation and has zero leftover Omni
+voice, so it is the default: `audio.mode: stems` (`config.py` and `default.yaml`).
+
+**Caveats:**
+
+- Demucs still drops part of the bed on some clips (scn_003_02).
+- Clips whose guide has no bed (scn_007_02) sound dry. Graph-driven foley would fix this
+  once a foley-capable model exists.
+- `voiceover_duck` and `omni` remain available as fallbacks.
+
 ## v4 (TTS paced to 0.85× window, duck −26 dB over transcript ∪ VAD + 150 ms) — **`sync` on**
 
 Changes from v3:

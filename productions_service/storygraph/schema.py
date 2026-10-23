@@ -27,6 +27,10 @@ from .schemas.generation import (  # noqa: F401 - re-exported public API
     QADefect,
     QAReport,
 )
+from .schemas.stems import (  # noqa: F401 - re-exported public API
+    StemMix,
+    StemSet,
+)
 from .schemas.voice import (  # noqa: F401 - re-exported public API
     VoicedLine,
     VoiceoverRecord,

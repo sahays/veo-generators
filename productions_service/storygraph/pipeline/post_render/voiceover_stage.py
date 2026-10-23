@@ -1,4 +1,4 @@
-"""Voiceover sync stage (`audio.voiceover: sync`): runs after QA approval, before S10 stitch.
+"""Voiceover sync stage (`audio.mode: voiceover_duck`): runs after QA approval, before S10 stitch.
 
 Dialogue correctness is judged by QA on Omni's original clip; this stage only replaces the
 voices. For each ready shot whose winning run has dialogue and no voiced clip yet, the
@@ -94,7 +94,7 @@ def apply_voiceover(
     repo: Repo, cfg: Config, deps_factory: DepsFactory = default_sync_deps
 ) -> list[str]:
     """Voice every ready shot lacking a voiced clip; return the voiced run ids."""
-    if cfg.audio.voiceover != "sync" or cfg.video.provider == "mock":
+    if cfg.audio.mode != "voiceover_duck" or cfg.video.provider == "mock":
         return []
     runs = {r.id: r for r in repo.list_generation_runs()}
     pending = [
@@ -121,7 +121,7 @@ def apply_voiceover(
         logging.INFO,
         "Voiceover stage finished",
         "voiceover_stage_done",
-        "audio.voiceover=sync",
+        "audio.mode=voiceover_duck",
         voiced_run_ids=voiced,
         pending=len(pending),
     )

@@ -18,7 +18,7 @@ from ..config import Config
 from ..errors import ShotsNotApproved
 from ..repo import Repo
 from ..schema import ChangeRequest, Role
-from .post_render.voiceover_stage import apply_voiceover
+from .post_render.dispatch import apply_audio_post, stem_renderer_for
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ def run_assemble_stage(repo: Repo, cfg: Config, allow_partial: bool = False) -> 
                 },
             )
             raise ShotsNotApproved(blocked, context="S10_ASSEMBLE")
-    apply_voiceover(repo, cfg)  # no-op unless audio.voiceover == "sync"
+    apply_audio_post(repo, cfg)  # audio.mode: omni (no-op) | voiceover_duck | stems
     return assemble(
         repo,
         allow_partial=allow_partial,
@@ -71,7 +71,8 @@ def run_assemble_stage(repo: Repo, cfg: Config, allow_partial: bool = False) -> 
         music_mixer=select_music_mixer(cfg.video.provider),
         assembly_cfg=cfg.assembly,
         normalizer=select_normalizer(cfg.video.provider),
-        prefer_voiced=cfg.audio.voiceover == "sync",
+        prefer_voiced=cfg.audio.mode == "voiceover_duck",
+        stem_render=stem_renderer_for(repo, cfg),
     )
 
 

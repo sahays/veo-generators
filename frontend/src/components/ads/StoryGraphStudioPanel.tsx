@@ -10,6 +10,7 @@ import {
   type SelectedInspectorItem,
 } from './storygraph/storyGraphStudioTypes'
 import { StudioInspectorDrawer } from './storygraph/StudioRightInspectorPane'
+import { allEntities } from './storygraph/details/snapshotSelectors'
 import { RegenerateCascadeDialog } from './storygraph/cascade/RegenerateCascadeDialog'
 import { StudioHeader } from './storygraph/shell/StudioHeader'
 import { StudioIssueBanner } from './storygraph/shell/StudioIssueBanner'
@@ -89,7 +90,7 @@ const StudioWorkspace = ({ props, ctrl, ctx, stageMaps }: WorkspaceProps) => {
       )}
       <StudioTabs props={props} ctrl={ctrl} ctx={ctx} stageMaps={stageMaps} />
       <StudioInspectorDrawer
-        selectedItem={ctx.selectedItem} onClose={() => ctx.setSelectedItem(null)} canWrite={props.canWrite} busyAction={actions.busyAction}
+        productionId={props.productionId} selectedItem={ctx.selectedItem} onClose={() => ctx.setSelectedItem(null)} canWrite={props.canWrite} busyAction={actions.busyAction}
         compiledPreviews={actions.compiledPreviews} onCompilePreview={actions.handleCompilePreview} onAppearanceAction={actions.handleAppearanceAction} storyGraph={props.storyGraph}
       />
     </div>
@@ -99,7 +100,7 @@ const StudioWorkspace = ({ props, ctrl, ctx, stageMaps }: WorkspaceProps) => {
 function useAutoStart(props: StoryGraphStudioPanelProps, completedCount: number, runForward: () => Promise<void>) {
   const autoStartedRef = useRef(false)
   useEffect(() => {
-    const hasEntities = (props.storyGraph?.entities?.all || []).length > 0
+    const hasEntities = allEntities(props.storyGraph).length > 0
     if (props.canWrite && !autoStartedRef.current && !hasEntities && completedCount <= 1) {
       autoStartedRef.current = true
       void runForward()

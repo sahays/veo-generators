@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+from collections.abc import Iterable
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -11,6 +12,10 @@ from google.auth.transport import requests as auth_requests
 from google.cloud import storage
 
 from ..errors import NotFound
+from .url_signing import SIGN_EXPIRATION_MINUTES, SignedUrlCache, sign_many
+
+# Process-wide: URIs embed the bucket, so one cache safely serves every project/instance.
+_SIGNED_URLS = SignedUrlCache()
 
 
 class LocalBlobStore:
@@ -46,6 +51,9 @@ class LocalBlobStore:
 
     def sign_url(self, uri: str) -> str:
         return uri
+
+    def sign_urls(self, uris: Iterable[str]) -> dict[str, str]:
+        return {u: u for u in uris if u}
 
 
 class GcsBlobStore:
@@ -110,9 +118,24 @@ class GcsBlobStore:
         )
         return bucket.blob(blob_name).exists()
 
-    def sign_url(self, uri: str, expiration_minutes: int = 60) -> str:
+    def sign_url(
+        self, uri: str, expiration_minutes: int = SIGN_EXPIRATION_MINUTES
+    ) -> str:
         if not uri or not uri.startswith("gs://"):
             return uri
+        cached = _SIGNED_URLS.get(uri)
+        if cached is not None:
+            return cached
+        signed = self._sign_uncached(uri, expiration_minutes)
+        if signed != uri:  # never cache a failed (unsigned) fallback
+            _SIGNED_URLS.put(uri, signed)
+        return signed
+
+    def sign_urls(self, uris: Iterable[str]) -> dict[str, str]:
+        """Sign many URIs: cache hits are O(1); misses run on a bounded thread pool."""
+        return sign_many(self.sign_url, uris)
+
+    def _sign_uncached(self, uri: str, expiration_minutes: int) -> str:
         try:
             bucket_name, blob_name = self._parse_gs(uri)
             bucket = (
@@ -121,11 +144,10 @@ class GcsBlobStore:
                 else self._client.bucket(bucket_name)
             )
             blob = bucket.blob(blob_name)
+            expiration = datetime.timedelta(minutes=expiration_minutes)
             if hasattr(self._credentials, "sign_bytes"):
                 return blob.generate_signed_url(
-                    version="v4",
-                    expiration=datetime.timedelta(minutes=expiration_minutes),
-                    method="GET",
+                    version="v4", expiration=expiration, method="GET"
                 )
             if not self._credentials.valid:
                 self._credentials.refresh(auth_requests.Request())
@@ -133,7 +155,7 @@ class GcsBlobStore:
             if sa_email and getattr(self._credentials, "token", None):
                 return blob.generate_signed_url(
                     version="v4",
-                    expiration=datetime.timedelta(minutes=expiration_minutes),
+                    expiration=expiration,
                     method="GET",
                     service_account_email=sa_email,
                     access_token=self._credentials.token,

@@ -34,7 +34,7 @@ from .runtime import (
     load_runtime_config,
     reset_storygraph_collections,
 )
-from .snapshot import format_graph_snapshot
+from .snapshot import format_graph_snapshot, summarize_projects
 
 _ALLOWED_PATCH_FIELDS: frozenset[str] = frozenset(
     (
@@ -119,17 +119,10 @@ def create_production_project(
 
 
 def list_production_projects(archived: bool = False) -> list[dict[str, Any]]:
-    """Return snapshots of all registered productions filtered by archived status."""
+    """Return lightweight summaries (meta, status, thumbnail) of registered productions."""
     cfg = load_runtime_config()
-    results: list[dict[str, Any]] = []
-    for pid in sorted(MEMORY_PROJECT_INDEX):
-        repo = get_repo(pid, cfg=cfg)
-        meta = repo.get_project_meta()
-        if not meta or (not archived and meta.archived):
-            continue
-        results.append(format_graph_snapshot(repo, cfg))
-    results.sort(key=lambda r: r.get("updatedAt", 0), reverse=True)
-    return results
+    repos = [get_repo(pid, cfg=cfg) for pid in sorted(MEMORY_PROJECT_INDEX)]
+    return summarize_projects(repos, include_archived=archived)
 
 
 def get_production_project(project_id: str) -> dict[str, Any]:

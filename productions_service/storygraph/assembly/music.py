@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Protocol, cast
 
 from ..config import AssemblyCfg
 from ..repo import Repo
@@ -34,6 +34,18 @@ class SceneSegment:
 class MusicMixer(Protocol):
     def __call__(
         self, video: bytes, segments: list[SceneSegment], cfg: AssemblyCfg
+    ) -> bytes: ...
+
+
+class KeyedMusicMixer(Protocol):
+    """Mixer whose ducking sidechain is an explicit key track (the dialogue stem)."""
+
+    def __call__(
+        self,
+        video: bytes,
+        segments: list[SceneSegment],
+        cfg: AssemblyCfg,
+        duck_key: bytes | None = None,
     ) -> bytes: ...
 
 
@@ -94,10 +106,12 @@ def apply_music_bed(
     video: bytes,
     cfg: AssemblyCfg,
     mixer: MusicMixer | None,
+    duck_key: bytes | None = None,
 ) -> bytes:
     """Mix scene scores under `video` when audio assets exist; otherwise return it unchanged.
 
-    `durations` are the probed (actual) clip lengths, aligned with `ready`.
+    `durations` are the probed (actual) clip lengths, aligned with `ready`. With
+    `duck_key` (stitched dialogue stem, `audio.mode=stems`) music ducks under dialogue only.
     """
     project_id = repo.project_id
     if not cfg.music_enabled or mixer is None:
@@ -124,7 +138,11 @@ def apply_music_bed(
         )
         return video
     segments = build_scene_segments(scene_ids, durations, audio)
-    mixed = mixer(video, segments, cfg)
+    if duck_key is not None:
+        keyed = cast(KeyedMusicMixer, mixer)
+        mixed = keyed(video, segments, cfg, duck_key=duck_key)
+    else:
+        mixed = mixer(video, segments, cfg)
     logger.info(
         "Music bed mixed under final video",
         extra=_log_ctx(

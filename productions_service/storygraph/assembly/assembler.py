@@ -8,6 +8,7 @@ APPROVED shots in story order and records the skipped shots on `ProjectMeta`.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from ..config import AssemblyCfg
@@ -16,11 +17,13 @@ from ..repo import Repo
 from .loudness import MasterNormalizer
 from .music import MusicMixer, apply_music_bed
 from .music_ffmpeg import ffprobe_duration
-from .readiness import AssemblyReadiness, evaluate_shot_readiness
+from .readiness import AssemblyReadiness, ReadyShot, evaluate_shot_readiness
+from .stem_clips import StemClips
 from .stitch import ClipStitcher, ffmpeg_stitch
 from .timing import DurationProbe, measure_clip_timings
 
 logger = logging.getLogger(__name__)
+StemRenderer = Callable[[list[ReadyShot], list[bytes]], StemClips]
 
 STATUS_COMPLETED = "completed"
 STATUS_COMPLETED_PARTIAL = "completed_partial"
@@ -115,19 +118,26 @@ def assemble(
     duration_probe: DurationProbe = ffprobe_duration,
     normalizer: MasterNormalizer | None = None,
     prefer_voiced: bool = False,
+    stem_render: StemRenderer | None = None,
 ) -> str:
     """Stitch the winning APPROVED clip of each shot in story order and return the blob URI.
 
     After stitching, scene `MusicCue` audio (if any) is mixed under the result by
     `music_mixer` using each clip's probed duration; with no music assets or no mixer the
     stitched video is kept as-is. Finally `normalizer` (EBU R128 loudnorm) runs on the master.
-    `prefer_voiced` stitches each run's voiceover-synced clip when present (`audio.voiceover`).
+    `prefer_voiced` stitches each run's voiceover-synced clip when present (`audio.mode=voiceover_duck`).
+    `stem_render` (`audio.mode=stems`) re-renders each clip from its stored stems and returns
+    the stitched dialogue stem so the music bed ducks under dialogue only.
     """
     readiness = evaluate_shot_readiness(repo, prefer_voiced=prefer_voiced)
     if not readiness.ready_shots and not readiness.blocking:
         raise ValidationFailed(["Cannot assemble final video: no shots exist"])
     _guard_readiness(repo, readiness, allow_partial)
     clips = [repo.blobs.get_bytes(r.video_uri) for r in readiness.ready_shots]
+    duck_key: bytes | None = None
+    if stem_render is not None:
+        rendered = stem_render(readiness.ready_shots, clips)
+        clips, duck_key = rendered.clips, rendered.duck_key
     timings = measure_clip_timings(repo, readiness.ready_shots, clips, duration_probe)
     merged = apply_music_bed(
         repo,
@@ -136,6 +146,7 @@ def assemble(
         (stitcher or ffmpeg_stitch)(clips),
         assembly_cfg or AssemblyCfg(),
         music_mixer,
+        duck_key=duck_key,
     )
     if normalizer is not None:
         merged = normalizer(merged)

@@ -95,7 +95,9 @@ export interface StoryGraphScene {
   heading?: string
   summary?: string
   status?: string
+  /** Omitted from the lean snapshot; lazy-load via `projects.getSceneDetail`. */
   interaction_steps?: StoryGraphInteractionStep[]
+  interaction_step_count?: number
   ambient_environment_cue?: string
   weather_and_air?: string
   clips?: StoryGraphClipScript[]
@@ -213,7 +215,9 @@ export interface StoryGraphGenerationRun {
   reference_asset_ids?: string[]
   extracted_last_frame_asset_id?: string
   qa_scores?: StoryGraphQaScores
+  /** Detail-only: present in `ShotRunHistory.runs`, omitted from the snapshot. */
   compiled_prompt?: string
+  created_at?: string
 }
 
 export interface StoryGraphGate {
@@ -247,6 +251,7 @@ export interface StoryGraphAuditEntry {
   tool: string
   target_id: string
   after_version: number
+  created_at?: string
 }
 
 export type StoryGraphStateFact = Record<string, unknown>
@@ -333,13 +338,21 @@ export interface StoryGraphStageQaReport {
   issues: StoryGraphStageQaIssue[]
 }
 
+/**
+ * Lean first-paint snapshot (GET /productions/{id}/graph). History is lazy:
+ * `generation_runs` holds only the active run per shot (attempts: `ShotRunHistory`),
+ * `audit_log` is a recent tail (older pages: `AuditLogPage`), scenes omit
+ * `interaction_steps` (detail: GET .../graph/scenes/{id}), and `assets` lists only
+ * run-referenced assets not already embedded under an appearance.
+ */
 export interface StoryGraphData {
   style_guide?: StoryGraphStyleGuide
   entities: {
     characters: StoryGraphEntity[]
     locations: StoryGraphEntity[]
     objects: StoryGraphEntity[]
-    all: StoryGraphEntity[]
+    /** Legacy snapshots only; derive with `allEntities()`. */
+    all?: StoryGraphEntity[]
   }
   events: StoryGraphEvent[]
   state_facts: StoryGraphStateFact[]
@@ -350,10 +363,26 @@ export interface StoryGraphData {
   music_cues: StoryGraphMusicCue[]
   shots: StoryGraphShot[]
   generation_runs: StoryGraphGenerationRun[]
+  generation_run_counts?: Record<string, number>
+  generation_runs_total?: number
+  asset_counts?: Record<string, number>
   gates: StoryGraphGate[]
   stage_runs: StoryGraphStageRun[]
   stage_qa_reports?: StoryGraphStageQaReport[]
   validation_issues: StoryGraphValidationIssue[]
   change_requests: StoryGraphChangeRequest[]
   audit_log: StoryGraphAuditEntry[]
+}
+
+/** GET /productions/{id}/shots/{shot_id}/runs: every attempt, newest first, full detail. */
+export interface ShotRunHistory {
+  shot_id: string
+  active_run_id: string | null
+  runs: StoryGraphGenerationRun[]
+}
+
+/** GET /productions/{id}/graph/audit-log: newest-first page + cursor for older entries. */
+export interface AuditLogPage {
+  entries: StoryGraphAuditEntry[]
+  next_cursor: string | null
 }

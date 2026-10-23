@@ -67,42 +67,47 @@ def demucs_python() -> str:
 
 
 @dataclass(frozen=True)
+class DemucsStems:
+    vocals: Path
+    no_vocals: Path
+
+
+def demucs_separate(
+    audio_wav: Path, work: Path, model: str = "htdemucs"
+) -> DemucsStems:
+    """Two-stem (vocals / no_vocals) CPU separation via the demucs CLI."""
+    out_dir = work / "demucs"
+    cmd = [demucs_python(), "-m", "demucs", "--two-stems", "vocals", "-n", model]
+    cmd += ["-d", "cpu", "-o", str(out_dir), str(audio_wav)]
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=DEMUCS_TIMEOUT_S,
+            check=False,
+            stdin=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise StoryGraphError(f"demucs failed to start: {exc}") from exc
+    base = out_dir / model / audio_wav.stem
+    stems = DemucsStems(base / "vocals.wav", base / "no_vocals.wav")
+    if proc.returncode != 0 or not stems.no_vocals.is_file():
+        tail = proc.stderr.decode(errors="replace")[-400:]
+        raise StoryGraphError(f"demucs separation failed: {tail}")
+    return stems
+
+
+@dataclass(frozen=True)
 class DemucsRemover:
     model: str = "htdemucs"
     media: MediaTools = field(default_factory=MediaTools)
     name: SpeechRemoval = "demucs"
 
     def remove(self, audio_wav: Path, windows: list[Window], work: Path) -> Path:
-        out_dir = work / "demucs"
-        cmd = [
-            demucs_python(),
-            "-m",
-            "demucs",
-            "--two-stems",
-            "vocals",
-            "-n",
-            self.model,
-            "-d",
-            "cpu",
-            "-o",
-            str(out_dir),
-            str(audio_wav),
-        ]
-        try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                timeout=DEMUCS_TIMEOUT_S,
-                check=False,
-                stdin=subprocess.DEVNULL,
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            raise StoryGraphError(f"demucs failed to start: {exc}") from exc
-        stem = out_dir / self.model / audio_wav.stem / "no_vocals.wav"
-        if proc.returncode != 0 or not stem.is_file():
-            tail = proc.stderr.decode(errors="replace")[-400:]
-            raise StoryGraphError(f"demucs separation failed: {tail}")
-        return DuckRemover(RESIDUAL_DUCK_DB, self.media).remove(stem, windows, work)
+        stems = demucs_separate(audio_wav, work, self.model)
+        return DuckRemover(RESIDUAL_DUCK_DB, self.media).remove(
+            stems.no_vocals, windows, work
+        )
 
 
 def make_remover(kind: str, duck_db: float, media: MediaTools) -> SpeechRemover:
