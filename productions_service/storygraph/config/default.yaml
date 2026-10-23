@@ -82,6 +82,33 @@ audio:
   tempo_max: 1.35
   voice_lufs: -16.0
 
+# Process-wide GenAI call governor (storygraph/adapters/governor): every model call goes
+# through a per-model FIFO queue (max `concurrency` in flight) and a token bucket (`rpm`).
+# 429 halves that model's rate (AIMD, floor min_rate_fraction, regains recovery_per_min of
+# nominal per quiet minute); 429/5xx/network errors retry with full-jitter back-off
+# (base..max, Retry-After honoured) until max_elapsed_s, then raise QuotaExhausted /
+# TransientModelError. Mirrors config.py `GenAIGovernorCfg` (keep in sync).
+genai:
+  queue_capacity: 512
+  max_elapsed_s: 600.0
+  base_backoff_s: 2.0
+  max_backoff_s: 60.0
+  max_empty_retries: 2
+  min_rate_fraction: 0.1
+  recovery_per_min: 0.1
+  throttle_cooldown_s: 5.0
+  default: {rpm: 60.0, concurrency: 4, burst: 1}
+  models:
+    gemini-nano-banana-2.1: {rpm: 20.0, concurrency: 3, burst: 1}
+    gemini-3.8-flash: {rpm: 120.0, concurrency: 8, burst: 4}
+    gemini-omni-1.1-flash-preview: {rpm: 10.0, concurrency: 4, burst: 1}
+    gemini-2.5-flash-tts: {rpm: 30.0, concurrency: 4, burst: 2}
+
+# S8_KEYFRAMES work queue: scenes run in parallel (shots and frames inside a scene chain).
+keyframes:
+  scene_workers: 4
+  max_retries: 2
+
 # Video-eval gate (storygraph/eval): identical thresholds on every attempt.
 # Hard-gated dimensions block when score < threshold (with confidence >= min_confidence).
 # demote_high_defects: that dimension's HIGH defects count as MEDIUM in the defect gate.

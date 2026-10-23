@@ -13,7 +13,10 @@ export interface KeyframeBoardState {
   loadError: string | null
   pending: PendingRegen | null
   regenError: string | null
+  isResuming: boolean
+  resumeError: string | null
   regenerate: (shotId: string, t: number, instruction?: string) => Promise<boolean>
+  resume: () => Promise<boolean>
   refresh: () => void
 }
 
@@ -41,6 +44,28 @@ function useBoardFetch(productionId: string, refreshKey: string, nonce: number) 
   return { board, setBoard, isLoading, loadError }
 }
 
+function useResumeFlow(productionId: string, onDone: () => void) {
+  const [isResuming, setIsResuming] = useState(false)
+  const [resumeError, setResumeError] = useState<string | null>(null)
+
+  const resume = useCallback(async (): Promise<boolean> => {
+    setIsResuming(true)
+    setResumeError(null)
+    try {
+      await keyframes.resume(productionId)
+      onDone()
+      return true
+    } catch (err) {
+      setResumeError(errorText(err, 'Failed to resume keyframes'))
+      return false
+    } finally {
+      setIsResuming(false)
+    }
+  }, [productionId, onDone])
+
+  return { isResuming, resumeError, resume }
+}
+
 /**
  * Loads the S8_KEYFRAMES board for a production (re-fetched when `refreshKey` changes,
  * e.g. after a stage run) and exposes per-frame "regenerate from t". The returned strip is
@@ -52,6 +77,7 @@ export function useKeyframeBoard(productionId: string, refreshKey: string): Keyf
   const { board, setBoard, isLoading, loadError } = useBoardFetch(productionId, refreshKey, nonce)
   const [pending, setPending] = useState<PendingRegen | null>(null)
   const [regenError, setRegenError] = useState<string | null>(null)
+  const { isResuming, resumeError, resume } = useResumeFlow(productionId, refresh)
 
   const regenerate = useCallback(async (shotId: string, t: number, instruction?: string): Promise<boolean> => {
     setPending({ shotId, t })
@@ -69,5 +95,5 @@ export function useKeyframeBoard(productionId: string, refreshKey: string): Keyf
     }
   }, [productionId, refresh, setBoard])
 
-  return { board, isLoading, loadError, pending, regenError, regenerate, refresh }
+  return { board, isLoading, loadError, pending, regenError, isResuming, resumeError, regenerate, resume, refresh }
 }

@@ -1,5 +1,5 @@
 {
-  "total_files": 773,
+  "total_files": 788,
   "domain_packages": {
     "agents_service": 1,
     "api": 9,
@@ -17,7 +17,7 @@
     "api/tests": 40,
     "frontend/src": 1,
     "frontend/src/app": 3,
-    "frontend/src/components": 165,
+    "frontend/src/components": 168,
     "frontend/src/hooks": 7,
     "frontend/src/lib": 28,
     "frontend/src/store": 5,
@@ -25,8 +25,8 @@
     "productions_service": 1,
     "productions_service/routers": 2,
     "productions_service/services": 16,
-    "productions_service/storygraph": 285,
-    "productions_service/tests": 71,
+    "productions_service/storygraph": 294,
+    "productions_service/tests": 74,
     "scripts": 5,
     "scripts/checkers": 9,
     "workers": 13
@@ -111,6 +111,7 @@
     "productions_service/services/snapshot",
     "productions_service/storygraph",
     "productions_service/storygraph/adapters",
+    "productions_service/storygraph/adapters/governor",
     "productions_service/storygraph/adapters/omni",
     "productions_service/storygraph/agents",
     "productions_service/storygraph/agents/role",
@@ -156,6 +157,7 @@
     "productions_service/tests",
     "productions_service/tests/audio",
     "productions_service/tests/eval",
+    "productions_service/tests/genai_governor",
     "productions_service/tests/generalization",
     "productions_service/tests/keyframes",
     "productions_service/tests/lint",
@@ -3281,7 +3283,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
-      "non_comment_lines": 80,
+      "non_comment_lines": 161,
       "classes": [],
       "functions": [
         "KeyframeBoardPanelProps",
@@ -3290,15 +3292,42 @@
       "endpoints": []
     },
     {
+      "path": "frontend/src/components/ads/storygraph/keyframes/KeyframeFrameCard.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 62,
+      "classes": [],
+      "functions": [
+        "KeyframeFrameCardProps",
+        "KeyframeFrameCard"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/storygraph/keyframes/KeyframeFrameCommentary.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 68,
+      "classes": [],
+      "functions": [
+        "FrameChips",
+        "KeyframeFrameCommentary"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "frontend/src/components/ads/storygraph/keyframes/KeyframeFrameDetail.tsx",
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
-      "non_comment_lines": 79,
+      "non_comment_lines": 52,
       "classes": [],
       "functions": [
         "frameLockReason",
-        "KeyframeFrameRow",
+        "FrameActionsProps",
+        "FrameActions",
         "KeyframeVersionHistory"
       ],
       "endpoints": []
@@ -3322,7 +3351,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
-      "non_comment_lines": 69,
+      "non_comment_lines": 81,
       "classes": [],
       "functions": [
         "KeyframeStripCard"
@@ -3334,12 +3363,25 @@
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
-      "non_comment_lines": 30,
+      "non_comment_lines": 7,
       "classes": [],
       "functions": [
-        "KeyframeStatusBadge",
-        "KeyframeThumb",
-        "KeyframeThumbRow"
+        "KeyframeStatusBadge"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ads/storygraph/keyframes/keyframeCommentary.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
+      "non_comment_lines": 38,
+      "classes": [],
+      "functions": [
+        "EntityLine",
+        "parseStateSummary",
+        "formatDrift",
+        "isLongCommentary"
       ],
       "endpoints": []
     },
@@ -3348,7 +3390,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
-      "non_comment_lines": 70,
+      "non_comment_lines": 79,
       "classes": [],
       "functions": [
         "BadgeTone",
@@ -3356,10 +3398,12 @@
         "StripSummary",
         "summarizeStrip",
         "parseSharedFrom",
+        "stripStatus",
         "lastFrameT",
         "buildSuccessorIndex",
         "regenerateImpact",
-        "keyframeRefreshKey"
+        "keyframeRefreshKey",
+        "resumableCount"
       ],
       "endpoints": []
     },
@@ -4968,7 +5012,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/hooks",
       "tier": "Tier 4 (Shared Hooks & Domain Shells)",
-      "non_comment_lines": 60,
+      "non_comment_lines": 83,
       "classes": [],
       "functions": [
         "PendingRegen",
@@ -5323,7 +5367,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/lib",
       "tier": "Tier 3 (State Stores & Client Services)",
-      "non_comment_lines": 24,
+      "non_comment_lines": 30,
       "classes": [],
       "functions": [
         "keyframes"
@@ -5800,7 +5844,7 @@
       "language": "python",
       "domain_package": "productions_service/services",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 20,
+      "non_comment_lines": 28,
       "classes": [],
       "functions": [
         "run_keyframes_cascade"
@@ -5842,7 +5886,7 @@
       "language": "python",
       "domain_package": "productions_service/services",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 337,
+      "non_comment_lines": 340,
       "classes": [
         "CreateProductionPayload",
         "RunPipelinePayload",
@@ -6073,7 +6117,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 3 (Shared Router Helpers)",
-      "non_comment_lines": 58,
+      "non_comment_lines": 62,
       "classes": [
         "GeminiImageGenerator"
       ],
@@ -6085,7 +6129,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 3 (Shared Router Helpers)",
-      "non_comment_lines": 110,
+      "non_comment_lines": 91,
       "classes": [
         "GeminiTTSSynthesizer"
       ],
@@ -6101,11 +6145,114 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 3 (Shared Router Helpers)",
-      "non_comment_lines": 216,
+      "non_comment_lines": 229,
       "classes": [
         "GeminiVideoGenerator"
       ],
       "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/adapters/governor/bucket.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 60,
+      "classes": [
+        "Clock",
+        "MonotonicClock",
+        "BucketCfg",
+        "AdaptiveTokenBucket"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/adapters/governor/classify.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 90,
+      "classes": [
+        "Kind",
+        "Verdict"
+      ],
+      "functions": [
+        "retry_after_s",
+        "classify"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/adapters/governor/context.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 15,
+      "classes": [],
+      "functions": [
+        "call_scope",
+        "current_scope"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/adapters/governor/errors.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 18,
+      "classes": [
+        "EmptyModelResponse",
+        "ModelCallError",
+        "QuotaExhausted",
+        "TransientModelError",
+        "GovernorSaturated"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/adapters/governor/gate.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 39,
+      "classes": [
+        "QueueFull",
+        "FifoGate"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/adapters/governor/governor.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 178,
+      "classes": [
+        "Lane",
+        "_Run",
+        "Governor"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/adapters/governor/registry.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 3 (Shared Router Helpers)",
+      "non_comment_lines": 30,
+      "classes": [
+        "_Holder"
+      ],
+      "functions": [
+        "default_governor",
+        "use_governor",
+        "governed"
+      ],
       "endpoints": []
     },
     {
@@ -6189,7 +6336,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 3 (Shared Router Helpers)",
-      "non_comment_lines": 73,
+      "non_comment_lines": 74,
       "classes": [
         "RefLabel",
         "RenderPackage"
@@ -6233,7 +6380,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 3 (Shared Router Helpers)",
-      "non_comment_lines": 84,
+      "non_comment_lines": 90,
       "classes": [
         "TranscriptSegment",
         "Transcript",
@@ -6259,7 +6406,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 3 (Shared Router Helpers)",
-      "non_comment_lines": 54,
+      "non_comment_lines": 59,
       "classes": [
         "GeminiVLMProvider",
         "CloudTTSProvider"
@@ -7158,7 +7305,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 1 (Models & Pure Config)",
-      "non_comment_lines": 209,
+      "non_comment_lines": 238,
       "classes": [
         "StoreCfg",
         "BlobCfg",
@@ -7169,6 +7316,9 @@
         "CapsCfg",
         "AssemblyCfg",
         "AudioCfg",
+        "ModelLimitCfg",
+        "GenAIGovernorCfg",
+        "KeyframesCfg",
         "DimensionGate",
         "GateConfig",
         "Config"
@@ -8236,6 +8386,7 @@
       "non_comment_lines": 82,
       "classes": [],
       "functions": [
+        "dialogue_lines",
         "render_anchored",
         "anchor_times",
         "timeline_lines"
@@ -8441,7 +8592,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 121,
+      "non_comment_lines": 115,
       "classes": [
         "PieceCount",
         "PlateCheck",
@@ -8521,12 +8672,13 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 201,
+      "non_comment_lines": 214,
       "classes": [
         "RenderedKeyframe",
         "ScenePlate",
         "RendererCfg",
         "RenderJob",
+        "RenderInterrupted",
         "_Attempt",
         "_Request",
         "KeyframeRenderer"
@@ -8539,10 +8691,9 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 48,
+      "non_comment_lines": 7,
       "classes": [],
       "functions": [
-        "is_transient",
         "with_retry"
       ],
       "endpoints": []
@@ -8614,14 +8765,46 @@
       "endpoints": []
     },
     {
+      "path": "productions_service/storygraph/keyframes/stage/outcomes.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 79,
+      "classes": [],
+      "functions": [
+        "failure_text",
+        "manual_edit_reasons",
+        "flag_manual_edit",
+        "settle_shot",
+        "failed_set",
+        "record_failure"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "productions_service/storygraph/keyframes/stage/regenerate.py",
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 95,
+      "non_comment_lines": 86,
       "classes": [],
       "functions": [
         "regenerate_from"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/storygraph/keyframes/stage/resume.py",
+      "language": "python",
+      "domain_package": "productions_service/storygraph",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 42,
+      "classes": [],
+      "functions": [
+        "starts_on",
+        "is_current",
+        "resume_point",
+        "prior_frames"
       ],
       "endpoints": []
     },
@@ -8650,7 +8833,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 217,
+      "non_comment_lines": 223,
       "classes": [
         "KeyframeStageDeps",
         "KeyframeStageResult",
@@ -8658,11 +8841,8 @@
       ],
       "functions": [
         "scene_context",
-        "is_current",
         "shared_start",
         "build_set",
-        "flag_manual_edit",
-        "record_failure",
         "ensure_shot",
         "run_scene",
         "run_keyframe_stage"
@@ -9079,10 +9259,13 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 44,
-      "classes": [],
+      "non_comment_lines": 72,
+      "classes": [
+        "KeyframeStageOutcome"
+      ],
       "functions": [
         "keyframe_deps",
+        "failure_summary",
         "run_keyframes_stage",
         "reset_keyframes"
       ],
@@ -9211,7 +9394,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 384,
+      "non_comment_lines": 390,
       "classes": [
         "Pipeline"
       ],
@@ -10687,6 +10870,48 @@
       "endpoints": []
     },
     {
+      "path": "productions_service/tests/genai_governor/fakes.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 59,
+      "classes": [
+        "FakeClock",
+        "FakeHeaders",
+        "FakeResponse",
+        "FakeApiError"
+      ],
+      "functions": [
+        "quota_error",
+        "fake_governor"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "productions_service/tests/genai_governor/test_governor.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 151,
+      "classes": [
+        "Flaky"
+      ],
+      "functions": [
+        "test_bucket_spaces_slots_halves_on_quota_and_recovers_slowly",
+        "test_sequential_calls_are_paced_by_the_bucket",
+        "test_retry_after_is_honoured_and_the_model_rate_is_cut",
+        "test_classification",
+        "test_quota_cause_is_found_through_a_wrapping_error",
+        "test_persistent_quota_gives_up_typed_with_attempt_count",
+        "test_transient_gives_up_typed_and_fatal_is_not_retried",
+        "test_empty_responses_are_retried_a_bounded_number_of_times",
+        "test_gate_is_fifo_bounded_and_hands_slots_over_in_order",
+        "test_concurrency_never_exceeds_the_model_limit_under_threads",
+        "test_default_yaml_mirrors_code_defaults"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "productions_service/tests/generalization/test_graph_integrity.py",
       "language": "python",
       "domain_package": "productions_service/tests",
@@ -10851,11 +11076,29 @@
       "endpoints": []
     },
     {
+      "path": "productions_service/tests/keyframes/test_keyframe_resume.py",
+      "language": "python",
+      "domain_package": "productions_service/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 113,
+      "classes": [
+        "ForeignProviderError",
+        "GovernedImages",
+        "QuotaAfter"
+      ],
+      "functions": [
+        "test_plate_failure_records_every_clip_of_the_scene",
+        "test_quota_mid_shot_keeps_done_frames_and_resume_continues_there",
+        "test_forced_regenerate_supersedes_every_set"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "productions_service/tests/keyframes/test_keyframe_stage.py",
       "language": "python",
       "domain_package": "productions_service/tests",
       "tier": "Test Suite",
-      "non_comment_lines": 192,
+      "non_comment_lines": 180,
       "classes": [
         "PngImages"
       ],
@@ -10865,7 +11108,6 @@
         "test_failing_checks_retry_twice_then_flag_manual_edit",
         "test_background_drift_rejected_without_asking_the_vlm",
         "test_provider_error_is_isolated_per_shot",
-        "test_transient_quota_errors_are_retried_with_backoff",
         "test_regenerate_rederives_tail_and_cascades_to_next_clip",
         "test_stored_source_uses_scene_plan_and_ignores_older_plans"
       ],

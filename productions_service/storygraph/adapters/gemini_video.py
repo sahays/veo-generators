@@ -7,6 +7,7 @@ import logging
 import os
 import threading
 import time
+from functools import partial
 from typing import Any
 
 from google import genai
@@ -16,6 +17,7 @@ from google.genai import types
 from ..compile import Package
 from ..config import VideoProviderCfg
 from ..errors import StoryGraphError
+from .governor import ModelCallError, governed
 from .omni.fallback import (
     FallbackRecord,
     LadderStep,
@@ -100,8 +102,11 @@ def _create_omni_interaction(
     errors: list[str] = []
     profile = _profile_for(package)
     for idx, step in enumerate(ladder):
+        request = partial(_send, client, model_id, step.request, fmt_block)
         try:
-            return _send(client, model_id, step.request, fmt_block), idx, errors
+            return governed(model_id, request), idx, errors
+        except ModelCallError:
+            raise  # quota / capacity exhausted: a safer prompt rung would not help
         except Exception as exc:  # provider raises untyped errors
             errors.append(f"{step.level}: {exc}")
             if idx + 1 >= len(ladder):
@@ -224,8 +229,14 @@ class GeminiVideoGenerator:
             negative_prompt=package.negative_prompt or None,
             seed=package.seed,
         )
-        op = client.models.generate_videos(
-            model=model_id, prompt=package.compiled_prompt, config=cfg
+        op = governed(
+            model_id,
+            partial(
+                client.models.generate_videos,
+                model=model_id,
+                prompt=package.compiled_prompt,
+                config=cfg,
+            ),
         )
         deadline = time.time() + 240
         while not op.done and time.time() < deadline:
@@ -252,6 +263,8 @@ class GeminiVideoGenerator:
             )
             if out and len(out) > 256:
                 return out
+        except ModelCallError:
+            raise  # governor give-up: typed, carries attempts
         except Exception as exc:
             raise StoryGraphError(
                 f"GeminiVideoGenerator ({model_id}) failed for shot '{package.shot_id}': {exc}"

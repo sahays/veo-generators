@@ -188,6 +188,48 @@ class AudioCfg(BaseModel):
         return self.mode != "omni"
 
 
+class ModelLimitCfg(BaseModel):
+    """One model's quota envelope: sustained requests/minute, parallel calls, burst."""
+
+    rpm: float = Field(default=60.0, gt=0.0)
+    concurrency: int = Field(default=4, ge=1)
+    burst: int = Field(default=1, ge=1)
+
+
+def _default_model_limits() -> dict[str, ModelLimitCfg]:
+    return {
+        "gemini-nano-banana-2.1": ModelLimitCfg(rpm=20, concurrency=3),
+        "gemini-3.8-flash": ModelLimitCfg(rpm=120, concurrency=8, burst=4),
+        "gemini-omni-1.1-flash-preview": ModelLimitCfg(rpm=10, concurrency=4),
+        "gemini-2.5-flash-tts": ModelLimitCfg(rpm=30, concurrency=4, burst=2),
+    }
+
+
+class GenAIGovernorCfg(BaseModel):
+    """Process-wide GenAI call governor (`adapters/governor`; mirrors default.yaml `genai`)."""
+
+    queue_capacity: int = Field(default=512, ge=1)  # waiting callers per model
+    max_elapsed_s: float = Field(default=600.0, gt=0.0)  # retry budget per call
+    base_backoff_s: float = Field(default=2.0, gt=0.0)
+    max_backoff_s: float = Field(default=60.0, gt=0.0)
+    max_empty_retries: int = Field(default=2, ge=0)  # e.g. image model answered text
+    min_rate_fraction: float = Field(default=0.1, gt=0.0, le=1.0)  # AIMD floor
+    recovery_per_min: float = Field(default=0.1, gt=0.0, le=1.0)  # of nominal rpm
+    throttle_cooldown_s: float = Field(default=5.0, ge=0.0)
+    default: ModelLimitCfg = Field(default_factory=ModelLimitCfg)
+    models: dict[str, ModelLimitCfg] = Field(default_factory=_default_model_limits)
+
+    def limit_for(self, model: str) -> ModelLimitCfg:
+        return self.models.get(model, self.default)
+
+
+class KeyframesCfg(BaseModel):
+    """S8_KEYFRAMES work queue: scenes in parallel (shots/frames inside a scene are chained)."""
+
+    scene_workers: int = Field(default=4, ge=1, le=16)
+    max_retries: int = Field(default=2, ge=0)  # VLM-check regenerations per frame
+
+
 DimensionName = Literal[
     "character_consistency",
     "temporal_consistency",
@@ -279,6 +321,8 @@ class Config(BaseModel):
     caps: CapsCfg = CapsCfg()
     assembly: AssemblyCfg = AssemblyCfg()
     audio: AudioCfg = AudioCfg()
+    genai: GenAIGovernorCfg = Field(default_factory=GenAIGovernorCfg)
+    keyframes: KeyframesCfg = Field(default_factory=KeyframesCfg)
     eval: GateConfig = Field(default_factory=lambda: GateConfig())
 
     @classmethod

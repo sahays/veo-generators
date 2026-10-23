@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from ..errors import StoryGraphError
 from .bounded_cache import BoundedCache, digest
+from .governor import governed
 
 
 class TranscriptSegment(BaseModel):
@@ -94,18 +95,23 @@ class GeminiTranscriber:
             client = genai.Client(
                 vertexai=True, project=self.project, location=self.location
             )
-            resp = client.models.generate_content(
-                model=model,
-                contents=[
-                    types.Part.from_bytes(data=clip_bytes, mime_type="video/mp4"),
-                    prompt,
-                ],
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=TranscriptPayload,
-                    temperature=0.0,
+            contents = [
+                types.Part.from_bytes(data=clip_bytes, mime_type="video/mp4"),
+                prompt,
+            ]
+            config = types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=TranscriptPayload,
+                temperature=0.0,
+            )
+            resp = governed(
+                model,
+                lambda: client.models.generate_content(
+                    model=model, contents=contents, config=config
                 ),
             )
+        except StoryGraphError:
+            raise  # governor give-up (QuotaExhausted / TransientModelError), already typed
         except Exception as exc:
             raise StoryGraphError(f"GeminiTranscriber ({model}) failed: {exc}") from exc
         payload = TranscriptPayload.model_validate_json(resp.text or '{"segments": []}')

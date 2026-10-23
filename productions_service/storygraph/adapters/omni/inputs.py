@@ -228,7 +228,7 @@ def build_omni_request(
         uris.append(label.uri)
     return OmniRequest(
         blocks,
-        _select_task(slots),
+        getattr(package, "omni_task", None) or _select_task(slots),
         tuple(uris),
         bool(slots.first_frame_uri),
         bool(slots.last_frame_uri),

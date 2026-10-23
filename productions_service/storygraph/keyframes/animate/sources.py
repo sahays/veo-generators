@@ -35,7 +35,7 @@ class StoredSource:
         self, inp: PlanInput, plan: KeyframePlan
     ) -> list[RenderedKeyframe] | None:
         ks = self.sets.active_for_shot(plan.shot_id)
-        if ks is None or ks.plan_hash != plan.plan_hash:
+        if ks is None or ks.failure_reason or ks.plan_hash != plan.plan_hash:
             return None
         return [to_rendered(f) for f in ks.frames]
 

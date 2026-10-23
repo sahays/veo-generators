@@ -10,6 +10,7 @@ from google.genai import types
 from pydantic import BaseModel
 
 from ..errors import StoryGraphError
+from .governor import governed
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -41,17 +42,21 @@ class GeminiVLMProvider:
                 types.Part.from_bytes(data=img, mime_type="image/png") for img in images
             ]
             contents.append(prompt)
-            resp = client.models.generate_content(
-                model=self.model,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=schema,
-                    temperature=0.1,
+            config = types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=schema,
+                temperature=0.1,
+            )
+            resp = governed(
+                self.model,
+                lambda: client.models.generate_content(
+                    model=self.model, contents=contents, config=config
                 ),
             )
             if resp.text:
                 return schema.model_validate_json(resp.text)
+        except StoryGraphError:
+            raise  # governor give-up (QuotaExhausted / TransientModelError), already typed
         except Exception as exc:
             raise StoryGraphError(
                 f"GeminiVLMProvider ({self.model}) failed visual review: {exc}"

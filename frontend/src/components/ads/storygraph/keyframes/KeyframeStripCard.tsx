@@ -1,11 +1,12 @@
+import type { ReactNode } from 'react'
 import { AlertOctagon, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Disclosure } from '@/components/ui/disclosure'
 import type { KeyframeStripResponse } from '@/types/keyframes'
-import { summarizeStrip } from './keyframeSummary'
-import { KeyframeThumbRow } from './KeyframeThumbs'
-import { KeyframeFrameRow, KeyframeVersionHistory } from './KeyframeFrameDetail'
+import { stripStatus, summarizeStrip, type StripSummary } from './keyframeSummary'
+import { KeyframeVersionHistory } from './KeyframeFrameDetail'
+import { KeyframeFrameCard } from './KeyframeFrameCard'
 import type { RegenMode } from './KeyframeRegenDialog'
 import type { PendingRegen } from '@/hooks/useKeyframeBoard'
 
@@ -17,59 +18,72 @@ interface KeyframeStripCardProps {
   onAction: (strip: KeyframeStripResponse, t: number, mode: RegenMode) => void
 }
 
-const ManualEditBanner = () => (
-  <div className="flex gap-2 rounded-lg border border-red-500/50 bg-red-500/10 p-2.5 text-xs text-red-300">
-    <AlertOctagon size={14} className="mt-0.5 shrink-0" />
-    <p>Automatic repair gave up on this clip. Review the flagged frames and use <strong>Edit…</strong> to give the keyframe director an instruction.</p>
+const Banner = ({ children }: { children: ReactNode }) => (
+  <div role="alert" className="flex gap-2 rounded-lg border border-red-500/50 bg-red-500/10 p-2.5 text-xs text-red-600 dark:text-red-300">
+    <AlertOctagon size={14} className="mt-0.5 shrink-0" aria-hidden />
+    <p>{children}</p>
   </div>
 )
 
-const FailureBanner = ({ reason }: { reason: string }) => (
-  <div className="flex gap-2 rounded-lg border border-red-500/50 bg-red-500/10 p-2.5 text-xs text-red-300">
-    <AlertOctagon size={14} className="mt-0.5 shrink-0" />
-    <p>Keyframe derivation failed for this clip: <span className="font-mono">{reason}</span>. Re-run S8_KEYFRAMES once the cause is fixed.</p>
-  </div>
-)
+const StripBanner = ({ strip }: { strip: KeyframeStripResponse }) => {
+  if (strip.failure_reason) {
+    return <Banner>Keyframe derivation failed for this clip: <span className="font-mono">{strip.failure_reason}</span>. Use Resume keyframes to retry only the failed clips.</Banner>
+  }
+  if (!strip.needs_manual_edit) return null
+  return <Banner>Automatic repair gave up on this clip. Review the flagged frames and use <strong>Edit…</strong> to give the keyframe director an instruction.</Banner>
+}
 
-const StripTitle = ({ strip }: { strip: KeyframeStripResponse }) => (
-  <span className="flex flex-wrap items-center gap-2">
-    <span className="font-mono text-xs font-bold text-foreground">{strip.shot_id}</span>
-    <span className="font-mono text-[10px] text-muted-foreground">{strip.scene_id} · clip {strip.clip_index}</span>
-    {strip.set_id && <Badge variant="outline">v{strip.version}</Badge>}
-    {strip.needs_manual_edit && <Badge variant="destructive">Needs manual edit</Badge>}
-    {strip.stale && <Badge variant="warning"><Clock size={10} />Stale</Badge>}
-  </span>
-)
+const StripTitle = ({ strip, summary }: { strip: KeyframeStripResponse; summary: StripSummary }) => {
+  const status = stripStatus(strip, summary)
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <span className="font-mono text-sm font-semibold text-foreground">{strip.shot_id}</span>
+      <span className="font-mono text-[11px] text-muted-foreground">{strip.scene_id} · clip {strip.clip_index}</span>
+      {strip.set_id && <Badge variant="outline">v{strip.version}</Badge>}
+      {status && <Badge variant={status.tone}>{status.label}</Badge>}
+      {strip.stale && <Badge variant="warning"><Clock size={10} aria-hidden />Stale</Badge>}
+    </span>
+  )
+}
 
-/** One clip's keyframe strip: collapsed thumbnails + summary, expandable per-frame detail. */
-export const KeyframeStripCard = ({ strip, canWrite, isBusy, pending, onAction }: KeyframeStripCardProps) => {
-  const summary = summarizeStrip(strip)
+/** 3 per row on desktop, 2 on tablet, 1 on mobile. */
+const FrameGrid = ({ strip, canWrite, isBusy, pending, onAction }: KeyframeStripCardProps) => {
+  if (strip.frames.length === 0) return <p className="text-[11px] text-muted-foreground">No keyframes derived for this clip yet.</p>
   const isPendingStrip = pending?.shotId === strip.shot_id
   return (
-    <div className={cn('space-y-2 rounded-2xl border p-3', strip.needs_manual_edit ? 'border-red-500/60 bg-red-500/5 shadow-lg shadow-red-500/10' : 'border-border/70 bg-card/80')}>
-      {strip.failure_reason ? <FailureBanner reason={strip.failure_reason} /> : strip.needs_manual_edit && <ManualEditBanner />}
+    <ol className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {strip.frames.map((f) => (
+        <KeyframeFrameCard
+          key={`${f.t}-${f.asset_id}`} shotId={strip.shot_id} frame={f} stale={strip.stale} canWrite={canWrite}
+          isPending={isPendingStrip && pending?.t === f.t} isBusy={isBusy || pending !== null}
+          onAction={(t, mode) => onAction(strip, t, mode)}
+        />
+      ))}
+    </ol>
+  )
+}
+
+/** One clip: section header + banners, then a responsive grid of large per-second keyframe cards. */
+export const KeyframeStripCard = (props: KeyframeStripCardProps) => {
+  const { strip } = props
+  const summary = summarizeStrip(strip)
+  const attention = strip.needs_manual_edit || Boolean(strip.failure_reason)
+  return (
+    <section className={cn('space-y-3 rounded-2xl border p-3 sm:p-4', attention ? 'border-red-500/60 bg-red-500/5' : 'border-border/70 bg-card/80')}>
+      <StripBanner strip={strip} />
       <Disclosure
-        title={<StripTitle strip={strip} />}
+        title={<StripTitle strip={strip} summary={summary} />}
         summary={<span className="text-[11px] text-muted-foreground">{summary.label}</span>}
-        defaultOpen={strip.needs_manual_edit}
-        contentClassName="space-y-3 pt-3"
+        defaultOpen
+        contentClassName="space-y-4 pt-3"
       >
-        <ol className="space-y-2">
-          {strip.frames.map((f) => (
-            <KeyframeFrameRow
-              key={`${f.t}-${f.asset_id}`}
-              frame={f}
-              stale={strip.stale}
-              canWrite={canWrite}
-              isPending={isPendingStrip && pending?.t === f.t}
-              isBusy={isBusy || pending !== null}
-              onAction={(t, mode) => onAction(strip, t, mode)}
-            />
-          ))}
-        </ol>
-        <KeyframeVersionHistory versions={strip.versions} />
+        <FrameGrid {...props} />
+        {strip.versions.length > 0 && (
+          <Disclosure title={<span className="text-xs text-muted-foreground">Version history</span>} triggerClassName="py-1" contentClassName="pt-1">
+            <KeyframeVersionHistory versions={strip.versions} />
+          </Disclosure>
+        )}
       </Disclosure>
-      {strip.frames.length > 0 ? <KeyframeThumbRow frames={strip.frames} /> : <p className="text-[11px] text-muted-foreground">No keyframes derived for this clip yet.</p>}
-    </div>
+    </section>
   )
 }

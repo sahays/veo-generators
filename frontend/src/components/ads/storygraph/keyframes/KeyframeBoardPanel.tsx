@@ -1,11 +1,11 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Film, Loader2, RefreshCw } from 'lucide-react'
+import { Film, Loader2, RefreshCw, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { KeyframeStripResponse } from '@/types/keyframes'
 import type { StoryGraphStageRun } from '@/types/project'
 import { KEYFRAMES_STAGE } from '../cascade/pipelineStages'
-import { buildSuccessorIndex, keyframeRefreshKey } from './keyframeSummary'
+import { buildSuccessorIndex, keyframeRefreshKey, resumableCount } from './keyframeSummary'
 import { KeyframeRegenDialog, type RegenMode, type RegenTarget } from './KeyframeRegenDialog'
 import { KeyframeStripCard } from './KeyframeStripCard'
 import { useKeyframeBoard, type KeyframeBoardState } from '@/hooks/useKeyframeBoard'
@@ -21,14 +21,69 @@ export interface KeyframeBoardPanelProps {
   onRunKeyframes: () => void
 }
 
-const PanelHeader = ({ hasStrips, canWrite, isBusy, onRunKeyframes }: { hasStrips: boolean; canWrite: boolean; isBusy: boolean; onRunKeyframes: () => void }) => (
-  <div className="flex flex-wrap items-center justify-between gap-2">
-    <div>
-      <p className="flex items-center gap-1.5 text-sm font-semibold text-foreground"><Film size={14} />1 fps Keyframes ({KEYFRAMES_STAGE})</p>
-      <p className="text-xs text-muted-foreground">Each clip is conditioned on its keyframe strip; frame t0 is shared with the previous clip&apos;s last frame.</p>
+interface BoardCounts {
+  hasStrips: boolean
+  resumable: number
+  missingCount: number
+  visibleCount: number
+}
+
+interface PanelHeaderProps {
+  counts: BoardCounts
+  canWrite: boolean
+  isBusy: boolean
+  isResuming: boolean
+  resumeError: string | null
+  onResume: () => void
+  onRunKeyframes: () => void
+}
+
+const PanelHeader = ({
+  counts,
+  canWrite,
+  isBusy,
+  isResuming,
+  resumeError,
+  onResume,
+  onRunKeyframes,
+}: PanelHeaderProps) => (
+  <div className="space-y-1.5">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <p className="flex items-center gap-1.5 text-sm font-semibold text-foreground"><Film size={14} />1 fps Keyframes ({KEYFRAMES_STAGE})</p>
+        <p className="text-xs text-muted-foreground">Each clip is conditioned on its keyframe strip; frame t0 is shared with the previous clip&apos;s last frame.</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {canWrite && counts.resumable > 0 && (
+          <Button
+            variant="primary"
+            size="xs"
+            icon={isResuming ? Loader2 : RotateCcw}
+            disabled={isBusy || isResuming}
+            title="Re-run S8_KEYFRAMES for missing or failed clips only (done frames are reused), then render → QA → assemble"
+            onClick={onResume}
+          >
+            Resume keyframes ({counts.resumable})
+          </Button>
+        )}
+        {canWrite && counts.hasStrips && (
+          <Button
+            variant="outline"
+            size="xs"
+            icon={isBusy ? Loader2 : RefreshCw}
+            disabled={isBusy || isResuming}
+            onClick={onRunKeyframes}
+          >
+            Regenerate all keyframes
+          </Button>
+        )}
+      </div>
     </div>
-    {canWrite && hasStrips && (
-      <Button variant="outline" size="xs" icon={isBusy ? Loader2 : RefreshCw} disabled={isBusy} onClick={onRunKeyframes}>Regenerate all keyframes</Button>
+    {resumeError && <p className="text-xs text-red-400">{resumeError}</p>}
+    {counts.missingCount > 0 && counts.visibleCount > 0 && (
+      <p className="text-xs text-muted-foreground">
+        {counts.missingCount} {counts.missingCount === 1 ? 'clip has' : 'clips have'} no keyframes yet.
+      </p>
     )}
   </div>
 )
@@ -66,15 +121,45 @@ const BoardBody = ({ state, canWrite, isBusy, onRunKeyframes, onAction }: { stat
   )
 }
 
+function useBoardCounts(shots: KeyframeStripResponse[]): BoardCounts {
+  const hasStrips = shots.some((s) => s.frames.length > 0)
+  const resumable = useMemo(() => resumableCount(shots), [shots])
+  const missingCount = useMemo(
+    () => shots.filter((s) => s.frames.length === 0 && s.set_id === null).length,
+    [shots],
+  )
+  const visibleCount = useMemo(
+    () => shots.filter((s) => s.frames.length > 0 || s.set_id !== null).length,
+    [shots],
+  )
+  return { hasStrips, resumable, missingCount, visibleCount }
+}
+
 /** Production-page board of per-shot S8_KEYFRAMES strips with per-frame regenerate / edit. */
-export const KeyframeBoardPanel = ({ productionId, stageRuns, pipelineStatus, canWrite, isBusy, onRunKeyframes }: KeyframeBoardPanelProps) => {
+export const KeyframeBoardPanel = ({
+  productionId,
+  stageRuns,
+  pipelineStatus,
+  canWrite,
+  isBusy,
+  onRunKeyframes,
+}: KeyframeBoardPanelProps) => {
   const state = useKeyframeBoard(productionId, keyframeRefreshKey(stageRuns, pipelineStatus))
   const flow = useRegenFlow(state)
   const successors = useMemo(() => buildSuccessorIndex(state.board?.shots ?? []), [state.board])
-  const hasStrips = (state.board?.shots ?? []).some((s) => s.frames.length > 0)
+  const counts = useBoardCounts(state.board?.shots ?? [])
+
   return (
     <section className="space-y-3 rounded-2xl border border-border/70 bg-card/40 p-4">
-      <PanelHeader hasStrips={hasStrips} canWrite={canWrite} isBusy={isBusy} onRunKeyframes={onRunKeyframes} />
+      <PanelHeader
+        counts={counts}
+        canWrite={canWrite}
+        isBusy={isBusy}
+        isResuming={state.isResuming}
+        resumeError={state.resumeError}
+        onResume={() => void state.resume()}
+        onRunKeyframes={onRunKeyframes}
+      />
       <BoardBody state={state} canWrite={canWrite} isBusy={isBusy} onRunKeyframes={onRunKeyframes} onAction={flow.open} />
       <KeyframeRegenDialog
         target={flow.target}

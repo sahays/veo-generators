@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-import logging
 import os
-import time
 
 from ..audio.voice.media import pcm_to_wav
 from ..errors import StoryGraphError
 from ..omni.voice import language_code
 from ..schemas.voice import VoiceProfile
 from .bounded_cache import BoundedCache, digest
+from .governor import EmptyModelResponse, governed
 
-logger = logging.getLogger(__name__)
 PCM_RATE = 24_000
-MAX_ATTEMPTS = 3
 _LANG_NAMES = {
     "hi": "Hindi",
     "en": "English",
@@ -78,36 +75,21 @@ class GeminiTTSSynthesizer:
         cached = self._cache.get(key)
         if cached is not None:
             return cached
-        pcm = self._call_with_retry(tts_prompt(text, voice, lang, target), voice, lang)
+        pcm = self._request(tts_prompt(text, voice, lang, target), voice, lang)
         if not plausible_length(pcm, text):
-            pcm = self._call_with_retry(
-                text, voice, lang
-            )  # plain text: nothing else to read
+            pcm = self._request(text, voice, lang)  # plain text: nothing else to read
         wav = pcm_to_wav(pcm, PCM_RATE)
         self._cache.put(key, wav)
         return wav
 
-    def _call_with_retry(self, prompt: str, voice: VoiceProfile, lang: str) -> bytes:
-        last: Exception | None = None
-        for attempt in range(1, MAX_ATTEMPTS + 1):
-            try:
-                return self._call(prompt, voice, lang)
-            except Exception as exc:  # noqa: BLE001 - transient quota/5xx; retried
-                last = exc
-                logger.warning(
-                    "Gemini TTS call failed; retrying",
-                    extra={
-                        "who": "storygraph.adapters.gemini_tts",
-                        "where": "GeminiTTSSynthesizer._call",
-                        "what": "tts_retry",
-                        "when": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                        "why": str(exc)[:200],
-                        "how": f"attempt {attempt}/{MAX_ATTEMPTS}",
-                        "voice_name": voice.voice_name,
-                    },
-                )
-                time.sleep(2**attempt)
-        raise StoryGraphError(f"Gemini TTS ({voice.model}) failed: {last}") from last
+    def _request(self, prompt: str, voice: VoiceProfile, lang: str) -> bytes:
+        """One TTS request under the process GenAI governor (shared queue + retry policy)."""
+        try:
+            return governed(voice.model, lambda: self._call(prompt, voice, lang))
+        except StoryGraphError:
+            raise  # QuotaExhausted / TransientModelError / EmptyModelResponse: typed
+        except Exception as exc:
+            raise StoryGraphError(f"Gemini TTS ({voice.model}) failed: {exc}") from exc
 
     def _call(self, prompt: str, voice: VoiceProfile, lang: str) -> bytes:
         from google import genai
@@ -134,5 +116,5 @@ class GeminiTTSSynthesizer:
         part = resp.candidates[0].content.parts[0] if resp.candidates else None
         data = part.inline_data.data if part and part.inline_data else None
         if not data:
-            raise StoryGraphError("Gemini TTS returned no audio")
+            raise EmptyModelResponse(f"Gemini TTS ({voice.model}) returned no audio")
         return data

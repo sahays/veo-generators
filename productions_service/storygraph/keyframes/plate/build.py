@@ -17,7 +17,6 @@ from pydantic import BaseModel, Field
 
 from ...adapters.base import ImageGenerator, VLMProvider
 from ..render.prompts import plate_prompt
-from ..render.retry import with_retry
 from .refboard import compose_board
 from .spec import PlateSpec
 
@@ -117,9 +116,7 @@ class PlateBuilder:
             "For each furniture item report how many separate instances are visible:\n"
             + _names_block(spec)
         )
-        check = with_retry(
-            lambda: self.vlm.review([png], ask, PlateCheck), "plate.check"
-        )
+        check = self.vlm.review([png], ask, PlateCheck)
         return plate_issues(spec, check)
 
     def locate(self, spec: PlateSpec, png: bytes) -> dict[str, float]:
@@ -128,7 +125,7 @@ class PlateBuilder:
             "For each item, report x = its horizontal centre in the image (0 = left edge, "
             "1 = right edge), null if not visible:\n" + _names_block(spec)
         )
-        obs = with_retry(lambda: self.vlm.review([png], ask, LayoutObs), "plate.layout")
+        obs = self.vlm.review([png], ask, LayoutObs)
         by_name = {o.name.lower(): o.entity_id for o in spec.set_pieces}
         return {
             by_name[i.name.lower()]: i.x
@@ -137,11 +134,8 @@ class PlateBuilder:
         }
 
     def _attempt(self, text: str, images: list[bytes], attempt: int) -> bytes:
-        return with_retry(
-            lambda: self.image_gen.generate(
-                text, images, self.aspect_ratio, PLATE_SEED + attempt
-            ),
-            "plate.generate",
+        return self.image_gen.generate(
+            text, images, self.aspect_ratio, PLATE_SEED + attempt
         )
 
     def generate(self, spec: PlateSpec) -> PlateImage:

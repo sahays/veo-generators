@@ -40,6 +40,8 @@ class RenderPackage(Package):
     project_id: str = ""
     visual_style_preset: str = ""
     language: str = ""
+    # Explicit Omni `video_config.task` (e.g. "edit"); None = inferred from the bindings.
+    omni_task: str | None = None
 
 
 def _speaking_ids(view: ShotView) -> set[str]:

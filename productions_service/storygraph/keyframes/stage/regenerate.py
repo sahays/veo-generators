@@ -13,32 +13,20 @@ from ...errors import NotFound, ValidationFailed
 from ...repo.keyframe_sets import KeyframeSetRepo
 from ...schema import Scene, Shot
 from ...schemas.keyframes import KeyframeSet
-from ...shots.repair_state import mark_stale_and_reset
-from ..render.renderer import RenderedKeyframe, RenderJob
-from .frames import to_frame, to_rendered
-from .stage import (
-    KeyframeStageDeps,
-    SceneContext,
-    ensure_shot,
-    flag_manual_edit,
-    scene_context,
-)
-
-
-def _prior(
-    deps: KeyframeStageDeps, ks: KeyframeSet, t: int
-) -> tuple[RenderedKeyframe, ...]:
-    """Kept frames < t; only frame t-1 needs pixels (pose reference for frame t)."""
-    out = [to_rendered(f) for f in ks.frames[:t]]
-    if out:
-        last = ks.frames[t - 1]
-        out[-1] = to_rendered(last, deps.repo.blobs.get_bytes(last.uri))
-    return tuple(out)
+from ..render.renderer import RenderJob
+from .frames import to_frame
+from .outcomes import settle_shot
+from .resume import prior_frames
+from .stage import KeyframeStageDeps, SceneContext, ensure_shot, scene_context
 
 
 def _validate(ks: KeyframeSet | None, plan_hash: str, t: int) -> KeyframeSet:
     if ks is None:
         raise NotFound("no keyframes yet: run S8_KEYFRAMES first")
+    if ks.failure_reason:
+        raise ValidationFailed(
+            [f"keyframes failed ({ks.failure_reason}): resume S8_KEYFRAMES first"]
+        )
     if ks.plan_hash != plan_hash:
         raise ValidationFailed(
             ["keyframes are stale (graph changed): re-run S8_KEYFRAMES"]
@@ -71,7 +59,10 @@ def _rederive(
     inp, plan = sp.inp, sp.plan
     active = _validate(sets.active_for_shot(shot.id), plan.plan_hash, t)
     job = RenderJob(
-        plate=ctx.plate, prior=_prior(deps, active, t), start=t, instruction=instruction
+        plate=ctx.plate,
+        prior=prior_frames(deps.repo, active, t),
+        start=t,
+        instruction=instruction,
     )
     frames = deps.renderer.render(inp, plan, job)
     stored = [
@@ -82,10 +73,7 @@ def _rederive(
 
 
 def _touch(deps: KeyframeStageDeps, shot: Shot, ks: KeyframeSet, why: str) -> None:
-    fresh = mark_stale_and_reset(shot, why)
-    deps.repo.put_shot(fresh)
-    if ks.needs_manual_edit:
-        flag_manual_edit(deps.repo, fresh, ks)
+    settle_shot(deps.repo, deps.repo.get_shot(shot.id) or shot, ks, why)
 
 
 def regenerate_from(

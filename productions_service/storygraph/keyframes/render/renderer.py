@@ -21,11 +21,11 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 
 from ...adapters.base import ImageGenerator, VLMProvider
+from ...errors import StoryGraphError
 from ..plan.models import Keyframe, KeyframePlan, PlanInput
 from ..plate.refboard import compose_board
 from . import prompts
 from .drift import DriftCfg, DriftReport, check_drift
-from .retry import with_retry
 from .sink import KeyframeRecord, KeyframeSink, StoredKeyframe
 from .validation import KeyframeCheck, check_prompt, compare
 
@@ -75,6 +75,19 @@ class RenderJob:
     prior: tuple[RenderedKeyframe, ...] = ()
     start: int = 0
     instruction: str = ""
+    # Human regenerate re-derives frame `start` even when its delta is empty; a resume of a
+    # failed set (False) reuses the previous image for such seconds like a normal derive.
+    regenerate_start: bool = True
+
+
+class RenderInterrupted(StoryGraphError):
+    """Rendering stopped at second `t`; `frames` (all < t) are already stored and reusable."""
+
+    def __init__(
+        self, frames: tuple[RenderedKeyframe, ...], t: int, cause: Exception
+    ) -> None:
+        self.frames, self.t, self.cause = frames, t, cause
+        super().__init__(f"keyframe t={t}: {cause}")
 
 
 @dataclass
@@ -150,9 +163,7 @@ class KeyframeRenderer:
             return _Attempt(png, [f"background drift: {drift.reason}"], drift=drift)
         ask = check_prompt(req.frame, req.drawn, with_previous=req.prev is not None)
         shown = [req.prev, png] if req.prev is not None else [png]
-        check = with_retry(
-            lambda: self.vlm.review(shown, ask, KeyframeCheck), "kf.check"
-        )
+        check = self.vlm.review(shown, ask, KeyframeCheck)
         return _Attempt(png, compare(req.frame, check, req.drawn), drift=drift)
 
     def _checked(self, req: _Request, plate: ScenePlate) -> _Attempt:
@@ -161,11 +172,8 @@ class KeyframeRenderer:
         issues: list[str] = []
         for attempt in range(self.cfg.max_retries + 1):
             text = req.prompt + prompts.retry_suffix(issues)
-            png = with_retry(
-                lambda: self.image_gen.generate(
-                    text, req.images, self.cfg.aspect_ratio, self.cfg.seed + attempt
-                ),
-                "kf.generate",
+            png = self.image_gen.generate(
+                text, req.images, self.cfg.aspect_ratio, self.cfg.seed + attempt
             )
             got = self._judge(req, png, plate)
             issues = got.issues
@@ -206,16 +214,28 @@ class KeyframeRenderer:
             raise ValueError("keyframe rendering requires the scene plate")
         out = _seed_frames(job)
         for frame in plan.keyframes[len(out) :]:
-            if out and not frame.delta and frame.t != job.start:
-                out.append(_reuse(out[-1], frame.t))
-                continue
-            req = self._request(inp, frame, job.plate, out[-1].png if out else None)
-            if frame.t == job.start and job.instruction:
-                req = _with_instruction(req, job.instruction)
-            out.append(
-                self._store(plan, frame, req.prompt, self._checked(req, job.plate))
-            )
+            try:
+                out.append(self._frame(inp, plan, frame, job, out))
+            except Exception as exc:
+                raise RenderInterrupted(tuple(out), frame.t, exc) from exc
         return out
+
+    def _frame(
+        self,
+        inp: PlanInput,
+        plan: KeyframePlan,
+        frame: Keyframe,
+        job: RenderJob,
+        out: list[RenderedKeyframe],
+    ) -> RenderedKeyframe:
+        forced = frame.t == job.start and job.regenerate_start
+        if out and not frame.delta and not forced:
+            return _reuse(out[-1], frame.t)
+        assert job.plate is not None  # checked by `render`
+        req = self._request(inp, frame, job.plate, out[-1].png if out else None)
+        if frame.t == job.start and job.instruction:
+            req = _with_instruction(req, job.instruction)
+        return self._store(plan, frame, req.prompt, self._checked(req, job.plate))
 
 
 def _with_instruction(req: _Request, instruction: str) -> _Request:

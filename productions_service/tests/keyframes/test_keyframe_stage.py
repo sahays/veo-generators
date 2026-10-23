@@ -9,11 +9,11 @@ from conftest import add_clip_shot, seed_valid_graph, set_scene_clips
 from PIL import Image
 from pydantic import BaseModel
 
+from storygraph.adapters.base import ImageGenerator
 from storygraph.adapters.mock import MockVLMProvider
 from storygraph.errors import StoryGraphError, ValidationFailed
 from storygraph.keyframes.animate.sources import StoredSource
 from storygraph.keyframes.plate.build import PlateBuilder
-from storygraph.keyframes.render import retry
 from storygraph.keyframes.render.renderer import KeyframeRenderer, RendererCfg
 from storygraph.keyframes.render.sink import RepoKeyframeSink
 from storygraph.keyframes.render.validation import KeyframeCheck
@@ -84,7 +84,7 @@ def _two_clip_scene(repo: Repo) -> None:
 
 
 def _deps(
-    repo: Repo, images: PngImages, vlm: MockVLMProvider | None = None
+    repo: Repo, images: ImageGenerator, vlm: MockVLMProvider | None = None
 ) -> KeyframeStageDeps:
     vlm = vlm or MockVLMProvider()
     sink = RepoKeyframeSink(repo)
@@ -185,20 +185,6 @@ def test_provider_error_is_isolated_per_shot(tmp_repo: Repo) -> None:
         shot = tmp_repo.get_shot(sid)
         assert shot is not None and shot.needs_manual_edit
         assert shot.manual_edit_reasons[0].startswith("keyframes failed:")
-
-
-def test_transient_quota_errors_are_retried_with_backoff(
-    tmp_repo: Repo, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    sleeps: list[float] = []
-    monkeypatch.setattr(retry.time, "sleep", sleeps.append)
-    base = 8.0  # with_retry default back-off base
-    _two_clip_scene(tmp_repo)
-    quota = [StoryGraphError("429 RESOURCE_EXHAUSTED") for _ in range(2)]
-    images = PngImages(fail={"plate": quota})  # two transient failures, then success
-    result = run_keyframe_stage(_deps(tmp_repo, images))
-    assert sorted(result.rendered) == ["shot_1", "shot_2"] and not result.failed
-    assert images.count("plate") == 3 and sleeps[:2] == [base, base * 2]
 
 
 def test_regenerate_rederives_tail_and_cascades_to_next_clip(tmp_repo: Repo) -> None:

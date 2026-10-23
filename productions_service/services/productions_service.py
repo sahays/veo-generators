@@ -310,8 +310,11 @@ def _execute_requested_stage(pipe: Pipeline, st: Stage, force: bool) -> None:
             approve_gate(pipe.repo, gid, reviewer="auto_mode", notes="Auto-approved")  # type: ignore[arg-type]
     if st == Stage.S4_SHOTS and force:
         _clear_rendered_runs(pipe)
-    if st == Stage.S8_KEYFRAMES and force:
-        st = run_keyframes_cascade(pipe)
+    if st == Stage.S8_KEYFRAMES:
+        next_stage = run_keyframes_cascade(pipe, force)
+        if next_stage is None:
+            return  # resume: cascade already ran S8_RENDER -> S9_QA -> S10_ASSEMBLE
+        st = next_stage
     if st == Stage.S8_RENDER and force:
         _clear_rendered_runs(pipe)
         for sh in pipe.repo.list_shots():

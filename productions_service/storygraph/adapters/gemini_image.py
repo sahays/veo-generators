@@ -9,6 +9,7 @@ from google import genai
 from google.genai import types
 
 from ..errors import StoryGraphError
+from .governor import EmptyModelResponse, governed
 
 
 def _extract_inline_image(resp: Any) -> bytes | None:
@@ -51,21 +52,26 @@ class GeminiImageGenerator:
                 for img_bytes in (reference_images or [])
             ]
             contents.append(f"{prompt} (Aspect ratio: {aspect_ratio})")
-            resp = client.models.generate_content(
-                model=self.model,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    response_modalities=["IMAGE", "TEXT"],
-                    seed=seed,
-                ),
+            config = types.GenerateContentConfig(
+                response_modalities=["IMAGE", "TEXT"], seed=seed
             )
-            img_data = _extract_inline_image(resp)
-            if img_data is not None:
+
+            def request() -> bytes:
+                resp = client.models.generate_content(
+                    model=self.model, contents=contents, config=config
+                )
+                img_data = _extract_inline_image(resp)
+                if img_data is None:
+                    raise EmptyModelResponse(
+                        f"GeminiImageGenerator ({self.model}) returned no image data "
+                        f"for prompt: {prompt[:120]}"
+                    )
                 return img_data
+
+            return governed(self.model, request)
+        except StoryGraphError:
+            raise  # already typed: QuotaExhausted / TransientModelError / EmptyModelResponse
         except Exception as exc:
             raise StoryGraphError(
                 f"GeminiImageGenerator ({self.model}) failed: {exc}"
             ) from exc
-        raise StoryGraphError(
-            f"GeminiImageGenerator ({self.model}) returned no image data for prompt: {prompt[:120]}"
-        )

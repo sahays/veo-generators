@@ -377,8 +377,15 @@ class Pipeline:
             self._compile_and_lint()
             return self._record_stage(st, ihash)
         if st == Stage.S8_KEYFRAMES:
-            cost = run_keyframes_stage(self.repo, self.cfg, self.image_gen, self.vlm)
-            return self._record_stage(st, ihash, cost_usd=cost)
+            kf = run_keyframes_stage(self.repo, self.cfg, self.image_gen, self.vlm)
+            # Failed shots flag the run (banner) but completed shots still cascade.
+            return self._record_stage(
+                st,
+                ihash,
+                cost_usd=kf.cost_usd,
+                error=kf.error,
+                needs_review=kf.error is not None,
+            )
         if st == Stage.S8_RENDER:
             render_and_qa_shots(
                 self.repo, self.cfg, self.video_gen, self.vlm, self.compiled_packages

@@ -46,7 +46,7 @@ def keyframe_refs(
 ) -> list[tuple[int, bytes]]:
     """(t, png) of the shot's active keyframes used as expected state (first, last, ...)."""
     ks = KeyframeSetRepo(repo.store).active_for_shot(shot_id)
-    if ks is None or not ks.frames or max_refs <= 0:
+    if ks is None or ks.failure_reason or not ks.frames or max_refs <= 0:
         return []
     picks = [ks.frames[0], ks.frames[-1]][:max_refs]
     return [(f.t, repo.blobs.get_bytes(f.uri)) for f in picks]

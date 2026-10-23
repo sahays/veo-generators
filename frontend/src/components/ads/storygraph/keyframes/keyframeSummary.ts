@@ -43,6 +43,14 @@ export function parseSharedFrom(ref: string | null): { shotId: string; t: number
   return m ? { shotId: m[1], t: Number(m[2]) } : null
 }
 
+/** Shot-level status chip: failed > needs edit > needs review > approved (`null` = nothing derived yet). */
+export function stripStatus(strip: KeyframeStripResponse, summary: StripSummary): { label: string; tone: BadgeTone } | null {
+  if (strip.failure_reason) return { label: 'Failed', tone: 'destructive' }
+  if (strip.needs_manual_edit || summary.manualEdit > 0) return { label: 'Needs edit', tone: 'destructive' }
+  if (summary.needsReview > 0) return { label: 'Needs review', tone: 'warning' }
+  return summary.total > 0 ? { label: 'Approved', tone: 'success' } : null
+}
+
 /** Highest t in the strip (N), or -1 for an empty strip. */
 export function lastFrameT(strip: KeyframeStripResponse): number {
   return strip.frames.reduce((max, f) => (f.t > max ? f.t : max), -1)
@@ -88,3 +96,12 @@ export function keyframeRefreshKey(stageRuns: StoryGraphStageRun[], pipelineStat
     .map((r) => `${r.id ?? r.created_at ?? ''}:${r.status ?? ''}:${r.completed ? 1 : 0}`)
   return `${pipelineStatus ?? ''}|${runs.join(',')}`
 }
+
+/**
+ * Number of shots that have a failure_reason OR no active set (set_id === null) —
+ * these are what Resume re-derives.
+ */
+export function resumableCount(shots: KeyframeStripResponse[]): number {
+  return shots.filter((s) => Boolean(s.failure_reason && s.failure_reason.trim() !== '') || s.set_id === null).length
+}
+

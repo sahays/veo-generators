@@ -60,7 +60,7 @@ def _roster(spec: OmniClipSpec) -> list[str]:
     )
 
 
-def _dialogue(spec: OmniClipSpec, names: Names) -> list[str]:
+def dialogue_lines(spec: OmniClipSpec, names: Names) -> list[str]:
     lines = [
         f"- {speech_slot(s.after)}, {names.name.get(s.speaker, s.speaker)} "
         f'({lang_name(s.lang)}, {s.voice}): "{s.text}"'
@@ -79,7 +79,7 @@ def render_anchored(
         f"SETTING: {spec.setting.name}",
         f"CAMERA: {camera_phrase(spec.camera, names)}",
         *(["TIMELINE (pass through these states):", *timeline] if timeline else []),
-        *_dialogue(spec, names),
+        *dialogue_lines(spec, names),
     ]
     return "\n".join([_prose(spec, names, state_refs), "", *block, NEGATIVES])
 

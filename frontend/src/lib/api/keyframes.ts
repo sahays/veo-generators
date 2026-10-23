@@ -2,7 +2,7 @@
  * S8_KEYFRAMES client — mirrors `productions_service/services/keyframes_contract.py` 1:1.
  * All calls go server-to-server through `serverApiRequest` (via `request` / `postJson`).
  */
-import { API_BASE_URL, postJson, request } from './core/_http'
+import { API_BASE_URL, postJson, request, type JsonValue } from './core/_http'
 import { KEYFRAME_INSTRUCTION_MAX, type KeyframeBoardResponse, type KeyframeStripResponse, type RegenerateKeyframePayload } from '@/types/keyframes'
 
 export * from '@/types/keyframes'
@@ -28,5 +28,11 @@ export const keyframes = {
       `${shotKeyframesPath(pid, shotId)}/${t}/regenerate`,
       { instruction: (payload.instruction ?? '').slice(0, KEYFRAME_INSTRUCTION_MAX) },
       'Failed to regenerate keyframes',
+    ),
+  resume: (pid: string): Promise<JsonValue> =>
+    postJson<JsonValue>(
+      `${productionPath(pid)}/stages/S8_KEYFRAMES/run?force=false`,
+      {},
+      'Failed to resume keyframes',
     ),
 }
