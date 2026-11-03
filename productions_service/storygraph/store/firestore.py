@@ -211,5 +211,10 @@ class FirestoreStore:
     @contextmanager
     def transaction(self) -> Iterator[Tx]:
         tx = self._db.transaction()
-        with tx:
+        tx._begin()
+        try:
             yield _FirestoreTx(self, tx)
+            tx._commit()
+        except BaseException:
+            tx._rollback()
+            raise

@@ -320,3 +320,38 @@ def test_repo_versioning_append_only_and_staleness_propagation(tmp_repo: Repo) -
     tmp_repo.add_generation_run(run)
     with pytest.raises(AlreadyExists):
         tmp_repo.add_generation_run(run)
+
+
+def test_firestore_store_transaction_starts_commits_and_rolls_back() -> None:
+    """Regression: Firestore `Transaction.__enter__` does not call `_begin()`, so `FirestoreStore.transaction` must."""
+    from unittest.mock import MagicMock
+
+    from google.cloud.firestore_v1 import _helpers
+    from google.cloud.firestore_v1.transaction import Transaction
+    from storygraph.store.firestore import FirestoreStore
+
+    rpc = MagicMock()
+    rpc.begin_transaction.return_value.transaction = b"tx-123"
+    client = MagicMock(
+        _firestore_api=rpc, _database_string="projects/p/databases/(default)"
+    )
+    client.transaction.side_effect = lambda: Transaction(client)
+    doc_ref = client.collection.return_value.document.return_value.collection.return_value.document.return_value
+    doc_ref._document_path = "projects/p/databases/(default)/documents/c/d"
+    rpc.commit.return_value.write_results = []
+    doc_ref.get.side_effect = lambda transaction=None: MagicMock(
+        exists=bool(_helpers.get_transaction_id(transaction)),
+        to_dict=lambda: {"run_id": "old"},
+    )
+    store = FirestoreStore(project_id="p1", client=client)
+
+    with store.transaction() as tx:
+        assert tx.get("meta", "active_job") == {"run_id": "old"}
+        tx.set("meta", "active_job", {"run_id": "new"})
+    assert rpc.begin_transaction.call_count == 1 and rpc.commit.call_count == 1
+
+    with pytest.raises(RuntimeError, match="conflict"):
+        with store.transaction() as tx:
+            assert tx.get("meta", "active_job") == {"run_id": "old"}
+            raise RuntimeError("conflict")
+    assert rpc.rollback.call_count == 1

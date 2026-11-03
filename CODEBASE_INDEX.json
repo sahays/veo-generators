@@ -3848,7 +3848,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 5 (Feature Pages & Domain Views) [ads]",
-      "non_comment_lines": 44,
+      "non_comment_lines": 51,
       "classes": [],
       "functions": [
         "AssemblyReadinessState",
@@ -11633,7 +11633,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 181,
+      "non_comment_lines": 186,
       "classes": [
         "_FirestoreAutoChunkBatch",
         "_FirestoreTx",
@@ -13574,13 +13574,14 @@
       "language": "python",
       "domain_package": "productions_service/tests",
       "tier": "Test Suite",
-      "non_comment_lines": 303,
+      "non_comment_lines": 331,
       "classes": [],
       "functions": [
         "test_store_crud_and_queries",
         "test_store_batches_transactions_and_blobs",
         "test_all_14_node_types_round_trip",
-        "test_repo_versioning_append_only_and_staleness_propagation"
+        "test_repo_versioning_append_only_and_staleness_propagation",
+        "test_firestore_store_transaction_starts_commits_and_rolls_back"
       ],
       "endpoints": []
     },

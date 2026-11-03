@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import type { Project } from '@/types/project'
 import type { AssemblyReadiness } from '@/types/storygraph'
 import { useAdsProjectActions } from '../projects/useAdsProjectActions'
+import { runToCompletion, useRunPoller } from './run/ProductionRunContext'
+
+const ASSEMBLE_STAGE = 'S10_ASSEMBLE'
 
 export interface AssemblyReadinessState {
   readiness: AssemblyReadiness | null
@@ -24,6 +27,7 @@ export function useAssemblyReadiness(
   onGraphUpdated: (snapshot: Project) => void,
 ): AssemblyReadinessState {
   const { projects } = useAdsProjectActions()
+  const poller = useRunPoller()
   const [readiness, setReadiness] = useState<AssemblyReadiness | null>(null)
   const [isAssembling, setIsAssembling] = useState(false)
   const [assembleError, setAssembleError] = useState<string | null>(null)
@@ -43,14 +47,18 @@ export function useAssemblyReadiness(
     setIsAssembling(true)
     setAssembleError(null)
     try {
-      const snapshot = await projects.assembleApprovedShots(productionId, 'approved_only')
+      await runToCompletion(poller, 'Stitch approved shots', ASSEMBLE_STAGE, () =>
+        projects.assembleApprovedShots(productionId, 'approved_only'),
+      )
+      const snapshot = await projects.getStoryGraph(productionId)
       onGraphUpdated(snapshot as unknown as Project)
     } catch (err) {
       setAssembleError(err instanceof Error ? err.message : 'Failed to stitch approved shots')
     } finally {
       setIsAssembling(false)
+      refresh()
     }
-  }, [projects, productionId, onGraphUpdated])
+  }, [poller, projects, productionId, onGraphUpdated, refresh])
 
   return { readiness, isAssembling, assembleError, assembleApprovedOnly, refresh }
 }

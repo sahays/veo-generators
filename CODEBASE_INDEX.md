@@ -441,7 +441,7 @@ workers
 | `frontend/src/components/ads/storygraph/shell/studioStatus.ts` | Tier 5 (Feature Pages & Domain Views) [ads] | 73 | `StepState`, `ChipTone`, `StatusChip`, `StudioRunState`, `deriveStepState`, `firstOpenStep` (+4) |
 | `frontend/src/components/ads/storygraph/shell/useStudioController.ts` | Tier 5 (Feature Pages & Domain Views) [ads] | 94 | `StudioTab`, `StudioControllerInput`, `useStudioController` |
 | `frontend/src/components/ads/storygraph/storyGraphStudioTypes.ts` | Tier 5 (Feature Pages & Domain Views) [ads] | 256 | `ActiveStepId`, `DesignFilter`, `CompiledShotPreview`, `SelectedInspectorItem`, `StudioLayoutOrientation`, `MacroStepCardDef` (+4) |
-| `frontend/src/components/ads/storygraph/useAssemblyReadiness.ts` | Tier 5 (Feature Pages & Domain Views) [ads] | 44 | `AssemblyReadinessState`, `useAssemblyReadiness` |
+| `frontend/src/components/ads/storygraph/useAssemblyReadiness.ts` | Tier 5 (Feature Pages & Domain Views) [ads] | 51 | `AssemblyReadinessState`, `useAssemblyReadiness` |
 | `frontend/src/components/ads/studio/CreatableSelect.tsx` | Tier 5 (Feature Pages & Domain Views) [ads] | 248 | `CreatableSelect` |
 | `frontend/src/components/ads/studio/CreativeSettings.tsx` | Tier 5 (Feature Pages & Domain Views) [ads] | 80 | `CreativeSettings` |
 | `frontend/src/components/ads/studio/ErrorBadge.tsx` | Tier 5 (Feature Pages & Domain Views) [ads] | 54 | `ErrorBadge` |
@@ -954,7 +954,7 @@ workers
 | `productions_service/storygraph/state.py` | Tier 2 (Core Services & Deps) | 184 | `_Replay`, `normalize_scene_timeline`, `rebuild_state_facts`, `state_at`, `state_before`, `holders_at` (+2) |
 | `productions_service/storygraph/store/base.py` | Tier 2 (Core Services & Deps) | 47 | `BatchWriter`, `Tx`, `GraphStore`, `BlobStore` |
 | `productions_service/storygraph/store/codec.py` | Tier 2 (Core Services & Deps) | 24 | `check_doc_size`, `encode`, `decode` |
-| `productions_service/storygraph/store/firestore.py` | Tier 2 (Core Services & Deps) | 181 | `_FirestoreAutoChunkBatch`, `_FirestoreTx`, `FirestoreStore` |
+| `productions_service/storygraph/store/firestore.py` | Tier 2 (Core Services & Deps) | 186 | `_FirestoreAutoChunkBatch`, `_FirestoreTx`, `FirestoreStore` |
 | `productions_service/storygraph/store/gcs.py` | Tier 2 (Core Services & Deps) | 144 | `LocalBlobStore`, `GcsBlobStore` |
 | `productions_service/storygraph/store/memory.py` | Tier 2 (Core Services & Deps) | 117 | `_MemoryBatch`, `_MemoryTx`, `MemoryStore`, `apply_query` |
 | `productions_service/storygraph/store/url_signing.py` | Tier 2 (Core Services & Deps) | 55 | `SignedUrlCache`, `sign_many`, `sign_all` |
@@ -1071,7 +1071,7 @@ workers
 | `productions_service/tests/test_retry_rewrite.py` | Test Suite | 109 | `test_towel_failure_becomes_named_target_state_without_failure_words`, `test_unclassified_reason_uses_llm_only_when_output_is_positive`, `test_context_from_view_resolves_holder_and_flag_actor_suffix`, `test_render_stage_retry_context_feeds_rewritten_targets` |
 | `productions_service/tests/test_shot_invalidation.py` | Test Suite | 195 | `rendered`, `test_changed_content_marks_stale_and_s8_rerenders`, `test_unchanged_content_keeps_approved_run_and_skips_render`, `test_unchanged_content_preserves_upstream_staleness`, `test_readiness_blocks_approved_run_from_older_content`, `test_readiness_blocks_stale_shot_even_with_matching_run` (+2) |
 | `productions_service/tests/test_state_and_validate.py` | Test Suite | 134 | `test_state_engine_intervals_and_valid_graph`, `test_validator_rules_v1_through_v4`, `test_validator_rules_v5_and_v10_v12`, `test_validator_rules_v6_through_v13` |
-| `productions_service/tests/test_store_and_schema.py` | Test Suite | 303 | `test_store_crud_and_queries`, `test_store_batches_transactions_and_blobs`, `test_all_14_node_types_round_trip`, `test_repo_versioning_append_only_and_staleness_propagation` |
+| `productions_service/tests/test_store_and_schema.py` | Test Suite | 331 | `test_store_crud_and_queries`, `test_store_batches_transactions_and_blobs`, `test_all_14_node_types_round_trip`, `test_repo_versioning_append_only_and_staleness_propagation`, `test_firestore_store_transaction_starts_commits_and_rolls_back` |
 | `productions_service/tests/test_storygraph_presets_and_verifier.py` | Test Suite | 385 | `test_presets_catalog_and_director_auto_binding`, `test_verify_storygraph_and_stage_qa_remediation`, `test_sublocation_event_effects_remediation`, `test_physical_causality_and_backward_prop_liveness_closure`, `test_critic_physics_and_permanence_qa_rejection`, `test_auto_mode_and_iterative_agent_review_redo_before_render` (+1) |
 | `productions_service/tests/test_storygraph_remediation.py` | Test Suite | 393 | `test_story_order_alignment`, `test_dialogue_partitioning_and_speaker_binding`, `test_compile_budget_preserves_identity_and_props`, `test_first_frame_slot_reservation_and_ordering`, `test_spatial_blocking_deduplication_and_continuity`, `test_critic_rejects_missing_character_and_low_scores` |
 | `productions_service/tests/test_storygraph_suite.py` | Test Suite | 277 | `test_end_to_end_pipeline_gates_retries_and_idempotency`, `test_budget_exceeded_cap`, `test_fastapi_productions_service_endpoints`, `test_epic_name_normalization_hindi_dialogue_and_deduplication`, `test_firestore_doc_preset_seeding_and_sync`, `test_draft_360p_vs_final_720p_compilation` |
