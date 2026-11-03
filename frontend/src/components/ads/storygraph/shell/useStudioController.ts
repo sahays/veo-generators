@@ -18,10 +18,12 @@ export interface StudioControllerInput {
   actions: ReturnType<typeof useStoryGraphStudioActions>
   stageMaps: ReturnType<typeof deriveStageAndGateMaps>
   cards: MacroStepCardDef[]
+  /** Step to open on mount (deep link, e.g. `/productions/:id/previz`); defaults to the first open step. */
+  initialStep?: ActiveStepId
 }
 
-function useStepExpansion(cards: MacroStepCardDef[], completed: Set<string>) {
-  const [activeStep, setActiveStep] = useState<ActiveStepId | null>(() => firstOpenStep(cards, completed))
+function useStepExpansion(cards: MacroStepCardDef[], completed: Set<string>, initialStep?: ActiveStepId) {
+  const [activeStep, setActiveStep] = useState<ActiveStepId | null>(() => initialStep ?? firstOpenStep(cards, completed))
   const [expandAll, setExpandAll] = useState(false)
   const isExpanded = useCallback((id: ActiveStepId) => expandAll || activeStep === id, [expandAll, activeStep])
   const toggle = useCallback((id: ActiveStepId, open: boolean) => {
@@ -33,6 +35,8 @@ function useStepExpansion(cards: MacroStepCardDef[], completed: Set<string>) {
     setActiveStep(id)
     requestAnimationFrame(() => document.getElementById(`step-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }, [])
+  const deepLinkRef = useRef(initialStep)
+  useEffect(() => { if (deepLinkRef.current) focus(deepLinkRef.current) }, [focus])
   return { isExpanded, toggle, focus, expandAll, setExpandAll }
 }
 
@@ -74,7 +78,7 @@ function buildMenu(i: StudioControllerInput, exp: ReturnType<typeof useStepExpan
 /** View-model for the studio shell: status, primary action, step states, menu, expansion. */
 export function useStudioController(i: StudioControllerInput) {
   const [tab, setTab] = useState<StudioTab>('pipeline')
-  const exp = useStepExpansion(i.cards, i.stageMaps.completedStages)
+  const exp = useStepExpansion(i.cards, i.stageMaps.completedStages, i.initialStep)
   const runState = buildRunState(i)
   const hasFinalCut = !!i.finalVideoUrl
   const nextAction = deriveNextAction(runState, {

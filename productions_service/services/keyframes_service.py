@@ -135,7 +135,7 @@ def get_keyframe_board(project_id: str) -> dict[str, Any]:
 
 
 def regenerate_shot_keyframe(
-    project_id: str, shot_id: str, t: int, body: RegenerateKeyframePayload | None
+    project_id: str, shot_id: str, t: float, body: RegenerateKeyframePayload | None
 ) -> dict[str, Any]:
     """Re-derive frames t..N of the shot (+ later clips of the scene); render goes stale."""
     pipe = build_pipeline(project_id)

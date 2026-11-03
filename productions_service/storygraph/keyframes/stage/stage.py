@@ -24,6 +24,7 @@ from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from ... import progress
 from ...adapters.governor import call_scope
 from ...repo import Repo
 from ...repo.keyframe_sets import KeyframeSetRepo
@@ -161,7 +162,11 @@ def ensure_shot(
         return active, False
     keep = resume_point(active, sp.plan, prev, ctx.plate.asset_id)
     frames = deps.renderer.render(sp.inp, sp.plan, _job(deps, ctx, active, keep, prev))
-    why = f"{STAGE} resume from t={keep}" if keep else f"{STAGE} derive"
+    why = (
+        f"{STAGE} resume from t={sp.plan.keyframes[keep].t:g}"
+        if keep
+        else f"{STAGE} derive"
+    )
     draft = build_set(shot, sp.plan, frames, deps.max_retries, why, ctx.plate.asset_id)
     ks = sets.create(draft)
     stale = f"keyframes re-derived ({STAGE})" if ks.version > 1 else None
@@ -188,7 +193,7 @@ def _shot_failed(
 ) -> str:
     cause = exc.cause if isinstance(exc, RenderInterrupted) else exc
     partial = _partial(deps, ctx, shot, exc)
-    where = f"at t={exc.t}: " if isinstance(exc, RenderInterrupted) else ""
+    where = f"at t={exc.t:g}: " if isinstance(exc, RenderInterrupted) else ""
     return record_failure(deps.repo, shot, where + failure_text(cause), partial)
 
 
@@ -202,6 +207,10 @@ def _run_shots(deps: KeyframeStageDeps, ctx: SceneContext) -> KeyframeStageResul
                 prev = None  # the next clip starts from a fresh frame 0
                 out.failed[sp.shot.id] = _shot_failed(deps, ctx, sp.shot, exc)
                 continue
+            finally:  # settled either way: async-run progress counts its planned frames
+                progress.advance(
+                    deps.repo.project_id, len(sp.plan.keyframes), sp.shot.id
+                )
         (out.rendered if rendered else out.reused).append(sp.shot.id)
         if prev.needs_manual_edit:
             out.manual_edit.append(sp.shot.id)
@@ -232,7 +241,11 @@ def run_scene(deps: KeyframeStageDeps, scene: Scene) -> KeyframeStageResult:
         except Exception as exc:  # noqa: BLE001 - per-scene isolation boundary
             reason = f"scene plate failed: {failure_text(exc)}"
             return _fail_rest(deps, scene, set(), reason)
-    return _run_shots(deps, ctx) if ctx is not None else KeyframeStageResult()
+    if ctx is None:
+        return KeyframeStageResult()
+    planned = sum(len(sp.plan.keyframes) for sp in ctx.plans.values())
+    progress.add_total(deps.repo.project_id, planned, "frames")
+    return _run_shots(deps, ctx)
 
 
 def _guarded(deps: KeyframeStageDeps, scene: Scene) -> KeyframeStageResult:

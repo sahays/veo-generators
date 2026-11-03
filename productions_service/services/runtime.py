@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 import os
 from datetime import UTC, datetime
+from functools import lru_cache
 
+from google.cloud import firestore
 from storygraph.config import Config
 from storygraph.pipeline import Pipeline
 from storygraph.presets import resolve_production_presets
@@ -24,9 +26,21 @@ logger = logging.getLogger(__name__)
 MEMORY_PROJECT_INDEX: set[str] = set()
 
 
+@lru_cache(maxsize=1)
+def _base_config() -> Config:
+    """Parsed `default.yaml` (~12 ms to parse + validate), loaded once per process."""
+    return Config.load()
+
+
+@lru_cache(maxsize=4)
+def _firestore_client(gcp_project: str, database: str) -> firestore.Client:
+    """One thread-safe client per process: reuses auth + the gRPC channel across requests."""
+    return firestore.Client(project=gcp_project, database=database)
+
+
 def load_runtime_config() -> Config:
     """Load StoryGraph configuration with Cloud Run / environment variable overrides."""
-    cfg = Config.load()
+    cfg = _base_config().model_copy(deep=True)
     is_cloud_run = bool(os.getenv("K_SERVICE"))
     has_gcp = is_cloud_run and bool(os.getenv("GOOGLE_CLOUD_PROJECT"))
     default_store = "firestore" if has_gcp else cfg.store.backend
@@ -51,24 +65,34 @@ def load_runtime_config() -> Config:
     return cfg
 
 
-def _build_store_and_blobs(
-    project_id: str, cfg: Config
-) -> tuple[FirestoreStore | MemoryStore, GcsBlobStore | LocalBlobStore]:
-    """Instantiate the configured GraphStore and BlobStore backends for a project."""
+def _graph_store(project_id: str, cfg: Config) -> FirestoreStore | MemoryStore:
+    """The configured GraphStore for a project (shared Firestore client)."""
     if cfg.store.backend == "firestore" and cfg.store.firestore_project:
-        store: FirestoreStore | MemoryStore = FirestoreStore(
+        return FirestoreStore(
             project_id=project_id,
             gcp_project=cfg.store.firestore_project,
             database=cfg.store.firestore_database,
             collection_prefix=cfg.store.collection_prefix,
             max_doc_bytes=cfg.store.max_doc_bytes,
+            client=_firestore_client(
+                cfg.store.firestore_project, cfg.store.firestore_database
+            ),
         )
-    else:
-        store = MemoryStore(
-            project_id=project_id,
-            max_doc_bytes=cfg.store.max_doc_bytes,
-            shared=True,
-        )
+    return MemoryStore(
+        project_id=project_id, max_doc_bytes=cfg.store.max_doc_bytes, shared=True
+    )
+
+
+def get_graph_store(project_id: str) -> FirestoreStore | MemoryStore:
+    """GraphStore only (no blobs, no legacy auto-seed reads): for cheap status reads."""
+    return _graph_store(project_id, load_runtime_config())
+
+
+def _build_store_and_blobs(
+    project_id: str, cfg: Config
+) -> tuple[FirestoreStore | MemoryStore, GcsBlobStore | LocalBlobStore]:
+    """Instantiate the configured GraphStore and BlobStore backends for a project."""
+    store = _graph_store(project_id, cfg)
     if cfg.blobs.backend == "gcs" and cfg.blobs.gcs_bucket:
         blobs: GcsBlobStore | LocalBlobStore = GcsBlobStore(
             bucket_name=cfg.blobs.gcs_bucket,

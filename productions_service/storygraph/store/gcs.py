@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Iterable
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlparse
 
 import google.auth
+import google.auth.credentials
 from google.auth.transport import requests as auth_requests
 from google.cloud import storage
 
@@ -16,6 +18,19 @@ from .url_signing import SIGN_EXPIRATION_MINUTES, SignedUrlCache, sign_many
 
 # Process-wide: URIs embed the bucket, so one cache safely serves every project/instance.
 _SIGNED_URLS = SignedUrlCache()
+
+
+@lru_cache(maxsize=1)
+def _shared_client() -> storage.Client:
+    """One storage client per process (a store is built per request; auth + HTTP pool reused)."""
+    return storage.Client()
+
+
+@lru_cache(maxsize=1)
+def _shared_credentials() -> google.auth.credentials.Credentials:
+    """Process-wide ADC: the access token used for IAM URL signing is refreshed once per expiry."""
+    creds, _ = google.auth.default()
+    return creds
 
 
 class LocalBlobStore:
@@ -69,9 +84,9 @@ class GcsBlobStore:
         self.bucket_name = bucket_name
         self.project_id = project_id
         self.prefix = prefix.strip("/")
-        self._client = client or storage.Client()
+        self._client = client or _shared_client()
         self._bucket = self._client.bucket(bucket_name)
-        self._credentials, _ = google.auth.default()
+        self._credentials = _shared_credentials()
 
     def _blob_path(self, rel_path: str) -> str:
         clean_rel = rel_path.lstrip("/")

@@ -20,7 +20,21 @@ from .resume import prior_frames
 from .stage import KeyframeStageDeps, SceneContext, ensure_shot, scene_context
 
 
-def _validate(ks: KeyframeSet | None, plan_hash: str, t: int) -> KeyframeSet:
+TIME_EPS = 1e-3  # keyframe times are rounded to milliseconds
+
+
+def frame_index(ks: KeyframeSet, t: float) -> int:
+    """Index of the frame at clip time `t` (a set holds only a handful of frames)."""
+    for idx, frame in enumerate(ks.frames):
+        if abs(frame.t - t) <= TIME_EPS:
+            return idx
+    times = ", ".join(f"{f.t:g}" for f in ks.frames)
+    raise ValidationFailed([f"no keyframe at t={t:g} (keyframes at {times})"])
+
+
+def _validate(
+    ks: KeyframeSet | None, plan_hash: str, t: float
+) -> tuple[KeyframeSet, int]:
     if ks is None:
         raise NotFound("no keyframes yet: run S8_KEYFRAMES first")
     if ks.failure_reason:
@@ -31,15 +45,14 @@ def _validate(ks: KeyframeSet | None, plan_hash: str, t: int) -> KeyframeSet:
         raise ValidationFailed(
             ["keyframes are stale (graph changed): re-run S8_KEYFRAMES"]
         )
-    if not 0 <= t < len(ks.frames):
-        raise ValidationFailed([f"t={t} outside 0..{len(ks.frames) - 1}"])
-    if t == 0 and ks.frames[0].shared_from:
+    idx = frame_index(ks, t)
+    if idx == 0 and ks.frames[0].shared_from:
         raise ValidationFailed(
             [
                 f"frame 0 is shared with {ks.frames[0].shared_from}: edit that clip's last frame"
             ]
         )
-    return ks
+    return ks, idx
 
 
 def _context(deps: KeyframeStageDeps, scene: Scene) -> SceneContext:
@@ -50,25 +63,25 @@ def _context(deps: KeyframeStageDeps, scene: Scene) -> SceneContext:
 
 
 def _rederive(
-    deps: KeyframeStageDeps, ctx: SceneContext, shot: Shot, t: int, instruction: str
+    deps: KeyframeStageDeps, ctx: SceneContext, shot: Shot, t: float, instruction: str
 ) -> KeyframeSet:
     sets = KeyframeSetRepo(deps.repo.store)
     sp = ctx.plans.get(shot.id)
     if sp is None:
         raise NotFound(f"shot {shot.id} is not a clip")
     inp, plan = sp.inp, sp.plan
-    active = _validate(sets.active_for_shot(shot.id), plan.plan_hash, t)
+    active, idx = _validate(sets.active_for_shot(shot.id), plan.plan_hash, t)
     job = RenderJob(
         plate=ctx.plate,
-        prior=prior_frames(deps.repo, active, t),
-        start=t,
+        prior=prior_frames(deps.repo, active, idx),
+        start=idx,
         instruction=instruction,
     )
     frames = deps.renderer.render(inp, plan, job)
     stored = [
         to_frame(rk, plan.at(rk.t), deps.max_retries, human=rk.t >= t) for rk in frames
     ]
-    stored[:t] = active.frames[:t]
+    stored[:idx] = active.frames[:idx]
     return sets.replace_frames(active, stored, f"human regenerate from t={t}")
 
 
@@ -79,7 +92,7 @@ def _touch(deps: KeyframeStageDeps, shot: Shot, ks: KeyframeSet, why: str) -> No
 def regenerate_from(
     deps: KeyframeStageDeps,
     shot_id: str,
-    t: int,
+    t: float,
     instruction: str = "",
     reset_repair: bool = True,
 ) -> KeyframeSet:

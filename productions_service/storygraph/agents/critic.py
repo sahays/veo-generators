@@ -151,7 +151,7 @@ def _keyframe_state_refs(repo: Repo, shot_id: str) -> list[LabelledRef]:
     """Approved S8 keyframes as expected-state ground truth (object counts, wardrobe, layout)."""
     return [
         LabelledRef(
-            label=f"expected state keyframe at t={t}s of this clip (exact object counts, "
+            label=f"expected state keyframe at t={t:g}s of this clip (exact object counts, "
             "outfits and positions; ground truth, not part of the clip)",
             kind="setting",
             png=png,

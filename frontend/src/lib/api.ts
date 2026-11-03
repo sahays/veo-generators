@@ -24,6 +24,7 @@ import { promo } from './api/endpoints/promo'
 import { reframe } from './api/endpoints/reframe'
 import { thumbnails } from './api/endpoints/thumbnails'
 import { uploads } from './api/endpoints/uploads'
+import { runs } from './api/runs'
 
 export type {
   DubLanguage,
@@ -71,6 +72,7 @@ export const api = {
   models,
   pricing,
   avatars,
+  runs,
 }
 
 // Build a wss:// URL for the v2 live session, with the invite code in the

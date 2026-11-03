@@ -43,7 +43,7 @@ class StoredSource:
 def shared_copy(last: RenderedKeyframe, from_shot: str) -> RenderedKeyframe:
     """`last` (frame N of the previous clip) re-labelled as frame 0 of the next clip."""
     return replace(
-        last, t=0, attempts=0, reused=True, shared_from=f"{from_shot}@t{last.t:02d}"
+        last, t=0, attempts=0, reused=True, shared_from=f"{from_shot}@t{last.t:g}"
     )
 
 

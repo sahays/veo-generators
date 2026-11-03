@@ -16,6 +16,9 @@ const AGENTS_SERVICE_ORIGIN =
 const PRODUCTIONS_SERVICE_ORIGIN =
   process.env.PRODUCTIONS_SERVICE_ORIGIN || FASTAPI_INTERNAL_ORIGIN
 
+/** Lightweight async-run status (`GET /api/v1/productions/{id}/status`), owned by the productions service. */
+const PRODUCTIONS_STATUS_ROUTE = /^\/api\/v1\/productions\/[^/]+\/status(?=$|\?)/
+
 function resolveTargetUrl(path: string): string {
   if (path.startsWith('http')) {
     return path
@@ -28,13 +31,15 @@ function resolveTargetUrl(path: string): string {
 
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   const isStoryGraphRoute =
-    /^\/api\/v1\/productions\/[^/]+\/(graph|run|stages\/|gates\/|appearances\/|shots\/|(keyframes|assemble|assembly-readiness)(?=$|[/?]))/.test(
+    /^\/api\/v1\/productions\/[^/]+\/(graph|run|stages\/|gates\/|appearances\/|shots\/|(keyframes|assemble|assembly-readiness|previz)(?=$|[/?]))/.test(
       normalizedPath,
     )
+
+  const isProductionsStatusRoute = PRODUCTIONS_STATUS_ROUTE.test(normalizedPath)
   const targetOrigin =
     normalizedPath === '/api/v1/chat'
       ? agentsOrigin
-      : isStoryGraphRoute
+      : isStoryGraphRoute || isProductionsStatusRoute
         ? productionsOrigin
         : fastapiOrigin
   return `${targetOrigin}${normalizedPath}`

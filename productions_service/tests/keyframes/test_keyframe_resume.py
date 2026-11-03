@@ -107,16 +107,17 @@ def test_quota_mid_shot_keeps_done_frames_and_resume_continues_there(
     tmp_repo: Repo,
 ) -> None:
     _two_clip_scene(tmp_repo)
-    images = QuotaAfter(ok=3)
+    images = QuotaAfter(ok=1)  # clip start renders, the first event keyframe hits quota
     first = _run(tmp_repo, images)
     assert sorted(first.failed) == list(SHOTS)
     failed = _sets(tmp_repo).active_for_shot("shot_1")
     assert failed is not None and failed.frames and failed.plan_hash
     kept = len(failed.frames)
-    assert failed.failure_reason.startswith(f"at t={kept}: quota exhausted after")
     scene, shot = tmp_repo.get_scene("scn_1"), tmp_repo.get_shot("shot_1")
     assert scene is not None and shot is not None
     inp, plan = shot_plan(tmp_repo, scene, shot)
+    stop = plan.keyframes[kept].t  # event time of the interrupted keyframe
+    assert failed.failure_reason.startswith(f"at t={stop:g}: quota exhausted after")
     assert StoredSource(tmp_repo).frames(inp, plan) is None  # partial never renders
 
     images.restore()
@@ -127,7 +128,7 @@ def test_quota_mid_shot_keeps_done_frames_and_resume_continues_there(
     assert [f.asset_id for f in one.frames[:kept]] == [
         f.asset_id for f in failed.frames
     ]
-    assert one.reason == f"S8_KEYFRAMES resume from t={kept}"
+    assert one.reason == f"S8_KEYFRAMES resume from t={stop:g}"
     assert two.frames[0].asset_id == one.frames[-1].asset_id  # chain restored
     assert images.count("plate") == 1  # plate reused on resume
     for sid in SHOTS:

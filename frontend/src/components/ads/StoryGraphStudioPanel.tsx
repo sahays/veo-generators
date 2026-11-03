@@ -6,6 +6,7 @@ import {
   deriveEntityAndAssetMaps,
   useMacroStepCards,
   useStoryGraphStudioActions,
+  type ActiveStepId,
   type DesignFilter,
   type SelectedInspectorItem,
 } from './storygraph/storyGraphStudioTypes'
@@ -18,6 +19,8 @@ import { StudioStepAccordion } from './storygraph/shell/StudioStepAccordion'
 import { StudioAdvancedPanel } from './storygraph/shell/StudioAdvancedPanel'
 import { renderStepSection, type StepSectionContext } from './storygraph/shell/stepSections'
 import { useStudioController, type StudioTab } from './storygraph/shell/useStudioController'
+import { ProductionRunContext, useRunPollerInstance } from './storygraph/run/ProductionRunContext'
+import { useRunSnapshotSync } from './storygraph/run/useRunSnapshotSync'
 
 interface StoryGraphStudioPanelProps {
   productionId: string
@@ -39,6 +42,8 @@ interface StoryGraphStudioPanelProps {
   usage?: ReactNode
   onBack?: () => void
   onEditBrief?: () => void
+  /** Step to open on mount (route deep link). */
+  initialStep?: ActiveStepId
 }
 
 type Controller = ReturnType<typeof useStudioController>
@@ -112,13 +117,16 @@ export const StoryGraphStudioPanel = (props: StoryGraphStudioPanelProps) => {
   const [designFilter, setDesignFilter] = useState<DesignFilter>('all')
   const [selectedItem, setSelectedItem] = useState<SelectedInspectorItem | null>(null)
   const baseMaps = deriveStageAndGateMaps(props.storyGraph, props.blockedGate, props.pipelineStatus, props.pipelineError, null)
-  const actions = useStoryGraphStudioActions(props.productionId, props.onGraphUpdated, baseMaps.completedStages)
+  // One status poller per mounted studio: every async (202) run is started and tracked through it.
+  const poller = useRunPollerInstance(props.productionId)
+  useRunSnapshotSync(poller, props.productionId, props.onGraphUpdated)
+  const actions = useStoryGraphStudioActions(props.productionId, props.onGraphUpdated, baseMaps.completedStages, poller)
   const stageMaps = deriveStageAndGateMaps(props.storyGraph, props.blockedGate, props.pipelineStatus, props.pipelineError, actions.errorMsg)
   const entityMaps = deriveEntityAndAssetMaps(props.storyGraph, designFilter)
   const cards = useMacroStepCards(props.storyGraph, entityMaps, props.finalVideoUrl)
   const ctrl = useStudioController({
     storyGraph: props.storyGraph, pipelineStatus: props.pipelineStatus, finalVideoUrl: props.finalVideoUrl, renderQuality: props.renderQuality,
-    canWrite: props.canWrite, onEditBrief: props.onEditBrief, actions, stageMaps, cards,
+    canWrite: props.canWrite, onEditBrief: props.onEditBrief, actions, stageMaps, cards, initialStep: props.initialStep,
   })
   useAutoStart(props, stageMaps.completedStages.size, actions.handleRunForward)
   const ctx: StepSectionContext = {
@@ -126,5 +134,9 @@ export const StoryGraphStudioPanel = (props: StoryGraphStudioPanelProps) => {
     finalVideoUrl: props.finalVideoUrl, renderQuality: props.renderQuality, videoResolution: props.videoResolution, onGraphUpdated: props.onGraphUpdated,
     actions, entityMaps, designFilter, setDesignFilter, selectedItem, setSelectedItem,
   }
-  return <StudioWorkspace props={props} ctrl={ctrl} ctx={ctx} stageMaps={stageMaps} />
+  return (
+    <ProductionRunContext.Provider value={poller}>
+      <StudioWorkspace props={props} ctrl={ctrl} ctx={ctx} stageMaps={stageMaps} />
+    </ProductionRunContext.Provider>
+  )
 }

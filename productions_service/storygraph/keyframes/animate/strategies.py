@@ -1,11 +1,11 @@
 """Omni request packages for the keyframe render strategies (pure).
 
-* keyframe_interp: one package per segment `(a, b)` with `<FIRST_FRAME>` = keyframe `a`,
-  `<LAST_FRAME>` = keyframe `b`, duration `b - a`, and a prompt naming only the motion of the
+* keyframe_interp: one package per segment `(a, b)` of keyframe indices with `<FIRST_FRAME>` =
+  keyframe `a`, `<LAST_FRAME>` = keyframe `b`, duration `t_b - t_a`, and a prompt naming only the motion of the
   beats active inside the segment;
 * keyframe_anchored (D1): ONE package per clip, `<FIRST_FRAME>` = keyframe 0, `<LAST_FRAME>` =
-  keyframe N, evenly spaced middle keyframes as timed `IMAGE_REF_k` *state references* (as many
-  as the image cap allows) and a short spec prompt (images carry identity/wardrobe/props);
+  keyframe N, the middle (event) keyframes as timed `IMAGE_REF_k` *state references* (evenly
+  thinned when they exceed the image cap) and a short spec prompt (images carry identity/wardrobe/props);
 * keyframe_anchored_text (D2): first/last keyframes only; the middle states become timeline
   text derived from the plan (no middle images, so nothing can be flashed in as an insert);
 * animatic_edit: one package whose `<VIDEO_0>` is the 1 fps animatic, with a short "animate
@@ -23,7 +23,8 @@ from ...adapters.omni.package import RefLabel, RenderPackage, to_render_package
 from ...compile import Package
 from ...omni.render import parse_spec
 from ..plan.models import KeyframePlan, PlanInput
-from .anchored import anchor_times, render_anchored, timeline_lines
+from ..plan.timing import time_tag
+from .anchored import anchor_indices, render_anchored, timeline_lines
 
 _KEEP = (
     "Keep the characters, their faces and outfits, every object and the room layout exactly "
@@ -52,11 +53,11 @@ def segment_actions(inp: PlanInput, start: float, end: float) -> list[str]:
     return [b.action for b in inp.beats if b.t_start < end and b.t_end > start]
 
 
-def segment_prompt(inp: PlanInput, start: int, end: int) -> str:
-    actions = " Then ".join(segment_actions(inp, float(start), float(end)))
+def segment_prompt(inp: PlanInput, start: float, end: float) -> str:
+    actions = " Then ".join(segment_actions(inp, start, end))
     return " ".join(
         [
-            f"Animate smoothly from the first frame to the final frame over {end - start} seconds.",
+            f"Animate smoothly from the first frame to the final frame over {end - start:g} seconds.",
             f"Action: {actions}" if actions else "Subtle natural idle motion.",
             _camera_line(inp),
             _KEEP,
@@ -81,19 +82,20 @@ def interp_packages(
     base: Package,
     inp: PlanInput,
     uris: Sequence[str],
+    times: Sequence[float],
     bounds: Sequence[tuple[int, int]],
 ) -> list[Package]:
-    """One interpolation package per segment (keyframe uris indexed by second)."""
+    """One interpolation package per segment of keyframe indices (`uris`/`times` aligned)."""
     return [
         replace(
             base,
             shot_id=f"{base.shot_id}__seg{k}",
-            compiled_prompt=segment_prompt(inp, a, b),
+            compiled_prompt=segment_prompt(inp, times[a], times[b]),
             spec_json="",
             first_frame_uri=uris[a],
             last_frame_uri=uris[b],
             source_video_uri=None,
-            duration_s=float(b - a),
+            duration_s=round(times[b] - times[a], 3),
         )
         for k, (a, b) in enumerate(bounds)
     ]
@@ -112,25 +114,27 @@ def animatic_package(base: Package, inp: PlanInput, video_uri: str) -> Package:
 
 
 def plan_durations(
-    plan: KeyframePlan, bounds: Sequence[tuple[int, int]]
+    plan: KeyframePlan, times: Sequence[float], bounds: Sequence[tuple[int, int]]
 ) -> list[float]:
     """Planned seconds per segment; the last ends at the clip duration."""
-    out = [float(b - a) for a, b in bounds]
+    out = [round(times[b] - times[a], 3) for a, b in bounds]
     if out:
-        out[-1] = round(plan.duration_s - bounds[-1][0], 3)
+        out[-1] = round(plan.duration_s - times[bounds[-1][0]], 3)
     return out
 
 
-def _keyframe_labels(uris: Sequence[str], times: Sequence[int]) -> tuple[RefLabel, ...]:
+def _keyframe_labels(
+    uris: Sequence[str], plan: KeyframePlan, indices: Sequence[int]
+) -> tuple[RefLabel, ...]:
     return tuple(
         RefLabel(
-            uri=uris[t],
-            asset_id=f"keyframe_t{t:02d}",
+            uri=uris[i],
+            asset_id=f"keyframe_t{time_tag(plan.keyframes[i].t)}",
             names=(),
             role="keyframe",
-            t_s=float(t),
+            t_s=float(plan.keyframes[i].t),
         )
-        for t in times
+        for i in indices
     )
 
 
@@ -148,23 +152,24 @@ def anchored_package(
     max_images: int,
     state_refs: bool,
 ) -> Package:
-    """D1 (`state_refs`) / D2 package: one Omni call anchored on the clip's keyframes."""
-    last_t = len(uris) - 1
-    times = anchor_times(last_t, max_images - 2 if state_refs else 3)
-    labels = _keyframe_labels(uris, times) if state_refs else ()
+    """D1 (`state_refs`) / D2 package: one Omni call anchored on the clip's keyframes
+    (`uris` aligned with `plan.keyframes`)."""
+    last = len(uris) - 1
+    picks = anchor_indices(last, max_images - 2 if state_refs else 3)
+    labels = _keyframe_labels(uris, plan, picks) if state_refs else ()
     spec = parse_spec(base.spec_source)
-    timeline = [] if state_refs else timeline_lines(plan, times)
+    timeline = [] if state_refs else timeline_lines(plan, picks)
     text = (
         render_anchored(spec, timeline, state_refs)
         if spec is not None
-        else segment_prompt(inp, 0, last_t)
+        else segment_prompt(inp, 0.0, plan.keyframes[last].t)
     )
     return replace(
         _with_labels(base, labels),
         compiled_prompt=text,
         spec_json="",
         first_frame_uri=uris[0],
-        last_frame_uri=uris[last_t],
+        last_frame_uri=uris[last],
         source_video_uri=None,
         reference_asset_ids=[lbl.asset_id for lbl in labels],
         reference_uris=[lbl.uri for lbl in labels],

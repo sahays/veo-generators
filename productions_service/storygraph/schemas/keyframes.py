@@ -1,7 +1,7 @@
 """Layer-5 keyframe nodes: one immutable `KeyframeSet` version per shot (S8_KEYFRAMES).
 
 Versioned like `PromptVersion`: ids `kfs_<shot>_<n>`, exactly one `active` set per shot, older
-ones `superseded`. A set records the 1 fps frames t = 0..N of the shot's clip. Frame 0 of
+ones `superseded`. A set records the planned keyframes (clip start, events, clip end). Frame 0 of
 clip k+1 is the *same asset* as frame N of clip k in the scene (`shared_from`), so continuity
 between clips is exact. Images live in GCS (`Asset(kind="keyframe")`); the set lives in
 Firestore (`keyframe_sets`).
@@ -21,9 +21,9 @@ KeyframeAuthor = Literal["pipeline", "human"]
 
 
 class KeyframeFrame(BaseModel):
-    """One keyframe second of a shot."""
+    """One keyframe of a shot at clip time `t` (seconds; fractional for event keyframes)."""
 
-    t: int
+    t: float
     asset_id: str
     uri: str
     status: KeyframeFrameStatus = "approved"

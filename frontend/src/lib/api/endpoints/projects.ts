@@ -1,10 +1,10 @@
 import type { Project } from '@/types/project'
+import type { RunAccepted } from '@/types/runs'
 import type {
   AssembleMode,
   AssemblyReadiness,
   AuditLogPage,
   ShotClipEdit,
-  ShotRepairReport,
   ShotRunHistory,
   StoryGraphScene,
 } from '@/types/storygraph'
@@ -26,8 +26,9 @@ const projectsCrud = createCrudClient<JsonValue>(
   'production',
 )
 
-/** Repair/regenerate responses: the refreshed snapshot plus the per-shot outcome report. */
-export type ShotRepairResponse = Project & { repair_report?: ShotRepairReport }
+/** Query string for an async stage run; `cascade` runs every downstream stage server-side. */
+const stageRunQS = (force: boolean, quality?: 'draft' | 'final', cascade?: boolean): string =>
+  buildQS({ force: String(force), quality, cascade })
 
 export const projects = {
   list: (params?: { archived?: boolean; mine?: boolean }) =>
@@ -167,7 +168,7 @@ export const projects = {
     id: string,
     options?: { auto_approve_gates?: boolean; story_text?: string },
   ) =>
-    postJson<JsonValue>(
+    postJson<RunAccepted>(
       `${API_BASE_URL}/productions/${id}/run`,
       options || {},
       'Failed to run StoryGraph pipeline',
@@ -177,9 +178,10 @@ export const projects = {
     stageId: string,
     force = true,
     quality?: 'draft' | 'final',
+    cascade = false,
   ) =>
-    postJson<JsonValue>(
-      `${API_BASE_URL}/productions/${id}/stages/${stageId}/run?force=${force}${quality ? `&quality=${quality}` : ''}`,
+    postJson<RunAccepted>(
+      `${API_BASE_URL}/productions/${id}/stages/${stageId}/run?${stageRunQS(force, quality, cascade)}`,
       {},
       `Failed to run stage ${stageId}`,
     ),
@@ -202,7 +204,7 @@ export const projects = {
       'Failed to approve appearance',
     ),
   regenerateAppearance: (id: string, appearanceId: string) =>
-    postJson<JsonValue>(
+    postJson<RunAccepted>(
       `${API_BASE_URL}/productions/${id}/appearances/${appearanceId}/regenerate`,
       {},
       'Failed to regenerate appearance',
@@ -219,13 +221,13 @@ export const projects = {
       'Failed to load assembly readiness',
     ),
   assembleApprovedShots: (id: string, mode: AssembleMode = 'approved_only') =>
-    postJson<JsonValue>(
+    postJson<RunAccepted>(
       `${API_BASE_URL}/productions/${id}/assemble?mode=${mode}`,
       {},
       'Failed to stitch approved shots',
     ),
   repairShots: (id: string, shotIds?: string[]) =>
-    postJson<ShotRepairResponse>(
+    postJson<RunAccepted>(
       `${API_BASE_URL}/productions/${id}/shots/repair`,
       shotIds && shotIds.length > 0 ? { shot_ids: shotIds } : {},
       'Failed to repair shots',
@@ -237,7 +239,7 @@ export const projects = {
       jsonInit('PATCH', edit),
     ),
   regenerateShot: (id: string, shotId: string) =>
-    postJson<ShotRepairResponse>(
+    postJson<RunAccepted>(
       `${API_BASE_URL}/productions/${id}/shots/${encodeURIComponent(shotId)}/regenerate`,
       {},
       'Failed to regenerate shot',

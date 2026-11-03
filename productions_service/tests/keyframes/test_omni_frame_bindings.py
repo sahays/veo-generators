@@ -16,6 +16,7 @@ _LABELS = (
     RefLabel("gs://b/pip.png", "a_pip", ("Pip",), "character"),
 )
 _KF = [f"gs://b/kf_t{t:02d}.png" for t in range(10)]
+_TIMES = [float(t) for t in range(10)]
 
 
 def _pkg() -> RenderPackage:
@@ -64,7 +65,7 @@ def _header(req_text: str) -> str:
 
 
 def test_first_last_frames_bound_before_identity_refs() -> None:
-    seg = interp_packages(_pkg(), _inp(), _KF, [(3, 6)])[0]
+    seg = interp_packages(_pkg(), _inp(), _KF, _TIMES, [(3, 6)])[0]
     req = build_omni_request(seg, seg.compiled_prompt, 6)
     head = _header(req.blocks[0]["text"])
     assert head.startswith("[# Sources <FIRST_FRAME>@Image1 <LAST_FRAME>@Image2]")
@@ -117,7 +118,7 @@ def test_fallback_keeps_video_until_text_only_and_records_drop() -> None:
 
 
 def test_fallback_drops_both_frames_together() -> None:
-    seg = interp_packages(_pkg(), _inp(), _KF, [(0, 3)])[0]
+    seg = interp_packages(_pkg(), _inp(), _KF, _TIMES, [(0, 3)])[0]
     ladder = build_ladder(seg, select_safety_profile("", ""), 6, "tag")
     flags = [(s.request.first_frame_bound, s.request.last_frame_bound) for s in ladder]
     assert flags == [(True, True), (False, False), (False, False)]

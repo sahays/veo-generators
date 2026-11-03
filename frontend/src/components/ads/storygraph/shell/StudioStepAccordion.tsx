@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { AlertTriangle, Check, Loader2, Eye } from 'lucide-react'
+import { AlertTriangle, Box, Check, Loader2, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Disclosure } from '@/components/ui/disclosure'
 import type { ActiveStepId, MacroStepCardDef } from '../storyGraphStudioTypes'
@@ -18,7 +18,7 @@ export interface StudioStepAccordionProps {
 }
 
 const STATE_LABEL: Record<StepState, string> = {
-  done: 'Done', running: 'Running', failed: 'Failed', attention: 'Needs review', pending: 'Not started',
+  done: 'Done', running: 'Running', failed: 'Failed', attention: 'Needs review', pending: 'Not started', optional: 'Optional',
 }
 
 const STATE_STYLE: Record<StepState, string> = {
@@ -27,10 +27,11 @@ const STATE_STYLE: Record<StepState, string> = {
   failed: 'bg-red-500/15 text-red-600 dark:text-red-400',
   attention: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
   pending: 'bg-muted text-muted-foreground',
+  optional: 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
 }
 
 const StepMarker = ({ index, state }: { index: number; state: StepState }) => {
-  const icon = { done: <Check size={14} />, running: <Loader2 size={14} className="animate-spin" />, failed: <AlertTriangle size={13} />, attention: <Eye size={13} />, pending: null }[state]
+  const icon = { done: <Check size={14} />, running: <Loader2 size={14} className="animate-spin" />, failed: <AlertTriangle size={13} />, attention: <Eye size={13} />, pending: null, optional: <Box size={13} /> }[state]
   return (
     <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold tabular-nums', STATE_STYLE[state])} aria-hidden>
       {icon ?? index + 1}

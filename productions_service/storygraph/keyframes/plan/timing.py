@@ -7,7 +7,7 @@ second with a binary search over beat end times (O(log beats)).
 
 from __future__ import annotations
 
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from collections.abc import Sequence
 from itertools import accumulate
 
@@ -45,6 +45,27 @@ def locate(t: float, spans: Sequence[tuple[float, float]]) -> tuple[int, float]:
     return idx, round(min(1.0, max(0.0, phase)), 3)
 
 
+def time_tag(t: float) -> str:
+    """Id-safe clip time: `8` -> "08", `3.5` -> "03p5" (integral times keep the 1 fps form)."""
+    whole = int(t)
+    frac = round(t - whole, 3)
+    return (
+        f"{whole:02d}" if frac == 0 else f"{whole:02d}p{f'{frac:.3f}'[2:].rstrip('0')}"
+    )
+
+
+def nearest_index(times: Sequence[float], t: float) -> int:
+    """Index of the time in ascending `times` closest to `t` (O(log n); clamps outside)."""
+    if not times:
+        raise ValueError("no times to search")
+    i = bisect_left(times, t)
+    if i == 0:
+        return 0
+    if i >= len(times):
+        return len(times) - 1
+    return i if times[i] - t < t - times[i - 1] else i - 1
+
+
 def snapshot_index(beat_index: int, phase: float) -> int:
     """Graph snapshot shown at a phase: pre-beat state before the midpoint, post-beat after.
 
@@ -52,3 +73,8 @@ def snapshot_index(beat_index: int, phase: float) -> int:
     (hand-offs, placements) therefore switch at the beat midpoint, never mid-air twice.
     """
     return beat_index + (1 if phase >= 0.5 else 0)
+
+
+def second_index(t: float) -> int:
+    """Index of the 1 fps (`DENSE`) keyframe / per-second track sample at clip time `t`."""
+    return round(t)

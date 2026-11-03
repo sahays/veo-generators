@@ -3,7 +3,7 @@ import type { ActiveStepId, MacroStepCardDef } from '../storyGraphStudioTypes'
 import type { CascadeProgress } from '../cascade/useStageCascade'
 import { PIPELINE_SUB_STAGES } from '../cascade/pipelineStages'
 
-export type StepState = 'done' | 'running' | 'failed' | 'attention' | 'pending'
+export type StepState = 'done' | 'running' | 'failed' | 'attention' | 'pending' | 'optional'
 export type ChipTone = 'default' | 'accent' | 'success' | 'warning' | 'destructive'
 
 export interface StatusChip {
@@ -25,8 +25,17 @@ function isStageFailed(run?: StoryGraphStageRun): boolean {
   return run?.status === 'failed' || !!run?.error
 }
 
+/** Optional (stage-less) steps: reflect the latest run of `primaryStage`, else "optional". */
+function optionalStepState(run?: StoryGraphStageRun): StepState {
+  if (!run) return 'optional'
+  if (isStageFailed(run)) return 'failed'
+  if (run.completed || run.status === 'approved' || run.status === 'completed') return 'done'
+  return run.status === 'running' ? 'running' : 'optional'
+}
+
 /** Visual state of one macro step in the stepper. */
 export function deriveStepState(card: MacroStepCardDef, s: StudioRunState): StepState {
+  if (card.stages.length === 0) return optionalStepState(s.latestStageRunByStage[card.primaryStage])
   if (s.busyAction && card.stages.includes(s.busyAction)) return 'running'
   if (card.stages.some((st) => isStageFailed(s.latestStageRunByStage[st]))) return 'failed'
   if (card.id === 's8_s10_videos' && s.pipelineStatus === 'needs_review') return 'attention'

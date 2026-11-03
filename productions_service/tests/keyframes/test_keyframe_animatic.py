@@ -66,7 +66,7 @@ def _png(color: str) -> bytes:
 
 
 def test_animatic_schedule_centres_keyframes_and_sums_to_clip() -> None:
-    sched = animatic_schedule(10, 9.0)
+    sched = animatic_schedule([float(t) for t in range(10)], 9.0)
     assert sched[0] == sched[-1] == 0.5 and set(sched[1:-1]) == {1.0}
     assert sum(sched) == pytest.approx(9.0)
     # Keyframe t is on screen at second t: its slot spans [t - 0.5, t + 0.5].
@@ -75,6 +75,14 @@ def test_animatic_schedule_centres_keyframes_and_sums_to_clip() -> None:
         s <= t < s + d or t == 9
         for t, (s, d) in enumerate(zip(starts, sched, strict=True))
     )
+
+
+def test_animatic_schedule_uneven_event_times_switch_at_midpoints() -> None:
+    times = [0.0, 2.25, 6.75, 9.0]
+    sched = animatic_schedule(times, 9.0)
+    assert sched == [1.125, 3.375, 3.375, 1.125]
+    starts = [sum(sched[:i]) for i in range(len(times))]
+    assert all(s <= t <= s + d for t, s, d in zip(times, starts, sched, strict=True))
 
 
 def test_concat_manifest_repeats_last_file_for_its_duration() -> None:
@@ -88,29 +96,40 @@ def test_concat_manifest_repeats_last_file_for_its_duration() -> None:
     ]
 
 
+def _seconds(last: int) -> list[float]:
+    return [float(t) for t in range(last + 1)]
+
+
 @pytest.mark.parametrize(
-    ("last_t", "stride", "want"),
+    ("times", "stride", "want"),
     [
-        (9, 3, [(0, 3), (3, 6), (6, 9)]),
-        (9, 5, [(0, 5), (5, 9)]),
-        (9, 4, [(0, 4), (4, 9)]),  # 1s tail is below Omni's 3s minimum -> merged
-        (9, 2, [(0, 3), (3, 6), (6, 9)]),  # stride clamped to Omni's minimum
-        (8, 10, [(0, 8)]),
+        (_seconds(9), 3, [(0, 3), (3, 6), (6, 9)]),
+        (_seconds(9), 5, [(0, 5), (5, 9)]),
+        (
+            _seconds(9),
+            4,
+            [(0, 4), (4, 9)],
+        ),  # 1s tail is below Omni's 3s minimum -> merged
+        (_seconds(9), 2, [(0, 3), (3, 6), (6, 9)]),  # stride clamped to Omni's minimum
+        (_seconds(8), 10, [(0, 8)]),
+        # Event keyframes: 2.25s and 1s gaps are too short, so segments skip frames.
+        ([0.0, 2.25, 4.5, 5.5, 9.0], 3, [(0, 2), (2, 4)]),
+        ([0.0, 3.5, 8.0, 9.0], 3, [(0, 1), (1, 3)]),  # 1s tail merged into 4.5s segment
     ],
 )
 def test_segment_bounds_cover_clip_within_omni_limits(
-    last_t: int, stride: int, want: list[tuple[int, int]]
+    times: list[float], stride: int, want: list[tuple[int, int]]
 ) -> None:
-    got = segment_bounds(last_t, stride)
+    got = segment_bounds(times, stride)
     assert got == want
-    assert got[0][0] == 0 and got[-1][1] == last_t
+    assert got[0][0] == 0 and got[-1][1] == len(times) - 1
     assert all(a == b for (_, a), (b, _) in itertools.pairwise(got))
 
 
 @needs_ffmpeg
 def test_build_animatic_lasts_exactly_the_clip() -> None:
     frames = [_png(c) for c in ("red", "green", "blue", "white", "black")]
-    mp4 = build_animatic(frames, 4.0)
+    mp4 = build_animatic(frames, [0.0, 1.0, 2.0, 3.0, 4.0], 4.0)
     assert _duration(mp4) == pytest.approx(4.0, abs=0.1)
 
 
@@ -145,7 +164,9 @@ def _rgb_at(mp4: bytes, t: float) -> tuple[int, int, int]:
 
 @needs_ffmpeg
 def test_animatic_shows_each_keyframe_at_its_second() -> None:
-    mp4 = build_animatic([_png("red"), _png("lime"), _png("blue")], 2.0)
+    mp4 = build_animatic(
+        [_png("red"), _png("lime"), _png("blue")], [0.0, 1.0, 2.0], 2.0
+    )
     dominant = [max(range(3), key=_rgb_at(mp4, t).__getitem__) for t in (0.1, 1.0, 1.9)]
     assert dominant == [
         0,
@@ -156,6 +177,6 @@ def test_animatic_shows_each_keyframe_at_its_second() -> None:
 
 @needs_ffmpeg
 def test_stitch_trims_segments_to_planned_durations() -> None:
-    seg = build_animatic([_png("red"), _png("blue")], 3.0)
+    seg = build_animatic([_png("red"), _png("blue")], [0.0, 3.0], 3.0)
     out = stitch([seg, seg, seg], [3.0, 3.0, 2.0])  # last segment trimmed (Omni min 3s)
     assert _duration(out) == pytest.approx(8.0, abs=0.15)

@@ -1,17 +1,44 @@
-"""Typed contracts for the 1 fps keyframe planner (input from the graph, output plan).
+"""Typed contracts for the keyframe planner (input from the graph, output plan).
 
 `PlanInput` is everything the pure planner needs, already resolved from the StoryGraph by
-`plan.graph_source`; `KeyframePlan` is the per-second visual state the renderer must draw.
+`plan.graph_source`; `KeyframePlan` is the visual state at each selected time (event-driven
+by default, every second in legacy `fps` sampling) the renderer must draw.
 Graph state is carried as `StateSnapshot`s: snapshot 0 is the clip's opening state and
 snapshot `i + 1` the state after beat `i` (the last one equals the clip's closing state).
 """
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import (
+    BaseModel,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+)
 
+from .timing import nearest_index
+
+EventKind = Literal[
+    "clip_start",
+    "clip_end",
+    "hand_over",
+    "pick_up",
+    "put_down",
+    "entrance",
+    "exit",
+    "open_close",
+    "on_off",
+    "reveal",
+    "hide",
+    "location",
+    "contact",
+    "beat_start",
+    "beat_end",
+    "motion",
+    "interpolated",
+]
 ScreenPos = Literal["left", "center", "right", "foreground", "background"]
 ShotSize = Literal["ECU", "CU", "MCU", "MS", "MLS", "WS", "EWS"]
 
@@ -136,9 +163,9 @@ class CameraKey(BaseModel):
 
 
 class Keyframe(BaseModel):
-    """Visual state at integer second `t` of the clip."""
+    """Visual state at clip time `t` (seconds, may be fractional) and why it was selected."""
 
-    t: int
+    t: float
     beat_index: int
     phase: float
     snapshot_index: int
@@ -147,6 +174,21 @@ class Keyframe(BaseModel):
     setting: str
     camera: CameraKey
     delta: list[str] = Field(default_factory=list)
+    event_label: str = ""  # e.g. "Ava picks up the brass key" (empty in fps sampling)
+    event_kind: EventKind | None = None
+
+    @model_serializer(mode="wrap")
+    def _legacy_form(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        """Integral `t` dumps as an int and empty event fields are omitted, so a 1 fps plan
+        serialises (and hashes) exactly like the pre-event schema."""
+        data: dict[str, Any] = handler(self)
+        if float(self.t).is_integer():
+            data["t"] = int(self.t)
+        if not self.event_label:
+            data.pop("event_label", None)
+        if self.event_kind is None:
+            data.pop("event_kind", None)
+        return data
 
 
 class KeyframePlan(BaseModel):
@@ -160,9 +202,9 @@ class KeyframePlan(BaseModel):
     plan_hash: str = ""
     keyframes: list[Keyframe] = Field(default_factory=list)
 
-    def at(self, t: int) -> Keyframe:
-        """Keyframe at second `t` (clamped to the plan)."""
-        return self.keyframes[max(0, min(t, len(self.keyframes) - 1))]
+    def at(self, t: float) -> Keyframe:
+        """Keyframe whose time is closest to `t` (binary search; clamped to the plan)."""
+        return self.keyframes[nearest_index([k.t for k in self.keyframes], t)]
 
 
 class LintIssue(BaseModel):
@@ -176,6 +218,6 @@ class LintIssue(BaseModel):
         "scene_handoff",
     ]
     shot_id: str
-    t: int
+    t: float
     entity_id: str
     message: str

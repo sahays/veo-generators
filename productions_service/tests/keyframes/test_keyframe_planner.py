@@ -17,6 +17,7 @@ from storygraph.keyframes.plan.models import (
 )
 from storygraph.keyframes.plan.permanence import backfill_established
 from storygraph.keyframes.plan.planner import plan_keyframes
+from storygraph.keyframes.plan.sampling.models import KEYFRAME_SAMPLING, SamplingCfg
 from storygraph.repo import Repo
 from storygraph.timeline.clip_events import scene_clip_windows
 
@@ -119,6 +120,67 @@ def test_one_keyframe_per_second_follows_graph_handoffs() -> None:
     placed = next(o for o in plan.at(9).objects if o.entity_id == "obj_key")
     assert placed.placement == "on the Table"
     assert plan.at(3).delta and "Pip now holds Brass Key" in plan.at(3).delta
+
+
+def _stretched(duration: float) -> PlanInput:
+    """`_input()` with its beats scaled to `duration` seconds."""
+    inp = _input()
+    k = duration / inp.duration_s
+    beats = [
+        b.model_copy(update={"t_start": b.t_start * k, "t_end": b.t_end * k})
+        for b in inp.beats
+    ]
+    return inp.model_copy(update={"duration_s": duration, "beats": beats})
+
+
+def test_event_sampling_keeps_only_clip_ends_and_events() -> None:
+    inp = _input()
+    plan = plan_keyframes(inp, KEYFRAME_SAMPLING)
+    assert [(k.t, k.event_kind) for k in plan.keyframes] == [
+        (0.0, "clip_start"),
+        (2.25, "hand_over"),  # graph state change at beat 0's midpoint
+        (
+            4.5,
+            "contact",
+        ),  # beat boundary: Ava reaches Pip (outranks plain beat start/end)
+        (6.75, "put_down"),
+        (9.0, "clip_end"),
+    ]
+    assert _holder(plan, 2.25) == "char_b" and _holder(plan, 9.0) is None
+    assert lint_plan(plan, inp) == []
+
+
+def test_event_sampling_adds_no_fillers_on_long_quiet_gaps() -> None:
+    long = _stretched(20.0)
+    events = [k.event_kind for k in plan_keyframes(long, KEYFRAME_SAMPLING).keyframes]
+    assert "interpolated" not in events and len(events) == 5
+    # The gap-bounded sampler would interpolate the 5s opening gap.
+    assert "interpolated" in [
+        k.event_kind for k in plan_keyframes(long, SamplingCfg()).keyframes
+    ]
+
+
+def test_event_cap_spreads_equal_events_across_the_clip() -> None:
+    """8 equal beats over 12s capped at 5 frames: picks cover the clip, not its start."""
+    beats = [
+        BeatSpan(
+            index=i,
+            t_start=i * 1.5,
+            t_end=(i + 1) * 1.5,
+            actor_id="char_a",
+            action=f"Step {i}.",
+        )
+        for i in range(8)
+    ]
+    inp = _input().model_copy(
+        update={
+            "duration_s": 12.0,
+            "beats": beats,
+            "snapshots": [_input().snapshots[0]] * 9,
+        }
+    )
+    times = [k.t for k in plan_keyframes(inp, KEYFRAME_SAMPLING).keyframes]
+    assert times == [0.0, 3.0, 6.0, 9.0, 12.0]
 
 
 def test_every_object_exactly_once_and_constant_set() -> None:

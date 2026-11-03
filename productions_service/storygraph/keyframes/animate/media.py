@@ -21,8 +21,10 @@ def _run(args: list[str]) -> None:
     subprocess.run(args, check=True, capture_output=True, timeout=_TIMEOUT_S)
 
 
-def build_animatic(frames: Sequence[bytes], duration_s: float) -> bytes:
-    """MP4 (24 fps, no audio) holding each keyframe for its `animatic_schedule` slot."""
+def build_animatic(
+    frames: Sequence[bytes], times: Sequence[float], duration_s: float
+) -> bytes:
+    """MP4 (24 fps, no audio) holding each keyframe (at `times`) for its schedule slot."""
     with tempfile.TemporaryDirectory(prefix="animatic_") as tmp:
         root = Path(tmp)
         paths: list[str] = []
@@ -32,7 +34,7 @@ def build_animatic(frames: Sequence[bytes], duration_s: float) -> bytes:
             paths.append(str(path))
         manifest = root / "list.txt"
         manifest.write_text(
-            concat_manifest(paths, animatic_schedule(len(frames), duration_s)),
+            concat_manifest(paths, animatic_schedule(times, duration_s)),
             encoding="utf-8",
         )
         out = root / "animatic.mp4"

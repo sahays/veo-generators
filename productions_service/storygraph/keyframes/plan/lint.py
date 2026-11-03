@@ -1,9 +1,12 @@
 """Invariant lint for `KeyframePlan`s (per clip and across the clips of a scene).
 
-* object_count / object_duplicate: the set of alive objects only changes at a second where
+Keyframe times may be non-uniform (event sampling), so every check is between consecutive
+keyframes, whatever the gap between them:
+* object_count / object_duplicate: the set of alive objects only changes at a keyframe where
   the graph snapshot changed (a beat created/consumed/moved it into or out of the room), and
   no object is ever listed twice or with a count other than one;
-* position_jump: a character's screen column moves at most one column per second;
+* position_jump: a character moves at most `MAX_STEP_X` frame widths per second of the gap
+  between consecutive keyframes (1 fps: per keyframe);
 * wardrobe_change: a character's wardrobe is constant across a clip and across a scene;
 * timeline_open / timeline_close: second 0 equals the clip's opening graph state and the
   last second its closing state (objects alive and who holds what);
@@ -15,7 +18,7 @@ from __future__ import annotations
 import itertools
 from collections import Counter
 from collections.abc import Sequence
-from typing import Literal
+from typing import Final, Literal
 
 from .models import (
     Keyframe,
@@ -25,9 +28,10 @@ from .models import (
     StateSnapshot,
 )
 from .motion import MAX_STEP_X
-from .planner import objects_at
+from .state import objects_at
 
 _StateKey = dict[str, str | None]
+JUMP_SLACK: Final[float] = 0.005
 TimelineCode = Literal["timeline_open", "timeline_close"]
 
 
@@ -47,7 +51,7 @@ def _duplicates(plan: KeyframePlan, frame: Keyframe) -> list[LintIssue]:
             shot_id=plan.shot_id,
             t=frame.t,
             entity_id=oid,
-            message=f"{oid} must appear exactly once at t={frame.t}",
+            message=f"{oid} must appear exactly once at t={frame.t:g}",
         )
         for oid in sorted(bad)
     ]
@@ -65,26 +69,32 @@ def _count_changes(
             shot_id=plan.shot_id,
             t=cur.t,
             entity_id=oid,
-            message=f"{oid} appears/vanishes at t={cur.t} without a graph state change",
+            message=f"{oid} appears/vanishes at t={cur.t:g} without a graph state change",
         )
         for oid in sorted(changed)
     ]
+
+
+def max_move(gap_s: float) -> float:
+    """Largest planned displacement over `gap_s` seconds (+ per-step rounding slack)."""
+    return MAX_STEP_X * max(gap_s, 0.0) + JUMP_SLACK * max(1.0, gap_s)
 
 
 def _position_jumps(
     plan: KeyframePlan, prev: Keyframe, cur: Keyframe
 ) -> list[LintIssue]:
     before = {c.entity_id: c.x for c in prev.characters}
+    limit = max_move(cur.t - prev.t)
     return [
         LintIssue(
             code="position_jump",
             shot_id=plan.shot_id,
             t=cur.t,
             entity_id=c.entity_id,
-            message=f"{c.name} moves {abs(c.x - before[c.entity_id]):.2f} frame widths at t={cur.t}",
+            message=f"{c.name} moves {abs(c.x - before[c.entity_id]):.2f} frame widths at t={cur.t:g}",
         )
         for c in cur.characters
-        if c.entity_id in before and abs(c.x - before[c.entity_id]) > MAX_STEP_X + 1e-6
+        if c.entity_id in before and abs(c.x - before[c.entity_id]) > limit
     ]
 
 

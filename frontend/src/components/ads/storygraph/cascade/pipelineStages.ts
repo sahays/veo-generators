@@ -40,31 +40,24 @@ export interface CascadeStep {
   label: string
   force: boolean
   quality?: StageRenderQuality
-  /** True when the backend runs this stage itself (forced S8_KEYFRAMES / S8_RENDER cascade the rest server-side). */
-  serverRun: boolean
 }
 
-/** Stages whose forced run already cascades the rest of the pipeline on the server. */
-const SERVER_CASCADING_STAGES = new Set([KEYFRAMES_STAGE, 'S8_RENDER'])
-
 /**
- * Ordered plan: the clicked stage runs with `force=true` (and the requested render
- * quality, if any); every downstream stage runs with `force=false` so the backend can
- * skip unchanged stages by input hash and re-render only invalidated shots.
+ * Ordered plan (display only — the server executes it via `cascade=true`): the clicked stage
+ * runs with `force=true` (and the requested render quality, if any); every downstream stage
+ * runs with `force=false` so the backend skips unchanged stages by input hash.
  */
 export function buildCascadePlan(req: CascadeRequest): CascadeStep[] {
   const start = PIPELINE_SUB_STAGES.findIndex((s) => s.id === req.stageId)
   if (start < 0) {
-    return [{ stageId: req.stageId, short: '', label: req.stageId, force: true, quality: req.quality, serverRun: false }]
+    return [{ stageId: req.stageId, short: '', label: req.stageId, force: true, quality: req.quality }]
   }
-  const serverCascades = SERVER_CASCADING_STAGES.has(req.stageId)
   return PIPELINE_SUB_STAGES.slice(start).map((sub, i) => ({
     stageId: sub.id,
     short: sub.short,
     label: sub.label,
     force: i === 0,
     quality: i === 0 ? req.quality : undefined,
-    serverRun: serverCascades && i > 0,
   }))
 }
 
@@ -72,7 +65,7 @@ const GATE_BLOCK_RE = /blocked by unapproved gate\s*(G\d)?/i
 const REVIEW_BLOCK_RE = /assembly blocked by (\d+) unapproved|needs[_ ]review/i
 
 /** Readable message when final assembly is blocked by shots that failed QA. */
-export function reviewStopMessage(step: CascadeStep, failedCount?: number): string {
+export function reviewStopMessage(step: Pick<CascadeStep, 'label'>, failedCount?: number): string {
   const count = failedCount === undefined ? 'some' : String(failedCount)
   return `Paused at ${step.label}: ${count} shot(s) failed QA. Use “Repair failed shots” in the Videos step, edit flagged shots, or stitch approved shots only.`
 }
@@ -81,7 +74,7 @@ export function reviewStopMessage(step: CascadeStep, failedCount?: number): stri
  * Classify a stage error as a graceful stop (gate block / shots awaiting review).
  * Returns a readable message for graceful stops, or `null` for a hard failure.
  */
-export function classifyCascadeStop(message: string, step: CascadeStep): string | null {
+export function classifyCascadeStop(message: string, step: Pick<CascadeStep, 'label'>): string | null {
   const gate = GATE_BLOCK_RE.exec(message)
   if (gate) {
     const gateId = gate[1] ? ` ${gate[1]}` : ''

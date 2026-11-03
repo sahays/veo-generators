@@ -8,7 +8,8 @@ import { KEYFRAMES_STAGE } from '../cascade/pipelineStages'
 import { buildSuccessorIndex, keyframeRefreshKey, resumableCount } from './keyframeSummary'
 import { KeyframeRegenDialog, type RegenMode, type RegenTarget } from './KeyframeRegenDialog'
 import { KeyframeStripCard } from './KeyframeStripCard'
-import { useKeyframeBoard, type KeyframeBoardState } from '@/hooks/useKeyframeBoard'
+import { useKeyframeBoard, type KeyframeBoardState, type KeyframeRunTask } from '@/hooks/useKeyframeBoard'
+import { runToCompletion, useRunPoller } from '../run/ProductionRunContext'
 
 export interface KeyframeBoardPanelProps {
   productionId: string
@@ -137,14 +138,14 @@ function useBoardCounts(shots: KeyframeStripResponse[]): BoardCounts {
 
 /** Production-page board of per-shot S8_KEYFRAMES strips with per-frame regenerate / edit. */
 export const KeyframeBoardPanel = ({
-  productionId,
-  stageRuns,
-  pipelineStatus,
-  canWrite,
-  isBusy,
-  onRunKeyframes,
+  productionId, stageRuns, pipelineStatus, canWrite, isBusy, onRunKeyframes,
 }: KeyframeBoardPanelProps) => {
-  const state = useKeyframeBoard(productionId, keyframeRefreshKey(stageRuns, pipelineStatus))
+  const poller = useRunPoller()
+  const runTask = useCallback<KeyframeRunTask>(
+    (label, call) => runToCompletion(poller, label, KEYFRAMES_STAGE, call),
+    [poller],
+  )
+  const state = useKeyframeBoard(productionId, keyframeRefreshKey(stageRuns, pipelineStatus), runTask)
   const flow = useRegenFlow(state)
   const successors = useMemo(() => buildSuccessorIndex(state.board?.shots ?? []), [state.board])
   const counts = useBoardCounts(state.board?.shots ?? [])
@@ -152,22 +153,14 @@ export const KeyframeBoardPanel = ({
   return (
     <section className="space-y-3 rounded-2xl border border-border/70 bg-card/40 p-4">
       <PanelHeader
-        counts={counts}
-        canWrite={canWrite}
-        isBusy={isBusy}
-        isResuming={state.isResuming}
-        resumeError={state.resumeError}
-        onResume={() => void state.resume()}
-        onRunKeyframes={onRunKeyframes}
+        counts={counts} canWrite={canWrite} isBusy={isBusy} isResuming={state.isResuming}
+        resumeError={state.resumeError} onResume={() => void state.resume()} onRunKeyframes={onRunKeyframes}
       />
       <BoardBody state={state} canWrite={canWrite} isBusy={isBusy} onRunKeyframes={onRunKeyframes} onAction={flow.open} />
       <KeyframeRegenDialog
-        target={flow.target}
-        nextShotId={flow.target ? successors[flow.target.strip.shot_id] ?? null : null}
-        isSubmitting={state.pending !== null}
-        error={state.regenError}
-        onConfirm={(instruction) => void flow.confirm(instruction)}
-        onCancel={flow.close}
+        target={flow.target} nextShotId={flow.target ? successors[flow.target.strip.shot_id] ?? null : null}
+        isSubmitting={state.pending !== null} error={state.regenError}
+        onConfirm={(instruction) => void flow.confirm(instruction)} onCancel={flow.close}
       />
     </section>
   )

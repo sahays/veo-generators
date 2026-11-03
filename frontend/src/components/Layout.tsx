@@ -55,6 +55,7 @@ const PAGE_TITLES: Record<string, string> = {
 function getPageTitle(pathname: string): string {
   if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname]
   if (pathname.match(/^\/productions\/[^/]+\/script$/)) return 'Script Editor'
+  if (pathname.match(/^\/productions\/[^/]+\/previz$/)) return 'Blender Previz'
   if (pathname.match(/^\/productions\/[^/]+\/edit$/)) return 'Edit Production'
   if (pathname.match(/^\/productions\/[^/]+$/)) return 'Production Details'
   if (pathname.match(/^\/key-moments\/[^/]+$/)) return 'Key Moments Analysis'

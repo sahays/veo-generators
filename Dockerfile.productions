@@ -1,9 +1,41 @@
+# --- Blender 4.2 LTS (headless greybox previz renderer) -------------------------------
+# `blender_src` only provides /blender.tar.xz; local builds may override it with
+#   docker build --build-context blender_src=<dir containing blender.tar.xz> ...
+FROM scratch AS blender_src
+ADD --checksum=sha256:bea0eb3146be13eae6225409a117b215184f41b7f79e799f97cb3abb8f6dc404 \
+    https://download.blender.org/release/Blender4.2/blender-4.2.23-linux-x64.tar.xz /blender.tar.xz
+
+FROM debian:bookworm-slim AS blender_unpack
+RUN apt-get update && apt-get install -y --no-install-recommends xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=blender_src /blender.tar.xz /tmp/blender.tar.xz
+# Strip only parts never loaded headless: GLX-only software Mesa (we render via EGL),
+# GPU-only denoiser devices, the unlinked old SYCL runtime, desktop/launcher files.
+RUN mkdir -p /opt/blender \
+    && tar -xJf /tmp/blender.tar.xz -C /opt/blender --strip-components=1 \
+    && rm -rf /tmp/blender.tar.xz /opt/blender/lib/mesa \
+        /opt/blender/lib/libOpenImageDenoise_device_cuda.so* \
+        /opt/blender/lib/libOpenImageDenoise_device_hip.so* \
+        /opt/blender/lib/libOpenImageDenoise_device_sycl.so* \
+        /opt/blender/lib/libsycl.so.6* \
+        /opt/blender/blender-softwaregl /opt/blender/blender-launcher \
+        /opt/blender/blender-thumbnailer /opt/blender/*.desktop /opt/blender/*.svg
+
+# --- Service image -------------------------------------------------------------------
 FROM python:3.12-slim
 WORKDIR /app
 
+# ffmpeg + the X/GL client libs Blender links against + Mesa EGL (llvmpipe) so Workbench
+# renders on CPU-only Cloud Run with `blender -b` (no X server, no GPU).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    libx11-6 libxrender1 libxxf86vm1 libxfixes3 libxi6 libxkbcommon0 libsm6 libice6 \
+    libgl1 libegl1 libegl-mesa0 libgl1-mesa-dri \
     && rm -rf /var/lib/apt/lists/*
+
+COPY --from=blender_unpack /opt/blender /opt/blender
+RUN ln -s /opt/blender/blender /usr/local/bin/blender
+ENV BLENDER_BIN=/opt/blender/blender
 
 COPY productions_service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

@@ -108,9 +108,11 @@ def test_last_keyframe_of_clip_is_first_of_next_and_never_regenerated(
     first = _sets(tmp_repo).active_for_shot("shot_1")
     second = _sets(tmp_repo).active_for_shot("shot_2")
     assert first is not None and second is not None
-    assert len(first.frames) == len(second.frames) == 9  # 8 s clips -> t = 0..8
+    # Event sampling: clip start/end + important events only (never one per second).
+    assert 2 <= len(first.frames) <= 5 and 2 <= len(second.frames) <= 5
+    assert (first.frames[0].t, first.frames[-1].t) == (0.0, 8.0)
     assert second.frames[0].asset_id == first.frames[-1].asset_id
-    assert second.frames[0].shared_from == "shot_1@t08"
+    assert second.frames[0].shared_from == "shot_1@t8"
     assert first.frames[0].shared_from is None
     assert sorted(result.rendered) == ["shot_1", "shot_2"] and not result.manual_edit
     # Rerun: sets and plate still current -> reused, no image calls at all (plate too).
@@ -195,13 +197,15 @@ def test_regenerate_rederives_tail_and_cascades_to_next_clip(tmp_repo: Repo) -> 
     assert before1 is not None
     with pytest.raises(ValidationFailed):
         regenerate_from(deps, "shot_2", 0)  # shared frame belongs to the previous clip
-    after1 = regenerate_from(deps, "shot_1", 3, "make the compass brighter")
+    with pytest.raises(ValidationFailed, match="no keyframe at t=3"):
+        regenerate_from(deps, "shot_1", 3.0)  # addressed by event time, not by second
+    t = before1.frames[1].t  # first event keyframe after the clip start
+    after1 = regenerate_from(deps, "shot_1", t, "make the compass brighter")
     after2 = _sets(tmp_repo).active_for_shot("shot_2")
     assert after1.version == 2 and after2 is not None and after2.version == 2
-    kept = [f.asset_id for f in before1.frames[:3]]
-    assert [f.asset_id for f in after1.frames[:3]] == kept
-    assert after1.frames[3].asset_id != before1.frames[3].asset_id
-    assert after1.frames[3].edited_by == "human"
+    assert after1.frames[0].asset_id == before1.frames[0].asset_id
+    assert after1.frames[1].asset_id != before1.frames[1].asset_id
+    assert after1.frames[1].edited_by == "human"
     assert after2.frames[0].asset_id == after1.frames[-1].asset_id
     shots = {s.id: s for s in tmp_repo.list_shots()}
     assert shots["shot_1"].stale and shots["shot_2"].stale

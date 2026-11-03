@@ -11,6 +11,7 @@ import { StepWorldBibleSection, StepScreenplaySection, StepVisualReferenceSheets
 import { StepShotBreakdownSection, StepValidatorCompilerSection, StepVideoRendersSection } from '../StudioStepsShotsToVideos'
 import { AssemblyReadinessPanel } from '../AssemblyReadinessPanel'
 import { KeyframeBoardPanel } from '../keyframes/KeyframeBoardPanel'
+import { PrevizBoardPanel } from '../previz/PrevizBoardPanel'
 import { KEYFRAMES_STAGE } from '../cascade/pipelineStages'
 
 export interface StepSectionContext {
@@ -102,12 +103,17 @@ const renderVideos = (c: StepSectionContext) => (
   />
 )
 
+const renderPreviz = (c: StepSectionContext) => (
+  <PrevizBoardPanel productionId={c.productionId} scenes={c.storyGraph?.scenes || []} canWrite={c.canWrite} />
+)
+
 const STEP_RENDERERS: Record<ActiveStepId, (c: StepSectionContext) => ReactNode> = {
   s1_world: renderWorld,
   s2_scripts: renderScript,
   s3_images: renderImages,
   s4_s5_shots: renderShots,
   s6_s7_compile: renderPrompts,
+  previz: renderPreviz,
   s8_s10_videos: renderVideos,
 }
 

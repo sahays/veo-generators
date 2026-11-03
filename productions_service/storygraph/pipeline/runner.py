@@ -33,6 +33,7 @@ from ..config import Config
 from ..errors import BudgetExceeded, GateBlocked, ShotsNotApproved
 from ..graph_integrity import record_integrity_report
 from ..keyframes.animate.factory import wrap_render_strategy
+from ..progress import stage_started
 from ..repo import Repo
 from ..schema import Role, StageRun, Status
 from ..state import rebuild_state_facts
@@ -181,6 +182,9 @@ class Pipeline:
 
     def run_stage(self, stage: Stage | str, force: bool = False) -> StageRun:
         st = Stage(stage)
+        stage_started(
+            self.repo.project_id, str(st)
+        )  # async run progress (no-op otherwise)
         ihash = self._compute_stage_input_hash(st)
         try:
             return self._execute_stage(st, ihash, force=force)

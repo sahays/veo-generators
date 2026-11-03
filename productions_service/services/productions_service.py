@@ -27,6 +27,7 @@ from .design_service import (  # noqa: F401 - re-exported for routers
     regenerate_project_appearance,
 )
 from .keyframe_cascade import run_keyframes_cascade
+from .previz_service import PREVIZ_STAGE_ID, retry_last_previz
 from .runtime import (
     MEMORY_PROJECT_INDEX,
     build_pipeline,
@@ -331,10 +332,13 @@ def run_project_stage(
     force: bool = True,
     quality: str | None = None,
 ) -> dict[str, Any]:
-    """Run a single StoryGraph stage (`S1_EXTRACT` .. `S10_ASSEMBLE`)."""
+    """Run a single StoryGraph stage (`S1_EXTRACT` .. `S10_ASSEMBLE`, or `S8_PREVIZ`)."""
     pipe = build_pipeline(project_id)
     if not pipe.repo.get_project_meta():
         raise HTTPException(status_code=404, detail="Production not found")
+    if stage_id == PREVIZ_STAGE_ID:  # optional, outside the cascade: background retry
+        retry_last_previz(project_id)
+        return format_graph_snapshot(pipe.repo, pipe.cfg)
     try:
         st = Stage(stage_id)
     except ValueError:

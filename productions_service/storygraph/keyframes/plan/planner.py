@@ -1,11 +1,13 @@
-"""Pure, deterministic 1 fps keyframe planner driven by StoryGraph state.
+"""Pure, deterministic keyframe planner driven by StoryGraph state.
 
-For every integer second `t` of a clip the planner derives: which beat is active and how far
-through it we are (`timing.locate`), which graph snapshot holds (pre-beat before the beat
-midpoint, post-beat after it), every character's wardrobe/pose/position/holdings, the exact
-set of objects alive at that second (each exactly once, with holder/placement from graph
-state), the setting and the camera framing. Second 0 shows the clip's opening state and the
-last second its closing state by construction. No I/O, no randomness.
+Keyframe times come from `sampling` (event-driven by default: clip start/end, state changes,
+beat boundaries, large-motion midpoints; or legacy every second). For each time `t` the
+planner derives: which beat is active and how far through it we are (`timing.locate`), which
+graph snapshot holds (pre-beat before the beat midpoint, post-beat after it), every
+character's wardrobe/pose/position/holdings, the exact set of objects alive (each exactly
+once, with holder/placement from graph state, `state`), the setting, the camera framing and
+why the moment was selected (`event_label`, `event_kind`). The first keyframe shows the
+clip's opening state and the last its closing state by construction. No I/O, no randomness.
 """
 
 from __future__ import annotations
@@ -23,99 +25,15 @@ from .models import (
     PlanInput,
     StateSnapshot,
 )
-from .motion import COLUMN_X, tracks
-from .timing import locate, second_count, snapshot_index
+from .motion import COLUMN_X, Tracks
+from .sampling.models import DENSE, Candidate, SamplingCfg
+from .sampling.times import clock, sample_times
+from .state import exposed_ids, names_of, objects_at
+from .timing import locate, snapshot_index
 
-_HIDDEN_PLACE = ("inside", "hidden", "concealed", "buried")
-_CONTAINED = ("drawer", "box", "chest", "bag", "pocket", "under the lid")
-_HIDDEN_HOLD = (
-    "behind back",
-    "behind his back",
-    "behind her back",
-    "hidden",
-    "concealed",
-)
-_ABSENT = frozenset({"false", "no", "0", "absent", "gone", "destroyed", "consumed"})
-_TIGHT = frozenset({"ECU", "CU", "MCU"})
+__all__ = ["objects_at", "plan_hash", "plan_keyframes", "keyframe_delta"]
+
 _STAGES = ((0.34, "starting:"), (0.67, "midway:"), (1.0, "finishing:"))
-
-
-def _names(inp: PlanInput) -> dict[str, str]:
-    out = {inp.location_id: inp.location_name}
-    out.update({c.entity_id: c.name for c in inp.cast})
-    out.update({o.entity_id: o.name for o in inp.objects})
-    return out
-
-
-def _holders(snap: StateSnapshot) -> dict[str, str]:
-    """`object id -> holder id` from every `holding` fact in the snapshot."""
-    return {st["holding"]: eid for eid, st in snap.states.items() if st.get("holding")}
-
-
-def _alive(inp: PlanInput, st: dict[str, str], held: bool) -> bool:
-    if (st.get("alive_present") or "").lower() in _ABSENT:
-        return False
-    return held or st.get("location") == inp.location_id
-
-
-def _placement(st: dict[str, str], holder: str | None, names: dict[str, str]) -> str:
-    if holder:
-        return f"held by {names.get(holder, holder)}"
-    parts: list[str] = []
-    support = st.get("supported_by")
-    if support:
-        parts.append(f"on the {names.get(support, support)}")
-    if st.get("sub_location"):
-        parts.append(st["sub_location"])
-    return ", ".join(parts) or "in its place in the room"
-
-
-def _visible(st: dict[str, str], holder_state: dict[str, str] | None) -> bool:
-    """Hidden when its holder conceals it, or it is contained in another object."""
-    if holder_state is not None:
-        where = (holder_state.get("sub_location") or "").lower()
-        return not any(k in where for k in _HIDDEN_HOLD)
-    where = (st.get("sub_location") or "").lower()
-    contained = bool(st.get("supported_by")) and any(k in where for k in _CONTAINED)
-    return not contained and not any(k in where for k in _HIDDEN_PLACE)
-
-
-def exposed_ids(inp: PlanInput, beat: BeatSpan | None) -> frozenset[str]:
-    """Objects the active beat acts on or names: they are visible while it plays."""
-    if beat is None:
-        return frozenset()
-    text = f"{beat.action} {beat.pre_state} {beat.post_state}".lower()
-    named = {o.entity_id for o in inp.objects if o.name.lower() in text}
-    return frozenset(named | ({beat.target_id} if beat.target_id else set()))
-
-
-def objects_at(
-    inp: PlanInput, snap: StateSnapshot, exposed: frozenset[str] = frozenset()
-) -> list[ObjectKey]:
-    """Objects alive at `snap` (keyed by entity id, so each appears exactly once)."""
-    names, holders = _names(inp), _holders(snap)
-    cast_ids = {c.entity_id for c in inp.cast}
-    tight = inp.camera.shot_size in _TIGHT
-    out: list[ObjectKey] = []
-    for obj in inp.objects:
-        st = snap.states.get(obj.entity_id, {})
-        holder = holders.get(obj.entity_id)
-        if not _alive(inp, st, holder is not None):
-            continue
-        in_frame = not tight or obj.focus or holder in cast_ids
-        holder_state = snap.states.get(holder, {}) if holder else None
-        out.append(
-            ObjectKey(
-                entity_id=obj.entity_id,
-                name=obj.name,
-                placement=_placement(st, holder, names),
-                holder_id=holder,
-                visible=obj.entity_id in exposed or _visible(st, holder_state),
-                in_frame=in_frame,
-                x=None if holder else inp.layout.get(obj.entity_id),
-            )
-        )
-    return out
 
 
 def _actor_pose(beat: BeatSpan, phase: float) -> str:
@@ -148,7 +66,7 @@ def characters_at(
     snap: StateSnapshot,
     xs: dict[str, float] | None = None,
 ) -> list[CharacterKey]:
-    names = _names(inp)
+    names = names_of(inp)
     xs = xs or {}
     out: list[CharacterKey] = []
     for cast in inp.cast:
@@ -236,9 +154,12 @@ def keyframe_delta(prev: Keyframe, cur: Keyframe, names: dict[str, str]) -> list
     return out
 
 
-def _keyframe(inp: PlanInput, t: int, last_t: int, xs: dict[str, float]) -> Keyframe:
+def _keyframe(
+    inp: PlanInput, pick: Candidate, last_t: float, xs: dict[str, float]
+) -> Keyframe:
+    t = pick.t
     spans = [(b.t_start, b.t_end) for b in inp.beats]
-    beat_idx, phase = locate(float(t) if t < last_t else inp.duration_s, spans)
+    beat_idx, phase = locate(t if t < last_t else inp.duration_s, spans)
     snap_idx = 0 if t == 0 else len(inp.snapshots) - 1 if t == last_t else None
     if snap_idx is None:
         snap_idx = min(snapshot_index(beat_idx, phase), len(inp.snapshots) - 1)
@@ -253,6 +174,8 @@ def _keyframe(inp: PlanInput, t: int, last_t: int, xs: dict[str, float]) -> Keyf
         objects=objects_at(inp, snap, exposed_ids(inp, beat)),
         setting=_setting(inp),
         camera=camera_at(inp, t / last_t if last_t else 0.0),
+        event_label=pick.label,
+        event_kind=pick.kind,
     )
 
 
@@ -261,14 +184,17 @@ def plan_hash(plan: KeyframePlan) -> str:
     return hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
 
 
-def plan_keyframes(inp: PlanInput) -> KeyframePlan:
-    """Build the 1 fps `KeyframePlan` for one clip (t = 0..round(duration))."""
-    last_t = second_count(inp.duration_s) - 1
-    names = _names(inp)
-    paths = tracks(inp, last_t)
+def plan_keyframes(inp: PlanInput, sampling: SamplingCfg = DENSE) -> KeyframePlan:
+    """Build the `KeyframePlan` for one clip at the times `sampling` selects.
+
+    The default is dense 1 fps (t = 0..round(duration)) for analysis callers (plate spec,
+    previz); production planning passes the configured sampling (`stage.scene_plans`)."""
+    last_t, step = clock(inp, sampling)
+    names = names_of(inp)
+    track = Tracks(inp, last_t, step)
     frames: list[Keyframe] = []
-    for t in range(last_t + 1):
-        frame = _keyframe(inp, t, last_t, {cid: xs[t] for cid, xs in paths.items()})
+    for pick in sample_times(inp, sampling, track.displacement):
+        frame = _keyframe(inp, pick, last_t, track.at(pick.t))
         if frames:
             frame = frame.model_copy(
                 update={"delta": keyframe_delta(frames[-1], frame, names)}

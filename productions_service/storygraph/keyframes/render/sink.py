@@ -20,6 +20,7 @@ from ...repo import Repo
 from ...schema import Asset, Role, Status
 from ...store.codec import encode
 from ..plan.models import Keyframe, KeyframePlan
+from ..plan.timing import time_tag
 from ..plate.build import PlateImage
 from ..plate.spec import PlateSpec
 
@@ -104,7 +105,7 @@ class RepoKeyframeSink:
     def save(self, record: KeyframeRecord) -> StoredKeyframe:
         plan, frame = record.plan, record.frame
         sha = _sha(record.png)
-        stem = f"{plan.plan_hash[:8]}_t{frame.t:02d}_{sha[:8]}"
+        stem = f"{plan.plan_hash[:8]}_t{time_tag(frame.t)}_{sha[:8]}"
         uri = self._put(f"keyframes/{plan.shot_id}/{stem}.png", record.png, "image/png")
         link = {
             "shot_id": plan.shot_id,

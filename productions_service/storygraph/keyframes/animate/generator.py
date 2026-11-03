@@ -81,12 +81,13 @@ class KeyframeVideoGenerator:
         inp: PlanInput,
         plan: KeyframePlan,
     ) -> bytes:
-        bounds = segment_bounds(len(frames) - 1, self.caps.keyframe_stride_s)
+        times = [f.t for f in frames]
+        bounds = segment_bounds(times, self.caps.keyframe_stride_s)
         uris = [f.stored.uri for f in frames]
-        pkgs = strategies.interp_packages(package, inp, uris, bounds)
+        pkgs = strategies.interp_packages(package, inp, uris, times, bounds)
         with ThreadPoolExecutor(max_workers=max(1, len(pkgs))) as pool:
             clips = list(pool.map(self.inner.generate, pkgs))
-        return media.stitch(clips, strategies.plan_durations(plan, bounds))
+        return media.stitch(clips, strategies.plan_durations(plan, times, bounds))
 
     def _animatic(
         self,
@@ -95,7 +96,8 @@ class KeyframeVideoGenerator:
         inp: PlanInput,
         plan: KeyframePlan,
     ) -> bytes:
-        mp4 = media.build_animatic([self._png(f) for f in frames], plan.duration_s)
+        pngs = [self._png(f) for f in frames]
+        mp4 = media.build_animatic(pngs, [f.t for f in frames], plan.duration_s)
         stored = self.sink.save_animatic(plan, mp4)
         return self.inner.generate(
             strategies.animatic_package(package, inp, stored.uri)
@@ -151,7 +153,7 @@ def _log_strategy(
             "why": "no approved keyframes match the current plan; run S8_KEYFRAMES"
             if fallback
             else "video.render_strategy selects keyframe-driven animation",
-            "how": "graph 1 fps plan -> edited keyframes -> Omni frame/video bindings",
+            "how": "graph event keyframe plan -> edited keyframes -> Omni frame/video bindings",
             "plan_hash": plan.plan_hash,
         },
     )

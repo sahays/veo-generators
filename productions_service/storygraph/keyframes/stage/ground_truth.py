@@ -43,7 +43,7 @@ def keyframe_defects(report: QAReport) -> list[str]:
 
 def keyframe_refs(
     repo: Repo, shot_id: str, max_refs: int = 2
-) -> list[tuple[int, bytes]]:
+) -> list[tuple[float, bytes]]:
     """(t, png) of the shot's active keyframes used as expected state (first, last, ...)."""
     ks = KeyframeSetRepo(repo.store).active_for_shot(shot_id)
     if ks is None or ks.failure_reason or not ks.frames or max_refs <= 0:

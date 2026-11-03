@@ -56,10 +56,10 @@ def resume_point(
     return min(len(active.frames), len(plan.keyframes) - 1)
 
 
-def prior_frames(repo: Repo, ks: KeyframeSet, t: int) -> tuple[RenderedKeyframe, ...]:
-    """Kept frames < t; only frame t-1 needs pixels (pose reference for frame t)."""
-    out = [to_rendered(f) for f in ks.frames[:t]]
+def prior_frames(repo: Repo, ks: KeyframeSet, idx: int) -> tuple[RenderedKeyframe, ...]:
+    """Kept frames before index `idx`; only frame idx-1 needs pixels (pose reference)."""
+    out = [to_rendered(f) for f in ks.frames[:idx]]
     if out:
-        last = ks.frames[t - 1]
+        last = ks.frames[idx - 1]
         out[-1] = to_rendered(last, repo.blobs.get_bytes(last.uri))
     return tuple(out)

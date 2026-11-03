@@ -22,7 +22,6 @@ const DownstreamAgentList = ({ steps }: { steps: CascadeStep[] }) => (
           <span className="px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono font-bold text-foreground">{step.short}</span>
           <span>{step.label}</span>
           <span className="font-mono text-[10px] opacity-70">{step.stageId}</span>
-          {step.serverRun && <span className="text-[10px] italic text-amber-300">cascaded by the server</span>}
         </li>
       ))}
     </ol>

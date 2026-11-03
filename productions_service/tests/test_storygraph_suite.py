@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import time
+from typing import Any
+
 import pytest
 from fastapi.testclient import TestClient
 from main import app
@@ -88,6 +91,22 @@ def test_budget_exceeded_cap(tmp_repo: Repo, default_cfg: Config) -> None:
         )
 
 
+def _run_and_fetch_snapshot(
+    client: TestClient, pid: str, path: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    res = client.post(path)
+    assert res.status_code == 202
+    st: dict[str, Any] = {}
+    for _ in range(1500):
+        st = client.get(f"/api/v1/productions/{pid}/status").json()
+        if st["active_run"] is None:
+            break
+        time.sleep(0.02)
+    snap_res = client.get(f"/api/v1/productions/{pid}")
+    assert snap_res.status_code == 200
+    return dict(st["last_run"]), dict(snap_res.json())
+
+
 def _create_and_advance_to_g3(
     client: TestClient,
 ) -> tuple[str, list[dict[str, object]]]:
@@ -103,12 +122,16 @@ def _create_and_advance_to_g3(
     res_create = client.post("/api/v1/productions", json=payload)
     assert res_create.status_code == 200
     pid = str(res_create.json()["id"])
-    snap1 = client.post(f"/api/v1/productions/{pid}/run").json()
-    assert snap1["blocked_gate"] == "G1"
-    snap2 = client.post(f"/api/v1/productions/{pid}/gates/G1/approve").json()
-    assert snap2["blocked_gate"] == "G2"
-    snap3 = client.post(f"/api/v1/productions/{pid}/gates/G2/approve").json()
-    assert snap3["blocked_gate"] == "G3"
+    run1, _ = _run_and_fetch_snapshot(client, pid, f"/api/v1/productions/{pid}/run")
+    assert run1["status"] == "paused" and "unapproved gate G1" in run1["error"]
+    run2, _ = _run_and_fetch_snapshot(
+        client, pid, f"/api/v1/productions/{pid}/gates/G1/approve"
+    )
+    assert run2["status"] == "paused" and "unapproved gate G2" in run2["error"]
+    run3, snap3 = _run_and_fetch_snapshot(
+        client, pid, f"/api/v1/productions/{pid}/gates/G2/approve"
+    )
+    assert run3["status"] == "paused" and "unapproved gate G3" in run3["error"]
     return pid, snap3["story_graph"]["shots"]
 
 
@@ -129,10 +152,14 @@ def test_fastapi_productions_service_endpoints() -> None:
     compiled = res_compile.json()
     spec = OmniClipSpec.model_validate_json(compiled["spec_json"])
     assert spec.task == "render_video_clip" and compiled["package_hash"]
-    res_g3 = client.post(f"/api/v1/productions/{pid}/gates/G3/approve")
-    assert res_g3.status_code == 200
-    snap_done = res_g3.json()
-    assert snap_done["status"] == "completed" and snap_done["final_video_url"]
+    run_done, snap_done = _run_and_fetch_snapshot(
+        client, pid, f"/api/v1/productions/{pid}/gates/G3/approve"
+    )
+    assert (
+        run_done["status"] == "completed"
+        and snap_done["status"] == "completed"
+        and snap_done["final_video_url"]
+    )
 
 
 def test_epic_name_normalization_hindi_dialogue_and_deduplication(

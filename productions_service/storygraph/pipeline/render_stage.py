@@ -6,6 +6,7 @@ import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
+from .. import progress
 from ..adapters.base import VideoGenerator, VLMProvider
 from ..agents.critic import evaluate_clip_qa
 from ..budget import select_references
@@ -200,12 +201,14 @@ def render_and_qa_shots(
         key=lambda s: (s.story_order, s.scene_id, s.index_in_scene),
     )
     max_retries = max(1, cfg.caps.shot_max_retries)
+    progress.add_total(repo.project_id, len(shots), "shots")
 
     def _chain(scene_shots: Sequence[Shot]) -> None:
         for sh in scene_shots:
             render_single_shot_with_qa(
                 repo, cfg, video_gen, vlm, compiled_packages, sh, max_retries
             )
+            progress.advance(repo.project_id, 1, sh.id)
 
     parallel = cfg.video.provider != "mock" and len(shots) > 1
     run_scene_groups(group_by_scene(shots), _chain, parallel)

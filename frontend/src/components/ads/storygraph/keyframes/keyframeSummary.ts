@@ -39,7 +39,7 @@ export function summarizeStrip(strip: KeyframeStripResponse): StripSummary {
 
 /** Parse `"<shot_id>@t<N>"` into its parts; `null` for malformed / absent refs. */
 export function parseSharedFrom(ref: string | null): { shotId: string; t: number } | null {
-  const m = ref ? /^(.+)@t(\d+)$/.exec(ref) : null
+  const m = ref ? /^(.+)@t(\d+(?:\.\d+)?)$/.exec(ref) : null
   return m ? { shotId: m[1], t: Number(m[2]) } : null
 }
 

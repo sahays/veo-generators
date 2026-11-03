@@ -2,7 +2,8 @@ import { useCallback, useState } from 'react'
 import type { Project } from '@/types/project'
 import type { ShotRepairReport } from '@/types/storygraph'
 import { useAdsProjectActions } from '../../projects/useAdsProjectActions'
-import { runStageRequestWithRecovery } from '../cascade/stageRunner'
+import type { RunAccepted } from '@/types/runs'
+import { runToCompletion, useRunPoller } from '../run/ProductionRunContext'
 
 /** Matches the API layer's 422 `ApiValidationError` (structural check keeps UI off the API tier). */
 const validationIssuesOf = (err: unknown): string[] | null => {
@@ -11,6 +12,14 @@ const validationIssuesOf = (err: unknown): string[] | null => {
 }
 
 const REPAIR_STAGE = 'S8_REPAIR'
+
+/** `RunView.result.repair_report` of a finished repair run (shape-checked, else null). */
+const repairReportOf = (result: Record<string, unknown> | null): ShotRepairReport | null => {
+  const report = result?.repair_report
+  return report && typeof report === 'object' && Array.isArray((report as ShotRepairReport).outcomes)
+    ? (report as ShotRepairReport)
+    : null
+}
 
 export interface ShotRepairState {
   isRepairing: boolean
@@ -30,7 +39,7 @@ const errorText = (err: unknown, fallback: string): string => (err instanceof Er
 /**
  * Failed-shot repair actions for the Videos step: bulk automatic repair (S8_REPAIR) and
  * manual "edit clip prompt → regenerate" for shots flagged after exhausting repairs.
- * Both survive proxy timeouts by polling the graph for the S8_REPAIR stage run.
+ * Both are async (202) runs tracked by the studio poller; the graph is re-read when they finish.
  * `onSettled` fires after every attempt so callers can refresh readiness.
  */
 export function useShotRepair(
@@ -39,25 +48,25 @@ export function useShotRepair(
   onSettled: () => void,
 ): ShotRepairState {
   const { projects } = useAdsProjectActions()
+  const poller = useRunPoller()
   const [isRepairing, setIsRepairing] = useState(false)
   const [regeneratingShotId, setRegeneratingShotId] = useState<string | null>(null)
   const [repairError, setRepairError] = useState<string | null>(null)
   const [report, setReport] = useState<ShotRepairReport | null>(null)
   const [editIssues, setEditIssues] = useState<Record<string, string[]>>({})
 
-  const runRepairRequest = useCallback(async (call: () => ReturnType<typeof projects.repairShots>) => {
-    const res = await runStageRequestWithRecovery(projects, productionId, REPAIR_STAGE, call, onGraphUpdated)
-    if (!res) return
-    onGraphUpdated(res)
-    if (res.repair_report) setReport(res.repair_report)
-  }, [projects, productionId, onGraphUpdated])
+  const runRepairRequest = useCallback(async (label: string, call: () => Promise<RunAccepted>) => {
+    const done = await runToCompletion(poller, label, REPAIR_STAGE, call)
+    onGraphUpdated((await projects.get(productionId)) as unknown as Project)
+    setReport(repairReportOf(done.result))
+  }, [poller, projects, productionId, onGraphUpdated])
 
   const repairFailed = useCallback(async (shotIds: string[]) => {
     setIsRepairing(true)
     setRepairError(null)
     setReport(null)
     try {
-      await runRepairRequest(() => projects.repairShots(productionId, shotIds))
+      await runRepairRequest('Repair failed shots', () => projects.repairShots(productionId, shotIds))
     } catch (err) {
       setRepairError(errorText(err, 'Failed to repair shots'))
     } finally {
@@ -80,7 +89,7 @@ export function useShotRepair(
     clearEditIssues(shotId)
     try {
       onGraphUpdated(await projects.updateShotClip(productionId, shotId, { omni_prompt: omniPrompt }))
-      await runRepairRequest(() => projects.regenerateShot(productionId, shotId))
+      await runRepairRequest(`Regenerate ${shotId}`, () => projects.regenerateShot(productionId, shotId))
       return true
     } catch (err) {
       const issues = validationIssuesOf(err)

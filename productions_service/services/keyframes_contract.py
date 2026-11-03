@@ -23,7 +23,7 @@ SetStatus = Literal["active", "superseded"]
 
 
 class KeyframeFrameView(BaseModel):
-    t: int
+    t: float
     asset_id: str
     url: str  # signed (or gs://) URL of the PNG
     status: FrameStatus

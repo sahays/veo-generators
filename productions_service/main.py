@@ -11,7 +11,8 @@ import logging
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
-from routers import details_router, productions_router
+
+from routers import details_router, previz_router, productions_router
 from services import build_pipeline, get_repo
 
 load_dotenv()
@@ -26,6 +27,7 @@ app = FastAPI(
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 # Static `.../shots/{shot_id}/runs` must not be shadowed by a parameterised productions route.
 app.include_router(details_router)
+app.include_router(previz_router)
 app.include_router(productions_router)
 
 __all__ = ["app", "build_pipeline", "get_repo"]

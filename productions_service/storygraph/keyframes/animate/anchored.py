@@ -84,17 +84,25 @@ def render_anchored(
     return "\n".join([_prose(spec, names, state_refs), "", *block, NEGATIVES])
 
 
-def anchor_times(last_t: int, slots: int) -> list[int]:
-    """Up to `slots` evenly spaced interior seconds of 0..last_t (distinct, ascending)."""
-    if last_t < 2 or slots <= 0:
+def anchor_indices(last: int, slots: int) -> list[int]:
+    """Up to `slots` interior keyframe indices of 0..last (distinct, ascending): all of them
+    when they fit (event keyframes), else evenly spaced (dense plans)."""
+    if last < 2 or slots <= 0:
         return []
-    picks = {round(i * last_t / (slots + 1)) for i in range(1, slots + 1)}
-    return sorted(t for t in picks if 0 < t < last_t)
+    if last - 1 <= slots:
+        return list(range(1, last))
+    picks = {round(i * last / (slots + 1)) for i in range(1, slots + 1)}
+    return sorted(i for i in picks if 0 < i < last)
 
 
-def timeline_lines(plan: KeyframePlan, times: Sequence[int]) -> list[str]:
+def timeline_lines(plan: KeyframePlan, indices: Sequence[int]) -> list[str]:
     """One sentence per chosen keyframe: who does what, who holds what (from the plan)."""
-    return [f"- at {t}s: {_state_sentence(plan.at(t))}" for t in times]
+    return [_timeline_line(plan.keyframes[i]) for i in indices]
+
+
+def _timeline_line(frame: Keyframe) -> str:
+    why = f" ({frame.event_label})" if frame.event_label else ""
+    return f"- at {frame.t:g}s{why}: {_state_sentence(frame)}"
 
 
 def _state_sentence(frame: Keyframe) -> str:

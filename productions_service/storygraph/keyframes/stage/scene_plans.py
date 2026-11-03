@@ -15,6 +15,7 @@ from ...schema import Scene, Shot
 from ..plan.graph_source import build_plan_input
 from ..plan.models import KeyframePlan, PlanInput
 from ..plan.planner import plan_keyframes
+from ..plan.sampling.models import KEYFRAME_SAMPLING, SamplingCfg
 from ..plate.spec import PlateSpec, plate_spec
 from ..render.sink import PlateStore, RepoKeyframeSink
 
@@ -38,14 +39,20 @@ def scene_spec(inputs: list[PlanInput]) -> PlateSpec:
 
 
 def chain_plans(
-    shots: list[Shot], inputs: list[PlanInput], layout: dict[str, float]
+    shots: list[Shot],
+    inputs: list[PlanInput],
+    layout: dict[str, float],
+    sampling: SamplingCfg = KEYFRAME_SAMPLING,
 ) -> list[ShotPlan]:
-    """Plan clips in order with the scene layout, carrying character x across clips."""
+    """Plan clips in order with the scene layout, carrying character x across clips.
+
+    `sampling` defaults to the production event sampling (start/end + important events);
+    analysis callers that need every second (previz blocking) pass `DENSE`."""
     out: list[ShotPlan] = []
     start: dict[str, float] = {}
     for shot, base in zip(shots, inputs, strict=True):
         inp = base.model_copy(update={"layout": dict(layout), "start_x": dict(start)})
-        plan = plan_keyframes(inp)
+        plan = plan_keyframes(inp, sampling)
         if plan.keyframes:
             start |= {c.entity_id: c.x for c in plan.keyframes[-1].characters}
         out.append(ShotPlan(shot, inp, plan))
@@ -66,14 +73,17 @@ def scene_planning(repo: Repo, scene: Scene) -> ScenePlanning:
 
 
 def stored_scene_plans(
-    repo: Repo, scene: Scene, plates: PlateStore | None = None
+    repo: Repo,
+    scene: Scene,
+    plates: PlateStore | None = None,
+    sampling: SamplingCfg = KEYFRAME_SAMPLING,
 ) -> dict[str, ShotPlan]:
     """`shot id -> ShotPlan` using the scene's STORED plate layout ({} before S8 ran)."""
     planning = scene_planning(repo, scene)
     if planning.spec is None:
         return {}
     layout = (plates or RepoKeyframeSink(repo)).load_layout(planning.spec)
-    plans = chain_plans(planning.shots, planning.inputs, layout)
+    plans = chain_plans(planning.shots, planning.inputs, layout, sampling)
     return {sp.shot.id: sp for sp in plans}
 
 

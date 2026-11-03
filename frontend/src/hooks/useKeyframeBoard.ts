@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { keyframes } from '@/lib/api/keyframes'
-import type { KeyframeBoardResponse, KeyframeStripResponse } from '@/types/keyframes'
+import type { KeyframeBoardResponse } from '@/types/keyframes'
+import type { RunAccepted } from '@/types/runs'
+
+/** Starts an async (202) S8 run and resolves when it completes; rejects with the run error. */
+export type KeyframeRunTask = (label: string, call: () => Promise<RunAccepted>) => Promise<unknown>
 
 export interface PendingRegen {
   shotId: string
@@ -22,11 +26,6 @@ export interface KeyframeBoardState {
 
 const errorText = (err: unknown, fallback: string): string => (err instanceof Error ? err.message : fallback)
 
-function replaceStrip(board: KeyframeBoardResponse | null, strip: KeyframeStripResponse): KeyframeBoardResponse | null {
-  if (!board) return board
-  return { ...board, shots: board.shots.map((s) => (s.shot_id === strip.shot_id ? strip : s)) }
-}
-
 function useBoardFetch(productionId: string, refreshKey: string, nonce: number) {
   const [board, setBoard] = useState<KeyframeBoardResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -41,10 +40,10 @@ function useBoardFetch(productionId: string, refreshKey: string, nonce: number) 
       .finally(() => { if (!cancelled) setIsLoading(false) })
     return () => { cancelled = true }
   }, [productionId, refreshKey, nonce])
-  return { board, setBoard, isLoading, loadError }
+  return { board, isLoading, loadError }
 }
 
-function useResumeFlow(productionId: string, onDone: () => void) {
+function useResumeFlow(productionId: string, runTask: KeyframeRunTask, onDone: () => void) {
   const [isResuming, setIsResuming] = useState(false)
   const [resumeError, setResumeError] = useState<string | null>(null)
 
@@ -52,7 +51,7 @@ function useResumeFlow(productionId: string, onDone: () => void) {
     setIsResuming(true)
     setResumeError(null)
     try {
-      await keyframes.resume(productionId)
+      await runTask('Resume keyframes', () => keyframes.resume(productionId))
       onDone()
       return true
     } catch (err) {
@@ -61,30 +60,30 @@ function useResumeFlow(productionId: string, onDone: () => void) {
     } finally {
       setIsResuming(false)
     }
-  }, [productionId, onDone])
+  }, [productionId, runTask, onDone])
 
   return { isResuming, resumeError, resume }
 }
 
 /**
  * Loads the S8_KEYFRAMES board for a production (re-fetched when `refreshKey` changes,
- * e.g. after a stage run) and exposes per-frame "regenerate from t". The returned strip is
- * applied in place, then the board is re-fetched because later clips of the scene re-derive too.
+ * e.g. after a stage run) and exposes per-frame "regenerate from t" (t = the keyframe's event time).
+ * Regenerate and resume are async runs (`runTask`); the whole board is re-fetched when they finish
+ * because later clips of the scene re-derive too.
  */
-export function useKeyframeBoard(productionId: string, refreshKey: string): KeyframeBoardState {
+export function useKeyframeBoard(productionId: string, refreshKey: string, runTask: KeyframeRunTask): KeyframeBoardState {
   const [nonce, setNonce] = useState(0)
   const refresh = useCallback(() => setNonce((n) => n + 1), [])
-  const { board, setBoard, isLoading, loadError } = useBoardFetch(productionId, refreshKey, nonce)
+  const { board, isLoading, loadError } = useBoardFetch(productionId, refreshKey, nonce)
   const [pending, setPending] = useState<PendingRegen | null>(null)
   const [regenError, setRegenError] = useState<string | null>(null)
-  const { isResuming, resumeError, resume } = useResumeFlow(productionId, refresh)
+  const { isResuming, resumeError, resume } = useResumeFlow(productionId, runTask, refresh)
 
   const regenerate = useCallback(async (shotId: string, t: number, instruction?: string): Promise<boolean> => {
     setPending({ shotId, t })
     setRegenError(null)
     try {
-      const strip = await keyframes.regenerateFrom(productionId, shotId, t, { instruction })
-      setBoard((prev) => replaceStrip(prev, strip))
+      await runTask(`Regenerate ${shotId} keyframes from t=${t}s`, () => keyframes.regenerateFrom(productionId, shotId, t, { instruction }))
       refresh()
       return true
     } catch (err) {
@@ -93,7 +92,7 @@ export function useKeyframeBoard(productionId: string, refreshKey: string): Keyf
     } finally {
       setPending(null)
     }
-  }, [productionId, refresh, setBoard])
+  }, [productionId, runTask, refresh])
 
   return { board, isLoading, loadError, pending, regenError, isResuming, resumeError, regenerate, resume, refresh }
 }

@@ -120,7 +120,10 @@ class MatrixRenderer:
             except (StoryGraphError, subprocess.CalledProcessError, ValueError) as exc:
                 err = str(exc)[:500]
         calls = len(
-            segment_bounds(round(self._duration(sid)), self.gen.caps.keyframe_stride_s)
+            segment_bounds(
+                [float(t) for t in range(round(self._duration(sid)) + 1)],
+                self.gen.caps.keyframe_stride_s,
+            )
         )
         rec = RenderRecord(
             shot_id=sid,

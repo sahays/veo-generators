@@ -10,6 +10,7 @@ import { useProjectStore } from '@/store/useProjectStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { PRODUCTION_LANGUAGES, type Project } from '@/types/project'
 import { useAdsProjectActions } from './projects/useAdsProjectActions'
+import type { ActiveStepId } from './storygraph/storyGraphStudioTypes'
 
 const RefineErrorState = ({
   loadError,
@@ -127,7 +128,7 @@ function useStoryGraphBootstrap(productionId: string) {
   return { isLoadingGraph, loadError, storyGraphSnap, setStoryGraphSnap }
 }
 
-export const RefinePromptView = () => {
+export const RefinePromptView = ({ initialStep }: { initialStep?: ActiveStepId } = {}) => {
   const { tempProjectData, setTempProjectData } = useProjectStore()
   const canWrite = useAuthStore((s) => s.isMaster || s.isPower)
   const navigate = useNavigate()
@@ -145,6 +146,7 @@ export const RefinePromptView = () => {
         <StoryGraphStudioPanel
           productionId={productionId} {...snapshotPanelProps(boot.storyGraphSnap, activeData)}
           canWrite={canWrite}
+          initialStep={initialStep}
           title={activeData?.name || 'Production studio'}
           subtitle={activeData?.base_concept}
           meta={buildStudioMeta(activeData)}

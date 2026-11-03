@@ -104,6 +104,7 @@ const AppRoutes = ({ canWrite, isMaster }: { canWrite: boolean; isMaster: boolea
     <Route path="/productions/:id" element={<ProductionSummary />} />
     <Route path="/productions/:id/edit" element={canWrite ? <ProjectForm /> : <Navigate to="/productions" replace />} />
     <Route path="/productions/:id/script" element={<RefinePromptView />} />
+    <Route path="/productions/:id/previz" element={<RefinePromptView initialStep="previz" />} />
     <Route path="/key-moments" element={<KeyMomentsLandingPage />} />
     <Route path="/key-moments/analyze" element={canWrite ? <KeyMomentsAnalyzePage /> : <Navigate to="/key-moments" replace />} />
     <Route path="/key-moments/:id" element={<KeyMomentsAnalyzePage />} />

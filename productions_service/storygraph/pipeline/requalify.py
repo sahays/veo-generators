@@ -15,6 +15,7 @@ import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
+from .. import progress
 from ..adapters.base import VLMProvider
 from ..agents.critic import evaluate_clip_qa
 from ..config import Config
@@ -95,6 +96,7 @@ def _requalify_shots(
             passed = evaluate_clip_qa(repo, cfg, vlm, shot, run).passed
             _log_rescore(repo, shot, run, passed, current)
             revoked += int(run.status == Status.APPROVED and not passed)
+        progress.advance(repo.project_id, 1, shot.id)
     return revoked
 
 
@@ -105,6 +107,7 @@ def evaluate_missing_qa(repo: Repo, cfg: Config, vlm: VLMProvider) -> int:
         repo.list_shots(), key=lambda s: (s.story_order, s.scene_id, s.index_in_scene)
     )
     parallel = cfg.video.provider != "mock" and len(shots) > 1
+    progress.add_total(repo.project_id, len(shots), "shots")
     counts = run_scene_groups(
         group_by_scene(shots),
         lambda g: _requalify_shots(repo, cfg, vlm, g, current),

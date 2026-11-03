@@ -17,9 +17,11 @@ import type {
 } from '@/types/project'
 import { useAdsProjectActions } from '../projects/useAdsProjectActions'
 import { PIPELINE_SUB_STAGES } from './cascade/pipelineStages'
-import { runStageWithRecovery, type StudioProjectsApi } from './cascade/stageRunner'
+import type { RunPoller } from './run/runPoller'
+import { useStudioRunCommands } from './run/useStudioRunCommands'
 import { allEntities, auxiliaryAssetCount, generationRunsTotal, indexAssets } from './details/snapshotSelectors'
 import { useStageCascade } from './cascade/useStageCascade'
+import { buildPrevizStepCard } from './previz/previzStepCard'
 
 export type ActiveStepId =
   | 's1_world'
@@ -27,6 +29,7 @@ export type ActiveStepId =
   | 's3_images'
   | 's4_s5_shots'
   | 's6_s7_compile'
+  | 'previz'
   | 's8_s10_videos'
 
 export type DesignFilter = 'all' | 'character' | 'location' | 'object'
@@ -205,9 +208,13 @@ function buildMacroStepCardList(
   entityMaps: ReturnType<typeof deriveEntityAndAssetMaps>,
   finalVideoUrl?: string,
 ): MacroStepCardDef[] {
+  const [shotsCard, compileCard, videosCard] = buildDirectionToVideoCards(storyGraph, entityMaps, finalVideoUrl)
   return [
     ...buildWorldToDesignCards(storyGraph, entityMaps),
-    ...buildDirectionToVideoCards(storyGraph, entityMaps, finalVideoUrl),
+    shotsCard,
+    compileCard,
+    buildPrevizStepCard(storyGraph),
+    videosCard,
   ]
 }
 
@@ -238,67 +245,38 @@ async function runWithBusyKey<T>(
   }
 }
 
-async function executePipelineForward(
-  projectsApi: StudioProjectsApi,
-  productionId: string,
-  completedStages: Set<string> | undefined,
-  onGraphUpdated: (snapshot: Project) => void,
-  setBusyAction: (s: string | null) => void,
-  setFailedStage: (s: string | null) => void,
-  setErrorMsg: (s: string | null) => void,
-  setIsRunningPipeline: (b: boolean) => void,
-) {
-  setIsRunningPipeline(true); setErrorMsg(null); setFailedStage(null)
-  const done = new Set(completedStages || [])
-  let currentSubId: string | null = null
-  try {
-    for (const sub of PIPELINE_SUB_STAGES) {
-      if (done.has(sub.id)) continue
-      currentSubId = sub.id; setBusyAction(sub.id)
-      const snap = await runStageWithRecovery(projectsApi, productionId, sub.id, false, onGraphUpdated)
-      onGraphUpdated(snap)
-      for (const sr of snap.story_graph?.stage_runs || []) if (sr.completed) done.add(sr.stage)
-    }
-  } catch (err) {
-    setFailedStage(currentSubId)
-    setErrorMsg(err instanceof Error ? err.message : 'Pipeline execution failed')
-  } finally {
-    setBusyAction(null); setIsRunningPipeline(false)
-  }
-}
-
+/**
+ * Studio actions. Long work (stages, cascades, "run remaining", appearance regenerate) is a single
+ * async server call tracked by the shared `RunPoller`; `busyAction` / `isRunningPipeline` are derived
+ * from the live run so every stage button disables and the matching one spins.
+ */
 export function useStoryGraphStudioActions(
   productionId: string,
   onGraphUpdated: (snapshot: Project) => void,
   completedStages?: Set<string>,
+  poller: RunPoller | null = null,
 ) {
   const { projects: projectsApi } = useAdsProjectActions()
-  const [isRunningPipeline, setIsRunningPipeline] = useState(false)
-  const [busyAction, setBusyAction] = useState<string | null>(null)
-  const [failedStage, setFailedStage] = useState<string | null>(null)
+  const [localBusy, setLocalBusy] = useState<string | null>(null)
   const [compiledPreviews, setCompiledPreviews] = useState<Record<string, CompiledShotPreview>>({})
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
-
-  const handleRunForward = () =>
-    executePipelineForward(projectsApi, productionId, completedStages, onGraphUpdated, setBusyAction, setFailedStage, setErrorMsg, setIsRunningPipeline)
-
-  const handleRunStage = (stageId: string, quality?: 'draft' | 'final') => {
-    setFailedStage(null)
-    return runWithBusyKey(stageId, setBusyAction, (msg) => { if (msg) setFailedStage(stageId); setErrorMsg(msg) }, `Stage ${stageId} failed`, () => runStageWithRecovery(projectsApi, productionId, stageId, true, onGraphUpdated, quality), onGraphUpdated)
-  }
+  const run = useStudioRunCommands({ poller, projectsApi, productionId, completedStages, setErrorMsg })
 
   const handleAppearanceAction = (appearanceId: string, action: 'approve' | 'regenerate') =>
-    runWithBusyKey(`app_${appearanceId}_${action}`, setBusyAction, setErrorMsg, 'Appearance action failed', () =>
-      action === 'approve' ? projectsApi.approveAppearance(productionId, appearanceId) : projectsApi.regenerateAppearance(productionId, appearanceId), onGraphUpdated)
+    action === 'regenerate'
+      ? run.regenerateAppearance(appearanceId)
+      : runWithBusyKey(`app_${appearanceId}_approve`, setLocalBusy, setErrorMsg, 'Appearance action failed', () =>
+        projectsApi.approveAppearance(productionId, appearanceId), onGraphUpdated)
 
   const handleCompilePreview = (shotId: string) =>
-    runWithBusyKey(`compile_${shotId}`, setBusyAction, setErrorMsg, 'Shot compilation preview failed', () =>
+    runWithBusyKey(`compile_${shotId}`, setLocalBusy, setErrorMsg, 'Shot compilation preview failed', () =>
       projectsApi.compileShot(productionId, shotId), (res) => setCompiledPreviews((prev) => ({ ...prev, [shotId]: res })))
 
-  const cascade = useStageCascade({ projectsApi, productionId, onGraphUpdated, setBusyAction, setFailedStage, setErrorMsg })
+  const cascade = useStageCascade({ projectsApi, productionId, startStage: run.startStage, isLocked: run.isRunning })
 
   return {
-    isRunningPipeline: isRunningPipeline || cascade.isCascading, busyAction, failedStage, compiledPreviews, errorMsg, setErrorMsg,
-    handleRunForward, handleRunStage: cascade.requestCascade, handleRetryStage: handleRunStage, handleAppearanceAction, handleCompilePreview, cascade,
+    isRunningPipeline: run.isRunning, busyAction: localBusy ?? run.busyKey, failedStage: run.failedStage, compiledPreviews, errorMsg, setErrorMsg,
+    handleRunForward: run.runForward, handleRunStage: cascade.requestCascade, handleRetryStage: run.retryStage, handleAppearanceAction, handleCompilePreview,
+    cascade: { ...cascade, progress: run.sequence },
   }
 }
