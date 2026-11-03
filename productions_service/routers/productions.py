@@ -18,6 +18,7 @@ from services.productions_service import (
     approve_project_appearance,
     compile_project_shot_preview,
     create_production_project,
+    delete_production_project,
     get_production_project,
     list_production_projects,
     reject_project_gate,
@@ -62,6 +63,10 @@ async def update_production(project_id: str, updates: dict[str, Any]) -> dict[st
 
 
 @router.delete("/api/v1/productions/{project_id}")
+async def delete_production(project_id: str) -> dict[str, Any]:
+    return await run_in_threadpool(delete_production_project, project_id)
+
+
 @router.post("/api/v1/productions/{project_id}/archive")
 async def archive_production(project_id: str) -> dict[str, Any]:
     return await run_in_threadpool(

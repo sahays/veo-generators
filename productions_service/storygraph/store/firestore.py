@@ -125,6 +125,25 @@ class FirestoreStore:
     def delete(self, collection: str, doc_id: str) -> None:
         self._col(collection).document(doc_id).delete()
 
+    def purge_project(self, subcollections: tuple[str, ...]) -> int:
+        """Delete all documents across `subcollections` and remove the root project document."""
+        deleted = 0
+        with self.batch() as b:
+            for col in subcollections:
+                for snap in self._col(col).stream():
+                    b.delete(col, snap.id)
+                    deleted += 1
+        try:
+            self._root.delete()
+            deleted += 1
+        except Exception:
+            pass
+        try:
+            self._db.collection("productions").document(self.project_id).delete()
+        except Exception:
+            pass
+        return deleted
+
     @staticmethod
     def _filter_and_sort_rows(
         rows: list[dict[str, Any]],

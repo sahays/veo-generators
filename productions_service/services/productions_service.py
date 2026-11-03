@@ -33,6 +33,7 @@ from .runtime import (
     build_pipeline,
     get_repo,
     load_runtime_config,
+    purge_storygraph_project,
     reset_storygraph_collections,
 )
 from .snapshot import format_graph_snapshot, summarize_projects
@@ -131,6 +132,12 @@ def get_production_project(project_id: str) -> dict[str, Any]:
     cfg = load_runtime_config()
     repo = get_repo(project_id, cfg=cfg)
     return format_graph_snapshot(repo, cfg)
+
+
+def delete_production_project(project_id: str) -> dict[str, Any]:
+    """Permanently delete a StoryGraph production, all subcollections, and all GCS/local blobs."""
+    counts = purge_storygraph_project(project_id)
+    return {"id": project_id, "status": "deleted", **counts}
 
 
 def update_production_project(

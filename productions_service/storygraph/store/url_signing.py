@@ -53,6 +53,12 @@ class SignedUrlCache:
             while len(self._entries) > self._max_entries:
                 self._entries.popitem(last=False)
 
+    def evict(self, uris: Iterable[str]) -> None:
+        """Remove cached signed URLs for deleted blob URIs."""
+        with self._lock:
+            for uri in uris:
+                self._entries.pop(uri, None)
+
 
 def sign_many(
     sign_one: Callable[[str], str],

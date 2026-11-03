@@ -235,7 +235,69 @@ _RESETTABLE_COLLECTIONS: tuple[str, ...] = (
     "stage_qa_reports",
     "prompt_versions",
     "keyframe_sets",
+    "previz_layouts",
+    "previz_shots",
+    "previz_runs",
 )
+
+ALL_PROJECT_COLLECTIONS: tuple[str, ...] = (
+    "meta",
+    *_RESETTABLE_COLLECTIONS,
+    "stage_jobs",
+    "audit_log",
+)
+
+
+def _extract_uris(obj: object, out: set[str]) -> None:
+    """Recursively collect `gs://` and `file://` URIs from a serialized document dict/list."""
+    if isinstance(obj, str):
+        if obj.startswith(("gs://", "file://")):
+            out.add(obj)
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            _extract_uris(v, out)
+    elif isinstance(obj, (list, tuple)):
+        for item in obj:
+            _extract_uris(item, out)
+
+
+def collect_project_blob_uris(store: FirestoreStore | MemoryStore) -> set[str]:
+    """Scan asset-bearing collections for any `gs://` or `file://` URIs referenced by a project."""
+    uris: set[str] = set()
+    uri_collections = (
+        "meta",
+        "assets",
+        "generation_runs",
+        "keyframe_sets",
+        "previz_layouts",
+        "previz_shots",
+    )
+    for col in uri_collections:
+        for row in store.query(col):
+            _extract_uris(row, uris)
+    return uris
+
+
+def purge_storygraph_project(project_id: str) -> dict[str, int]:
+    """Delete all blobs (GCS/local), StoryGraph subcollections, and root doc for `project_id`."""
+    cfg = load_runtime_config()
+    store, blobs = _build_store_and_blobs(project_id, cfg)
+    extra_uris = collect_project_blob_uris(store)
+    deleted_blobs = blobs.delete_project_blobs(extra_uris)
+    deleted_docs = store.purge_project(ALL_PROJECT_COLLECTIONS)
+    MEMORY_PROJECT_INDEX.discard(project_id)
+    logger.info(
+        "Purged StoryGraph production and assets",
+        extra={
+            "who": "purge_storygraph_project",
+            "where": "productions_service.services.runtime",
+            "what": project_id,
+            "when": datetime.now(UTC).isoformat(),
+            "why": "hard delete production and cleanup all assets",
+            "how": f"deleted_blobs={deleted_blobs} deleted_docs={deleted_docs}",
+        },
+    )
+    return {"deleted_blobs": deleted_blobs, "deleted_docs": deleted_docs}
 
 
 def reset_storygraph_collections(repo: Repo) -> None:

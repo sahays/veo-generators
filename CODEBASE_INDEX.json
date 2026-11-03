@@ -557,7 +557,7 @@
       "language": "python",
       "domain_package": "api",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 332,
+      "non_comment_lines": 339,
       "classes": [
         "FirestoreService"
       ],
@@ -1632,7 +1632,7 @@
       "language": "python",
       "domain_package": "api/routers",
       "tier": "Tier 4 (Feature Routers & Agents)",
-      "non_comment_lines": 331,
+      "non_comment_lines": 369,
       "classes": [],
       "functions": [
         "create_production",
@@ -1994,7 +1994,7 @@
       "language": "python",
       "domain_package": "api",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 143,
+      "non_comment_lines": 176,
       "classes": [
         "StorageService"
       ],
@@ -6081,13 +6081,14 @@
       "language": "python",
       "domain_package": "productions_service/routers",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 104,
+      "non_comment_lines": 107,
       "classes": [],
       "functions": [
         "create_production",
         "list_productions",
         "get_production",
         "update_production",
+        "delete_production",
         "archive_production",
         "unarchive_production",
         "get_production_assembly_readiness",
@@ -6388,7 +6389,7 @@
       "language": "python",
       "domain_package": "productions_service/services",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 344,
+      "non_comment_lines": 348,
       "classes": [
         "CreateProductionPayload",
         "RunPipelinePayload",
@@ -6398,6 +6399,7 @@
         "create_production_project",
         "list_production_projects",
         "get_production_project",
+        "delete_production_project",
         "update_production_project",
         "run_pipeline_for_project",
         "analyze_project_compat",
@@ -6445,13 +6447,15 @@
       "language": "python",
       "domain_package": "productions_service/services",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 218,
+      "non_comment_lines": 270,
       "classes": [],
       "functions": [
         "load_runtime_config",
         "get_graph_store",
         "get_repo",
         "build_pipeline",
+        "collect_project_blob_uris",
+        "purge_storygraph_project",
         "reset_storygraph_collections"
       ],
       "endpoints": []
@@ -11633,7 +11637,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 186,
+      "non_comment_lines": 203,
       "classes": [
         "_FirestoreAutoChunkBatch",
         "_FirestoreTx",
@@ -11647,7 +11651,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 144,
+      "non_comment_lines": 195,
       "classes": [
         "LocalBlobStore",
         "GcsBlobStore"
@@ -11660,7 +11664,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 117,
+      "non_comment_lines": 124,
       "classes": [
         "_MemoryBatch",
         "_MemoryTx",
@@ -11676,7 +11680,7 @@
       "language": "python",
       "domain_package": "productions_service/storygraph",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 55,
+      "non_comment_lines": 59,
       "classes": [
         "SignedUrlCache"
       ],
@@ -13574,14 +13578,15 @@
       "language": "python",
       "domain_package": "productions_service/tests",
       "tier": "Test Suite",
-      "non_comment_lines": 331,
+      "non_comment_lines": 358,
       "classes": [],
       "functions": [
         "test_store_crud_and_queries",
         "test_store_batches_transactions_and_blobs",
         "test_all_14_node_types_round_trip",
         "test_repo_versioning_append_only_and_staleness_propagation",
-        "test_firestore_store_transaction_starts_commits_and_rolls_back"
+        "test_firestore_store_transaction_starts_commits_and_rolls_back",
+        "test_purge_storygraph_project_deletes_docs_and_blobs"
       ],
       "endpoints": []
     },
@@ -13625,7 +13630,7 @@
       "language": "python",
       "domain_package": "productions_service/tests",
       "tier": "Test Suite",
-      "non_comment_lines": 277,
+      "non_comment_lines": 281,
       "classes": [],
       "functions": [
         "test_end_to_end_pipeline_gates_retries_and_idempotency",

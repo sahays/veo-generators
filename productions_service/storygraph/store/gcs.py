@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import shutil
 from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
@@ -69,6 +70,23 @@ class LocalBlobStore:
 
     def sign_urls(self, uris: Iterable[str]) -> dict[str, str]:
         return {u: u for u in uris if u}
+
+    def delete_project_blobs(self, extra_uris: Iterable[str] = ()) -> int:
+        """Delete local project directory and any extra `file://` URIs; return deleted count."""
+        deleted = 0
+        proj_dir = self.root_dir / self.project_id
+        if proj_dir.is_dir():
+            deleted += sum(1 for p in proj_dir.rglob("*") if p.is_file())
+            shutil.rmtree(proj_dir, ignore_errors=True)
+        for uri in {u for u in extra_uris if u}:
+            path = self._resolve_uri(uri)
+            if path.is_file():
+                try:
+                    path.unlink()
+                    deleted += 1
+                except OSError:
+                    pass
+        return deleted
 
 
 class GcsBlobStore:
@@ -149,6 +167,45 @@ class GcsBlobStore:
     def sign_urls(self, uris: Iterable[str]) -> dict[str, str]:
         """Sign many URIs: cache hits are O(1); misses run on a bounded thread pool."""
         return sign_many(self.sign_url, uris)
+
+    def _collect_prefix_uris(self) -> set[str]:
+        """List all `gs://` blob URIs under the project's GCS prefixes."""
+        found: set[str] = set()
+        prefixes = (
+            f"{self.prefix}/{self.project_id}/",
+            f"productions/{self.project_id}/",
+            f"generated/{self.project_id}/",
+        )
+        for pfx in dict.fromkeys(prefixes):
+            try:
+                for blob in self._client.list_blobs(self.bucket_name, prefix=pfx):
+                    found.add(f"gs://{self.bucket_name}/{blob.name}")
+            except Exception:
+                pass
+        return found
+
+    def delete_project_blobs(self, extra_uris: Iterable[str] = ()) -> int:
+        """Delete all GCS blobs under the project prefixes plus any referenced `gs://` URIs."""
+        targets = self._collect_prefix_uris() | {
+            u for u in extra_uris if u and u.startswith("gs://")
+        }
+        _SIGNED_URLS.evict(targets)
+        deleted = 0
+        for uri in sorted(targets):
+            try:
+                bucket_name, blob_name = self._parse_gs(uri)
+                if not blob_name:
+                    continue
+                bucket = (
+                    self._bucket
+                    if bucket_name == self.bucket_name
+                    else self._client.bucket(bucket_name)
+                )
+                bucket.blob(blob_name).delete()
+                deleted += 1
+            except Exception:
+                pass
+        return deleted
 
     def _sign_uncached(self, uri: str, expiration_minutes: int) -> str:
         try:

@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
 
 from routers import details_router, previz_router, productions_router
-from services import build_pipeline, get_repo
+from services import build_pipeline, delete_production_project, get_repo
 
 load_dotenv()
 
@@ -30,7 +30,7 @@ app.include_router(details_router)
 app.include_router(previz_router)
 app.include_router(productions_router)
 
-__all__ = ["app", "build_pipeline", "get_repo"]
+__all__ = ["app", "build_pipeline", "delete_production_project", "get_repo"]
 
 
 @app.get("/health")

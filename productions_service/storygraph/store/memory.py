@@ -117,6 +117,15 @@ class MemoryStore:
         with self._lock:
             self._data.get(collection, {}).pop(doc_id, None)
 
+    def purge_project(self, subcollections: tuple[str, ...] = ()) -> int:
+        """Remove all collections and documents for this project from memory."""
+        _ = subcollections
+        with self._lock:
+            deleted = sum(len(docs) for docs in self._data.values())
+            self._data.clear()
+            self._GLOBAL_PROJECTS.pop(self.project_id, None)
+            return deleted
+
     def query(
         self,
         collection: str,

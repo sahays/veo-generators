@@ -171,6 +171,43 @@ class StorageService:
         path = gcs_uri.replace(f"gs://{self.bucket_name}/", "")
         return self.bucket.blob(path).exists()
 
+    def delete_blob(self, gcs_uri: str) -> bool:
+        """Delete a single GCS blob by `gs://` URI; return True if deleted."""
+        if not gcs_uri or not gcs_uri.startswith("gs://"):
+            return False
+        try:
+            without = gcs_uri[5:]
+            bucket_name, _, blob_name = without.partition("/")
+            if not blob_name:
+                return False
+            bucket = (
+                self.bucket
+                if bucket_name == self.bucket_name
+                else self.client.bucket(bucket_name)
+            )
+            bucket.blob(blob_name).delete()
+            return True
+        except Exception:
+            return False
+
+    def delete_prefix(self, prefix: str) -> int:
+        """Delete all blobs under `prefix` in `self.bucket_name`; return deleted count."""
+        clean_prefix = prefix.lstrip("/")
+        if not clean_prefix:
+            return 0
+        deleted = 0
+        try:
+            blobs = list(self.client.list_blobs(self.bucket_name, prefix=clean_prefix))
+            for blob in blobs:
+                try:
+                    blob.delete()
+                    deleted += 1
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return deleted
+
     def resolve_cached_url(self, gcs_uri: str, cache: dict) -> tuple[str, bool]:
         """Return (signed_url, changed) for a GCS URI by signing fresh each call.
 

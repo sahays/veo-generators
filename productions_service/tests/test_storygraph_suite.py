@@ -160,6 +160,10 @@ def test_fastapi_productions_service_endpoints() -> None:
         and snap_done["status"] == "completed"
         and snap_done["final_video_url"]
     )
+    res_del = client.delete(f"/api/v1/productions/{pid}")
+    assert res_del.status_code == 200 and res_del.json()["status"] == "deleted"
+    assert res_del.json()["deleted_docs"] > 0 and res_del.json()["deleted_blobs"] > 0
+    assert client.get(f"/api/v1/productions/{pid}").status_code == 404
 
 
 def test_epic_name_normalization_hindi_dialogue_and_deduplication(

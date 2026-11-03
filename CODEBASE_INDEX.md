@@ -226,7 +226,7 @@ workers
 | `api/dubbing/dubbing_timeline.py` | Tier 2 (Core Services & Deps) | 84 | `measure_lag`, `assemble_track`, `is_silent`, `build_srt` |
 | `api/dubbing/live/dubbing_audio.py` | Tier 2 (Core Services & Deps) | 106 | `extract_source_pcm`, `first_speech_onset`, `write_wav`, `mux_dub` |
 | `api/dubbing/live/dubbing_live.py` | Tier 2 (Core Services & Deps) | 244 | `TranslationResult`, `_WindowSession`, `build_setup_frame`, `split_windows`, `translate_audio` |
-| `api/firestore_service.py` | Tier 2 (Core Services & Deps) | 332 | `FirestoreService` |
+| `api/firestore_service.py` | Tier 2 (Core Services & Deps) | 339 | `FirestoreService` |
 | `api/gcp_auth.py` | Tier 2 (Core Services & Deps) | 9 | `vertex_access_token` |
 | `api/gemini_service.py` | Tier 2 (Core Services & Deps) | 216 | `GeminiService` |
 | `api/helpers.py` | Tier 2 (Core Services & Deps) | 200 | `require_firestore`, `ensure_services_ready`, `get_or_404`, `apply_indexed_uris`, `sdk_call_with_retry`, `gemini_call_with_retry` (+5) |
@@ -293,7 +293,7 @@ workers
 | `api/routers/studio/_avatars_live_helpers.py` | Tier 4 (Feature Routers & Agents) | 137 | — |
 | `api/routers/studio/avatars.py` | Tier 4 (Feature Routers & Agents) | 212 | `PATCH /{avatar_id}`, `POST `, `POST /{avatar_id}/ask`, `POST /{avatar_id}/ask-audio`, `GET /{avatar_id}/turns`, `GET /turns/{turn_id}` (+7) |
 | `api/routers/studio/avatars_live.py` | Tier 4 (Feature Routers & Agents) | 339 | `GET /{avatar_id}/live-config`, `WEBSOCKET /{avatar_id}/live`, `live_config`, `avatar_live` |
-| `api/routers/studio/productions.py` | Tier 4 (Feature Routers & Agents) | 331 | `POST `, `POST /{id}/analyze`, `POST /{id}/review`, `POST /{id}/evaluate`, `POST /{id}/regenerate-flagged`, `GET /{id}/graph` (+30) |
+| `api/routers/studio/productions.py` | Tier 4 (Feature Routers & Agents) | 369 | `POST `, `POST /{id}/analyze`, `POST /{id}/review`, `POST /{id}/evaluate`, `POST /{id}/regenerate-flagged`, `GET /{id}/graph` (+30) |
 | `api/routers/studio/render.py` | Tier 4 (Feature Routers & Agents) | 159 | `POST /{id}/render`, `POST /{id}/stitch`, `GET /{id}/stitch-status`, `start_render`, `stitch_production`, `get_stitch_status` |
 | `api/routers/studio/scenes.py` | Tier 4 (Feature Routers & Agents) | 293 | `POST /{id}/scenes/{scene_id}/build-prompt`, `PATCH /{id}/scenes/{scene_id}`, `POST /{id}/scenes/{scene_id}/frame`, `POST /{id}/scenes/{scene_id}/video`, `build_scene_prompt`, `update_scene` (+2) |
 | `api/scripts/backfill_pricing.py` | Tier 5 (Entrypoints, Scripts & Workers) | 399 | `main` |
@@ -316,7 +316,7 @@ workers
 | `api/services/url_signing.py` | Tier 2 (Core Services & Deps) | 152 | `sign_records_concurrently`, `sign_values_concurrently`, `sign_record_urls`, `sign_nested_list_uris`, `sign_production_urls`, `list_upload_sources` (+3) |
 | `api/services/video_prompt_helpers.py` | Tier 2 (Core Services & Deps) | 237 | `build_scene_video_prompt`, `extract_omni_video_uri` |
 | `api/sitecustomize.py` | Tier 2 (Core Services & Deps) | 41 | `_ReframeAliasFinder` |
-| `api/storage_service.py` | Tier 2 (Core Services & Deps) | 143 | `StorageService` |
+| `api/storage_service.py` | Tier 2 (Core Services & Deps) | 176 | `StorageService` |
 | `api/tests/conftest.py` | Test Suite | 21 | — |
 | `api/tests/reframe/test_reframe_active_area.py` | Test Suite | 167 | `test_full_frame_returns_none`, `test_letterbox_bars_detected`, `test_pillarbox_bars_detected`, `test_minority_full_bleed_frame_tolerated_as_outlier`, `test_mixed_format_source_not_trimmed`, `test_subtitle_inside_bottom_bar_limits_trim` (+15) |
 | `api/tests/reframe/test_reframe_av1.py` | Test Suite | 84 | `_Tmp`, `test_h264_source_passes_through_unchanged`, `test_av1_source_is_transcoded_to_readable_copy` |
@@ -601,7 +601,7 @@ workers
 | `productions_service/main.py` | Tier 5 (Entrypoints, Scripts & Workers) | 25 | `GET /health`, `health_check` |
 | `productions_service/routers/details.py` | Tier 5 (Entrypoints, Scripts & Workers) | 25 | `GET /api/v1/productions/{project_id}/shots/{shot_id}/runs`, `GET /api/v1/productions/{project_id}/graph/audit-log`, `GET /api/v1/productions/{project_id}/graph/scenes/{scene_id}`, `get_shot_runs`, `get_audit_log`, `get_scene_detail` |
 | `productions_service/routers/previz.py` | Tier 5 (Entrypoints, Scripts & Workers) | 26 | `GET /api/v1/productions/{project_id}/previz`, `POST /api/v1/productions/{project_id}/previz/run`, `POST /api/v1/productions/{project_id}/previz/shots/{shot_id}/promote`, `get_production_previz`, `run_production_previz`, `promote_production_previz` |
-| `productions_service/routers/productions.py` | Tier 5 (Entrypoints, Scripts & Workers) | 104 | `POST /api/v1/productions`, `GET /api/v1/productions`, `GET /api/v1/productions/{project_id}`, `GET /api/v1/productions/{project_id}/graph`, `PATCH /api/v1/productions/{project_id}`, `DELETE /api/v1/productions/{project_id}` (+28) |
+| `productions_service/routers/productions.py` | Tier 5 (Entrypoints, Scripts & Workers) | 107 | `POST /api/v1/productions`, `GET /api/v1/productions`, `GET /api/v1/productions/{project_id}`, `GET /api/v1/productions/{project_id}/graph`, `PATCH /api/v1/productions/{project_id}`, `DELETE /api/v1/productions/{project_id}` (+29) |
 | `productions_service/routers/runs.py` | Tier 5 (Entrypoints, Scripts & Workers) | 97 | `GET /`, `POST /`, `POST /`, `POST /`, `POST /`, `POST /` (+16) |
 | `productions_service/services/assembly_service.py` | Tier 5 (Entrypoints, Scripts & Workers) | 46 | `get_assembly_readiness`, `assemble_project` |
 | `productions_service/services/design_service.py` | Tier 5 (Entrypoints, Scripts & Workers) | 66 | `approve_project_appearance`, `regenerate_project_appearance`, `compile_project_shot_preview` |
@@ -618,10 +618,10 @@ workers
 | `productions_service/services/keyframes_service.py` | Tier 5 (Entrypoints, Scripts & Workers) | 128 | `get_shot_keyframes`, `get_keyframe_board`, `regenerate_shot_keyframe` |
 | `productions_service/services/previz_contract.py` | Tier 5 (Entrypoints, Scripts & Workers) | 52 | `PrevizStageRunView`, `PrevizLayoutView`, `PrevizVariantView`, `ShotPreviz`, `PrevizBoardResponse`, `PrevizRunPayload` (+2) |
 | `productions_service/services/previz_service.py` | Tier 5 (Entrypoints, Scripts & Workers) | 228 | `get_previz_board`, `start_previz_run`, `promote_shot_previz`, `retry_last_previz` |
-| `productions_service/services/productions_service.py` | Tier 5 (Entrypoints, Scripts & Workers) | 344 | `CreateProductionPayload`, `RunPipelinePayload`, `GateDecisionPayload`, `create_production_project`, `list_production_projects`, `get_production_project` (+7) |
+| `productions_service/services/productions_service.py` | Tier 5 (Entrypoints, Scripts & Workers) | 348 | `CreateProductionPayload`, `RunPipelinePayload`, `GateDecisionPayload`, `create_production_project`, `list_production_projects`, `get_production_project` (+8) |
 | `productions_service/services/prompt_versions_service.py` | Tier 5 (Entrypoints, Scripts & Workers) | 116 | `HumanPromptPayload`, `list_shot_prompts`, `activate_shot_prompt`, `create_human_shot_prompt` |
 | `productions_service/services/repair_service.py` | Tier 5 (Entrypoints, Scripts & Workers) | 153 | `RepairShotsPayload`, `repair_project_shots`, `regenerate_project_shot`, `edit_project_shot_clip` |
-| `productions_service/services/runtime.py` | Tier 5 (Entrypoints, Scripts & Workers) | 218 | `load_runtime_config`, `get_graph_store`, `get_repo`, `build_pipeline`, `reset_storygraph_collections` |
+| `productions_service/services/runtime.py` | Tier 5 (Entrypoints, Scripts & Workers) | 270 | `load_runtime_config`, `get_graph_store`, `get_repo`, `build_pipeline`, `collect_project_blob_uris`, `purge_storygraph_project` (+1) |
 | `productions_service/services/snapshot/builder.py` | Tier 5 (Entrypoints, Scripts & Workers) | 191 | `_Graph`, `format_graph_snapshot` |
 | `productions_service/services/snapshot/prefetch.py` | Tier 5 (Entrypoints, Scripts & Workers) | 95 | `ReadOnlySnapshotError`, `QuerySpec`, `Prefetched`, `PrefetchedStore`, `prefetch` |
 | `productions_service/services/snapshot/sections.py` | Tier 5 (Entrypoints, Scripts & Workers) | 146 | `group_entities`, `serialize_style_guide`, `usage_summary`, `legacy_scenes`, `project_envelope` |
@@ -954,10 +954,10 @@ workers
 | `productions_service/storygraph/state.py` | Tier 2 (Core Services & Deps) | 184 | `_Replay`, `normalize_scene_timeline`, `rebuild_state_facts`, `state_at`, `state_before`, `holders_at` (+2) |
 | `productions_service/storygraph/store/base.py` | Tier 2 (Core Services & Deps) | 47 | `BatchWriter`, `Tx`, `GraphStore`, `BlobStore` |
 | `productions_service/storygraph/store/codec.py` | Tier 2 (Core Services & Deps) | 24 | `check_doc_size`, `encode`, `decode` |
-| `productions_service/storygraph/store/firestore.py` | Tier 2 (Core Services & Deps) | 186 | `_FirestoreAutoChunkBatch`, `_FirestoreTx`, `FirestoreStore` |
-| `productions_service/storygraph/store/gcs.py` | Tier 2 (Core Services & Deps) | 144 | `LocalBlobStore`, `GcsBlobStore` |
-| `productions_service/storygraph/store/memory.py` | Tier 2 (Core Services & Deps) | 117 | `_MemoryBatch`, `_MemoryTx`, `MemoryStore`, `apply_query` |
-| `productions_service/storygraph/store/url_signing.py` | Tier 2 (Core Services & Deps) | 55 | `SignedUrlCache`, `sign_many`, `sign_all` |
+| `productions_service/storygraph/store/firestore.py` | Tier 2 (Core Services & Deps) | 203 | `_FirestoreAutoChunkBatch`, `_FirestoreTx`, `FirestoreStore` |
+| `productions_service/storygraph/store/gcs.py` | Tier 2 (Core Services & Deps) | 195 | `LocalBlobStore`, `GcsBlobStore` |
+| `productions_service/storygraph/store/memory.py` | Tier 2 (Core Services & Deps) | 124 | `_MemoryBatch`, `_MemoryTx`, `MemoryStore`, `apply_query` |
+| `productions_service/storygraph/store/url_signing.py` | Tier 2 (Core Services & Deps) | 59 | `SignedUrlCache`, `sign_many`, `sign_all` |
 | `productions_service/storygraph/story/beats.py` | Tier 2 (Core Services & Deps) | 70 | `BeatKind`, `Beat`, `collect_story_beats`, `collect_script_beats` |
 | `productions_service/storygraph/story/dedup.py` | Tier 2 (Core Services & Deps) | 51 | `DuplicateBeat`, `find_duplicate_beats` |
 | `productions_service/storygraph/story/minhash.py` | Tier 2 (Core Services & Deps) | 33 | `signature`, `candidate_pairs`, `jaccard` |
@@ -1071,10 +1071,10 @@ workers
 | `productions_service/tests/test_retry_rewrite.py` | Test Suite | 109 | `test_towel_failure_becomes_named_target_state_without_failure_words`, `test_unclassified_reason_uses_llm_only_when_output_is_positive`, `test_context_from_view_resolves_holder_and_flag_actor_suffix`, `test_render_stage_retry_context_feeds_rewritten_targets` |
 | `productions_service/tests/test_shot_invalidation.py` | Test Suite | 195 | `rendered`, `test_changed_content_marks_stale_and_s8_rerenders`, `test_unchanged_content_keeps_approved_run_and_skips_render`, `test_unchanged_content_preserves_upstream_staleness`, `test_readiness_blocks_approved_run_from_older_content`, `test_readiness_blocks_stale_shot_even_with_matching_run` (+2) |
 | `productions_service/tests/test_state_and_validate.py` | Test Suite | 134 | `test_state_engine_intervals_and_valid_graph`, `test_validator_rules_v1_through_v4`, `test_validator_rules_v5_and_v10_v12`, `test_validator_rules_v6_through_v13` |
-| `productions_service/tests/test_store_and_schema.py` | Test Suite | 331 | `test_store_crud_and_queries`, `test_store_batches_transactions_and_blobs`, `test_all_14_node_types_round_trip`, `test_repo_versioning_append_only_and_staleness_propagation`, `test_firestore_store_transaction_starts_commits_and_rolls_back` |
+| `productions_service/tests/test_store_and_schema.py` | Test Suite | 358 | `test_store_crud_and_queries`, `test_store_batches_transactions_and_blobs`, `test_all_14_node_types_round_trip`, `test_repo_versioning_append_only_and_staleness_propagation`, `test_firestore_store_transaction_starts_commits_and_rolls_back`, `test_purge_storygraph_project_deletes_docs_and_blobs` |
 | `productions_service/tests/test_storygraph_presets_and_verifier.py` | Test Suite | 385 | `test_presets_catalog_and_director_auto_binding`, `test_verify_storygraph_and_stage_qa_remediation`, `test_sublocation_event_effects_remediation`, `test_physical_causality_and_backward_prop_liveness_closure`, `test_critic_physics_and_permanence_qa_rejection`, `test_auto_mode_and_iterative_agent_review_redo_before_render` (+1) |
 | `productions_service/tests/test_storygraph_remediation.py` | Test Suite | 393 | `test_story_order_alignment`, `test_dialogue_partitioning_and_speaker_binding`, `test_compile_budget_preserves_identity_and_props`, `test_first_frame_slot_reservation_and_ordering`, `test_spatial_blocking_deduplication_and_continuity`, `test_critic_rejects_missing_character_and_low_scores` |
-| `productions_service/tests/test_storygraph_suite.py` | Test Suite | 277 | `test_end_to_end_pipeline_gates_retries_and_idempotency`, `test_budget_exceeded_cap`, `test_fastapi_productions_service_endpoints`, `test_epic_name_normalization_hindi_dialogue_and_deduplication`, `test_firestore_doc_preset_seeding_and_sync`, `test_draft_360p_vs_final_720p_compilation` |
+| `productions_service/tests/test_storygraph_suite.py` | Test Suite | 281 | `test_end_to_end_pipeline_gates_retries_and_idempotency`, `test_budget_exceeded_cap`, `test_fastapi_productions_service_endpoints`, `test_epic_name_normalization_hindi_dialogue_and_deduplication`, `test_firestore_doc_preset_seeding_and_sync`, `test_draft_360p_vs_final_720p_compilation` |
 | `productions_service/tests/test_tools_and_budget.py` | Test Suite | 238 | `test_role_permissions_architect_and_designers`, `test_role_permissions_location_object_and_from_text`, `test_role_permissions_writers_director_music_and_critic`, `test_structured_output_repair_loop`, `test_reference_budgeter_and_prompt_compiler_determinism` |
 | `scripts/check_architecture.py` | Tier 5 (Entrypoints, Scripts & Workers) | 50 | `run_all_checks`, `main` |
 | `scripts/check_codebase_index.py` | Tier 5 (Entrypoints, Scripts & Workers) | 136 | `IndexDrift`, `check_index_honesty`, `sync_codebase_index`, `main` |

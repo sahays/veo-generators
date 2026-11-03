@@ -215,7 +215,7 @@ export const ProjectCardItem = ({
                 size="icon"
                 onClick={onDelete}
                 className="h-7 w-7 rounded-lg"
-                title="Archive Production"
+                title="Delete Production"
               >
                 <Trash2 size={13} />
               </Button>

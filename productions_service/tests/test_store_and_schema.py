@@ -355,3 +355,37 @@ def test_firestore_store_transaction_starts_commits_and_rolls_back() -> None:
             assert tx.get("meta", "active_job") == {"run_id": "old"}
             raise RuntimeError("conflict")
     assert rpc.rollback.call_count == 1
+
+
+def test_purge_storygraph_project_deletes_docs_and_blobs(tmp_path: Any) -> None:
+    """Hard delete removes all StoryGraph collections, local/referenced blobs, and memory index."""
+    from services.runtime import (
+        ALL_PROJECT_COLLECTIONS,
+        collect_project_blob_uris,
+    )
+    from storygraph.store.gcs import LocalBlobStore
+    from storygraph.store.memory import MemoryStore
+
+    store = MemoryStore(project_id="p_del", shared=True)
+    blobs = LocalBlobStore(root_dir=tmp_path, project_id="p_del")
+    uri_sheet = blobs.put_bytes("sheets/char.png", b"png-bytes", "image/png")
+    uri_clip = blobs.put_bytes("clips/shot_01.mp4", b"mp4-bytes", "video/mp4")
+    extra_file = tmp_path / "external_stitched.mp4"
+    extra_file.write_bytes(b"final-cut")
+    uri_extra = f"file://{extra_file}"
+
+    store.set("meta", "project", {"id": "p_del", "final_video_uri": uri_extra})
+    store.set("assets", "ast_1", {"id": "ast_1", "uri": uri_sheet})
+    store.set("generation_runs", "run_1", {"id": "run_1", "output_video_uri": uri_clip})
+    store.set("shots", "shot_01", {"id": "shot_01"})
+
+    found_uris = collect_project_blob_uris(store)
+    assert found_uris == {uri_sheet, uri_clip, uri_extra}
+    deleted_blobs = blobs.delete_project_blobs(found_uris)
+    assert deleted_blobs == 3
+    assert not blobs.exists(uri_sheet) and not blobs.exists(uri_clip)
+    assert not extra_file.exists()
+
+    deleted_docs = store.purge_project(ALL_PROJECT_COLLECTIONS)
+    assert deleted_docs == 4
+    assert store.get("meta", "project") is None and store.query("assets") == []

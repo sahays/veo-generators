@@ -35,12 +35,56 @@ def _prod_log(
     }
 
 
+def _collect_production_gcs_uris(p: Project | None) -> set[str]:
+    """Extract all `gs://` URIs stored on a `Project` and its scenes."""
+    uris: set[str] = set()
+    if not p:
+        return uris
+    for attr in ("reference_image_url", "final_video_url", "draft_video_url"):
+        val = getattr(p, attr, None)
+        if isinstance(val, str) and val.startswith("gs://"):
+            uris.add(val)
+    for sc in getattr(p, "scenes", None) or []:
+        for attr in ("thumbnail_url", "end_frame_url", "video_url"):
+            val = getattr(sc, attr, None)
+            if isinstance(val, str) and val.startswith("gs://"):
+                uris.add(val)
+    return uris
+
+
+def _delete_production_and_assets(production_id: str) -> None:
+    """Permanently delete a production's GCS assets, StoryGraph subcollections, and Firestore doc."""
+    p = deps.firestore_svc.get_production(production_id) if deps.firestore_svc else None
+    uris = _collect_production_gcs_uris(p)
+    try:
+        prod_main = _load_storygraph_service()
+        prod_main.delete_production_project(production_id)
+    except Exception as exc:
+        logger.warning(
+            f"StoryGraph purge skipped for {production_id}: {exc}",
+            extra=_prod_log(
+                "_delete_production_and_assets", "storygraph_purge_warn", str(exc)
+            ),
+        )
+    if deps.storage_svc:
+        for pfx in (
+            f"projects/{production_id}/",
+            f"productions/{production_id}/",
+            f"generated/{production_id}/",
+        ):
+            deps.storage_svc.delete_prefix(pfx)
+        for uri in uris:
+            deps.storage_svc.delete_blob(uri)
+    if deps.firestore_svc:
+        deps.firestore_svc.delete_production(production_id)
+
+
 register_crud_routes(
     router,
     resource_label="Production",
     getter=lambda rid: deps.firestore_svc.get_production(rid),
     updater=lambda rid, u: deps.firestore_svc.update_production(rid, u),
-    deleter=lambda rid: deps.firestore_svc.update_production(rid, {"archived": True}),
+    deleter=_delete_production_and_assets,
     lister=lambda include_archived=False: deps.firestore_svc.get_productions(
         include_archived=include_archived
     ),

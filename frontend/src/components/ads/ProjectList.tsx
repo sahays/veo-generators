@@ -80,7 +80,7 @@ function useProjectListData() {
     if (!deleteTarget) return
     setIsDeleting(true)
     try {
-      await projectsApi.archive(deleteTarget.id)
+      await projectsApi.delete(deleteTarget.id)
       const nextList = projects.filter((p) => p.id !== deleteTarget.id)
       setProjects(nextList)
       setDeleteTarget(null)
@@ -149,8 +149,8 @@ const DeleteProductionModal = ({
   <Modal
     isOpen={!!deleteTarget}
     onClose={() => !isDeleting && onClose()}
-    title="Archive Production"
-    subtitle="This action will archive this production and remove it from your active studio workspace."
+    title="Delete Production"
+    subtitle="This action will permanently delete this production and clean up all generated assets, keyframes, clips, and StoryGraph records."
     maxWidth="max-w-md"
     footer={
       <>
@@ -163,13 +163,13 @@ const DeleteProductionModal = ({
           onClick={onConfirm}
           disabled={isDeleting}
         >
-          {isDeleting ? 'Archiving...' : 'Archive Production'}
+          {isDeleting ? 'Deleting...' : 'Delete Production'}
         </Button>
       </>
     }
   >
     <p className="text-sm text-muted-foreground">
-      Are you sure you want to archive{' '}
+      Are you sure you want to permanently delete{' '}
       <strong className="text-foreground">{deleteTarget?.name || deleteTarget?.id}</strong>?
     </p>
   </Modal>

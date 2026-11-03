@@ -138,6 +138,13 @@ class FirestoreService:
         self._update_record(self.collection, production_id, updates)
 
     def delete_production(self, production_id: str) -> None:
+        doc_ref = self.collection.document(production_id)
+        try:
+            for subcol in doc_ref.collections():
+                for snap in subcol.stream():
+                    snap.reference.delete()
+        except Exception:
+            pass
         self._delete_record(self.collection, production_id)
 
     def update_scene(self, production_id: str, scene_id: str, updates: dict) -> None:
