@@ -1,0 +1,1003 @@
+{
+  "schema_version": "engagement-report-v1",
+  "duration_sec": 45.0,
+  "signal": {
+    "kind": "template",
+    "template_id": "high",
+    "label": "High engagement",
+    "simulated": true,
+    "primary_metric": "Engagement index",
+    "unit": "index",
+    "offset_sec": 0.0,
+    "point_count": 45,
+    "interval_sec": 1.0
+  },
+  "metrics": [
+    {
+      "key": "engagement_index",
+      "label": "Engagement index",
+      "primary": true,
+      "points": [
+        [
+          0.0,
+          85.38
+        ],
+        [
+          1.0,
+          89.98
+        ],
+        [
+          2.0,
+          93.37
+        ],
+        [
+          3.0,
+          92.15
+        ],
+        [
+          4.0,
+          86.84
+        ],
+        [
+          5.0,
+          84.38
+        ],
+        [
+          6.0,
+          81.56
+        ],
+        [
+          7.0,
+          79.73
+        ],
+        [
+          8.0,
+          80.35
+        ],
+        [
+          9.0,
+          78.35
+        ],
+        [
+          10.0,
+          76.86
+        ],
+        [
+          11.0,
+          76.35
+        ],
+        [
+          12.0,
+          74.18
+        ],
+        [
+          13.0,
+          74.5
+        ],
+        [
+          14.0,
+          73.45
+        ],
+        [
+          15.0,
+          73.91
+        ],
+        [
+          16.0,
+          73.76
+        ],
+        [
+          17.0,
+          74.82
+        ],
+        [
+          18.0,
+          76.63
+        ],
+        [
+          19.0,
+          77.82
+        ],
+        [
+          20.0,
+          77.04
+        ],
+        [
+          21.0,
+          77.45
+        ],
+        [
+          22.0,
+          79.91
+        ],
+        [
+          23.0,
+          77.46
+        ],
+        [
+          24.0,
+          77.09
+        ],
+        [
+          25.0,
+          75.58
+        ],
+        [
+          26.0,
+          73.91
+        ],
+        [
+          27.0,
+          74.98
+        ],
+        [
+          28.0,
+          74.04
+        ],
+        [
+          29.0,
+          72.1
+        ],
+        [
+          30.0,
+          70.65
+        ],
+        [
+          31.0,
+          71.88
+        ],
+        [
+          32.0,
+          70.08
+        ],
+        [
+          33.0,
+          71.18
+        ],
+        [
+          34.0,
+          72.0
+        ],
+        [
+          35.0,
+          71.44
+        ],
+        [
+          36.0,
+          74.08
+        ],
+        [
+          37.0,
+          73.23
+        ],
+        [
+          38.0,
+          75.34
+        ],
+        [
+          39.0,
+          75.79
+        ],
+        [
+          40.0,
+          75.15
+        ],
+        [
+          41.0,
+          73.76
+        ],
+        [
+          42.0,
+          72.61
+        ],
+        [
+          43.0,
+          72.54
+        ],
+        [
+          44.0,
+          70.42
+        ]
+      ]
+    }
+  ],
+  "smoothed": [
+    [
+      0.0,
+      85.38
+    ],
+    [
+      1.0,
+      89.98
+    ],
+    [
+      2.0,
+      93.37
+    ],
+    [
+      3.0,
+      92.15
+    ],
+    [
+      4.0,
+      86.84
+    ],
+    [
+      5.0,
+      84.38
+    ],
+    [
+      6.0,
+      81.56
+    ],
+    [
+      7.0,
+      79.73
+    ],
+    [
+      8.0,
+      80.35
+    ],
+    [
+      9.0,
+      78.35
+    ],
+    [
+      10.0,
+      76.86
+    ],
+    [
+      11.0,
+      76.35
+    ],
+    [
+      12.0,
+      74.18
+    ],
+    [
+      13.0,
+      74.5
+    ],
+    [
+      14.0,
+      73.45
+    ],
+    [
+      15.0,
+      73.91
+    ],
+    [
+      16.0,
+      73.76
+    ],
+    [
+      17.0,
+      74.82
+    ],
+    [
+      18.0,
+      76.63
+    ],
+    [
+      19.0,
+      77.82
+    ],
+    [
+      20.0,
+      77.04
+    ],
+    [
+      21.0,
+      77.45
+    ],
+    [
+      22.0,
+      79.91
+    ],
+    [
+      23.0,
+      77.46
+    ],
+    [
+      24.0,
+      77.09
+    ],
+    [
+      25.0,
+      75.58
+    ],
+    [
+      26.0,
+      73.91
+    ],
+    [
+      27.0,
+      74.98
+    ],
+    [
+      28.0,
+      74.04
+    ],
+    [
+      29.0,
+      72.1
+    ],
+    [
+      30.0,
+      70.65
+    ],
+    [
+      31.0,
+      71.88
+    ],
+    [
+      32.0,
+      70.08
+    ],
+    [
+      33.0,
+      71.18
+    ],
+    [
+      34.0,
+      72.0
+    ],
+    [
+      35.0,
+      71.44
+    ],
+    [
+      36.0,
+      74.08
+    ],
+    [
+      37.0,
+      73.23
+    ],
+    [
+      38.0,
+      75.34
+    ],
+    [
+      39.0,
+      75.79
+    ],
+    [
+      40.0,
+      75.15
+    ],
+    [
+      41.0,
+      73.76
+    ],
+    [
+      42.0,
+      72.61
+    ],
+    [
+      43.0,
+      72.54
+    ],
+    [
+      44.0,
+      70.42
+    ]
+  ],
+  "stats": {
+    "avg": 76.7573,
+    "median": 75.15,
+    "p75": 77.82,
+    "min": 70.08,
+    "max": 93.37,
+    "std": 5.5052
+  },
+  "extrema": [
+    {
+      "id": "peak-1",
+      "kind": "peak",
+      "time_sec": 2.0,
+      "value": 93.37,
+      "prominence": 7.99,
+      "delta_pct": 21.64,
+      "window": {
+        "start_sec": 0.0,
+        "end_sec": 8.0
+      },
+      "segment_id": "seg-1",
+      "title": "",
+      "explanation": "",
+      "drivers": []
+    },
+    {
+      "id": "peak-2",
+      "kind": "peak",
+      "time_sec": 22.0,
+      "value": 79.91,
+      "prominence": 6.46,
+      "delta_pct": 4.11,
+      "window": {
+        "start_sec": 17.0,
+        "end_sec": 28.0
+      },
+      "segment_id": "seg-5",
+      "title": "",
+      "explanation": "",
+      "drivers": []
+    },
+    {
+      "id": "peak-3",
+      "kind": "peak",
+      "time_sec": 39.0,
+      "value": 75.79,
+      "prominence": 5.37,
+      "delta_pct": -1.26,
+      "window": {
+        "start_sec": 34.0,
+        "end_sec": 45.0
+      },
+      "segment_id": "seg-9",
+      "title": "",
+      "explanation": "",
+      "drivers": []
+    },
+    {
+      "id": "valley-1",
+      "kind": "valley",
+      "time_sec": 14.0,
+      "value": 73.45,
+      "prominence": 6.46,
+      "delta_pct": -4.31,
+      "window": {
+        "start_sec": 9.0,
+        "end_sec": 20.0
+      },
+      "segment_id": "seg-4",
+      "title": "",
+      "explanation": "",
+      "drivers": []
+    },
+    {
+      "id": "valley-2",
+      "kind": "valley",
+      "time_sec": 32.0,
+      "value": 70.08,
+      "prominence": 5.71,
+      "delta_pct": -8.7,
+      "window": {
+        "start_sec": 27.0,
+        "end_sec": 38.0
+      },
+      "segment_id": "seg-7",
+      "title": "",
+      "explanation": "",
+      "drivers": []
+    },
+    {
+      "id": "drop-1",
+      "kind": "drop",
+      "time_sec": 3.0,
+      "value": 92.15,
+      "prominence": 10.59,
+      "delta_pct": 20.05,
+      "window": {
+        "start_sec": 0.0,
+        "end_sec": 12.0
+      },
+      "segment_id": "seg-1",
+      "title": "",
+      "explanation": "",
+      "drivers": []
+    }
+  ],
+  "segments": [
+    {
+      "segment_id": "seg-1",
+      "avg": 89.7375,
+      "delta_pct": 16.91,
+      "rank": 1
+    },
+    {
+      "segment_id": "seg-2",
+      "avg": 85.2012,
+      "delta_pct": 11.0,
+      "rank": 2
+    },
+    {
+      "segment_id": "seg-3",
+      "avg": 78.1722,
+      "delta_pct": 1.84,
+      "rank": 3
+    },
+    {
+      "segment_id": "seg-4",
+      "avg": 74.0237,
+      "delta_pct": -3.56,
+      "rank": 6
+    },
+    {
+      "segment_id": "seg-5",
+      "avg": 77.363,
+      "delta_pct": 0.79,
+      "rank": 4
+    },
+    {
+      "segment_id": "seg-6",
+      "avg": 75.9619,
+      "delta_pct": -1.04,
+      "rank": 5
+    },
+    {
+      "segment_id": "seg-7",
+      "avg": 71.6982,
+      "delta_pct": -6.59,
+      "rank": 9
+    },
+    {
+      "segment_id": "seg-8",
+      "avg": 73.0327,
+      "delta_pct": -4.85,
+      "rank": 8
+    },
+    {
+      "segment_id": "seg-9",
+      "avg": 73.3783,
+      "delta_pct": -4.4,
+      "rank": 7
+    }
+  ],
+  "influence": [
+    {
+      "key": "event:emotional",
+      "ref_id": null,
+      "name": "emotional",
+      "kind": "event",
+      "avg_during": 80.8376,
+      "delta_pct": 5.32,
+      "coverage_sec": 9.7,
+      "coverage_pct": 21.56,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 3.2,
+          "end_sec": 7.5
+        },
+        {
+          "start_sec": 17.4,
+          "end_sec": 22.8
+        }
+      ]
+    },
+    {
+      "key": "emotion:calm",
+      "ref_id": null,
+      "name": "calm",
+      "kind": "emotion",
+      "avg_during": 78.7741,
+      "delta_pct": 2.63,
+      "coverage_sec": 13.7,
+      "coverage_pct": 30.44,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 3.2
+        },
+        {
+          "start_sec": 7.5,
+          "end_sec": 12.0
+        },
+        {
+          "start_sec": 39.0,
+          "end_sec": 45.0
+        }
+      ]
+    },
+    {
+      "key": "character:asha",
+      "ref_id": "ent-1",
+      "name": "Asha",
+      "kind": "character",
+      "avg_during": 77.319,
+      "delta_pct": 0.73,
+      "coverage_sec": 24.9,
+      "coverage_pct": 55.33,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 3.2,
+          "end_sec": 12.0
+        },
+        {
+          "start_sec": 17.4,
+          "end_sec": 33.5
+        }
+      ]
+    },
+    {
+      "key": "object:kettle",
+      "ref_id": "ent-7",
+      "name": "Kettle",
+      "kind": "object",
+      "avg_during": 76.578,
+      "delta_pct": -0.23,
+      "coverage_sec": 8.5,
+      "coverage_pct": 18.89,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 7.9,
+          "end_sec": 12.0
+        },
+        {
+          "start_sec": 15.2,
+          "end_sec": 19.6
+        }
+      ]
+    },
+    {
+      "key": "location:kitchen",
+      "ref_id": "ent-4",
+      "name": "Kitchen",
+      "kind": "location",
+      "avg_during": 76.4224,
+      "delta_pct": -0.44,
+      "coverage_sec": 15.3,
+      "coverage_pct": 34.0,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 7.5,
+          "end_sec": 22.8
+        }
+      ]
+    },
+    {
+      "key": "object:kadak chai pack",
+      "ref_id": "ent-2",
+      "name": "Kadak Chai pack",
+      "kind": "object",
+      "avg_during": 74.0404,
+      "delta_pct": -3.54,
+      "coverage_sec": 19.2,
+      "coverage_pct": 42.67,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 12.0,
+          "end_sec": 17.4
+        },
+        {
+          "start_sec": 20.5,
+          "end_sec": 22.8
+        },
+        {
+          "start_sec": 33.5,
+          "end_sec": 45.0
+        }
+      ]
+    },
+    {
+      "key": "emotion:surprise",
+      "ref_id": null,
+      "name": "surprise",
+      "kind": "emotion",
+      "avg_during": 74.0237,
+      "delta_pct": -3.56,
+      "coverage_sec": 5.4,
+      "coverage_pct": 12.0,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 12.0,
+          "end_sec": 17.4
+        }
+      ]
+    },
+    {
+      "key": "emotion:joy",
+      "ref_id": null,
+      "name": "joy",
+      "kind": "emotion",
+      "avg_during": 74.011,
+      "delta_pct": -3.58,
+      "coverage_sec": 16.4,
+      "coverage_pct": 36.44,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 17.4,
+          "end_sec": 22.8
+        },
+        {
+          "start_sec": 28.0,
+          "end_sec": 39.0
+        }
+      ]
+    },
+    {
+      "key": "object:steel tumblers",
+      "ref_id": "ent-3",
+      "name": "Steel tumblers",
+      "kind": "object",
+      "avg_during": 74.011,
+      "delta_pct": -3.58,
+      "coverage_sec": 16.4,
+      "coverage_pct": 36.44,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 17.4,
+          "end_sec": 22.8
+        },
+        {
+          "start_sec": 28.0,
+          "end_sec": 39.0
+        }
+      ]
+    },
+    {
+      "key": "event:product_showcase",
+      "ref_id": null,
+      "name": "product_showcase",
+      "kind": "event",
+      "avg_during": 73.5237,
+      "delta_pct": -4.21,
+      "coverage_sec": 10.9,
+      "coverage_pct": 24.22,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 12.0,
+          "end_sec": 17.4
+        },
+        {
+          "start_sec": 33.5,
+          "end_sec": 39.0
+        }
+      ]
+    },
+    {
+      "key": "character:mr. rao",
+      "ref_id": "ent-6",
+      "name": "Mr. Rao",
+      "kind": "character",
+      "avg_during": 73.5026,
+      "delta_pct": -4.24,
+      "coverage_sec": 10.1,
+      "coverage_pct": 22.44,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 23.4,
+          "end_sec": 33.5
+        }
+      ]
+    },
+    {
+      "key": "event:call_to_action",
+      "ref_id": null,
+      "name": "call_to_action",
+      "kind": "event",
+      "avg_during": 73.3783,
+      "delta_pct": -4.4,
+      "coverage_sec": 6.0,
+      "coverage_pct": 13.33,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 39.0,
+          "end_sec": 45.0
+        }
+      ]
+    },
+    {
+      "key": "event:comedy",
+      "ref_id": null,
+      "name": "comedy",
+      "kind": "event",
+      "avg_during": 73.2526,
+      "delta_pct": -4.57,
+      "coverage_sec": 9.5,
+      "coverage_pct": 21.11,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 24.0,
+          "end_sec": 33.5
+        }
+      ]
+    },
+    {
+      "key": "emotion:humor",
+      "ref_id": null,
+      "name": "humor",
+      "kind": "emotion",
+      "avg_during": 73.0394,
+      "delta_pct": -4.84,
+      "coverage_sec": 9.0,
+      "coverage_pct": 20.0,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 24.5,
+          "end_sec": 33.5
+        }
+      ]
+    },
+    {
+      "key": "emotion:triumph",
+      "ref_id": null,
+      "name": "triumph",
+      "kind": "emotion",
+      "avg_during": 73.0327,
+      "delta_pct": -4.85,
+      "coverage_sec": 5.5,
+      "coverage_pct": 12.22,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 33.5,
+          "end_sec": 39.0
+        }
+      ]
+    },
+    {
+      "key": "location:balcony",
+      "ref_id": "ent-5",
+      "name": "Balcony",
+      "kind": "location",
+      "avg_during": 72.3655,
+      "delta_pct": -5.72,
+      "coverage_sec": 11.0,
+      "coverage_pct": 24.44,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 28.0,
+          "end_sec": 39.0
+        }
+      ]
+    },
+    {
+      "key": "event:exposition",
+      "ref_id": null,
+      "name": "exposition",
+      "kind": "event",
+      "avg_during": 89.7375,
+      "delta_pct": 16.91,
+      "coverage_sec": 3.2,
+      "coverage_pct": 7.11,
+      "low_support": true,
+      "ranges": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 3.2
+        }
+      ]
+    },
+    {
+      "key": "emotion:sadness",
+      "ref_id": null,
+      "name": "sadness",
+      "kind": "emotion",
+      "avg_during": 85.2012,
+      "delta_pct": 11.0,
+      "coverage_sec": 4.3,
+      "coverage_pct": 9.56,
+      "low_support": true,
+      "ranges": [
+        {
+          "start_sec": 3.2,
+          "end_sec": 7.5
+        }
+      ]
+    },
+    {
+      "key": "event:music",
+      "ref_id": null,
+      "name": "music",
+      "kind": "event",
+      "avg_during": 78.1722,
+      "delta_pct": 1.84,
+      "coverage_sec": 4.5,
+      "coverage_pct": 10.0,
+      "low_support": true,
+      "ranges": [
+        {
+          "start_sec": 7.5,
+          "end_sec": 12.0
+        }
+      ]
+    },
+    {
+      "key": "event:transition",
+      "ref_id": null,
+      "name": "transition",
+      "kind": "event",
+      "avg_during": 77.8683,
+      "delta_pct": 1.45,
+      "coverage_sec": 1.2,
+      "coverage_pct": 2.67,
+      "low_support": true,
+      "ranges": [
+        {
+          "start_sec": 22.8,
+          "end_sec": 24.0
+        }
+      ]
+    },
+    {
+      "key": "emotion:suspense",
+      "ref_id": null,
+      "name": "suspense",
+      "kind": "emotion",
+      "avg_during": 77.6394,
+      "delta_pct": 1.15,
+      "coverage_sec": 1.7,
+      "coverage_pct": 3.78,
+      "low_support": true,
+      "ranges": [
+        {
+          "start_sec": 22.8,
+          "end_sec": 24.5
+        }
+      ]
+    },
+    {
+      "key": "object:broken umbrella",
+      "ref_id": "ent-8",
+      "name": "Broken umbrella",
+      "kind": "object",
+      "avg_during": 75.66,
+      "delta_pct": -1.43,
+      "coverage_sec": 4.6,
+      "coverage_pct": 10.22,
+      "low_support": true,
+      "ranges": [
+        {
+          "start_sec": 23.4,
+          "end_sec": 28.0
+        }
+      ]
+    },
+    {
+      "key": "object:offer qr code",
+      "ref_id": "ent-9",
+      "name": "Offer QR code",
+      "kind": "object",
+      "avg_during": 71.5827,
+      "delta_pct": -6.74,
+      "coverage_sec": 2.2,
+      "coverage_pct": 4.89,
+      "low_support": true,
+      "ranges": [
+        {
+          "start_sec": 42.8,
+          "end_sec": 45.0
+        }
+      ]
+    }
+  ],
+  "recommendations": {
+    "headline": "",
+    "do_more": [],
+    "do_less": [],
+    "segment_fixes": []
+  },
+  "kpis": {
+    "avg": 76.7573,
+    "peak": {
+      "time_sec": 2.0,
+      "value": 93.37
+    },
+    "low": {
+      "time_sec": 32.0,
+      "value": 70.08
+    },
+    "biggest_drop": {
+      "time_sec": 3.0,
+      "delta": -10.59
+    },
+    "hook_avg": 89.8444
+  }
+}

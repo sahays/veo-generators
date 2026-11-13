@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { ArrowLeft, Loader2, RotateCcw, type LucideIcon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { Button } from '@/components/Common'
+import { Button, Input } from '@/components/Common'
 import { ErrorDisplay } from '@/components/shared/ErrorDisplay'
 import { ProgressBar } from '@/components/shared/media/ProgressBar'
 import { WorkPageHeader } from '@/components/shared/WorkPageHeader'
@@ -216,3 +216,24 @@ export const CheckboxOption = ({
     </div>
   </label>
 )
+
+const NAME_MAX_LENGTH = 200
+
+/** Optional display name of a new job; the server's limit is 200 characters. */
+export const OptionalNameField = ({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+}) => {
+  const id = useId()
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="block text-sm font-medium text-foreground">Name (optional)</label>
+      <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} maxLength={NAME_MAX_LENGTH} placeholder={placeholder} />
+    </div>
+  )
+}

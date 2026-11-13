@@ -1,0 +1,68 @@
+{
+  "type": "object",
+  "description": "Recommendations drawn from engagement statistics. Text only: items cite supplied keys and segment ids, and the server fills in every figure.",
+  "properties": {
+    "headline": {
+      "type": "string",
+      "description": "One sentence with the main takeaway"
+    },
+    "do_more": {
+      "type": "array",
+      "description": "Content to use more, each built on one top_influence entry",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string", "description": "Short imperative recommendation" },
+          "rationale": { "type": "string", "description": "1-2 sentences grounded in the supplied data" },
+          "expected_lift": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "key": {
+            "type": "string",
+            "description": "The influence key copied exactly as supplied, e.g. character:asha"
+          }
+        },
+        "required": ["title", "rationale", "expected_lift", "key"]
+      }
+    },
+    "do_less": {
+      "type": "array",
+      "description": "Content to use less, each built on one bottom_influence entry",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string", "description": "Short imperative recommendation" },
+          "rationale": { "type": "string", "description": "1-2 sentences grounded in the supplied data" },
+          "expected_lift": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "key": {
+            "type": "string",
+            "description": "The influence key copied exactly as supplied, e.g. event:montage"
+          }
+        },
+        "required": ["title", "rationale", "expected_lift", "key"]
+      }
+    },
+    "segment_fixes": {
+      "type": "array",
+      "description": "Fixes for weak segments, each for one low_segments entry",
+      "items": {
+        "type": "object",
+        "properties": {
+          "segment_id": {
+            "type": "string",
+            "description": "The segment id copied exactly as supplied, e.g. seg-3"
+          },
+          "what_happened": { "type": "string", "description": "What the segment shows" },
+          "why_low": { "type": "string", "description": "What in the segment coincides with the low stretch of the curve" },
+          "fix": { "type": "string", "description": "One concrete edit" }
+        },
+        "required": ["segment_id", "what_happened", "why_low", "fix"]
+      }
+    }
+  },
+  "required": ["headline", "do_more", "do_less", "segment_fixes"]
+}

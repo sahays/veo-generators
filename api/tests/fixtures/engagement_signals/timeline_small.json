@@ -1,0 +1,41 @@
+{
+  "schema_version": "video-timeline-v1",
+  "duration_sec": 120.0,
+  "summary": "Two chefs race to finish a dish before a surprise judge arrives.",
+  "content_title": "Cook-off",
+  "cuts": [30.0, 60.0, 90.0],
+  "segments": [
+    {"id": "seg-1", "start_sec": 0.0, "end_sec": 30.0, "title": "Cold open", "synopsis": "Asha explains the challenge."},
+    {"id": "seg-2", "start_sec": 30.0, "end_sec": 60.0, "title": "The reveal", "synopsis": "The judge walks in early."},
+    {"id": "seg-3", "start_sec": 60.0, "end_sec": 90.0, "title": "Prep montage", "synopsis": "Chopping and plating without dialogue."},
+    {"id": "seg-4", "start_sec": 90.0, "end_sec": 120.0, "title": "Verdict", "synopsis": "The judge tastes both dishes."}
+  ],
+  "cues": [
+    {"id": "cue-1", "start_sec": 2.0, "end_sec": 8.0, "speaker": "Asha", "text": "Thirty minutes on the clock.", "kind": "dialogue", "sentiment": "neutral"},
+    {"id": "cue-2", "start_sec": 41.0, "end_sec": 46.0, "speaker": "Judge", "text": "I hope I am not too early.", "kind": "dialogue", "sentiment": "positive"},
+    {"id": "cue-3", "start_sec": 60.0, "end_sec": 90.0, "text": "Upbeat percussion", "kind": "music"},
+    {"id": "cue-4", "start_sec": 104.0, "end_sec": 109.0, "speaker": "Judge", "text": "This one wins.", "kind": "dialogue", "sentiment": "positive"}
+  ],
+  "entities": [
+    {"id": "ent-1", "name": "Kitchen", "kind": "location", "description": "Studio kitchen", "appearances": [{"start_sec": 0.0, "end_sec": 60.0}, {"start_sec": 90.0, "end_sec": 120.0}], "screen_time_sec": 90.0},
+    {"id": "ent-2", "name": "Asha", "kind": "character", "description": "Host chef", "appearances": [{"start_sec": 10.0, "end_sec": 50.0}], "screen_time_sec": 40.0},
+    {"id": "ent-3", "name": "Judge", "kind": "character", "appearances": [{"start_sec": 40.0, "end_sec": 58.0}, {"start_sec": 96.0, "end_sec": 118.0}], "screen_time_sec": 40.0},
+    {"id": "ent-4", "name": "Trophy", "kind": "object", "appearances": [{"start_sec": 117.0, "end_sec": 119.0}], "screen_time_sec": 2.0}
+  ],
+  "events": [
+    {"id": "evt-1", "start_sec": 40.0, "end_sec": 50.0, "tag": "reveal", "description": "Judge enters", "intensity": 0.9},
+    {"id": "evt-2", "start_sec": 100.0, "end_sec": 110.0, "tag": "Reveal", "description": "Winner announced", "intensity": 0.8}
+  ],
+  "emotions": [
+    {"id": "emo-1", "start_sec": 0.0, "end_sec": 20.0, "emotion": "tension", "intensity": 0.5},
+    {"id": "emo-2", "start_sec": 15.0, "end_sec": 35.0, "emotion": "Tension", "intensity": 0.9},
+    {"id": "emo-3", "start_sec": 60.0, "end_sec": 90.0, "emotion": "calm", "intensity": 0.4}
+  ],
+  "key_moments": [
+    {"id": "km-1", "start_sec": 45.0, "type": "twist", "label": "Judge arrives early"},
+    {"id": "km-2", "start_sec": 105.0, "type": "payoff", "label": "Winner named"}
+  ],
+  "narrative_beats": [
+    {"id": "nb-1", "start_sec": 0.0, "end_sec": 30.0, "beat": "setup"}
+  ]
+}

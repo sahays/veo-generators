@@ -1,6 +1,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Google+Sans:wght@400;500;600;700&family=Google+Sans+Mono:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
+/* Browser-test artefacts (screenshots, traces) are not class sources; without this, every file
+   Playwright writes under e2e/ makes `next dev` recompile mid-test. */
+@source not "../e2e";
+
 /* Class-based dark mode */
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -35,6 +39,16 @@
   --color-accent: var(--accent);
   --color-accent-dark: var(--accent-dark);
   --color-accent-light: var(--accent-light);
+
+  /* Chart series palette (categorical; values per theme in :root / .dark) */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
 
   --color-orange-50: #FFF7ED;
   --color-orange-100: #FFEDD5;
@@ -238,6 +252,16 @@
   --accent-dark: #C2410C;
   --accent-light: rgba(249, 115, 22, 0.12);
 
+  /* Chart series — orange, sky, emerald, violet, yellow, rose, teal, slate */
+  --chart-1: #F97316;
+  --chart-2: #0284C7;
+  --chart-3: #10B981;
+  --chart-4: #7C3AED;
+  --chart-5: #EAB308;
+  --chart-6: #E11D48;
+  --chart-7: #0F766E;
+  --chart-8: #64748B;
+
   /* Sidebar Light Mode */
   --sidebar-grad-1: rgba(248, 250, 252, 0.94);
   --sidebar-grad-2: rgba(241, 245, 249, 0.94);
@@ -275,6 +299,16 @@
   --accent: #FB923C;
   --accent-dark: #FDBA74;
   --accent-light: rgba(251, 146, 60, 0.14);
+
+  /* Chart series — lighter variants of the light-mode palette */
+  --chart-1: #FB923C;
+  --chart-2: #38BDF8;
+  --chart-3: #4ADE80;
+  --chart-4: #A78BFA;
+  --chart-5: #FDE047;
+  --chart-6: #FB7185;
+  --chart-7: #14B8A6;
+  --chart-8: #94A3B8;
 
   /* Sidebar Dark Mode */
   --sidebar-grad-1: rgba(10, 13, 19, 0.97);
@@ -760,4 +794,64 @@ input:focus, textarea:focus, select:focus {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ── Timeline kit (Scene Analysis & Engagement workspaces) ── */
+:root {
+  /* Emotion lane colours, one per emotion in the timeline schema. */
+  --emotion-joy: #F59E0B;
+  --emotion-humor: #65A30D;
+  --emotion-triumph: #F97316;
+  --emotion-surprise: #DB2777;
+  --emotion-romance: #F43F5E;
+  --emotion-tension: #DC2626;
+  --emotion-suspense: #7C3AED;
+  --emotion-fear: #4338CA;
+  --emotion-anger: #991B1B;
+  --emotion-disgust: #059669;
+  --emotion-sadness: #2563EB;
+  --emotion-calm: #0D9488;
+  --emotion-neutral: #64748B;
+}
+
+.dark {
+  --emotion-joy: #FBBF24;
+  --emotion-humor: #A3E635;
+  --emotion-triumph: #FB923C;
+  --emotion-surprise: #F472B6;
+  --emotion-romance: #FB7185;
+  --emotion-tension: #F87171;
+  --emotion-suspense: #A78BFA;
+  --emotion-fear: #818CF8;
+  --emotion-anger: #EF4444;
+  --emotion-disgust: #34D399;
+  --emotion-sadness: #60A5FA;
+  --emotion-calm: #2DD4BF;
+  --emotion-neutral: #94A3B8;
+}
+
+/* Interactive SVG items in timeline lanes: visible keyboard focus and selection. */
+.tl-item {
+  cursor: pointer;
+  outline: none;
+}
+.tl-item:hover .tl-shape {
+  filter: brightness(1.12);
+}
+.tl-item:focus-visible .tl-shape {
+  stroke: var(--ring);
+  stroke-width: 2.5px;
+  paint-order: stroke;
+}
+.tl-item[aria-pressed="true"] .tl-shape {
+  stroke: var(--foreground);
+  stroke-width: 1.5px;
+}
+.tl-item[aria-pressed="true"]:focus-visible .tl-shape {
+  stroke: var(--ring);
+  stroke-width: 2.5px;
+}
+.tl-focusable:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
 }

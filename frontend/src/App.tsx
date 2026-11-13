@@ -10,6 +10,12 @@ import { PromptsPage } from './components/pages/PromptsPage'
 import { PromptDetailPage } from './components/pages/tools/PromptDetailPage'
 import { KeyMomentsLandingPage } from './components/pages/keyMoments/KeyMomentsLandingPage'
 import { KeyMomentsAnalyzePage } from './components/pages/keyMoments/KeyMomentsAnalyzePage'
+import { SceneAnalysisLandingPage } from './components/pages/sceneAnalysis/SceneAnalysisLandingPage'
+import { SceneAnalysisCreatePage } from './components/pages/sceneAnalysis/SceneAnalysisCreatePage'
+import { SceneAnalysisWorkspacePage } from './components/pages/sceneAnalysis/SceneAnalysisWorkspacePage'
+import { EngagementLandingPage } from './components/pages/engagement/EngagementLandingPage'
+import { EngagementCreatePage } from './components/pages/engagement/EngagementCreatePage'
+import { EngagementWorkspacePage } from './components/pages/engagement/EngagementWorkspacePage'
 import { ChatPage } from './components/pages/chat/ChatPage'
 import { SharedChatPage } from './components/pages/chat/SharedChatPage'
 import { ThumbnailsLandingPage } from './components/pages/thumbnails/ThumbnailsLandingPage'
@@ -39,6 +45,9 @@ import { useChatStore } from './store/useChatStore'
 import { api } from './lib/api'
 
 const GUEST_INVITE_CODE = process.env.NEXT_PUBLIC_GUEST_INVITE_CODE || ''
+
+// Scene Analysis and Engagement workspaces (`/:id`, not `/new`) use the full width.
+const WORKSPACE_ROUTE_RE = /^\/(scene-analysis|engagement)\/(?!new$)[^/]+$/
 
 function useGuestAndPersistedAuth() {
   const { isAuthenticated, inviteCode, login, logout } = useAuthStore()
@@ -108,6 +117,12 @@ const AppRoutes = ({ canWrite, isMaster }: { canWrite: boolean; isMaster: boolea
     <Route path="/key-moments" element={<KeyMomentsLandingPage />} />
     <Route path="/key-moments/analyze" element={canWrite ? <KeyMomentsAnalyzePage /> : <Navigate to="/key-moments" replace />} />
     <Route path="/key-moments/:id" element={<KeyMomentsAnalyzePage />} />
+    <Route path="/scene-analysis" element={<SceneAnalysisLandingPage />} />
+    <Route path="/scene-analysis/new" element={canWrite ? <SceneAnalysisCreatePage /> : <Navigate to="/scene-analysis" replace />} />
+    <Route path="/scene-analysis/:id" element={<SceneAnalysisWorkspacePage />} />
+    <Route path="/engagement" element={<EngagementLandingPage />} />
+    <Route path="/engagement/new" element={canWrite ? <EngagementCreatePage /> : <Navigate to="/engagement" replace />} />
+    <Route path="/engagement/:id" element={<EngagementWorkspacePage />} />
     <Route path="/thumbnails" element={<ThumbnailsLandingPage />} />
     <Route path="/thumbnails/create" element={canWrite ? <ThumbnailsWorkPage /> : <Navigate to="/thumbnails" replace />} />
     <Route path="/thumbnails/:id" element={<ThumbnailsWorkPage />} />
@@ -156,7 +171,7 @@ const MainAuthenticatedLayout = ({
   isMaster: boolean
 }) => {
   const isChatFullscreen = pathname === '/chat' && isFullscreen
-  const isFullWidthRoute = pathname.startsWith('/productions')
+  const isFullWidthRoute = pathname.startsWith('/productions') || WORKSPACE_ROUTE_RE.test(pathname)
   const mainClass = isChatFullscreen
     ? 'flex-1 overflow-hidden p-0'
     : 'flex-1 overflow-x-hidden overflow-y-auto p-5 md:p-7'

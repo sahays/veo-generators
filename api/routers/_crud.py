@@ -16,7 +16,7 @@ from typing import Any, Callable, Optional
 from fastapi import APIRouter, HTTPException, Request
 
 from helpers import ensure_services_ready, get_or_404
-from url_signing import sign_records_concurrently
+from url_signing import public_record_dict, sign_records_concurrently
 
 
 def _default_retry_updates(_record: Any) -> dict[str, Any]:
@@ -138,7 +138,7 @@ def register_crud_routes(
     updater: Optional[Callable[..., Any]] = None,
     deleter: Optional[Callable[..., Any]] = None,
     lister: Optional[Callable[..., Any]] = None,
-    sign_one: Callable[..., Any] = lambda r: r.dict(),
+    sign_one: Callable[..., Any] = public_record_dict,
     sign_list: Optional[Callable[..., Any]] = None,
     include_list: bool = True,
     include_get: bool = True,

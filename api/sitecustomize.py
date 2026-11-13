@@ -22,6 +22,8 @@ _DOMAIN_DIRS = (
     _API_DIR / "reframe_core",
     _API_DIR / "media",
     _API_DIR / "services",
+    _API_DIR / "video_insights",
+    _API_DIR / "engagement_signals",
 )
 
 for _d in reversed(_DOMAIN_DIRS):

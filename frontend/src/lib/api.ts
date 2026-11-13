@@ -18,10 +18,15 @@ import {
   type DubLanguage,
   type DubLanguagesResponse,
 } from './api/endpoints/dubbing'
+import {
+  engagement,
+  type EngagementAnalysisSource,
+} from './api/endpoints/engagement'
 import { keyMoments } from './api/endpoints/keyMoments'
 import { projects } from './api/endpoints/projects'
 import { promo } from './api/endpoints/promo'
 import { reframe } from './api/endpoints/reframe'
+import { sceneAnalysis } from './api/endpoints/sceneAnalysis'
 import { thumbnails } from './api/endpoints/thumbnails'
 import { uploads } from './api/endpoints/uploads'
 import { runs } from './api/runs'
@@ -29,6 +34,7 @@ import { runs } from './api/runs'
 export type {
   DubLanguage,
   DubLanguagesResponse,
+  EngagementAnalysisSource,
   JsonValue,
   SharedChatMessageItem,
   SharedChatRecord,
@@ -59,6 +65,8 @@ export const api = {
   projects,
   ai,
   keyMoments,
+  sceneAnalysis,
+  engagement,
   thumbnails,
   assets,
   uploads,

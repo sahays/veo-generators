@@ -32,6 +32,8 @@ USAGE_GETTERS = {
     "promo": "get_promo_record",
     "key_moments": "get_key_moments_analysis",
     "thumbnails": "get_thumbnail_record",
+    "scene_analysis": "get_scene_analysis",
+    "engagement": "get_engagement",
 }
 
 # Most features store usage in `.usage`; productions use `.total_usage`.

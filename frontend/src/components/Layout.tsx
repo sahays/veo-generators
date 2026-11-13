@@ -2,7 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Menu, X, Clapperboard, Zap, Image as ImageIcon, Smartphone, Scissors, LayoutGrid,
   ChevronLeft, ChevronRight, Terminal, Bot, Settings, Cpu,
-  FileText, Sun, Moon, Activity, Upload, Shield, LogOut, User, Languages,
+  FileText, Sun, Moon, Activity, Upload, Shield, LogOut, User, Languages, ScanSearch, TrendingUp,
 } from 'lucide-react'
 import { useLayoutStore } from '@/store/useLayoutStore'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -32,6 +32,10 @@ const PAGE_TITLES: Record<string, string> = {
   '/productions/new': 'New Production',
   '/key-moments': 'Key Moments',
   '/key-moments/analyze': 'Analyze Key Moments',
+  '/scene-analysis': 'Scene Analysis',
+  '/scene-analysis/new': 'New Scene Analysis',
+  '/engagement': 'Engagement',
+  '/engagement/new': 'New Engagement Analysis',
   '/thumbnails': 'Thumbnails',
   '/thumbnails/create': 'Create Thumbnail',
   '/uploads': 'Files',
@@ -59,6 +63,8 @@ function getPageTitle(pathname: string): string {
   if (pathname.match(/^\/productions\/[^/]+\/edit$/)) return 'Edit Production'
   if (pathname.match(/^\/productions\/[^/]+$/)) return 'Production Details'
   if (pathname.match(/^\/key-moments\/[^/]+$/)) return 'Key Moments Analysis'
+  if (pathname.match(/^\/scene-analysis\/[^/]+$/)) return 'Scene Analysis Workspace'
+  if (pathname.match(/^\/engagement\/[^/]+$/)) return 'Engagement Workspace'
   if (pathname.match(/^\/thumbnails\/[^/]+$/)) return 'Thumbnail Details'
   if (pathname.match(/^\/orientations\/[^/]+$/)) return 'Reframe Details'
   if (pathname.match(/^\/promos\/[^/]+$/)) return 'Promo Details'
@@ -134,6 +140,8 @@ function getNavLists(canWrite: boolean, isMaster: boolean) {
     ...(canWrite ? [{ name: 'Avatars', icon: User, path: '/avatars' }] : []),
     { name: 'Productions', icon: Clapperboard, path: '/productions' },
     { name: 'Key Moments', icon: Zap, path: '/key-moments' },
+    { name: 'Scene Analysis', icon: ScanSearch, path: '/scene-analysis' },
+    { name: 'Engagement', icon: TrendingUp, path: '/engagement' },
     { name: 'Thumbnails', icon: ImageIcon, path: '/thumbnails' },
     { name: 'Orientations', icon: Smartphone, path: '/orientations' },
     { name: 'Promos', icon: Scissors, path: '/promos' },

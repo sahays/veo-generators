@@ -162,7 +162,7 @@ export interface FeaturePricing {
   notes?: string
 }
 
-export type FeatureId = 'production' | 'adapts' | 'reframe' | 'promo' | 'key_moments' | 'thumbnails'
+export type FeatureId = 'production' | 'adapts' | 'reframe' | 'promo' | 'key_moments' | 'thumbnails' | 'scene_analysis' | 'engagement'
 
 export interface PricingRatesResponse {
   text_models: Record<string, {

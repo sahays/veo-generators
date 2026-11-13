@@ -1,0 +1,34 @@
+{
+  "type": "object",
+  "description": "Prose for the peaks, valleys and drops of an engagement curve. Text only: every figure in the report is filled in by the server.",
+  "properties": {
+    "explanations": {
+      "type": "array",
+      "description": "One entry per supplied moment",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The moment id copied exactly as supplied, e.g. peak-1"
+          },
+          "title": {
+            "type": "string",
+            "description": "3-7 words naming what is on screen at this moment"
+          },
+          "explanation": {
+            "type": "string",
+            "description": "2-3 sentences grounded only in the moment's supplied context; says so when the context is too thin"
+          },
+          "drivers": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Up to 4 short content elements taken from the context; empty when the context is thin"
+          }
+        },
+        "required": ["id", "title", "explanation", "drivers"]
+      }
+    }
+  },
+  "required": ["explanations"]
+}

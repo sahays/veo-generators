@@ -3,6 +3,7 @@ export {
   buildAvatarLiveUrl,
   type DubLanguage,
   type DubLanguagesResponse,
+  type EngagementAnalysisSource,
   type JsonValue,
   type Project,
   type SharedChatMessageItem,
@@ -21,11 +22,13 @@ export { assets } from './endpoints/assets'
 export { avatars } from './endpoints/avatars'
 export { chat } from './endpoints/chat'
 export { dubbing } from './endpoints/dubbing'
+export { engagement } from './endpoints/engagement'
 export { keyMoments } from './endpoints/keyMoments'
 export { keyframes } from './keyframes'
 export { projects } from './endpoints/projects'
 export { promo } from './endpoints/promo'
 export { reframe } from './endpoints/reframe'
 export { runs } from './runs'
+export { sceneAnalysis } from './endpoints/sceneAnalysis'
 export { thumbnails } from './endpoints/thumbnails'
 export { uploads } from './endpoints/uploads'

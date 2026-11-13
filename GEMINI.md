@@ -25,6 +25,13 @@ Use subagents and parallelize tasks whenever possible. Use the right Gemini mode
 - **Worker Service**: Background workers processing heavy tasks asynchronously (under `workers/`).
 - **Orchestration**: Powered by `google-adk` (Google Agent Development Kit).
 
+## Video Insights (Scene Analysis & Engagement)
+- **Scene Analysis** (`/scene-analysis`, `api/routers/media/scene_analysis.py`, `workers/insight_jobs/scene_analysis_processor.py`): the worker probes the video, detects cuts, analyses it in windows with `gemini-3.8-flash` (`VIDEO_INSIGHTS_MODEL`), merges the windows and writes `scene_analysis/{id}/timeline.json` plus a filmstrip sprite to GCS. Timeline logic lives in `api/video_insights/`; the Gemini calls in `api/services/gemini_insights.py`.
+- **Engagement** (`/engagement`, `api/routers/media/engagement.py`, `workers/insight_jobs/engagement_processor.py`): relates an engagement curve to a scene analysis and writes `engagement/{id}/report.json`. The curve is a built-in template (simulated) or an uploaded BARC CSV. It reuses the existing scene analysis of the video and never analyses it again. The maths is pure and I/O-free in `api/engagement_signals/`; the language model only writes prose and refers to server-issued ids, so every number in a report is computed by code.
+- **One contract**: `api/schemas/video-timeline-schema.json` (model output), `api/models/domains/models_insights.py` (records) and `frontend/src/types/insights.ts` (every payload) describe the same documents and must change together.
+- **Shared timeline UI kit**: `frontend/src/components/shared/timeline/` (see its `README.md`), with pure logic in `frontend/src/types/timeline/` and `frontend/src/types/engagement/` (unit-tested with `npm test`, vitest). Charts use the shadcn chart primitive in `frontend/src/components/ui/chart/` (recharts).
+- **Stub API for browser checks**: `frontend/e2e/stub/` serves both features from fixtures so the pages can be exercised without Google Cloud (`npx playwright test -c e2e/stub/playwright.stub.config.ts`).
+
 ## Performance Optimizations
 - **Signed GCS URLs**: Synchronous, sequential token refreshes in `api/storage_service.py` previously caused a ~30-second latency on page loads. We implemented credential validation caching (`if not self.credentials.valid`) on the singletons, reducing URL-signing times from hundreds of milliseconds to $< 1\text{ ms}$ per URL.
 

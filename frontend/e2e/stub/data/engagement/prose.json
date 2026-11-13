@@ -1,0 +1,256 @@
+{
+  "template-jumpy": {
+    "explanations": [
+      {
+        "id": "peak-1",
+        "title": "Spike on the knees joke",
+        "explanation": "The template curve reaches its highest point while Mr. Rao delivers \"the tea should be stronger than the knees\" on the balcony. This is a simulated shape, so it shows where a punchline spike would sit in the spot, not how viewers reacted.",
+        "drivers": ["Mr. Rao's punchline", "Shared laughter", "Theme swells with full band"]
+      },
+      {
+        "id": "peak-2",
+        "title": "Spike as the kettle goes on",
+        "explanation": "The second spike of the template falls on the kettle scene, just as the tabla and guitar theme begins and the narrator introduces the monsoon ritual. With real ratings, a rise here would point to the change of mood after the tired arrival.",
+        "drivers": ["Theme music begins", "Narrator: \"its own small ritual\"", "Kettle on the stove"]
+      },
+      {
+        "id": "peak-3",
+        "title": "Spike on the product hero shot",
+        "explanation": "The simulated curve lifts again during the slow push-in on the pack and the two tumblers, under the line \"Made strong, for the days that need it.\" It is a feature of the template, placed here by its shape alone.",
+        "drivers": ["Kadak Chai pack", "Two steaming tumblers", "Brand line from the narrator"]
+      },
+      {
+        "id": "peak-4",
+        "title": "Spike on the first sip",
+        "explanation": "A smaller spike lines up with Asha's first sip and \"Now it feels like home.\" On a measured curve this is the moment the comfort of the product would be expected to register.",
+        "drivers": ["Asha's first sip", "\"Now it feels like home\"", "Joy"]
+      },
+      {
+        "id": "peak-5",
+        "title": "Brief bump as the pack tears open",
+        "explanation": "A minor bump of the template that stays below its own average. It coincides with the pack tearing open and the leaves hitting the water, and carries little weight.",
+        "drivers": ["Pack tears open", "Kettle"]
+      },
+      {
+        "id": "valley-1",
+        "title": "Deepest dip at the start of the pour",
+        "explanation": "The lowest point of the template lands on the first seconds of the pour, a quiet stretch with sound effects and no dialogue. The dip comes from the jumpy shape; a real audience may hold through this shot.",
+        "drivers": ["No dialogue", "Tea pouring into the tumbler"]
+      },
+      {
+        "id": "valley-2",
+        "title": "Dip as the laughter fades",
+        "explanation": "The curve falls back right after the joke, in the last second of the balcony scene before the cut to the product. In the template every spike is followed by a dip like this one.",
+        "drivers": ["Laughter trails off", "Cut to the hero shot"]
+      },
+      {
+        "id": "valley-3",
+        "title": "Dip at the end of the hero shot",
+        "explanation": "The simulated curve bottoms out as the push-in on the pack ends and the spot is about to cut to the end card. The story is over at this point, which is where a real curve often softens too.",
+        "drivers": ["End of the narrator's line", "Static product frame"]
+      },
+      {
+        "id": "valley-4",
+        "title": "Dip on the tired arrival",
+        "explanation": "An early dip of the template sits on Asha's frustrated \"Not one auto in this whole city.\" There is no music and no product yet at this point of the spot.",
+        "drivers": ["Asha's complaint", "Sadness", "No music"]
+      },
+      {
+        "id": "valley-5",
+        "title": "Dip before the doorbell",
+        "explanation": "A shallower dip in the last second of the kitchen scene, between the first sip and the doorbell. It marks the pause before Mr. Rao arrives.",
+        "drivers": ["Pause after the sip", "Scene about to change"]
+      },
+      {
+        "id": "drop-1",
+        "title": "Steepest fall, out of the hero shot",
+        "explanation": "The largest fall in the template runs through the second half of the product hero shot and ends just before the end card. Because the curve is simulated, read it as a prompt to check this stretch against real ratings, not as evidence that it loses viewers.",
+        "drivers": ["Kadak Chai pack", "Narration ends", "No characters on screen"]
+      },
+      {
+        "id": "drop-2",
+        "title": "Fall into the pack reveal",
+        "explanation": "The curve falls from the kettle scene into the first seconds of the pack reveal, where the story pauses for the ingredients line. The fall is produced by the template's oscillation.",
+        "drivers": ["Cut to the pack", "Ingredients narration"]
+      },
+      {
+        "id": "drop-3",
+        "title": "Fall after the punchline",
+        "explanation": "After its highest point the template declines through the laughter to the end of the balcony scene. A measured curve would show whether the joke really holds viewers for longer than this.",
+        "drivers": ["Punchline has landed", "Laughter", "No new information"]
+      }
+    ],
+    "recommendations": {
+      "headline": "On this simulated curve the banter with Mr. Rao sits highest and the end card lowest. Use it to rehearse the report, then confirm with measured ratings.",
+      "do_more": [
+        {
+          "title": "Give the humour more room",
+          "rationale": "The stretch tagged as humour is the strongest supported theme on the template curve. If measured ratings agree, the exchange with Mr. Rao deserves more of the 45 seconds.",
+          "expected_lift": "medium",
+          "key": "emotion:humor"
+        },
+        {
+          "title": "Bring Mr. Rao in earlier",
+          "rationale": "Scenes with Mr. Rao sit above the template's average. An earlier doorbell would move that company forward, into the quieter first half.",
+          "expected_lift": "medium",
+          "key": "character:mr. rao"
+        },
+        {
+          "title": "Keep the kettle ritual",
+          "rationale": "The kettle shots coincide with one of the template's spikes. The ritual is also what sets up the product, so it is worth protecting in a shorter cut.",
+          "expected_lift": "low",
+          "key": "object:kettle"
+        }
+      ],
+      "do_less": [
+        {
+          "title": "Shorten the end card",
+          "rationale": "The call to action is the weakest supported theme on the template curve. Six seconds of logo, tagline and offer is long for a 45-second spot.",
+          "expected_lift": "high",
+          "key": "event:call_to_action"
+        },
+        {
+          "title": "Tighten the pack reveal",
+          "rationale": "The reveal, tagged as surprise, sits well below the template's average. A faster reach for the pack would shorten the pause in the story.",
+          "expected_lift": "medium",
+          "key": "emotion:surprise"
+        },
+        {
+          "title": "Break up product-only shots",
+          "rationale": "Product showcase time is below average on this curve. Keeping a character in frame with the pack would avoid two stretches where the product carries the scene alone.",
+          "expected_lift": "low",
+          "key": "event:product_showcase"
+        }
+      ],
+      "segment_fixes": [
+        {
+          "segment_id": "seg-9",
+          "what_happened": "Logo, tagline and the scan-to-buy offer on a static end card.",
+          "why_low": "It has the lowest average on the template curve, and nothing from the story continues into it.",
+          "fix": "Run the tagline over the last balcony shot and keep the offer card to about three seconds."
+        },
+        {
+          "segment_id": "seg-4",
+          "what_happened": "Asha's hand reaches past other jars to the Kadak Chai pack while the narrator lists the ingredients.",
+          "why_low": "The template dips here, and the scene stops the story for a product description.",
+          "fix": "Let Asha stay in frame and trim the ingredients line to one beat."
+        },
+        {
+          "segment_id": "seg-2",
+          "what_happened": "Asha comes home drenched and complains that there was not one auto in the city.",
+          "why_low": "An early dip of the template, on the only negative line of the spot.",
+          "fix": "Shorten the complaint and bring the theme music in under it."
+        }
+      ]
+    }
+  },
+  "barc": {
+    "explanations": [
+      {
+        "id": "peak-1",
+        "title": "The knees joke is the high point",
+        "explanation": "The rating climbs from the moment Mr. Rao appears and peaks as he says the tea should be stronger than the knees and both laugh. The full-band theme swells under the same seconds.",
+        "drivers": ["Mr. Rao's punchline", "Shared laughter", "Theme swells with full band", "Balcony"]
+      },
+      {
+        "id": "peak-2",
+        "title": "Pack reveal lifts the rating",
+        "explanation": "The first clear rise of the spot follows Asha's hand landing on the orange pack, while the narrator names Assam leaf, ginger and cardamom. It is the first time the brand is on screen.",
+        "drivers": ["Kadak Chai pack", "Ingredients narration", "Surprise"]
+      },
+      {
+        "id": "peak-3",
+        "title": "First sip wins the audience back",
+        "explanation": "The rating climbs back to the level of the pack reveal as Asha takes the first sip and says \"Now it feels like home.\" The dip before the pour is recovered within a few seconds.",
+        "drivers": ["Asha's first sip", "\"Now it feels like home\"", "Joy", "Steel tumbler"]
+      },
+      {
+        "id": "valley-1",
+        "title": "Lowest point: the tired arrival",
+        "explanation": "The rating reaches its low as Asha drops her bag and complains about the autos. There is no music and no product in these seconds, and the mood is the most negative of the spot.",
+        "drivers": ["Asha's complaint", "Sadness", "No music", "No brand on screen"]
+      },
+      {
+        "id": "valley-2",
+        "title": "Dip between the reveal and the pour",
+        "explanation": "The rating gives back the gain of the pack reveal as the pack tears open and the pour begins, a few seconds of sound effects with no voice. It stays only slightly below the average of the spot.",
+        "drivers": ["Sound effects only", "End of the ingredients line", "Kettle"]
+      },
+      {
+        "id": "valley-3",
+        "title": "Pause at the doorbell",
+        "explanation": "The rating dips when the doorbell interrupts the kitchen scene and turns upward as soon as Mr. Rao speaks.",
+        "drivers": ["Doorbell", "Scene change", "Suspense"]
+      },
+      {
+        "id": "drop-1",
+        "title": "Viewers leave at the end card",
+        "explanation": "The biggest fall of the spot starts in the last second of the hero shot and continues through the pause before the tagline. The music stops, the characters are gone and the frame turns into a static offer card.",
+        "drivers": ["Call to action", "Silence before the tagline", "No characters on screen"]
+      },
+      {
+        "id": "drop-2",
+        "title": "Fall after the pack reveal",
+        "explanation": "Once the narrator has named the ingredients, the rating falls back while the pack is torn open over sound effects. The reveal lifts the audience, but the seconds after it do not hold the gain.",
+        "drivers": ["End of the ingredients line", "Pack tears open", "No dialogue"]
+      }
+    ],
+    "recommendations": {
+      "headline": "Ratings build through the tea ritual, peak on the balcony joke with Mr. Rao and fall away once the end card appears.",
+      "do_more": [
+        {
+          "title": "Give the banter more room",
+          "rationale": "The humour between Asha and Mr. Rao coincides with the highest ratings of the spot. A cut that reaches it sooner, or stays with it longer, keeps more of the audience.",
+          "expected_lift": "high",
+          "key": "emotion:humor"
+        },
+        {
+          "title": "Bring Mr. Rao in earlier",
+          "rationale": "Ratings rise from his first line at the door and stay above average for as long as he is on screen. In the first twelve seconds, before he arrives, the spot runs below its average.",
+          "expected_lift": "medium",
+          "key": "character:mr. rao"
+        },
+        {
+          "title": "Keep the tumblers in frame",
+          "rationale": "Scenes with tea being poured or shared rate above average. The tumblers tie the product to the moments viewers stay for.",
+          "expected_lift": "low",
+          "key": "object:steel tumblers"
+        }
+      ],
+      "do_less": [
+        {
+          "title": "Shorten the end card",
+          "rationale": "The call to action rates below the spot's average, and the steepest fall of the spot runs into it. Six seconds of static card is long for this audience.",
+          "expected_lift": "high",
+          "key": "event:call_to_action"
+        },
+        {
+          "title": "Trim the quiet stretches",
+          "rationale": "The calm passages (the rain opening, the kettle and the end card) rate well below the average of the spot. Each is a stretch without dialogue between two characters.",
+          "expected_lift": "medium",
+          "key": "emotion:calm"
+        }
+      ],
+      "segment_fixes": [
+        {
+          "segment_id": "seg-2",
+          "what_happened": "Asha pushes the door open, drenched, drops her bag and complains that there was not one auto in the city.",
+          "why_low": "The lowest-rated segment: a negative line with no music and no brand, straight after the opening shot.",
+          "fix": "Cut the arrival to two seconds and start the theme music under it."
+        },
+        {
+          "segment_id": "seg-3",
+          "what_happened": "She fills the kettle and lights the stove while the narrator introduces the monsoon ritual.",
+          "why_low": "Ratings are still recovering from the arrival, and the product has not appeared yet.",
+          "fix": "Show the pack on the shelf as the kettle goes on, so the reveal starts earlier."
+        },
+        {
+          "segment_id": "seg-9",
+          "what_happened": "Logo, tagline and the scan-to-buy offer card.",
+          "why_low": "The rating falls through the whole card, starting in the silence before the tagline.",
+          "fix": "Speak the tagline over the last balcony shot and keep the offer card to about three seconds."
+        }
+      ]
+    }
+  }
+}

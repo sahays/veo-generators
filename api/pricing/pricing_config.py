@@ -313,6 +313,10 @@ FEATURE_SERVICES: dict[str, list[str]] = {
     ],  # stitching is local ffmpeg, no transcoder
     "key_moments": ["gemini_text"],
     "thumbnails": ["gemini_text", "gemini_image"],
+    # Cut detection and the filmstrip are local ffmpeg; engagement statistics
+    # are computed in-process. Only the Gemini calls are billable.
+    "scene_analysis": ["gemini_text"],
+    "engagement": ["gemini_text"],
 }
 
 

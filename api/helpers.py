@@ -10,6 +10,7 @@ from prompt_templates import PHYSICAL_REALISM_DIRECTIVE
 
 # Re-export from split modules so existing imports keep working
 from url_signing import (  # noqa: F401
+    public_record_dict,
     sign_record_urls,
     sign_records_concurrently,
     sign_nested_list_uris,

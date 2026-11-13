@@ -105,6 +105,8 @@ class TestFeatureServices:
             "promo",
             "key_moments",
             "thumbnails",
+            "scene_analysis",
+            "engagement",
         }
         assert set(FEATURE_SERVICES.keys()) == expected
 

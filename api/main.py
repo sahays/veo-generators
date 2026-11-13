@@ -29,6 +29,8 @@ from routers import (
     pricing,
     avatars,
     avatars_live,
+    scene_analysis,
+    engagement,
 )
 
 # Suppress the "non-text parts" warning from google-genai/adk which is noisy when using tools
@@ -183,6 +185,8 @@ for r in [
     pricing,
     avatars,
     avatars_live,
+    scene_analysis,
+    engagement,
 ]:
     app.include_router(r.router)
 

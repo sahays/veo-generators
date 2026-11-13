@@ -1,0 +1,197 @@
+{
+  "type": "object",
+  "description": "Timestamped timeline of one analysed video window. Every *_sec value is seconds from the start of the FULL video.",
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "3-6 sentence synopsis of this window"
+    },
+    "content_title": {
+      "type": "string",
+      "description": "Title of the content if it is shown or spoken, otherwise empty"
+    },
+    "segments": {
+      "type": "array",
+      "description": "Contiguous scenes covering the window, in order",
+      "items": {
+        "type": "object",
+        "properties": {
+          "start_sec": { "type": "number" },
+          "end_sec": { "type": "number" },
+          "title": { "type": "string", "description": "3-6 word scene title" },
+          "synopsis": { "type": "string", "description": "1-2 sentences" },
+          "location": { "type": "string" }
+        },
+        "required": ["start_sec", "end_sec", "title", "synopsis"]
+      }
+    },
+    "cues": {
+      "type": "array",
+      "description": "Dialogue, narration and notable sound, in order",
+      "items": {
+        "type": "object",
+        "properties": {
+          "start_sec": { "type": "number" },
+          "end_sec": { "type": "number" },
+          "speaker": { "type": "string", "description": "Empty if unknown or not speech" },
+          "text": { "type": "string", "description": "Verbatim speech, or a [bracketed] sound description" },
+          "kind": {
+            "type": "string",
+            "enum": ["dialogue", "narration", "music", "sfx", "silence"]
+          },
+          "sentiment": {
+            "type": "string",
+            "enum": ["positive", "neutral", "negative"]
+          }
+        },
+        "required": ["start_sec", "end_sec", "text", "kind"]
+      }
+    },
+    "entities": {
+      "type": "array",
+      "description": "Characters, objects and locations with every on-screen range",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "kind": { "type": "string", "enum": ["character", "object", "location"] },
+          "description": { "type": "string" },
+          "appearances": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "start_sec": { "type": "number" },
+                "end_sec": { "type": "number" }
+              },
+              "required": ["start_sec", "end_sec"]
+            }
+          }
+        },
+        "required": ["name", "kind", "appearances"]
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "start_sec": { "type": "number" },
+          "end_sec": { "type": "number" },
+          "tag": {
+            "type": "string",
+            "enum": [
+              "action",
+              "dialogue_heavy",
+              "music",
+              "comedy",
+              "tension",
+              "exposition",
+              "climax",
+              "transition",
+              "song",
+              "fight",
+              "romance",
+              "emotional",
+              "product_showcase",
+              "call_to_action"
+            ]
+          },
+          "description": { "type": "string" },
+          "intensity": { "type": "number", "description": "0.0 to 1.0" }
+        },
+        "required": ["start_sec", "end_sec", "tag"]
+      }
+    },
+    "emotions": {
+      "type": "array",
+      "description": "Dominant audience-facing emotion over time",
+      "items": {
+        "type": "object",
+        "properties": {
+          "start_sec": { "type": "number" },
+          "end_sec": { "type": "number" },
+          "emotion": {
+            "type": "string",
+            "enum": [
+              "joy",
+              "sadness",
+              "fear",
+              "anger",
+              "surprise",
+              "disgust",
+              "tension",
+              "suspense",
+              "romance",
+              "humor",
+              "triumph",
+              "calm",
+              "neutral"
+            ]
+          },
+          "intensity": { "type": "number", "description": "0.0 to 1.0" }
+        },
+        "required": ["start_sec", "end_sec", "emotion", "intensity"]
+      }
+    },
+    "key_moments": {
+      "type": "array",
+      "description": "Point markers for the moments that matter most",
+      "items": {
+        "type": "object",
+        "properties": {
+          "start_sec": { "type": "number" },
+          "type": {
+            "type": "string",
+            "enum": [
+              "hook",
+              "reveal",
+              "twist",
+              "cliffhanger",
+              "punchline",
+              "action_peak",
+              "emotional_peak",
+              "song",
+              "product_reveal",
+              "call_to_action"
+            ]
+          },
+          "label": { "type": "string" }
+        },
+        "required": ["start_sec", "type", "label"]
+      }
+    },
+    "narrative_beats": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "start_sec": { "type": "number" },
+          "end_sec": { "type": "number" },
+          "beat": {
+            "type": "string",
+            "enum": [
+              "setup",
+              "inciting_incident",
+              "rising_action",
+              "climax",
+              "falling_action",
+              "resolution"
+            ]
+          },
+          "label": { "type": "string" }
+        },
+        "required": ["start_sec", "end_sec", "beat"]
+      }
+    }
+  },
+  "required": [
+    "summary",
+    "segments",
+    "cues",
+    "entities",
+    "events",
+    "emotions",
+    "key_moments"
+  ]
+}

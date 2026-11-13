@@ -16,6 +16,7 @@ A full-stack, AI-driven application for automated video production using Google'
 | [docs/reframing-v1.md](docs/reframing-v1.md) | The first reframe design, kept for context on what changed |
 | [docs/reframing-eval.md](docs/reframing-eval.md) | How reframe quality is evaluated |
 | [docs/dubbing.md](docs/dubbing.md) | Multi-language dubbing via Gemini Live Translate, with sequence diagrams |
+| [docs/scene-analysis-engagement-plan.md](docs/scene-analysis-engagement-plan.md) | Design of the Scene Analysis and Engagement features: pipeline, timeline schema, report, UI |
 | [docs/ask-aanya-tools.md](docs/ask-aanya-tools.md) | The ADK agent tool surface behind the "Ask Aanya" co-pilot |
 | [docs/conversational-ui-plan.md](docs/conversational-ui-plan.md) | Design notes for the conversational UI |
 | [CLAUDE.md](CLAUDE.md) | Repo conventions: deploy sequence, test commands, project layout |
@@ -47,6 +48,10 @@ Each of these takes an existing video — an uploaded file or a finished product
 **Key moments** — analyzes a video and returns timestamped highlight segments with descriptions and relevance scores, plus a summary.
 
 **Thumbnails** — captures key frames and composites them into a collage thumbnail.
+
+**Scene analysis** — `gemini-3.8-flash` turns a video into a timestamped timeline: scenes, dialogue and sound cues, characters, objects and locations with their on-screen ranges, events, emotions, key moments and narrative beats. The workspace plays the video against a zoomable multi-lane timeline with a searchable transcript, an entity browser and exports (JSON, CSV, SRT, VTT).
+
+**Engagement** — lays an engagement curve over a video's scene analysis and reports peaks, valleys, drop-offs, what is on screen when the curve moves, and recommendations. The curve is either a built-in template (high, low, jumpy, slow burn, front-loaded — simulated, for rehearsing the report) or an uploaded BARC ratings CSV. It reuses the video's existing scene analysis rather than analysing it again. See [scene-analysis-engagement-plan.md](docs/scene-analysis-engagement-plan.md).
 
 **Adapts** — regenerates a still into multiple aspect ratios with Imagen, one variant per ratio.
 
@@ -161,6 +166,7 @@ GCS_BUCKET=your-bucket-name
 
 # AI models
 OPTIMIZE_PROMPT_MODEL=gemini-3-pro-preview
+VIDEO_INSIGHTS_MODEL=gemini-3.8-flash   # scene analysis + engagement
 STORYBOARD_MODEL=gemini-3.1-flash-image-preview
 ADAPTS_MODEL=gemini-3.1-flash-image-preview
 VIDEO_GEN_MODEL=veo-3.1-generate-001

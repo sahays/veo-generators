@@ -1,27 +1,29 @@
 {
-  "total_files": 900,
+  "total_files": 1080,
   "domain_packages": {
     "agents_service": 1,
     "api": 9,
     "api/agents": 16,
     "api/dubbing": 5,
+    "api/engagement_signals": 10,
     "api/media": 7,
-    "api/models": 5,
+    "api/models": 6,
     "api/pricing": 4,
     "api/reframe": 15,
     "api/reframe_core": 6,
     "api/render_pipeline": 7,
-    "api/routers": 21,
+    "api/routers": 23,
     "api/scripts": 6,
-    "api/services": 13,
-    "api/tests": 40,
+    "api/services": 14,
+    "api/tests": 62,
+    "api/video_insights": 7,
     "frontend/src": 1,
     "frontend/src/app": 3,
-    "frontend/src/components": 184,
-    "frontend/src/hooks": 8,
-    "frontend/src/lib": 30,
-    "frontend/src/store": 5,
-    "frontend/src/types": 9,
+    "frontend/src/components": 263,
+    "frontend/src/hooks": 21,
+    "frontend/src/lib": 32,
+    "frontend/src/store": 10,
+    "frontend/src/types": 44,
     "productions_service": 1,
     "productions_service/routers": 4,
     "productions_service/services": 24,
@@ -29,7 +31,8 @@
     "productions_service/tests": 89,
     "scripts": 5,
     "scripts/checkers": 9,
-    "workers": 13
+    "workers": 13,
+    "workers/insight_jobs": 3
   },
   "directory_tree": [
     "agents_service",
@@ -39,6 +42,7 @@
     "api/agents/tools",
     "api/dubbing",
     "api/dubbing/live",
+    "api/engagement_signals",
     "api/media",
     "api/models",
     "api/models/domains",
@@ -53,10 +57,13 @@
     "api/scripts",
     "api/services",
     "api/tests",
+    "api/tests/engagement_signals",
     "api/tests/reframe",
     "api/tests/reframe_plan",
     "api/tests/routers",
     "api/tests/services",
+    "api/tests/video_insights",
+    "api/video_insights",
     "frontend/src",
     "frontend/src/app",
     "frontend/src/app/[[...slug]]",
@@ -85,11 +92,17 @@
     "frontend/src/components/pages/avatar/components",
     "frontend/src/components/pages/chat",
     "frontend/src/components/pages/dubbing",
+    "frontend/src/components/pages/engagement",
+    "frontend/src/components/pages/engagement/create",
+    "frontend/src/components/pages/engagement/tabs",
+    "frontend/src/components/pages/engagement/workspace",
     "frontend/src/components/pages/keyMoments",
     "frontend/src/components/pages/keyMoments/components",
     "frontend/src/components/pages/promo",
     "frontend/src/components/pages/reframe",
     "frontend/src/components/pages/reframe/components",
+    "frontend/src/components/pages/sceneAnalysis",
+    "frontend/src/components/pages/sceneAnalysis/workspace",
     "frontend/src/components/pages/thumbnails",
     "frontend/src/components/pages/thumbnails/components",
     "frontend/src/components/pages/tools",
@@ -98,14 +111,27 @@
     "frontend/src/components/pricing",
     "frontend/src/components/shared",
     "frontend/src/components/shared/media",
+    "frontend/src/components/shared/timeline",
+    "frontend/src/components/shared/timeline/lanes",
+    "frontend/src/components/shared/timeline/panels",
+    "frontend/src/components/shared/timeline/player",
+    "frontend/src/components/shared/timeline/record",
     "frontend/src/components/ui",
+    "frontend/src/components/ui/chart",
     "frontend/src/hooks",
+    "frontend/src/hooks/timeline",
     "frontend/src/lib",
     "frontend/src/lib/api",
     "frontend/src/lib/api/core",
     "frontend/src/lib/api/endpoints",
     "frontend/src/store",
+    "frontend/src/store/timeline",
+    "frontend/src/store/timeline/__tests__",
     "frontend/src/types",
+    "frontend/src/types/engagement",
+    "frontend/src/types/engagement/__tests__",
+    "frontend/src/types/timeline",
+    "frontend/src/types/timeline/__tests__",
     "productions_service",
     "productions_service/routers",
     "productions_service/services",
@@ -189,7 +215,8 @@
     "productions_service/tests/spec_data",
     "scripts",
     "scripts/checkers",
-    "workers"
+    "workers",
+    "workers/insight_jobs"
   ],
   "files": [
     {
@@ -553,11 +580,169 @@
       "endpoints": []
     },
     {
+      "path": "api/engagement_signals/csv_cells.py",
+      "language": "python",
+      "domain_package": "api/engagement_signals",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 80,
+      "classes": [],
+      "functions": [
+        "normalise_header",
+        "parse_number",
+        "parse_date",
+        "parse_time_cell"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/engagement_signals/csv_columns.py",
+      "language": "python",
+      "domain_package": "api/engagement_signals",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 150,
+      "classes": [
+        "ColumnRoles"
+      ],
+      "functions": [
+        "find_time_column",
+        "metric_sort_key",
+        "resolve_roles"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/engagement_signals/engagement_series.py",
+      "language": "python",
+      "domain_package": "api/engagement_signals",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 87,
+      "classes": [
+        "SignalSeries",
+        "SeriesIntegral"
+      ],
+      "functions": [
+        "resample_series"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/engagement_signals/influence_stats.py",
+      "language": "python",
+      "domain_package": "api/engagement_signals",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 145,
+      "classes": [
+        "_Presence"
+      ],
+      "functions": [
+        "percent_delta",
+        "normalise_name",
+        "merge_ranges",
+        "summary_stats",
+        "segment_stats",
+        "compute_influence"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/engagement_signals/interval_index.py",
+      "language": "python",
+      "domain_package": "api/engagement_signals",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 131,
+      "classes": [
+        "IntervalIndex",
+        "TimelineIndex"
+      ],
+      "functions": [
+        "item_span",
+        "context_slice"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/engagement_signals/report_binding.py",
+      "language": "python",
+      "domain_package": "api/engagement_signals",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 172,
+      "classes": [],
+      "functions": [
+        "empty_recommendations",
+        "apply_explanations",
+        "recommendation_inputs",
+        "apply_recommendations"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/engagement_signals/report_builder.py",
+      "language": "python",
+      "domain_package": "api/engagement_signals",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 209,
+      "classes": [
+        "_Plan",
+        "_Lanes"
+      ],
+      "functions": [
+        "build_report_core",
+        "explain_requests"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/engagement_signals/signal_parser.py",
+      "language": "python",
+      "domain_package": "api/engagement_signals",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 282,
+      "classes": [
+        "_Table",
+        "_Timeline"
+      ],
+      "functions": [
+        "parse_signal_csv",
+        "preview_signal_csv"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/engagement_signals/signal_peaks.py",
+      "language": "python",
+      "domain_package": "api/engagement_signals",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 164,
+      "classes": [],
+      "functions": [
+        "smooth",
+        "find_extrema",
+        "find_drops"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/engagement_signals/signal_templates.py",
+      "language": "python",
+      "domain_package": "api/engagement_signals",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 132,
+      "classes": [
+        "_Template"
+      ],
+      "functions": [
+        "template_interval",
+        "list_templates",
+        "generate_template_series"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "api/firestore_service.py",
       "language": "python",
       "domain_package": "api",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 339,
+      "non_comment_lines": 342,
       "classes": [
         "FirestoreService"
       ],
@@ -581,7 +766,7 @@
       "language": "python",
       "domain_package": "api",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 216,
+      "non_comment_lines": 219,
       "classes": [
         "GeminiService"
       ],
@@ -593,7 +778,7 @@
       "language": "python",
       "domain_package": "api",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 200,
+      "non_comment_lines": 201,
       "classes": [],
       "functions": [
         "require_firestore",
@@ -615,7 +800,7 @@
       "language": "python",
       "domain_package": "api",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 171,
+      "non_comment_lines": 175,
       "classes": [
         "BotProtectionMiddleware"
       ],
@@ -746,6 +931,21 @@
       "endpoints": []
     },
     {
+      "path": "api/models/domains/models_insights.py",
+      "language": "python",
+      "domain_package": "api/models",
+      "tier": "Tier 1 (Models & Pure Config)",
+      "non_comment_lines": 81,
+      "classes": [
+        "FilmstripSpec",
+        "SceneAnalysisRecord",
+        "EngagementSignalSpec",
+        "EngagementRecord"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
       "path": "api/models/domains/models_projects.py",
       "language": "python",
       "domain_package": "api/models",
@@ -857,7 +1057,7 @@
       "language": "python",
       "domain_package": "api/pricing",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 276,
+      "non_comment_lines": 278,
       "classes": [
         "TokenTier",
         "TextModelRate",
@@ -889,7 +1089,7 @@
       "language": "python",
       "domain_package": "api/pricing",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 116,
+      "non_comment_lines": 118,
       "classes": [],
       "functions": [
         "usage_of",
@@ -1464,6 +1664,36 @@
       ]
     },
     {
+      "path": "api/routers/media/engagement.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 298,
+      "classes": [
+        "SignalSpecIn",
+        "EngagementCreate",
+        "SignalPreviewRequest"
+      ],
+      "functions": [
+        "list_engagement_templates",
+        "preview_engagement_signal",
+        "list_engagement_upload_sources",
+        "list_engagement_production_sources",
+        "list_engagement_analysis_sources",
+        "create_engagement",
+        "get_engagement_report"
+      ],
+      "endpoints": [
+        "GET /templates",
+        "POST /signal-preview",
+        "GET /sources/uploads",
+        "GET /sources/productions",
+        "GET /sources/analyses",
+        "POST ",
+        "GET /{record_id}/report"
+      ]
+    },
+    {
       "path": "api/routers/media/key_moments.py",
       "language": "python",
       "domain_package": "api/routers",
@@ -1519,6 +1749,28 @@
         "GET /sources/uploads",
         "GET /sources/productions",
         "POST "
+      ]
+    },
+    {
+      "path": "api/routers/media/scene_analysis.py",
+      "language": "python",
+      "domain_package": "api/routers",
+      "tier": "Tier 4 (Feature Routers & Agents)",
+      "non_comment_lines": 161,
+      "classes": [
+        "SceneAnalysisCreate"
+      ],
+      "functions": [
+        "list_scene_analysis_upload_sources",
+        "list_scene_analysis_production_sources",
+        "create_scene_analysis",
+        "get_scene_analysis_timeline"
+      ],
+      "endpoints": [
+        "GET /sources/uploads",
+        "GET /sources/productions",
+        "POST ",
+        "GET /{record_id}/timeline"
       ]
     },
     {
@@ -1876,6 +2128,24 @@
       "endpoints": []
     },
     {
+      "path": "api/services/gemini_insights.py",
+      "language": "python",
+      "domain_package": "api/services",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 119,
+      "classes": [
+        "InsightResponse",
+        "GeminiInsightsMixin"
+      ],
+      "functions": [
+        "resolve_insights_model",
+        "format_offset",
+        "build_video_part",
+        "to_insight_response"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "api/services/gemini_video_analysis.py",
       "language": "python",
       "domain_package": "api/services",
@@ -1949,9 +2219,10 @@
       "language": "python",
       "domain_package": "api/services",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 152,
+      "non_comment_lines": 158,
       "classes": [],
       "functions": [
+        "public_record_dict",
         "sign_records_concurrently",
         "sign_values_concurrently",
         "sign_record_urls",
@@ -1982,7 +2253,7 @@
       "language": "python",
       "domain_package": "api",
       "tier": "Tier 2 (Core Services & Deps)",
-      "non_comment_lines": 41,
+      "non_comment_lines": 43,
       "classes": [
         "_ReframeAliasFinder"
       ],
@@ -2006,9 +2277,162 @@
       "language": "python",
       "domain_package": "api/tests",
       "tier": "Test Suite",
-      "non_comment_lines": 21,
+      "non_comment_lines": 23,
       "classes": [],
       "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/engagement_signals/test_influence_stats.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 223,
+      "classes": [],
+      "functions": [
+        "test_entity_inside_a_minute_sample_gets_that_samples_value",
+        "test_range_straddling_two_samples_is_weighted_by_overlap",
+        "test_overlapping_appearances_are_merged_not_double_counted",
+        "test_influence_agrees_with_a_per_second_reference",
+        "test_keys_group_emotions_and_events_by_normalised_name",
+        "test_low_support_and_ordering",
+        "test_keys_outside_the_signal_are_dropped",
+        "test_zero_overall_mean_does_not_divide_by_zero",
+        "test_segment_stats_are_time_weighted_and_ranked",
+        "test_summary_stats_of_known_values",
+        "test_integral_ignores_time_the_signal_does_not_cover"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/engagement_signals/test_interval_index.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 164,
+      "classes": [],
+      "functions": [
+        "test_queries_agree_with_a_linear_scan_on_random_spans",
+        "test_results_come_back_in_start_order",
+        "test_spans_are_half_open_and_instants_occupy_their_start",
+        "test_one_long_span_does_not_hide_short_ones_that_already_ended",
+        "test_dict_items_are_indexed_by_their_own_times",
+        "test_context_slice_contains_only_what_happens_inside_the_window",
+        "test_context_slice_lists_each_entity_once_and_skips_absent_ones",
+        "test_context_slice_stays_compact_for_busy_windows"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/engagement_signals/test_report_binding.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 288,
+      "classes": [],
+      "functions": [
+        "test_explanations_bind_by_id_and_cannot_change_numbers",
+        "test_explanations_tolerate_malformed_model_output",
+        "test_explanations_return_a_new_report",
+        "test_recommendation_inputs_use_supported_influence_and_ranked_segments",
+        "test_recommendation_evidence_is_filled_from_the_report",
+        "test_segment_fixes_take_times_from_the_timeline_and_avg_from_the_report",
+        "test_anchor_times_are_the_starts_of_the_longest_ranges",
+        "test_recommendations_return_a_new_report_and_survive_junk_payloads"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/engagement_signals/test_report_builder.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 258,
+      "classes": [],
+      "functions": [
+        "test_core_report_fills_every_deterministic_field",
+        "test_extrema_get_rank_ids_segments_and_clamped_windows",
+        "test_windows_are_clamped_to_the_video_and_gaps_have_no_segment",
+        "test_kpis_come_from_the_raw_series",
+        "test_monotone_signal_reports_no_extrema_and_no_drop",
+        "test_barc_csv_flows_through_to_a_measured_report",
+        "test_samples_after_the_end_of_the_video_are_discarded",
+        "test_long_series_is_bucketed_and_smoothed",
+        "test_explain_requests_carry_a_context_slice_per_extremum",
+        "test_building_a_report_leaves_its_inputs_untouched"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/engagement_signals/test_signal_parser.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 219,
+      "classes": [],
+      "functions": [
+        "test_barc_export_maps_columns_and_measures_time_from_the_first_row",
+        "test_duration_end_time_and_date_columns_are_never_metrics",
+        "test_broadcast_crossing_midnight_is_ordered_by_date_and_time",
+        "test_midnight_crossing_without_a_date_column_is_unwrapped_with_a_warning",
+        "test_two_part_times_are_clock_times_only_in_wall_clock_layouts",
+        "test_end_time_is_never_chosen_as_the_time_axis",
+        "test_offset_shifts_every_row_and_drops_rows_before_zero",
+        "test_generic_time_value_files_keep_their_own_time_origin",
+        "test_bom_padding_and_header_case_are_normalised",
+        "test_title_rows_above_the_header_are_skipped",
+        "test_explicit_overrides_beat_the_priority_lists",
+        "test_unreadable_and_repeated_rows_are_skipped_and_counted",
+        "test_interval_is_the_median_spacing_and_gaps_are_reported",
+        "test_unusable_input_raises_a_clear_error",
+        "test_row_cap_is_enforced_at_exactly_200_000_rows",
+        "test_preview_describes_the_mapping_with_string_sample_rows",
+        "test_preview_of_an_unmappable_file_reports_why_instead_of_raising"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/engagement_signals/test_signal_peaks.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 155,
+      "classes": [],
+      "functions": [
+        "test_smooth_is_a_centred_average_that_keeps_the_endpoints",
+        "test_prominence_ranking_matches_a_worked_example",
+        "test_flat_or_monotone_series_has_no_extrema",
+        "test_smoothed_flat_series_stays_free_of_rounding_noise_extrema",
+        "test_single_bump_is_a_peak_and_never_also_a_valley",
+        "test_random_series_extrema_are_true_turning_points",
+        "test_every_prominent_strict_turning_point_is_reported",
+        "test_plateau_yields_one_extremum_at_its_middle",
+        "test_spacing_keeps_the_more_prominent_of_two_close_peaks",
+        "test_small_wiggles_on_a_trend_are_below_the_prominence_floor",
+        "test_max_count_limits_each_kind_to_the_most_prominent",
+        "test_drop_reports_where_the_fall_starts_and_how_big_it_is",
+        "test_rising_series_has_no_drops_and_small_falls_are_ignored",
+        "test_drops_never_overlap_and_are_ranked_by_size"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/engagement_signals/test_signal_templates.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 119,
+      "classes": [],
+      "functions": [
+        "test_series_is_identical_in_another_process_with_another_hash_seed",
+        "test_seed_and_template_each_change_the_series",
+        "test_sampling_interval_is_clamped",
+        "test_values_stay_inside_the_index_range",
+        "test_profiles_have_distinct_characters",
+        "test_list_templates_returns_stable_noise_free_previews",
+        "test_unknown_template_is_rejected_with_the_valid_ids",
+        "test_unusable_duration_is_rejected"
+      ],
       "endpoints": []
     },
     {
@@ -2392,6 +2816,18 @@
       "endpoints": []
     },
     {
+      "path": "api/tests/routers/conftest.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 133,
+      "classes": [],
+      "functions": [
+        "engagement_api"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "api/tests/routers/test_access_control.py",
       "language": "python",
       "domain_package": "api/tests",
@@ -2450,6 +2886,60 @@
       "endpoints": []
     },
     {
+      "path": "api/tests/routers/test_engagement_reads.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 296,
+      "classes": [],
+      "functions": [
+        "test_signal_preview_parses_the_csv_the_upload_record_points_at",
+        "test_signal_preview_reports_the_parsers_reason_for_an_unreadable_file",
+        "test_signal_preview_resolves_the_upload_like_create_does",
+        "test_signal_preview_enforces_the_size_limit_before_downloading",
+        "test_signal_preview_enforces_the_size_limit_on_the_bytes_it_received",
+        "test_signal_preview_never_echoes_internal_error_text",
+        "test_analysis_sources_are_live_analyses_newest_first_with_signed_videos",
+        "test_production_sources_carry_the_orientation_shown_in_the_picker",
+        "test_record_response_signs_the_video_and_withholds_internal_fields",
+        "test_retry_requeues_a_failed_report_and_clears_its_stage",
+        "test_delete_purges_only_the_reports_own_prefix_and_keeps_the_csv",
+        "test_delete_of_an_unknown_report_purges_nothing",
+        "test_a_scene_analysis_with_dependent_reports_cannot_be_deleted",
+        "test_a_scene_analysis_is_deletable_once_its_reports_are_gone",
+        "test_report_is_409_until_the_job_completes",
+        "test_report_returns_the_stored_document",
+        "test_report_read_failure_is_a_generic_502",
+        "test_services_used_panel_endpoints_know_both_insight_features"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/routers/test_engagement_router.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 327,
+      "classes": [],
+      "functions": [
+        "test_create_on_a_chosen_analysis_copies_its_source_and_stores_only_the_template",
+        "test_create_from_a_source_reuses_a_live_analysis_instead_of_queueing_another",
+        "test_create_from_a_source_queues_one_new_analysis_when_none_is_reusable",
+        "test_create_rejects_a_video_reference_that_cannot_produce_a_timeline",
+        "test_barc_signal_takes_the_csv_location_and_name_from_the_upload_record",
+        "test_a_csv_reported_with_the_excel_mime_type_is_accepted_by_its_extension",
+        "test_an_unusable_signal_upload_fails_before_any_analysis_is_queued",
+        "test_create_enforces_the_request_rules_before_touching_the_datastore",
+        "test_a_non_finite_offset_is_a_clean_400_not_a_server_error",
+        "test_create_rejects_malformed_and_unknown_fields",
+        "test_guest_cannot_create_preview_retry_or_delete",
+        "test_guest_can_read_and_anonymous_callers_are_rejected",
+        "test_no_literal_route_is_registered_behind_a_sibling_param_route",
+        "test_literal_routes_are_served_by_their_own_handlers"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "api/tests/routers/test_power_user.py",
       "language": "python",
       "domain_package": "api/tests",
@@ -2462,6 +2952,21 @@
       ],
       "functions": [
         "client_and_store"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/routers/test_record_privacy.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 109,
+      "classes": [],
+      "functions": [
+        "client",
+        "test_guest_reading_a_record_never_sees_the_creators_invite_code",
+        "test_signing_helpers_drop_the_invite_code_with_and_without_storage",
+        "test_the_default_crud_serialiser_drops_the_invite_code"
       ],
       "endpoints": []
     },
@@ -2503,6 +3008,37 @@
       "functions": [
         "test_no_literal_route_is_shadowed_by_a_path_param_route",
         "test_known_previously_shadowed_endpoints_resolve"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/routers/test_scene_analysis_router.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 337,
+      "classes": [],
+      "functions": [
+        "api",
+        "test_create_from_upload_takes_the_video_location_from_the_stored_record",
+        "test_create_rejects_a_client_supplied_video_location",
+        "test_create_validates_the_payload",
+        "test_create_fails_for_sources_that_cannot_be_resolved",
+        "test_create_from_production_uses_its_final_video",
+        "test_production_https_url_is_converted_back_to_its_gs_uri",
+        "test_guest_cannot_create_retry_or_delete",
+        "test_guest_can_read_and_anonymous_callers_are_rejected",
+        "test_source_routes_are_not_captured_by_the_record_id_route",
+        "test_no_literal_route_is_registered_behind_a_sibling_param_route",
+        "test_record_response_signs_the_video_and_hides_the_url_cache",
+        "test_record_responses_never_expose_the_creators_invite_code",
+        "test_retry_requeues_a_failed_analysis_and_clears_its_stage",
+        "test_delete_purges_only_the_records_own_prefix",
+        "test_delete_of_an_unknown_record_purges_nothing",
+        "test_timeline_is_409_until_the_analysis_completes",
+        "test_timeline_returns_the_document_and_a_signed_filmstrip",
+        "test_timeline_without_a_filmstrip_returns_null_for_it",
+        "test_timeline_read_failure_is_a_generic_502"
       ],
       "endpoints": []
     },
@@ -2622,7 +3158,7 @@
       "language": "python",
       "domain_package": "api/tests",
       "tier": "Test Suite",
-      "non_comment_lines": 190,
+      "non_comment_lines": 192,
       "classes": [
         "TestGeminiTextTiers",
         "TestGeminiImageTokenBased",
@@ -2693,6 +3229,351 @@
       "endpoints": []
     },
     {
+      "path": "api/tests/video_insights/conftest.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 195,
+      "classes": [
+        "MemoryStorage",
+        "MemoryStore",
+        "ScriptedAI"
+      ],
+      "functions": [
+        "prompt_data",
+        "answer",
+        "explain_answer",
+        "recommend_answer",
+        "engagement_env"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/video_insights/test_engagement_gating.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 207,
+      "classes": [
+        "_Doc",
+        "_Query"
+      ],
+      "functions": [
+        "test_only_jobs_whose_analysis_completed_are_handed_to_the_worker",
+        "test_a_waiting_job_is_written_once_however_often_it_is_polled",
+        "test_analyses_are_not_read_when_no_job_is_pending",
+        "test_a_waiting_job_runs_on_the_poll_after_its_analysis_completes",
+        "test_a_bad_signal_fails_the_job_with_a_message_for_the_user",
+        "test_an_unreadable_timeline_fails_the_job_without_leaking_storage_errors",
+        "test_dependants_of_an_analysis_are_found_with_one_equality_filter"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/video_insights/test_engagement_processor.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 259,
+      "classes": [],
+      "functions": [
+        "test_template_job_writes_a_full_report_and_record_summaries",
+        "test_model_prose_is_bound_by_id_and_never_supplies_a_number",
+        "test_the_model_is_given_only_ids_the_report_contains",
+        "test_a_template_report_is_reproducible_for_a_record_id",
+        "test_barc_job_parses_the_csv_with_the_records_overrides",
+        "test_a_retried_job_reuses_checkpoints_instead_of_paying_again",
+        "test_checkpoints_made_for_other_inputs_are_not_reused",
+        "test_a_failed_model_call_keeps_the_numbers_and_notes_the_gap",
+        "test_no_model_call_is_made_when_there_is_nothing_to_describe"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/video_insights/test_engagement_prompts.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 149,
+      "classes": [],
+      "functions": [
+        "test_video_text_cannot_leave_the_data_block_or_reach_the_instructions",
+        "test_csv_derived_signal_names_are_data_not_instructions",
+        "test_a_template_curve_is_never_described_as_audience_behaviour",
+        "test_a_measured_curve_allows_audience_hypotheses_but_not_claims",
+        "test_prompts_carry_every_id_the_model_must_echo_and_the_grounding_rules",
+        "test_schemas_take_text_and_references_only"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/video_insights/test_gemini_insights.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 166,
+      "classes": [
+        "_Service"
+      ],
+      "functions": [
+        "test_windowed_call_clips_the_video_with_offsets",
+        "test_single_window_video_is_sent_without_offsets",
+        "test_first_window_of_a_long_video_is_still_clipped",
+        "test_request_asks_for_schema_constrained_low_temperature_json",
+        "test_model_is_explicit_then_env_then_default_and_never_firestore",
+        "test_usage_and_finish_reason_are_reported",
+        "test_truncated_output_is_flagged_and_yields_no_data",
+        "test_unparsed_but_valid_json_text_is_recovered",
+        "test_response_without_candidates_or_usage_does_not_raise",
+        "test_generate_insight_json_is_a_text_only_structured_call",
+        "test_format_offset_trims_trailing_zeros",
+        "test_prompt_states_the_window_and_that_times_are_absolute",
+        "test_prompt_lists_only_the_cuts_inside_the_window",
+        "test_prompt_asks_for_complete_coverage",
+        "test_focus_is_delimited_data_and_cannot_close_its_own_block",
+        "test_focus_is_length_capped_and_stripped_of_control_characters"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/video_insights/test_scene_analysis_processor.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 397,
+      "classes": [
+        "FakeStorage",
+        "FakeAI"
+      ],
+      "functions": [
+        "good",
+        "truncated",
+        "env",
+        "test_completed_job_writes_timeline_summaries_and_summed_usage",
+        "test_model_call_carries_the_record_source_focus_and_overrides",
+        "test_progress_updates_carry_status_stage_detail_and_rising_percent",
+        "test_windows_run_concurrently_but_never_more_than_four_at_once",
+        "test_retry_reuses_checkpoints_and_only_calls_the_model_for_missing_windows",
+        "test_checkpoint_for_a_different_window_range_is_not_reused",
+        "test_truncated_window_is_split_in_two_and_both_halves_merged",
+        "test_unparseable_output_is_split_like_a_truncated_one",
+        "test_splitting_stops_at_a_bounded_depth_and_fails_the_job",
+        "test_blocked_answer_fails_without_spending_calls_on_splits",
+        "test_single_window_video_sends_the_whole_video_once",
+        "test_filmstrip_is_uploaded_with_its_layout",
+        "test_filmstrip_failure_is_tolerated_and_noted",
+        "test_temp_files_are_removed_after_success_and_after_failure",
+        "test_unreadable_duration_fails_the_job_before_any_model_call",
+        "test_filmstrip_tile_i_shows_the_frame_at_i_times_the_interval"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/video_insights/test_staged_processor.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 141,
+      "classes": [
+        "_Storage",
+        "_Job"
+      ],
+      "functions": [
+        "services",
+        "test_stages_run_in_order_and_report_stage_status_and_progress",
+        "test_completion_writes_usage_subclass_fields_and_timestamp",
+        "test_failing_stage_stops_the_job_and_still_removes_temp_files",
+        "test_progress_is_weighted_monotonic_and_never_100_while_running",
+        "test_checkpoints_round_trip_under_the_record_prefix",
+        "test_corrupt_or_non_object_checkpoint_loads_as_missing",
+        "test_storage_error_while_loading_a_checkpoint_is_not_fatal",
+        "test_sum_usage_adds_tokens_and_cost_and_keeps_the_model_name"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/video_insights/test_timeline_merge.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 239,
+      "classes": [],
+      "functions": [
+        "test_merge_is_identical_for_every_window_completion_order",
+        "test_summary_and_title_follow_video_order_not_arrival_order",
+        "test_duplicate_items_are_removed",
+        "test_entity_is_merged_across_windows_by_normalised_name_and_kind",
+        "test_same_name_with_a_different_kind_stays_a_separate_entity",
+        "test_overlapping_appearances_are_fused_before_screen_time_is_summed",
+        "test_ids_are_one_based_in_start_order_and_entities_rank_by_screen_time",
+        "test_times_are_clamped_to_the_video_duration",
+        "test_segments_snap_to_cuts_and_form_a_partition",
+        "test_emotion_intensity_is_kept_per_span",
+        "test_split_window_parts_merge_like_the_unsplit_window",
+        "test_counts_cover_every_collection"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/video_insights/test_timeline_normalize.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 194,
+      "classes": [],
+      "functions": [
+        "test_absolute_timestamps_are_kept_as_they_are",
+        "test_window_relative_timestamps_are_shifted_to_absolute",
+        "test_both_time_bases_normalise_to_the_same_result",
+        "test_ambiguous_overlap_tie_is_read_as_absolute",
+        "test_one_vote_breaks_the_overlap_tie_towards_relative",
+        "test_first_window_is_never_shifted",
+        "test_minority_items_on_the_other_time_base_cannot_escape_the_window",
+        "test_ranges_are_clamped_to_the_window_and_bad_ranges_dropped",
+        "test_key_moments_far_outside_are_dropped_and_near_ones_pulled_in",
+        "test_items_without_identifying_text_are_dropped_and_fields_tidied",
+        "test_entities_need_a_name_and_at_least_one_valid_appearance",
+        "test_malformed_model_output_normalises_to_an_empty_result",
+        "test_summary_and_title_whitespace_is_collapsed"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/tests/video_insights/test_timeline_windows.py",
+      "language": "python",
+      "domain_package": "api/tests",
+      "tier": "Test Suite",
+      "non_comment_lines": 100,
+      "classes": [],
+      "functions": [
+        "test_short_video_is_one_window_covering_everything",
+        "test_duration_equal_to_the_cap_is_still_one_window",
+        "test_default_window_is_five_minutes",
+        "test_long_video_without_cuts_splits_evenly",
+        "test_random_plans_are_gap_free_non_overlapping_and_capped",
+        "test_boundary_snaps_to_the_nearest_cut_within_tolerance",
+        "test_boundary_ignores_cuts_beyond_the_tolerance",
+        "test_unsorted_duplicate_and_out_of_range_cuts_are_tolerated",
+        "test_non_positive_window_cap_is_rejected",
+        "test_nearest_cut_prefers_the_earlier_cut_on_an_exact_tie",
+        "test_split_window_halves_cover_the_parent_and_keep_its_index",
+        "test_split_window_snaps_the_midpoint_to_a_cut_inside_the_window",
+        "test_can_split_stops_at_the_minimum_useful_length",
+        "test_filmstrip_tiles_cover_the_video_within_the_tile_cap",
+        "test_filmstrip_tile_keeps_aspect_ratio_with_an_even_height"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/video_insights/insight_prompts.py",
+      "language": "python",
+      "domain_package": "api/video_insights",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 109,
+      "classes": [],
+      "functions": [
+        "sanitize_focus",
+        "build_timeline_prompt",
+        "data_block",
+        "build_engagement_explain_prompt",
+        "build_engagement_recommend_prompt"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/video_insights/insight_records.py",
+      "language": "python",
+      "domain_package": "api/video_insights",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 35,
+      "classes": [],
+      "functions": [
+        "build_scene_analysis_record",
+        "requeue_updates"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/video_insights/insights_store.py",
+      "language": "python",
+      "domain_package": "api/video_insights",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 68,
+      "classes": [
+        "InsightsStoreMixin"
+      ],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "api/video_insights/signal_files.py",
+      "language": "python",
+      "domain_package": "api/video_insights",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 69,
+      "classes": [
+        "SignalFileError",
+        "SignalFile"
+      ],
+      "functions": [
+        "looks_like_csv",
+        "stored_size",
+        "resolve_signal_upload",
+        "read_signal_csv"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/video_insights/source_resolver.py",
+      "language": "python",
+      "domain_package": "api/video_insights",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 84,
+      "classes": [
+        "ResolvedSource"
+      ],
+      "functions": [
+        "resolve_video_source"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/video_insights/timeline_merge.py",
+      "language": "python",
+      "domain_package": "api/video_insights",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 296,
+      "classes": [
+        "_Spec"
+      ],
+      "functions": [
+        "normalize_window_result",
+        "combine_window_parts",
+        "merge_windows",
+        "timeline_counts"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "api/video_insights/timeline_windows.py",
+      "language": "python",
+      "domain_package": "api/video_insights",
+      "tier": "Tier 2 (Core Services & Deps)",
+      "non_comment_lines": 84,
+      "classes": [
+        "Window"
+      ],
+      "functions": [
+        "covers_whole_video",
+        "nearest_cut",
+        "plan_windows",
+        "can_split",
+        "split_window",
+        "plan_filmstrip"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "api/video_service.py",
       "language": "python",
       "domain_package": "api",
@@ -2709,7 +3590,7 @@
       "language": "typescript",
       "domain_package": "frontend/src",
       "tier": "Tier 6 (Next.js App Entrypoints & Root Router)",
-      "non_comment_lines": 200,
+      "non_comment_lines": 213,
       "classes": [],
       "functions": [],
       "endpoints": []
@@ -2779,7 +3660,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 5 (Feature Pages & Domain Views)",
-      "non_comment_lines": 309,
+      "non_comment_lines": 317,
       "classes": [],
       "functions": [
         "Sidebar"
@@ -4461,6 +5342,417 @@
       "endpoints": []
     },
     {
+      "path": "frontend/src/components/pages/engagement/EngagementCreatePage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 50,
+      "classes": [],
+      "functions": [
+        "EngagementCreatePage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/EngagementLandingPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 62,
+      "classes": [],
+      "functions": [
+        "EngagementLandingPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/EngagementWorkspacePage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 32,
+      "classes": [],
+      "functions": [
+        "EngagementWorkspacePage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/ReportBits.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 45,
+      "classes": [],
+      "functions": [
+        "DeltaBadgeProps",
+        "DeltaBadge",
+        "SimulatedNote",
+        "EmptyProseProps",
+        "EmptyProse"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/SignalBadge.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 23,
+      "classes": [],
+      "functions": [
+        "SignalBadgeProps",
+        "SignalBadge"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/create/BarcPanel.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 47,
+      "classes": [],
+      "functions": [
+        "BarcPanelProps",
+        "BarcPanel"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/create/BarcPreview.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 122,
+      "classes": [],
+      "functions": [
+        "BarcPreviewProps",
+        "BarcPreview"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/create/FormParts.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 42,
+      "classes": [],
+      "functions": [
+        "FormStepProps",
+        "FormStep",
+        "Sparkline"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/create/SignalStep.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 69,
+      "classes": [],
+      "functions": [
+        "SignalStep"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/create/VideoStep.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 130,
+      "classes": [],
+      "functions": [
+        "VideoStepProps",
+        "VideoStep"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/create/useBarcUpload.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 63,
+      "classes": [],
+      "functions": [
+        "BarcUploadPhase",
+        "BarcUploadState",
+        "BarcUpload",
+        "useBarcUpload"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/create/useEngagementForm.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 40,
+      "classes": [],
+      "functions": [
+        "EngagementForm",
+        "useEngagementForm"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/tabs/DataTab.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 112,
+      "classes": [],
+      "functions": [
+        "DataTabProps",
+        "DataTab"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/tabs/DriversTab.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 164,
+      "classes": [],
+      "functions": [
+        "DriversTab"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/tabs/ExtremaTab.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 123,
+      "classes": [],
+      "functions": [
+        "ExtremaTabProps",
+        "ExtremaTab"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/tabs/OverviewTab.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 70,
+      "classes": [],
+      "functions": [
+        "OverviewTabProps",
+        "OverviewTab"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/tabs/RecommendationsTab.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 145,
+      "classes": [],
+      "functions": [
+        "RecommendationsTabProps",
+        "RecommendationsTab"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/tabs/ReportTabs.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 48,
+      "classes": [],
+      "functions": [
+        "ReportTabsProps",
+        "ReportTabs"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/tabs/SegmentAverages.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 108,
+      "classes": [],
+      "functions": [
+        "SegmentAveragesProps",
+        "SegmentAverages"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/useEngagementTemplates.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 35,
+      "classes": [],
+      "functions": [
+        "TemplatesState",
+        "useEngagementTemplates",
+        "useTemplateLabels"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/workspace/CurveLane.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 115,
+      "classes": [],
+      "functions": [
+        "CURVE_LANE_ID",
+        "CurveLane"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/workspace/DriverLanes.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 103,
+      "classes": [],
+      "functions": [
+        "DRIVER_LANES_ID",
+        "DriverShading",
+        "DriverLanes"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/workspace/EngagementHeader.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 92,
+      "classes": [],
+      "functions": [
+        "EngagementHeaderProps",
+        "EngagementHeader"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/workspace/EngagementProcessing.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 63,
+      "classes": [],
+      "functions": [
+        "EngagementProcessingProps",
+        "EngagementProcessing"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/workspace/EngagementTimeline.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 134,
+      "classes": [],
+      "functions": [
+        "EngagementTimelineProps",
+        "EngagementTimeline"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/workspace/EngagementWorkspace.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 48,
+      "classes": [],
+      "functions": [
+        "EngagementWorkspace"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/workspace/MomentPanel.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 98,
+      "classes": [],
+      "functions": [
+        "SidePanelProps",
+        "SidePanel",
+        "MomentPanelProps",
+        "MomentPanel"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/workspace/RangeInspector.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 126,
+      "classes": [],
+      "functions": [
+        "RangeInspectorProps",
+        "RangeInspector"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/workspace/engagementUi.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 25,
+      "classes": [],
+      "functions": [
+        "EngagementUiProviderProps",
+        "EngagementUiProvider",
+        "useEngagementUiStore",
+        "useEngagementUi",
+        "driverColor"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/workspace/useEngagement.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 20,
+      "classes": [],
+      "functions": [
+        "useEngagementRecord",
+        "EngagementDocs",
+        "useEngagementDocs"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/engagement/workspace/useFocusExtremum.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
+      "non_comment_lines": 26,
+      "classes": [],
+      "functions": [
+        "useFocusExtremum",
+        "useShowRange"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "frontend/src/components/pages/keyMoments/KeyMomentsAnalyzePage.tsx",
       "language": "typescript",
       "domain_package": "frontend/src/components",
@@ -4620,6 +5912,176 @@
       "classes": [],
       "functions": [
         "ReframePipelineLinks"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/sceneAnalysis/SceneAnalysisCreatePage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [sceneanalysis]",
+      "non_comment_lines": 98,
+      "classes": [],
+      "functions": [
+        "SceneAnalysisCreatePage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/sceneAnalysis/SceneAnalysisLandingPage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [sceneanalysis]",
+      "non_comment_lines": 74,
+      "classes": [],
+      "functions": [
+        "SceneAnalysisLandingPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/sceneAnalysis/SceneAnalysisWorkspacePage.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [sceneanalysis]",
+      "non_comment_lines": 32,
+      "classes": [],
+      "functions": [
+        "SceneAnalysisWorkspacePage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/sceneAnalysis/workspace/ExportMenu.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [sceneanalysis]",
+      "non_comment_lines": 43,
+      "classes": [],
+      "functions": [
+        "ExportMenuProps",
+        "ExportMenu"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/sceneAnalysis/workspace/InspectorLists.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [sceneanalysis]",
+      "non_comment_lines": 86,
+      "classes": [],
+      "functions": [
+        "MomentsTab",
+        "EventsTab"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/sceneAnalysis/workspace/InspectorTabs.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [sceneanalysis]",
+      "non_comment_lines": 66,
+      "classes": [],
+      "functions": [
+        "InspectorTabsProps",
+        "InspectorTabs"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/sceneAnalysis/workspace/OverviewCharts.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [sceneanalysis]",
+      "non_comment_lines": 96,
+      "classes": [],
+      "functions": [
+        "ScreenTimeChart",
+        "EmotionChart"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/sceneAnalysis/workspace/ProcessingView.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [sceneanalysis]",
+      "non_comment_lines": 37,
+      "classes": [],
+      "functions": [
+        "ProcessingViewProps",
+        "ProcessingView"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/sceneAnalysis/workspace/SceneTimeline.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [sceneanalysis]",
+      "non_comment_lines": 59,
+      "classes": [],
+      "functions": [
+        "SceneTimelineProps",
+        "SceneTimeline"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/sceneAnalysis/workspace/SceneWorkspace.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [sceneanalysis]",
+      "non_comment_lines": 46,
+      "classes": [],
+      "functions": [
+        "SceneWorkspace"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/sceneAnalysis/workspace/TimedList.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [sceneanalysis]",
+      "non_comment_lines": 55,
+      "classes": [],
+      "functions": [
+        "TimedRowProps",
+        "TimedRow",
+        "TimedSectionProps",
+        "TimedSection"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/sceneAnalysis/workspace/WorkspaceHeader.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [sceneanalysis]",
+      "non_comment_lines": 58,
+      "classes": [],
+      "functions": [
+        "recordName",
+        "RunEngagementButton",
+        "WorkspaceHeaderProps",
+        "WorkspaceHeader"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/pages/sceneAnalysis/workspace/useSceneAnalysis.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 5 (Feature Pages & Domain Views) [sceneanalysis]",
+      "non_comment_lines": 12,
+      "classes": [],
+      "functions": [
+        "ACTIVE_STATUSES",
+        "useSceneAnalysisRecord",
+        "useSceneTimeline"
       ],
       "endpoints": []
     },
@@ -4956,7 +6418,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 4 (Shared Hooks & Domain Shells)",
-      "non_comment_lines": 204,
+      "non_comment_lines": 222,
       "classes": [],
       "functions": [
         "BaseWorkRecord",
@@ -4965,7 +6427,8 @@
         "WorkCreateShellProps",
         "WorkCreateShell",
         "SelectedVideoPreview",
-        "CheckboxOption"
+        "CheckboxOption",
+        "OptionalNameField"
       ],
       "endpoints": []
     },
@@ -5002,6 +6465,391 @@
       "classes": [],
       "functions": [
         "VideoPlayer"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/media/VideoSourcePicker.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 164,
+      "classes": [],
+      "functions": [
+        "PickedVideoSource",
+        "VideoSourcePickerLoaders",
+        "VideoSourcePickerOptions",
+        "VideoSourcePickerState",
+        "VideoSourcePickerProps",
+        "useVideoSourcePicker",
+        "VideoSourcePicker"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/Minimap.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 148,
+      "classes": [],
+      "functions": [
+        "MinimapProps",
+        "Minimap"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/MomentSummary.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 82,
+      "classes": [],
+      "functions": [
+        "MomentHoverCardProps",
+        "MomentHoverCard",
+        "NowStripProps",
+        "NowStrip"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/TimelineHover.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 50,
+      "classes": [],
+      "functions": [
+        "HoverLayerProps",
+        "HoverLayer"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/TimelineLane.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 98,
+      "classes": [],
+      "functions": [
+        "LaneRenderArgs",
+        "TimelineLaneProps",
+        "TimelineLane",
+        "LaneSvgProps",
+        "LaneSvg",
+        "LaneItemProps",
+        "LaneItem"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/TimelineOverlay.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 42,
+      "classes": [],
+      "functions": [
+        "Playhead",
+        "SelectionBand"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/TimelineSurface.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 55,
+      "classes": [],
+      "functions": [
+        "TimelineSurfaceProps",
+        "TimelineSurface"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/TimelineToolbar.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 104,
+      "classes": [],
+      "functions": [
+        "LaneOption",
+        "LaneToggleMenu",
+        "ZoomControls",
+        "TimelineToolbarProps",
+        "TimelineToolbar"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/TimelineWorkspace.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 51,
+      "classes": [],
+      "functions": [
+        "TimelineWorkspaceProps",
+        "TimelineWorkspace"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/index.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 36,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/lanes/DensityLane.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 36,
+      "classes": [],
+      "functions": [
+        "DensityLaneProps",
+        "DensityLane"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/lanes/EntityLanes.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 79,
+      "classes": [],
+      "functions": [
+        "ENTITY_LANES_ID",
+        "EntityLanesProps",
+        "EntityLanes"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/lanes/FilmstripLane.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 58,
+      "classes": [],
+      "functions": [
+        "FilmstripLaneProps",
+        "FilmstripLane"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/lanes/GlyphIcon.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 15,
+      "classes": [],
+      "functions": [
+        "GlyphIconProps",
+        "GlyphIcon"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/lanes/MarkersLane.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 106,
+      "classes": [],
+      "functions": [
+        "MarkerStyle",
+        "MarkersLaneProps",
+        "MarkersLane",
+        "KeyMomentsLaneProps",
+        "KeyMomentsLane"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/lanes/RangeLane.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 110,
+      "classes": [],
+      "functions": [
+        "RangeStyle",
+        "RangeLaneProps",
+        "RangeLane",
+        "intensityOpacity",
+        "EmotionsLane",
+        "BeatsLane"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/lanes/RulerLane.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 78,
+      "classes": [],
+      "functions": [
+        "RulerLane"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/lanes/SegmentsLane.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 66,
+      "classes": [],
+      "functions": [
+        "SegmentsLaneProps",
+        "SegmentsLane"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/lanes/laneGeometry.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 19,
+      "classes": [],
+      "functions": [
+        "SpanBox",
+        "spanBox",
+        "spokenRange"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/layout.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 12,
+      "classes": [],
+      "functions": [
+        "TIMELINE_GUTTER_PX",
+        "LANE_HEIGHT"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/panels/EntityBrowser.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 131,
+      "classes": [],
+      "functions": [
+        "EntityBrowserProps",
+        "EntityBrowser"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/panels/PanelSearch.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 42,
+      "classes": [],
+      "functions": [
+        "PanelSearchProps",
+        "PanelSearch",
+        "Highlighted"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/panels/TranscriptPanel.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 138,
+      "classes": [],
+      "functions": [
+        "TranscriptPanelProps",
+        "TranscriptPanel"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/player/PlayerControls.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 139,
+      "classes": [],
+      "functions": [
+        "PlayerControlsProps",
+        "PlayerControls"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/player/SyncedVideoPlayer.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 35,
+      "classes": [],
+      "functions": [
+        "SyncedVideoPlayerProps",
+        "SyncedVideoPlayer"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/record/JobProgress.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 120,
+      "classes": [],
+      "functions": [
+        "JobStage",
+        "JobProgressProps",
+        "JobProgress",
+        "JobRetryPanelProps",
+        "JobRetryPanel"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/shared/timeline/record/RecordChrome.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 133,
+      "classes": [],
+      "functions": [
+        "BackLink",
+        "RecordStatusPill",
+        "DurationPill",
+        "RecordHeaderProps",
+        "RecordHeader",
+        "LoadingNotice",
+        "LoadFailure",
+        "RecordUnavailableProps",
+        "RecordUnavailable",
+        "DownloadItem",
+        "DownloadGroup",
+        "DownloadMenu"
       ],
       "endpoints": []
     },
@@ -5050,6 +6898,119 @@
         "CardFooter",
         "CardProps",
         "Card"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ui/chart/config.test.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 50,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ui/chart/config.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 42,
+      "classes": [],
+      "functions": [
+        "ChartTheme",
+        "ChartSeriesConfig",
+        "ChartConfig",
+        "ChartColorVars",
+        "readString",
+        "getSeriesConfig",
+        "pickKey",
+        "resolveSeriesColor",
+        "buildColorVars",
+        "getPayloadConfig"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ui/chart/container.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 45,
+      "classes": [],
+      "functions": [
+        "ChartContainerProps",
+        "ChartContainer"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ui/chart/context.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 13,
+      "classes": [],
+      "functions": [
+        "ChartContextValue",
+        "ChartContext",
+        "useChart"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ui/chart/events.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 9,
+      "classes": [],
+      "functions": [
+        "ChartPointerState",
+        "activeIndexOf"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ui/chart/index.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 14,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ui/chart/legend.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 39,
+      "classes": [],
+      "functions": [
+        "ChartLegendContentProps",
+        "ChartLegend",
+        "ChartLegendContent"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/components/ui/chart/tooltip.tsx",
+      "language": "typescript",
+      "domain_package": "frontend/src/components",
+      "tier": "Tier 2 (Shadcn UI Primitives)",
+      "non_comment_lines": 151,
+      "classes": [],
+      "functions": [
+        "ChartTooltipItem",
+        "ChartTooltipPayload",
+        "ChartTooltipIndicator",
+        "ChartTooltipFormatter",
+        "ChartTooltipContentProps",
+        "ChartTooltip",
+        "ChartTooltipContent"
       ],
       "endpoints": []
     },
@@ -5242,6 +7203,169 @@
       "endpoints": []
     },
     {
+      "path": "frontend/src/hooks/timeline/saveFile.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/hooks",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 14,
+      "classes": [],
+      "functions": [
+        "saveTextFile",
+        "saveJsonFile"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/hooks/timeline/timelineContext.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/hooks",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 54,
+      "classes": [],
+      "functions": [
+        "TimelineKit",
+        "TimelineKitContext",
+        "TimelineViewContext",
+        "TimeScaleContext",
+        "useTimelineKit",
+        "useTimelineView",
+        "useTimeScale",
+        "useWorkspace",
+        "useSeek",
+        "useSelectItem"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/hooks/timeline/useAsyncResource.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/hooks",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 25,
+      "classes": [],
+      "functions": [
+        "AsyncResource",
+        "useAsyncResource"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/hooks/timeline/useElementSize.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/hooks",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 22,
+      "classes": [],
+      "functions": [
+        "ElementSize",
+        "useElementSize"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/hooks/timeline/useMediaClock.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/hooks",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 40,
+      "classes": [],
+      "functions": [
+        "useMediaClock",
+        "useClockState",
+        "useClockTime",
+        "useClockValue"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/hooks/timeline/usePlayerShortcuts.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/hooks",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 39,
+      "classes": [],
+      "functions": [
+        "usePlayerShortcuts"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/hooks/timeline/usePrefersReducedMotion.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/hooks",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 14,
+      "classes": [],
+      "functions": [
+        "usePrefersReducedMotion"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/hooks/timeline/useTimeScrub.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/hooks",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 36,
+      "classes": [],
+      "functions": [
+        "useTimeScrub"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/hooks/timeline/useTimelineGestures.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/hooks",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 110,
+      "classes": [],
+      "functions": [
+        "NO_PAN_ATTR",
+        "GestureEnv",
+        "useTimelineGestures"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/hooks/timeline/useTimelineViewport.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/hooks",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 56,
+      "classes": [],
+      "functions": [
+        "ViewportApi",
+        "useTimelineViewport"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/hooks/timeline/useUrlTimeSync.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/hooks",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 58,
+      "classes": [],
+      "functions": [
+        "useUrlTimeSync"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/hooks/timeline/useWindowedList.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/hooks",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 47,
+      "classes": [],
+      "functions": [
+        "WindowedList",
+        "useWindowedList"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "frontend/src/hooks/useApiClient.ts",
       "language": "typescript",
       "domain_package": "frontend/src/hooks",
@@ -5263,6 +7387,20 @@
       "functions": [
         "AvatarLiveStatus",
         "useAvatarLiveSession"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/hooks/useCreateRecord.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/hooks",
+      "tier": "Tier 4 (Shared Hooks & Domain Shells)",
+      "non_comment_lines": 38,
+      "classes": [],
+      "functions": [
+        "CreateRecordOptions",
+        "CreateRecord",
+        "useCreateRecord"
       ],
       "endpoints": []
     },
@@ -5341,7 +7479,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/lib",
       "tier": "Tier 3 (State Stores & Client Services)",
-      "non_comment_lines": 80,
+      "non_comment_lines": 88,
       "classes": [],
       "functions": [
         "Project",
@@ -5558,6 +7696,19 @@
       "endpoints": []
     },
     {
+      "path": "frontend/src/lib/api/endpoints/engagement.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 74,
+      "classes": [],
+      "functions": [
+        "EngagementAnalysisSource",
+        "engagement"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "frontend/src/lib/api/endpoints/keyMoments.ts",
       "language": "typescript",
       "domain_package": "frontend/src/lib",
@@ -5606,6 +7757,18 @@
       "endpoints": []
     },
     {
+      "path": "frontend/src/lib/api/endpoints/sceneAnalysis.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/lib",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 43,
+      "classes": [],
+      "functions": [
+        "sceneAnalysis"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "frontend/src/lib/api/endpoints/thumbnails.ts",
       "language": "typescript",
       "domain_package": "frontend/src/lib",
@@ -5634,7 +7797,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/lib",
       "tier": "Tier 3 (State Stores & Client Services)",
-      "non_comment_lines": 31,
+      "non_comment_lines": 34,
       "classes": [],
       "functions": [],
       "endpoints": []
@@ -5715,6 +7878,75 @@
         "getTimeAgo",
         "formatFileSize",
         "parseTimestamp"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/store/timeline/__tests__/clockAndStore.test.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/store",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 242,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/store/timeline/__tests__/engagementUiStore.test.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/store",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 47,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/store/timeline/engagementUiStore.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/store",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 32,
+      "classes": [],
+      "functions": [
+        "MAX_SELECTED_DRIVERS",
+        "EngagementUiState",
+        "EngagementUiStore",
+        "createEngagementUiStore"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/store/timeline/mediaClock.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/store",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 196,
+      "classes": [],
+      "functions": [
+        "MediaLike",
+        "FrameScheduler",
+        "ClockState",
+        "SeekOptions",
+        "MediaClock"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/store/timeline/workspaceStore.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/store",
+      "tier": "Tier 3 (State Stores & Client Services)",
+      "non_comment_lines": 55,
+      "classes": [],
+      "functions": [
+        "MAX_PINNED_ENTITIES",
+        "TimelineSelection",
+        "WorkspaceInit",
+        "WorkspaceState",
+        "WorkspaceStore",
+        "loopRangeOf",
+        "createWorkspaceStore"
       ],
       "endpoints": []
     },
@@ -5806,6 +8038,262 @@
         "AvatarLiveConfig",
         "STYLE_LABELS",
         "VOICE_TURN_MARKER"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/engagement/__tests__/createForm.test.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 106,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/engagement/__tests__/exportAndFormat.test.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 112,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/engagement/__tests__/rangeSummary.test.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 37,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/engagement/__tests__/reportFixture.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 54,
+      "classes": [],
+      "functions": [
+        "SMALL_REPORT"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/engagement/__tests__/reportModel.test.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 117,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/engagement/__tests__/serverAgreement.test.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 53,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/engagement/__tests__/stepSeries.test.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 116,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/engagement/createForm.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 66,
+      "classes": [],
+      "functions": [
+        "BARC_CHOICE",
+        "MAX_OFFSET_SEC",
+        "VideoChoice",
+        "BarcSelection",
+        "EngagementFormState",
+        "EMPTY_BARC",
+        "parseOffset",
+        "previewIssues",
+        "barcFromPreview",
+        "canStart",
+        "buildEngagementPayload"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/engagement/curveRows.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 53,
+      "classes": [],
+      "functions": [
+        "CurveSeries",
+        "CurveRow",
+        "toUnit",
+        "buildCurveRows",
+        "CurveRole",
+        "DrawnSeries",
+        "SMOOTHED_KEY",
+        "drawnSeries"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/engagement/rangeSummary.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 43,
+      "classes": [],
+      "functions": [
+        "EntityPresence",
+        "RangeSummary",
+        "summariseRange"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/engagement/reportExport.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 44,
+      "classes": [],
+      "functions": [
+        "CurveTable",
+        "curveTable",
+        "curveCsv",
+        "extremaCsv",
+        "driversCsv"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/engagement/reportFormat.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 50,
+      "classes": [],
+      "functions": [
+        "SIMULATED_LABEL",
+        "BARC_LABEL",
+        "formatValue",
+        "formatAxisValue",
+        "formatDelta",
+        "describeDelta",
+        "SignalBadgeText",
+        "signalBadgeText",
+        "reportBadgeText",
+        "engagementRecordName",
+        "driverLabel"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/engagement/reportModel.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 155,
+      "classes": [],
+      "functions": [
+        "MetricSeries",
+        "ExtremumMarker",
+        "ExtremumWindow",
+        "InfluenceGroup",
+        "ReportModel",
+        "EXTREMUM_STYLE",
+        "extremumTitle",
+        "displayRange",
+        "buildReportModel",
+        "nearestExtremum",
+        "hookWindowSec",
+        "extremumInContext"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/engagement/stepSeries.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 74,
+      "classes": [],
+      "functions": [
+        "SeriesSlice",
+        "StepSeries",
+        "percentDelta"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/insights.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 298,
+      "classes": [],
+      "functions": [
+        "InsightSourceType",
+        "InsightUsage",
+        "CueKind",
+        "CueSentiment",
+        "EntityKind",
+        "TimeRange",
+        "TimelineSegment",
+        "TimelineCue",
+        "TimelineEntity",
+        "TimelineEvent",
+        "TimelineEmotion",
+        "TimelineKeyMoment",
+        "TimelineBeat",
+        "TimelineDoc",
+        "FilmstripSpec",
+        "FilmstripInfo",
+        "TimelineResponse",
+        "SceneAnalysisStatus",
+        "SceneAnalysisRecord",
+        "SceneAnalysisCreate",
+        "EngagementSignalKind",
+        "EngagementSignalSpec",
+        "EngagementTemplate",
+        "SignalPreview",
+        "SignalPoint",
+        "ReportMetric",
+        "ReportSignalMeta",
+        "ReportStats",
+        "ExtremumKind",
+        "ReportExtremum",
+        "ReportSegmentStat",
+        "InfluenceKind",
+        "ReportInfluence",
+        "RecommendationEvidence",
+        "ReportRecommendation",
+        "ReportSegmentFix",
+        "ReportRecommendations",
+        "ReportKpis",
+        "EngagementReport",
+        "EngagementStatus",
+        "EngagementRecord",
+        "EngagementCreate",
+        "EngagementCreateResponse"
       ],
       "endpoints": []
     },
@@ -5961,7 +8449,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/types",
       "tier": "Tier 1 (Types, Schemas & Pure Utils)",
-      "non_comment_lines": 57,
+      "non_comment_lines": 93,
       "classes": [],
       "functions": [
         "inviteCodeFormSchema",
@@ -5970,7 +8458,9 @@
         "SystemResourceFormValues",
         "promoCreateSchema",
         "reframeCreateSchema",
-        "adaptCreateSchema"
+        "adaptCreateSchema",
+        "sceneAnalysisCreateSchema",
+        "engagementCreateSchema"
       ],
       "endpoints": []
     },
@@ -6023,6 +8513,308 @@
         "StoryGraphData",
         "ShotRunHistory",
         "AuditLogPage"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/timeline/__tests__/adSpotFixture.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 142,
+      "classes": [],
+      "functions": [
+        "AD_SPOT_ID",
+        "AD_SPOT_FILMSTRIP",
+        "AD_SPOT_TIMELINE",
+        "AD_SPOT_RECORD"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/timeline/__tests__/formatAndExport.test.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 146,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/timeline/__tests__/intervalIndex.test.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 100,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/timeline/__tests__/modelAndLayout.test.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 151,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/timeline/__tests__/searchAndShortcuts.test.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 82,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/timeline/__tests__/viewport.test.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 108,
+      "classes": [],
+      "functions": [],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/timeline/bisect.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 16,
+      "classes": [],
+      "functions": [
+        "partitionPoint",
+        "lowerBound",
+        "upperBound"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/timeline/downsample.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 51,
+      "classes": [],
+      "functions": [
+        "SeriesPoint",
+        "sliceVisible",
+        "downsampleMinMax",
+        "downsampleForView",
+        "coverageBins"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/timeline/exporters.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 111,
+      "classes": [],
+      "functions": [
+        "CsvValue",
+        "cuesToSrt",
+        "cuesToVtt",
+        "escapeCsvCell",
+        "toCsv",
+        "TimelineCollectionKey",
+        "TIMELINE_CSV_SPECS",
+        "TIMELINE_COLLECTION_KEYS",
+        "timelineCollectionCsv",
+        "exportFileStem"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/timeline/glyphs.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 100,
+      "classes": [],
+      "functions": [
+        "GlyphShape",
+        "Glyph",
+        "chartColor",
+        "hashString",
+        "glyphFor",
+        "cssSlug",
+        "emotionColor",
+        "glyphPath",
+        "categoryLabel"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/timeline/intervalIndex.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 67,
+      "classes": [],
+      "functions": [
+        "IntervalIndex",
+        "PointIndex"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/timeline/model.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 129,
+      "classes": [],
+      "functions": [
+        "EntityAppearance",
+        "TimelineItemKind",
+        "TimelineItemRef",
+        "TimelineModel",
+        "MomentSnapshot",
+        "buildTimelineModel",
+        "snapshotAt",
+        "listSpeakers",
+        "defaultPinnedEntityIds"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/timeline/series.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 24,
+      "classes": [],
+      "functions": [
+        "EmotionSample",
+        "emotionIntensitySeries"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/timeline/shortcuts.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 36,
+      "classes": [],
+      "functions": [
+        "ARROW_STEP_SEC",
+        "JKL_STEP_SEC",
+        "ShortcutAction",
+        "shortcutForKey",
+        "segmentJumpTarget",
+        "fitLabel"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/timeline/stacking.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 72,
+      "classes": [],
+      "functions": [
+        "PixelSpan",
+        "PlacedMarker",
+        "StackOptions",
+        "stackMarkers",
+        "StackedSpan",
+        "stackRanges",
+        "stackPoints"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/timeline/textSearch.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 26,
+      "classes": [],
+      "functions": [
+        "TextPart",
+        "normalizeQuery",
+        "matchesQuery",
+        "splitHighlight"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/timeline/ticks.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 35,
+      "classes": [],
+      "functions": [
+        "RulerTicks",
+        "pickTickStep",
+        "buildTicks"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/timeline/timeFormat.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 40,
+      "classes": [],
+      "functions": [
+        "formatTimecode",
+        "formatSpan",
+        "formatSubtitleTime",
+        "toTimeParam",
+        "parseTimeParam"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/timeline/viewport.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 68,
+      "classes": [],
+      "functions": [
+        "Viewport",
+        "TimeScale",
+        "MIN_SPAN_SEC",
+        "minSpanFor",
+        "clampTime",
+        "fitViewport",
+        "clampViewport",
+        "zoomViewport",
+        "panViewport",
+        "viewportForRange",
+        "revealTime",
+        "createTimeScale",
+        "isFitted"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "frontend/src/types/timeline/windowing.ts",
+      "language": "typescript",
+      "domain_package": "frontend/src/types",
+      "tier": "Tier 1 (Types, Schemas & Pure Utils)",
+      "non_comment_lines": 44,
+      "classes": [],
+      "functions": [
+        "ListWindow",
+        "prefixOffsets",
+        "estimateRowHeight",
+        "computeWindow",
+        "scrollTopToReveal"
       ],
       "endpoints": []
     },
@@ -13997,6 +16789,52 @@
       "endpoints": []
     },
     {
+      "path": "workers/insight_jobs/engagement_processor.py",
+      "language": "python",
+      "domain_package": "workers/insight_jobs",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 296,
+      "classes": [
+        "EngagementProcessor"
+      ],
+      "functions": [
+        "dependency_error",
+        "restore_series"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "workers/insight_jobs/scene_analysis_processor.py",
+      "language": "python",
+      "domain_package": "workers/insight_jobs",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 250,
+      "classes": [
+        "_AnalyzeRun",
+        "SceneAnalysisProcessor"
+      ],
+      "functions": [
+        "filmstrip_command"
+      ],
+      "endpoints": []
+    },
+    {
+      "path": "workers/insight_jobs/staged_processor.py",
+      "language": "python",
+      "domain_package": "workers/insight_jobs",
+      "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
+      "non_comment_lines": 132,
+      "classes": [
+        "Stage",
+        "JobContext",
+        "StagedJobProcessor"
+      ],
+      "functions": [
+        "sum_usage"
+      ],
+      "endpoints": []
+    },
+    {
       "path": "workers/promo_processor.py",
       "language": "python",
       "domain_package": "workers",
@@ -14025,11 +16863,12 @@
       "language": "python",
       "domain_package": "workers",
       "tier": "Tier 5 (Entrypoints, Scripts & Workers)",
-      "non_comment_lines": 148,
+      "non_comment_lines": 152,
       "classes": [
         "UnifiedWorker"
       ],
       "functions": [
+        "build_processors",
         "main"
       ],
       "endpoints": []

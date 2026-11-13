@@ -120,6 +120,31 @@ class UnifiedWorker:
                 )
 
 
+def build_processors() -> list[JobProcessor]:
+    """Instantiate every job processor, in polling order.
+
+    Scene analysis is registered ahead of the engagement processor, so an
+    analysis that an engagement job depends on is picked up first.
+    """
+    from adapts_processor import AdaptsProcessor
+    from avatar_processor import AvatarProcessor
+    from dubbing_processor import DubbingProcessor
+    from insight_jobs.engagement_processor import EngagementProcessor
+    from insight_jobs.scene_analysis_processor import SceneAnalysisProcessor
+    from promo_processor import PromoProcessor
+    from reframe_processor import ReframeProcessor
+
+    return [
+        ReframeProcessor(),
+        PromoProcessor(),
+        AdaptsProcessor(),
+        AvatarProcessor(),
+        DubbingProcessor(),
+        SceneAnalysisProcessor(),
+        EngagementProcessor(),
+    ]
+
+
 def main() -> None:
     from health import start_health_server
 
@@ -152,21 +177,7 @@ def main() -> None:
             },
         )
 
-    from adapts_processor import AdaptsProcessor
-    from avatar_processor import AvatarProcessor
-    from dubbing_processor import DubbingProcessor
-    from promo_processor import PromoProcessor
-    from reframe_processor import ReframeProcessor
-
-    worker = UnifiedWorker(
-        [
-            ReframeProcessor(),
-            PromoProcessor(),
-            AdaptsProcessor(),
-            AvatarProcessor(),
-            DubbingProcessor(),
-        ]
-    )
+    worker = UnifiedWorker(build_processors())
     worker.start()
 
 

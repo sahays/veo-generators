@@ -19,6 +19,7 @@ from gemini_generation import (
     _build_ref_contents,
     _build_scene_prompt,
 )
+from gemini_insights import GeminiInsightsMixin
 from gemini_video_analysis import GeminiVideoAnalysisMixin
 from helpers import gemini_call_with_retry
 from models import AIResponseWrapper, Project
@@ -97,7 +98,9 @@ def _build_eval_contents(project: Project, video_gcs_uri: Optional[str]) -> list
     return contents
 
 
-class GeminiService(GeminiVideoAnalysisMixin, GeminiGenerationMixin):
+class GeminiService(
+    GeminiVideoAnalysisMixin, GeminiGenerationMixin, GeminiInsightsMixin
+):
     def __init__(self, storage_svc: Any = None, firestore_svc: Any = None) -> None:
         self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
         self.location = os.getenv("GEMINI_REGION", "global")

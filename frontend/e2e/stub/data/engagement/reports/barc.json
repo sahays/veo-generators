@@ -1,0 +1,2272 @@
+{
+  "schema_version": "engagement-report-v1",
+  "duration_sec": 45.0,
+  "signal": {
+    "kind": "barc",
+    "template_id": null,
+    "label": "barc-kadak-chai-monsoon.csv",
+    "simulated": false,
+    "primary_metric": "TVR (%)",
+    "unit": "%",
+    "offset_sec": -5.0,
+    "point_count": 90,
+    "interval_sec": 0.5
+  },
+  "metrics": [
+    {
+      "key": "tvr",
+      "label": "TVR (%)",
+      "primary": true,
+      "points": [
+        [
+          0.0,
+          1.4
+        ],
+        [
+          0.5,
+          1.38
+        ],
+        [
+          1.0,
+          1.41
+        ],
+        [
+          1.5,
+          1.41
+        ],
+        [
+          2.0,
+          1.41
+        ],
+        [
+          2.5,
+          1.38
+        ],
+        [
+          3.0,
+          1.37
+        ],
+        [
+          3.5,
+          1.32
+        ],
+        [
+          4.0,
+          1.29
+        ],
+        [
+          4.5,
+          1.29
+        ],
+        [
+          5.0,
+          1.24
+        ],
+        [
+          5.5,
+          1.25
+        ],
+        [
+          6.0,
+          1.22
+        ],
+        [
+          6.5,
+          1.25
+        ],
+        [
+          7.0,
+          1.25
+        ],
+        [
+          7.5,
+          1.28
+        ],
+        [
+          8.0,
+          1.27
+        ],
+        [
+          8.5,
+          1.29
+        ],
+        [
+          9.0,
+          1.31
+        ],
+        [
+          9.5,
+          1.34
+        ],
+        [
+          10.0,
+          1.39
+        ],
+        [
+          10.5,
+          1.39
+        ],
+        [
+          11.0,
+          1.42
+        ],
+        [
+          11.5,
+          1.44
+        ],
+        [
+          12.0,
+          1.49
+        ],
+        [
+          12.5,
+          1.53
+        ],
+        [
+          13.0,
+          1.59
+        ],
+        [
+          13.5,
+          1.59
+        ],
+        [
+          14.0,
+          1.62
+        ],
+        [
+          14.5,
+          1.6
+        ],
+        [
+          15.0,
+          1.59
+        ],
+        [
+          15.5,
+          1.57
+        ],
+        [
+          16.0,
+          1.5
+        ],
+        [
+          16.5,
+          1.5
+        ],
+        [
+          17.0,
+          1.45
+        ],
+        [
+          17.5,
+          1.46
+        ],
+        [
+          18.0,
+          1.45
+        ],
+        [
+          18.5,
+          1.47
+        ],
+        [
+          19.0,
+          1.46
+        ],
+        [
+          19.5,
+          1.5
+        ],
+        [
+          20.0,
+          1.55
+        ],
+        [
+          20.5,
+          1.59
+        ],
+        [
+          21.0,
+          1.65
+        ],
+        [
+          21.5,
+          1.61
+        ],
+        [
+          22.0,
+          1.62
+        ],
+        [
+          22.5,
+          1.56
+        ],
+        [
+          23.0,
+          1.55
+        ],
+        [
+          23.5,
+          1.53
+        ],
+        [
+          24.0,
+          1.51
+        ],
+        [
+          24.5,
+          1.51
+        ],
+        [
+          25.0,
+          1.54
+        ],
+        [
+          25.5,
+          1.57
+        ],
+        [
+          26.0,
+          1.61
+        ],
+        [
+          26.5,
+          1.67
+        ],
+        [
+          27.0,
+          1.67
+        ],
+        [
+          27.5,
+          1.71
+        ],
+        [
+          28.0,
+          1.71
+        ],
+        [
+          28.5,
+          1.75
+        ],
+        [
+          29.0,
+          1.77
+        ],
+        [
+          29.5,
+          1.8
+        ],
+        [
+          30.0,
+          1.79
+        ],
+        [
+          30.5,
+          1.81
+        ],
+        [
+          31.0,
+          1.82
+        ],
+        [
+          31.5,
+          1.82
+        ],
+        [
+          32.0,
+          1.84
+        ],
+        [
+          32.5,
+          1.79
+        ],
+        [
+          33.0,
+          1.78
+        ],
+        [
+          33.5,
+          1.74
+        ],
+        [
+          34.0,
+          1.74
+        ],
+        [
+          34.5,
+          1.72
+        ],
+        [
+          35.0,
+          1.71
+        ],
+        [
+          35.5,
+          1.67
+        ],
+        [
+          36.0,
+          1.67
+        ],
+        [
+          36.5,
+          1.66
+        ],
+        [
+          37.0,
+          1.66
+        ],
+        [
+          37.5,
+          1.67
+        ],
+        [
+          38.0,
+          1.63
+        ],
+        [
+          38.5,
+          1.59
+        ],
+        [
+          39.0,
+          1.51
+        ],
+        [
+          39.5,
+          1.49
+        ],
+        [
+          40.0,
+          1.44
+        ],
+        [
+          40.5,
+          1.41
+        ],
+        [
+          41.0,
+          1.36
+        ],
+        [
+          41.5,
+          1.34
+        ],
+        [
+          42.0,
+          1.32
+        ],
+        [
+          42.5,
+          1.32
+        ],
+        [
+          43.0,
+          1.33
+        ],
+        [
+          43.5,
+          1.3
+        ],
+        [
+          44.0,
+          1.31
+        ],
+        [
+          44.5,
+          1.28
+        ]
+      ]
+    },
+    {
+      "key": "impressions_000s",
+      "label": "Impressions ('000s)",
+      "primary": false,
+      "points": [
+        [
+          0.0,
+          2975.0
+        ],
+        [
+          0.5,
+          2922.0
+        ],
+        [
+          1.0,
+          2991.0
+        ],
+        [
+          1.5,
+          2980.0
+        ],
+        [
+          2.0,
+          2994.0
+        ],
+        [
+          2.5,
+          2926.0
+        ],
+        [
+          3.0,
+          2898.0
+        ],
+        [
+          3.5,
+          2806.0
+        ],
+        [
+          4.0,
+          2733.0
+        ],
+        [
+          4.5,
+          2738.0
+        ],
+        [
+          5.0,
+          2636.0
+        ],
+        [
+          5.5,
+          2646.0
+        ],
+        [
+          6.0,
+          2588.0
+        ],
+        [
+          6.5,
+          2641.0
+        ],
+        [
+          7.0,
+          2655.0
+        ],
+        [
+          7.5,
+          2714.0
+        ],
+        [
+          8.0,
+          2686.0
+        ],
+        [
+          8.5,
+          2743.0
+        ],
+        [
+          9.0,
+          2775.0
+        ],
+        [
+          9.5,
+          2844.0
+        ],
+        [
+          10.0,
+          2954.0
+        ],
+        [
+          10.5,
+          2943.0
+        ],
+        [
+          11.0,
+          3012.0
+        ],
+        [
+          11.5,
+          3044.0
+        ],
+        [
+          12.0,
+          3164.0
+        ],
+        [
+          12.5,
+          3244.0
+        ],
+        [
+          13.0,
+          3365.0
+        ],
+        [
+          13.5,
+          3379.0
+        ],
+        [
+          14.0,
+          3432.0
+        ],
+        [
+          14.5,
+          3395.0
+        ],
+        [
+          15.0,
+          3378.0
+        ],
+        [
+          15.5,
+          3324.0
+        ],
+        [
+          16.0,
+          3182.0
+        ],
+        [
+          16.5,
+          3171.0
+        ],
+        [
+          17.0,
+          3079.0
+        ],
+        [
+          17.5,
+          3095.0
+        ],
+        [
+          18.0,
+          3068.0
+        ],
+        [
+          18.5,
+          3124.0
+        ],
+        [
+          19.0,
+          3093.0
+        ],
+        [
+          19.5,
+          3183.0
+        ],
+        [
+          20.0,
+          3293.0
+        ],
+        [
+          20.5,
+          3367.0
+        ],
+        [
+          21.0,
+          3500.0
+        ],
+        [
+          21.5,
+          3404.0
+        ],
+        [
+          22.0,
+          3439.0
+        ],
+        [
+          22.5,
+          3307.0
+        ],
+        [
+          23.0,
+          3280.0
+        ],
+        [
+          23.5,
+          3252.0
+        ],
+        [
+          24.0,
+          3199.0
+        ],
+        [
+          24.5,
+          3204.0
+        ],
+        [
+          25.0,
+          3272.0
+        ],
+        [
+          25.5,
+          3324.0
+        ],
+        [
+          26.0,
+          3415.0
+        ],
+        [
+          26.5,
+          3531.0
+        ],
+        [
+          27.0,
+          3545.0
+        ],
+        [
+          27.5,
+          3625.0
+        ],
+        [
+          28.0,
+          3619.0
+        ],
+        [
+          28.5,
+          3718.0
+        ],
+        [
+          29.0,
+          3750.0
+        ],
+        [
+          29.5,
+          3819.0
+        ],
+        [
+          30.0,
+          3802.0
+        ],
+        [
+          30.5,
+          3833.0
+        ],
+        [
+          31.0,
+          3860.0
+        ],
+        [
+          31.5,
+          3849.0
+        ],
+        [
+          32.0,
+          3906.0
+        ],
+        [
+          32.5,
+          3795.0
+        ],
+        [
+          33.0,
+          3768.0
+        ],
+        [
+          33.5,
+          3697.0
+        ],
+        [
+          34.0,
+          3687.0
+        ],
+        [
+          34.5,
+          3649.0
+        ],
+        [
+          35.0,
+          3632.0
+        ],
+        [
+          35.5,
+          3536.0
+        ],
+        [
+          36.0,
+          3542.0
+        ],
+        [
+          36.5,
+          3510.0
+        ],
+        [
+          37.0,
+          3524.0
+        ],
+        [
+          37.5,
+          3540.0
+        ],
+        [
+          38.0,
+          3450.0
+        ],
+        [
+          38.5,
+          3379.0
+        ],
+        [
+          39.0,
+          3199.0
+        ],
+        [
+          39.5,
+          3162.0
+        ],
+        [
+          40.0,
+          3060.0
+        ],
+        [
+          40.5,
+          2985.0
+        ],
+        [
+          41.0,
+          2885.0
+        ],
+        [
+          41.5,
+          2832.0
+        ],
+        [
+          42.0,
+          2803.0
+        ],
+        [
+          42.5,
+          2798.0
+        ],
+        [
+          43.0,
+          2814.0
+        ],
+        [
+          43.5,
+          2764.0
+        ],
+        [
+          44.0,
+          2775.0
+        ],
+        [
+          44.5,
+          2717.0
+        ]
+      ]
+    },
+    {
+      "key": "reach_000s",
+      "label": "Reach ('000s)",
+      "primary": false,
+      "points": [
+        [
+          0.0,
+          3519.0
+        ],
+        [
+          0.5,
+          3471.0
+        ],
+        [
+          1.0,
+          3528.0
+        ],
+        [
+          1.5,
+          3489.0
+        ],
+        [
+          2.0,
+          3527.0
+        ],
+        [
+          2.5,
+          3471.0
+        ],
+        [
+          3.0,
+          3476.0
+        ],
+        [
+          3.5,
+          3395.0
+        ],
+        [
+          4.0,
+          3345.0
+        ],
+        [
+          4.5,
+          3299.0
+        ],
+        [
+          5.0,
+          3207.0
+        ],
+        [
+          5.5,
+          3193.0
+        ],
+        [
+          6.0,
+          3105.0
+        ],
+        [
+          6.5,
+          3141.0
+        ],
+        [
+          7.0,
+          3105.0
+        ],
+        [
+          7.5,
+          3161.0
+        ],
+        [
+          8.0,
+          3135.0
+        ],
+        [
+          8.5,
+          3202.0
+        ],
+        [
+          9.0,
+          3215.0
+        ],
+        [
+          9.5,
+          3289.0
+        ],
+        [
+          10.0,
+          3359.0
+        ],
+        [
+          10.5,
+          3390.0
+        ],
+        [
+          11.0,
+          3478.0
+        ],
+        [
+          11.5,
+          3509.0
+        ],
+        [
+          12.0,
+          3630.0
+        ],
+        [
+          12.5,
+          3686.0
+        ],
+        [
+          13.0,
+          3816.0
+        ],
+        [
+          13.5,
+          3860.0
+        ],
+        [
+          14.0,
+          3963.0
+        ],
+        [
+          14.5,
+          3965.0
+        ],
+        [
+          15.0,
+          4002.0
+        ],
+        [
+          15.5,
+          3960.0
+        ],
+        [
+          16.0,
+          3883.0
+        ],
+        [
+          16.5,
+          3849.0
+        ],
+        [
+          17.0,
+          3740.0
+        ],
+        [
+          17.5,
+          3733.0
+        ],
+        [
+          18.0,
+          3651.0
+        ],
+        [
+          18.5,
+          3687.0
+        ],
+        [
+          19.0,
+          3638.0
+        ],
+        [
+          19.5,
+          3714.0
+        ],
+        [
+          20.0,
+          3762.0
+        ],
+        [
+          20.5,
+          3851.0
+        ],
+        [
+          21.0,
+          3961.0
+        ],
+        [
+          21.5,
+          3951.0
+        ],
+        [
+          22.0,
+          4045.0
+        ],
+        [
+          22.5,
+          3951.0
+        ],
+        [
+          23.0,
+          3979.0
+        ],
+        [
+          23.5,
+          3893.0
+        ],
+        [
+          24.0,
+          3860.0
+        ],
+        [
+          24.5,
+          3822.0
+        ],
+        [
+          25.0,
+          3837.0
+        ],
+        [
+          25.5,
+          3863.0
+        ],
+        [
+          26.0,
+          3928.0
+        ],
+        [
+          26.5,
+          4016.0
+        ],
+        [
+          27.0,
+          4073.0
+        ],
+        [
+          27.5,
+          4173.0
+        ],
+        [
+          28.0,
+          4196.0
+        ],
+        [
+          28.5,
+          4310.0
+        ],
+        [
+          29.0,
+          4330.0
+        ],
+        [
+          29.5,
+          4425.0
+        ],
+        [
+          30.0,
+          4425.0
+        ],
+        [
+          30.5,
+          4491.0
+        ],
+        [
+          31.0,
+          4508.0
+        ],
+        [
+          31.5,
+          4529.0
+        ],
+        [
+          32.0,
+          4568.0
+        ],
+        [
+          32.5,
+          4506.0
+        ],
+        [
+          33.0,
+          4517.0
+        ],
+        [
+          33.5,
+          4433.0
+        ],
+        [
+          34.0,
+          4431.0
+        ],
+        [
+          34.5,
+          4357.0
+        ],
+        [
+          35.0,
+          4337.0
+        ],
+        [
+          35.5,
+          4250.0
+        ],
+        [
+          36.0,
+          4246.0
+        ],
+        [
+          36.5,
+          4184.0
+        ],
+        [
+          37.0,
+          4190.0
+        ],
+        [
+          37.5,
+          4166.0
+        ],
+        [
+          38.0,
+          4119.0
+        ],
+        [
+          38.5,
+          4075.0
+        ],
+        [
+          39.0,
+          3940.0
+        ],
+        [
+          39.5,
+          3897.0
+        ],
+        [
+          40.0,
+          3752.0
+        ],
+        [
+          40.5,
+          3678.0
+        ],
+        [
+          41.0,
+          3540.0
+        ],
+        [
+          41.5,
+          3474.0
+        ],
+        [
+          42.0,
+          3397.0
+        ],
+        [
+          42.5,
+          3358.0
+        ],
+        [
+          43.0,
+          3333.0
+        ],
+        [
+          43.5,
+          3290.0
+        ],
+        [
+          44.0,
+          3295.0
+        ],
+        [
+          44.5,
+          3242.0
+        ]
+      ]
+    }
+  ],
+  "smoothed": [
+    [
+      0.0,
+      1.4
+    ],
+    [
+      0.5,
+      1.3967
+    ],
+    [
+      1.0,
+      1.4
+    ],
+    [
+      1.5,
+      1.41
+    ],
+    [
+      2.0,
+      1.4
+    ],
+    [
+      2.5,
+      1.3867
+    ],
+    [
+      3.0,
+      1.3567
+    ],
+    [
+      3.5,
+      1.3267
+    ],
+    [
+      4.0,
+      1.3
+    ],
+    [
+      4.5,
+      1.2733
+    ],
+    [
+      5.0,
+      1.26
+    ],
+    [
+      5.5,
+      1.2367
+    ],
+    [
+      6.0,
+      1.24
+    ],
+    [
+      6.5,
+      1.24
+    ],
+    [
+      7.0,
+      1.26
+    ],
+    [
+      7.5,
+      1.2667
+    ],
+    [
+      8.0,
+      1.28
+    ],
+    [
+      8.5,
+      1.29
+    ],
+    [
+      9.0,
+      1.3133
+    ],
+    [
+      9.5,
+      1.3467
+    ],
+    [
+      10.0,
+      1.3733
+    ],
+    [
+      10.5,
+      1.4
+    ],
+    [
+      11.0,
+      1.4167
+    ],
+    [
+      11.5,
+      1.45
+    ],
+    [
+      12.0,
+      1.4867
+    ],
+    [
+      12.5,
+      1.5367
+    ],
+    [
+      13.0,
+      1.57
+    ],
+    [
+      13.5,
+      1.6
+    ],
+    [
+      14.0,
+      1.6033
+    ],
+    [
+      14.5,
+      1.6033
+    ],
+    [
+      15.0,
+      1.5867
+    ],
+    [
+      15.5,
+      1.5533
+    ],
+    [
+      16.0,
+      1.5233
+    ],
+    [
+      16.5,
+      1.4833
+    ],
+    [
+      17.0,
+      1.47
+    ],
+    [
+      17.5,
+      1.4533
+    ],
+    [
+      18.0,
+      1.46
+    ],
+    [
+      18.5,
+      1.46
+    ],
+    [
+      19.0,
+      1.4767
+    ],
+    [
+      19.5,
+      1.5033
+    ],
+    [
+      20.0,
+      1.5467
+    ],
+    [
+      20.5,
+      1.5967
+    ],
+    [
+      21.0,
+      1.6167
+    ],
+    [
+      21.5,
+      1.6267
+    ],
+    [
+      22.0,
+      1.5967
+    ],
+    [
+      22.5,
+      1.5767
+    ],
+    [
+      23.0,
+      1.5467
+    ],
+    [
+      23.5,
+      1.53
+    ],
+    [
+      24.0,
+      1.5167
+    ],
+    [
+      24.5,
+      1.52
+    ],
+    [
+      25.0,
+      1.54
+    ],
+    [
+      25.5,
+      1.5733
+    ],
+    [
+      26.0,
+      1.6167
+    ],
+    [
+      26.5,
+      1.65
+    ],
+    [
+      27.0,
+      1.6833
+    ],
+    [
+      27.5,
+      1.6967
+    ],
+    [
+      28.0,
+      1.7233
+    ],
+    [
+      28.5,
+      1.7433
+    ],
+    [
+      29.0,
+      1.7733
+    ],
+    [
+      29.5,
+      1.7867
+    ],
+    [
+      30.0,
+      1.8
+    ],
+    [
+      30.5,
+      1.8067
+    ],
+    [
+      31.0,
+      1.8167
+    ],
+    [
+      31.5,
+      1.8267
+    ],
+    [
+      32.0,
+      1.8167
+    ],
+    [
+      32.5,
+      1.8033
+    ],
+    [
+      33.0,
+      1.77
+    ],
+    [
+      33.5,
+      1.7533
+    ],
+    [
+      34.0,
+      1.7333
+    ],
+    [
+      34.5,
+      1.7233
+    ],
+    [
+      35.0,
+      1.7
+    ],
+    [
+      35.5,
+      1.6833
+    ],
+    [
+      36.0,
+      1.6667
+    ],
+    [
+      36.5,
+      1.6633
+    ],
+    [
+      37.0,
+      1.6633
+    ],
+    [
+      37.5,
+      1.6533
+    ],
+    [
+      38.0,
+      1.63
+    ],
+    [
+      38.5,
+      1.5767
+    ],
+    [
+      39.0,
+      1.53
+    ],
+    [
+      39.5,
+      1.48
+    ],
+    [
+      40.0,
+      1.4467
+    ],
+    [
+      40.5,
+      1.4033
+    ],
+    [
+      41.0,
+      1.37
+    ],
+    [
+      41.5,
+      1.34
+    ],
+    [
+      42.0,
+      1.3267
+    ],
+    [
+      42.5,
+      1.3233
+    ],
+    [
+      43.0,
+      1.3167
+    ],
+    [
+      43.5,
+      1.3133
+    ],
+    [
+      44.0,
+      1.2967
+    ],
+    [
+      44.5,
+      1.28
+    ]
+  ],
+  "stats": {
+    "avg": 1.5152,
+    "median": 1.51,
+    "p75": 1.6575,
+    "min": 1.22,
+    "max": 1.84,
+    "std": 0.1694
+  },
+  "extrema": [
+    {
+      "id": "peak-1",
+      "kind": "peak",
+      "time_sec": 31.5,
+      "value": 1.8267,
+      "prominence": 0.5467,
+      "delta_pct": 20.56,
+      "window": {
+        "start_sec": 26.5,
+        "end_sec": 37.0
+      },
+      "segment_id": "seg-7",
+      "title": "The knees joke is the high point",
+      "explanation": "The rating climbs from the moment Mr. Rao appears and peaks as he says the tea should be stronger than the knees and both laugh. The full-band theme swells under the same seconds.",
+      "drivers": [
+        "Mr. Rao's punchline",
+        "Shared laughter",
+        "Theme swells with full band",
+        "Balcony"
+      ]
+    },
+    {
+      "id": "peak-2",
+      "kind": "peak",
+      "time_sec": 14.0,
+      "value": 1.6033,
+      "prominence": 0.15,
+      "delta_pct": 5.82,
+      "window": {
+        "start_sec": 9.0,
+        "end_sec": 19.5
+      },
+      "segment_id": "seg-4",
+      "title": "Pack reveal lifts the rating",
+      "explanation": "The first clear rise of the spot follows Asha's hand landing on the orange pack, while the narrator names Assam leaf, ginger and cardamom. It is the first time the brand is on screen.",
+      "drivers": [
+        "Kadak Chai pack",
+        "Ingredients narration",
+        "Surprise"
+      ]
+    },
+    {
+      "id": "peak-3",
+      "kind": "peak",
+      "time_sec": 21.5,
+      "value": 1.6267,
+      "prominence": 0.11,
+      "delta_pct": 7.36,
+      "window": {
+        "start_sec": 16.5,
+        "end_sec": 27.0
+      },
+      "segment_id": "seg-5",
+      "title": "First sip wins the audience back",
+      "explanation": "The rating climbs back to the level of the pack reveal as Asha takes the first sip and says \"Now it feels like home.\" The dip before the pour is recovered within a few seconds.",
+      "drivers": [
+        "Asha's first sip",
+        "\"Now it feels like home\"",
+        "Joy",
+        "Steel tumbler"
+      ]
+    },
+    {
+      "id": "valley-1",
+      "kind": "valley",
+      "time_sec": 5.5,
+      "value": 1.2367,
+      "prominence": 0.1733,
+      "delta_pct": -18.38,
+      "window": {
+        "start_sec": 0.5,
+        "end_sec": 11.0
+      },
+      "segment_id": "seg-2",
+      "title": "Lowest point: the tired arrival",
+      "explanation": "The rating reaches its low as Asha drops her bag and complains about the autos. There is no music and no product in these seconds, and the mood is the most negative of the spot.",
+      "drivers": [
+        "Asha's complaint",
+        "Sadness",
+        "No music",
+        "No brand on screen"
+      ]
+    },
+    {
+      "id": "valley-2",
+      "kind": "valley",
+      "time_sec": 17.5,
+      "value": 1.4533,
+      "prominence": 0.15,
+      "delta_pct": -4.08,
+      "window": {
+        "start_sec": 12.5,
+        "end_sec": 23.0
+      },
+      "segment_id": "seg-5",
+      "title": "Dip between the reveal and the pour",
+      "explanation": "The rating gives back the gain of the pack reveal as the pack tears open and the pour begins, a few seconds of sound effects with no voice. It stays only slightly below the average of the spot.",
+      "drivers": [
+        "Sound effects only",
+        "End of the ingredients line",
+        "Kettle"
+      ]
+    },
+    {
+      "id": "valley-3",
+      "kind": "valley",
+      "time_sec": 24.0,
+      "value": 1.5167,
+      "prominence": 0.11,
+      "delta_pct": 0.1,
+      "window": {
+        "start_sec": 19.0,
+        "end_sec": 29.5
+      },
+      "segment_id": "seg-6",
+      "title": "Pause at the doorbell",
+      "explanation": "The rating dips when the doorbell interrupts the kitchen scene and turns upward as soon as Mr. Rao speaks.",
+      "drivers": [
+        "Doorbell",
+        "Scene change",
+        "Suspense"
+      ]
+    },
+    {
+      "id": "drop-1",
+      "kind": "drop",
+      "time_sec": 38.0,
+      "value": 1.63,
+      "prominence": 0.1833,
+      "delta_pct": 7.58,
+      "window": {
+        "start_sec": 33.0,
+        "end_sec": 45.0
+      },
+      "segment_id": "seg-8",
+      "title": "Viewers leave at the end card",
+      "explanation": "The biggest fall of the spot starts in the last second of the hero shot and continues through the pause before the tagline. The music stops, the characters are gone and the frame turns into a static offer card.",
+      "drivers": [
+        "Call to action",
+        "Silence before the tagline",
+        "No characters on screen"
+      ]
+    },
+    {
+      "id": "drop-2",
+      "kind": "drop",
+      "time_sec": 14.5,
+      "value": 1.6033,
+      "prominence": 0.12,
+      "delta_pct": 5.82,
+      "window": {
+        "start_sec": 9.5,
+        "end_sec": 22.0
+      },
+      "segment_id": "seg-4",
+      "title": "Fall after the pack reveal",
+      "explanation": "Once the narrator has named the ingredients, the rating falls back while the pack is torn open over sound effects. The reveal lifts the audience, but the seconds after it do not hold the gain.",
+      "drivers": [
+        "End of the ingredients line",
+        "Pack tears open",
+        "No dialogue"
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "segment_id": "seg-1",
+      "avg": 1.3966,
+      "delta_pct": -7.83,
+      "rank": 6
+    },
+    {
+      "segment_id": "seg-2",
+      "avg": 1.2712,
+      "delta_pct": -16.11,
+      "rank": 9
+    },
+    {
+      "segment_id": "seg-3",
+      "avg": 1.3478,
+      "delta_pct": -11.05,
+      "rank": 8
+    },
+    {
+      "segment_id": "seg-4",
+      "avg": 1.55,
+      "delta_pct": 2.3,
+      "rank": 4
+    },
+    {
+      "segment_id": "seg-5",
+      "avg": 1.5357,
+      "delta_pct": 1.35,
+      "rank": 5
+    },
+    {
+      "segment_id": "seg-6",
+      "avg": 1.586,
+      "delta_pct": 4.67,
+      "rank": 3
+    },
+    {
+      "segment_id": "seg-7",
+      "avg": 1.7891,
+      "delta_pct": 18.07,
+      "rank": 1
+    },
+    {
+      "segment_id": "seg-8",
+      "avg": 1.6782,
+      "delta_pct": 10.75,
+      "rank": 2
+    },
+    {
+      "segment_id": "seg-9",
+      "avg": 1.3675,
+      "delta_pct": -9.75,
+      "rank": 7
+    }
+  ],
+  "influence": [
+    {
+      "key": "location:balcony",
+      "ref_id": "ent-5",
+      "name": "Balcony",
+      "kind": "location",
+      "avg_during": 1.7336,
+      "delta_pct": 14.41,
+      "coverage_sec": 11.0,
+      "coverage_pct": 24.44,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 28.0,
+          "end_sec": 39.0
+        }
+      ]
+    },
+    {
+      "key": "emotion:humor",
+      "ref_id": null,
+      "name": "humor",
+      "kind": "emotion",
+      "avg_during": 1.72,
+      "delta_pct": 13.51,
+      "coverage_sec": 9.0,
+      "coverage_pct": 20.0,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 24.5,
+          "end_sec": 33.5
+        }
+      ]
+    },
+    {
+      "key": "event:comedy",
+      "ref_id": null,
+      "name": "comedy",
+      "kind": "event",
+      "avg_during": 1.7089,
+      "delta_pct": 12.79,
+      "coverage_sec": 9.5,
+      "coverage_pct": 21.11,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 24.0,
+          "end_sec": 33.5
+        }
+      ]
+    },
+    {
+      "key": "character:mr. rao",
+      "ref_id": "ent-6",
+      "name": "Mr. Rao",
+      "kind": "character",
+      "avg_during": 1.6985,
+      "delta_pct": 12.1,
+      "coverage_sec": 10.1,
+      "coverage_pct": 22.44,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 23.4,
+          "end_sec": 33.5
+        }
+      ]
+    },
+    {
+      "key": "emotion:triumph",
+      "ref_id": null,
+      "name": "triumph",
+      "kind": "emotion",
+      "avg_during": 1.6782,
+      "delta_pct": 10.75,
+      "coverage_sec": 5.5,
+      "coverage_pct": 12.22,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 33.5,
+          "end_sec": 39.0
+        }
+      ]
+    },
+    {
+      "key": "emotion:joy",
+      "ref_id": null,
+      "name": "joy",
+      "kind": "emotion",
+      "avg_during": 1.6685,
+      "delta_pct": 10.11,
+      "coverage_sec": 16.4,
+      "coverage_pct": 36.44,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 17.4,
+          "end_sec": 22.8
+        },
+        {
+          "start_sec": 28.0,
+          "end_sec": 39.0
+        }
+      ]
+    },
+    {
+      "key": "object:steel tumblers",
+      "ref_id": "ent-3",
+      "name": "Steel tumblers",
+      "kind": "object",
+      "avg_during": 1.6685,
+      "delta_pct": 10.11,
+      "coverage_sec": 16.4,
+      "coverage_pct": 36.44,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 17.4,
+          "end_sec": 22.8
+        },
+        {
+          "start_sec": 28.0,
+          "end_sec": 39.0
+        }
+      ]
+    },
+    {
+      "key": "event:product_showcase",
+      "ref_id": null,
+      "name": "product_showcase",
+      "kind": "event",
+      "avg_during": 1.6147,
+      "delta_pct": 6.56,
+      "coverage_sec": 10.9,
+      "coverage_pct": 24.22,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 12.0,
+          "end_sec": 17.4
+        },
+        {
+          "start_sec": 33.5,
+          "end_sec": 39.0
+        }
+      ]
+    },
+    {
+      "key": "emotion:surprise",
+      "ref_id": null,
+      "name": "surprise",
+      "kind": "emotion",
+      "avg_during": 1.55,
+      "delta_pct": 2.3,
+      "coverage_sec": 5.4,
+      "coverage_pct": 12.0,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 12.0,
+          "end_sec": 17.4
+        }
+      ]
+    },
+    {
+      "key": "object:kadak chai pack",
+      "ref_id": "ent-2",
+      "name": "Kadak Chai pack",
+      "kind": "object",
+      "avg_during": 1.5369,
+      "delta_pct": 1.43,
+      "coverage_sec": 19.2,
+      "coverage_pct": 42.67,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 12.0,
+          "end_sec": 17.4
+        },
+        {
+          "start_sec": 20.5,
+          "end_sec": 22.8
+        },
+        {
+          "start_sec": 33.5,
+          "end_sec": 45.0
+        }
+      ]
+    },
+    {
+      "key": "character:asha",
+      "ref_id": "ent-1",
+      "name": "Asha",
+      "kind": "character",
+      "avg_during": 1.5225,
+      "delta_pct": 0.48,
+      "coverage_sec": 24.9,
+      "coverage_pct": 55.33,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 3.2,
+          "end_sec": 12.0
+        },
+        {
+          "start_sec": 17.4,
+          "end_sec": 33.5
+        }
+      ]
+    },
+    {
+      "key": "location:kitchen",
+      "ref_id": "ent-4",
+      "name": "Kitchen",
+      "kind": "location",
+      "avg_during": 1.4855,
+      "delta_pct": -1.96,
+      "coverage_sec": 15.3,
+      "coverage_pct": 34.0,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 7.5,
+          "end_sec": 22.8
+        }
+      ]
+    },
+    {
+      "key": "object:kettle",
+      "ref_id": "ent-7",
+      "name": "Kettle",
+      "kind": "object",
+      "avg_during": 1.4247,
+      "delta_pct": -5.97,
+      "coverage_sec": 8.5,
+      "coverage_pct": 18.89,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 7.9,
+          "end_sec": 12.0
+        },
+        {
+          "start_sec": 15.2,
+          "end_sec": 19.6
+        }
+      ]
+    },
+    {
+      "key": "event:emotional",
+      "ref_id": null,
+      "name": "emotional",
+      "kind": "event",
+      "avg_during": 1.4185,
+      "delta_pct": -6.39,
+      "coverage_sec": 9.7,
+      "coverage_pct": 21.56,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 3.2,
+          "end_sec": 7.5
+        },
+        {
+          "start_sec": 17.4,
+          "end_sec": 22.8
+        }
+      ]
+    },
+    {
+      "key": "emotion:calm",
+      "ref_id": null,
+      "name": "calm",
+      "kind": "emotion",
+      "avg_during": 1.3678,
+      "delta_pct": -9.73,
+      "coverage_sec": 13.7,
+      "coverage_pct": 30.44,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 3.2
+        },
+        {
+          "start_sec": 7.5,
+          "end_sec": 12.0
+        },
+        {
+          "start_sec": 39.0,
+          "end_sec": 45.0
+        }
+      ]
+    },
+    {
+      "key": "event:call_to_action",
+      "ref_id": null,
+      "name": "call_to_action",
+      "kind": "event",
+      "avg_during": 1.3675,
+      "delta_pct": -9.75,
+      "coverage_sec": 6.0,
+      "coverage_pct": 13.33,
+      "low_support": false,
+      "ranges": [
+        {
+          "start_sec": 39.0,
+          "end_sec": 45.0
+        }
+      ]
+    },
+    {
+      "key": "object:broken umbrella",
+      "ref_id": "ent-8",
+      "name": "Broken umbrella",
+      "kind": "object",
+      "avg_during": 1.5902,
+      "delta_pct": 4.95,
+      "coverage_sec": 4.6,
+      "coverage_pct": 10.22,
+      "low_support": true,
+      "ranges": [
+        {
+          "start_sec": 23.4,
+          "end_sec": 28.0
+        }
+      ]
+    },
+    {
+      "key": "event:transition",
+      "ref_id": null,
+      "name": "transition",
+      "kind": "event",
+      "avg_during": 1.5433,
+      "delta_pct": 1.86,
+      "coverage_sec": 1.2,
+      "coverage_pct": 2.67,
+      "low_support": true,
+      "ranges": [
+        {
+          "start_sec": 22.8,
+          "end_sec": 24.0
+        }
+      ]
+    },
+    {
+      "key": "emotion:suspense",
+      "ref_id": null,
+      "name": "suspense",
+      "kind": "emotion",
+      "avg_during": 1.5335,
+      "delta_pct": 1.21,
+      "coverage_sec": 1.7,
+      "coverage_pct": 3.78,
+      "low_support": true,
+      "ranges": [
+        {
+          "start_sec": 22.8,
+          "end_sec": 24.5
+        }
+      ]
+    },
+    {
+      "key": "event:exposition",
+      "ref_id": null,
+      "name": "exposition",
+      "kind": "event",
+      "avg_during": 1.3966,
+      "delta_pct": -7.83,
+      "coverage_sec": 3.2,
+      "coverage_pct": 7.11,
+      "low_support": true,
+      "ranges": [
+        {
+          "start_sec": 0.0,
+          "end_sec": 3.2
+        }
+      ]
+    },
+    {
+      "key": "event:music",
+      "ref_id": null,
+      "name": "music",
+      "kind": "event",
+      "avg_during": 1.3478,
+      "delta_pct": -11.05,
+      "coverage_sec": 4.5,
+      "coverage_pct": 10.0,
+      "low_support": true,
+      "ranges": [
+        {
+          "start_sec": 7.5,
+          "end_sec": 12.0
+        }
+      ]
+    },
+    {
+      "key": "object:offer qr code",
+      "ref_id": "ent-9",
+      "name": "Offer QR code",
+      "kind": "object",
+      "avg_during": 1.3064,
+      "delta_pct": -13.78,
+      "coverage_sec": 2.2,
+      "coverage_pct": 4.89,
+      "low_support": true,
+      "ranges": [
+        {
+          "start_sec": 42.8,
+          "end_sec": 45.0
+        }
+      ]
+    },
+    {
+      "key": "emotion:sadness",
+      "ref_id": null,
+      "name": "sadness",
+      "kind": "emotion",
+      "avg_during": 1.2712,
+      "delta_pct": -16.11,
+      "coverage_sec": 4.3,
+      "coverage_pct": 9.56,
+      "low_support": true,
+      "ranges": [
+        {
+          "start_sec": 3.2,
+          "end_sec": 7.5
+        }
+      ]
+    }
+  ],
+  "recommendations": {
+    "headline": "Ratings build through the tea ritual, peak on the balcony joke with Mr. Rao and fall away once the end card appears.",
+    "do_more": [
+      {
+        "title": "Give the banter more room",
+        "rationale": "The humour between Asha and Mr. Rao coincides with the highest ratings of the spot. A cut that reaches it sooner, or stays with it longer, keeps more of the audience.",
+        "expected_lift": "high",
+        "evidence": {
+          "key": "emotion:humor",
+          "name": "humor",
+          "kind": "emotion",
+          "delta_pct": 13.51,
+          "coverage_sec": 9.0,
+          "anchor_times": [
+            24.5
+          ]
+        }
+      },
+      {
+        "title": "Bring Mr. Rao in earlier",
+        "rationale": "Ratings rise from his first line at the door and stay above average for as long as he is on screen. In the first twelve seconds, before he arrives, the spot runs below its average.",
+        "expected_lift": "medium",
+        "evidence": {
+          "key": "character:mr. rao",
+          "name": "Mr. Rao",
+          "kind": "character",
+          "delta_pct": 12.1,
+          "coverage_sec": 10.1,
+          "anchor_times": [
+            23.4
+          ]
+        }
+      },
+      {
+        "title": "Keep the tumblers in frame",
+        "rationale": "Scenes with tea being poured or shared rate above average. The tumblers tie the product to the moments viewers stay for.",
+        "expected_lift": "low",
+        "evidence": {
+          "key": "object:steel tumblers",
+          "name": "Steel tumblers",
+          "kind": "object",
+          "delta_pct": 10.11,
+          "coverage_sec": 16.4,
+          "anchor_times": [
+            17.4,
+            28.0
+          ]
+        }
+      }
+    ],
+    "do_less": [
+      {
+        "title": "Shorten the end card",
+        "rationale": "The call to action rates below the spot's average, and the steepest fall of the spot runs into it. Six seconds of static card is long for this audience.",
+        "expected_lift": "high",
+        "evidence": {
+          "key": "event:call_to_action",
+          "name": "call_to_action",
+          "kind": "event",
+          "delta_pct": -9.75,
+          "coverage_sec": 6.0,
+          "anchor_times": [
+            39.0
+          ]
+        }
+      },
+      {
+        "title": "Trim the quiet stretches",
+        "rationale": "The calm passages (the rain opening, the kettle and the end card) rate well below the average of the spot. Each is a stretch without dialogue between two characters.",
+        "expected_lift": "medium",
+        "evidence": {
+          "key": "emotion:calm",
+          "name": "calm",
+          "kind": "emotion",
+          "delta_pct": -9.73,
+          "coverage_sec": 13.7,
+          "anchor_times": [
+            0.0,
+            7.5,
+            39.0
+          ]
+        }
+      }
+    ],
+    "segment_fixes": [
+      {
+        "segment_id": "seg-2",
+        "start_sec": 3.2,
+        "end_sec": 7.5,
+        "avg": 1.2712,
+        "what_happened": "Asha pushes the door open, drenched, drops her bag and complains that there was not one auto in the city.",
+        "why_low": "The lowest-rated segment: a negative line with no music and no brand, straight after the opening shot.",
+        "fix": "Cut the arrival to two seconds and start the theme music under it."
+      },
+      {
+        "segment_id": "seg-3",
+        "start_sec": 7.5,
+        "end_sec": 12,
+        "avg": 1.3478,
+        "what_happened": "She fills the kettle and lights the stove while the narrator introduces the monsoon ritual.",
+        "why_low": "Ratings are still recovering from the arrival, and the product has not appeared yet.",
+        "fix": "Show the pack on the shelf as the kettle goes on, so the reveal starts earlier."
+      },
+      {
+        "segment_id": "seg-9",
+        "start_sec": 39,
+        "end_sec": 45,
+        "avg": 1.3675,
+        "what_happened": "Logo, tagline and the scan-to-buy offer card.",
+        "why_low": "The rating falls through the whole card, starting in the silence before the tagline.",
+        "fix": "Speak the tagline over the last balcony shot and keep the offer card to about three seconds."
+      }
+    ]
+  },
+  "kpis": {
+    "avg": 1.5152,
+    "peak": {
+      "time_sec": 32.0,
+      "value": 1.84
+    },
+    "low": {
+      "time_sec": 6.0,
+      "value": 1.22
+    },
+    "biggest_drop": {
+      "time_sec": 38.0,
+      "delta": -0.1833
+    },
+    "hook_avg": 1.3744
+  }
+}

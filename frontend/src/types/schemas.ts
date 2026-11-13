@@ -62,3 +62,44 @@ export const adaptCreateSchema = z.object({
   model_id: z.string().optional(),
   region: z.string().optional(),
 })
+
+export const sceneAnalysisCreateSchema = z.object({
+  source_type: z.enum(['upload', 'production']),
+  source_id: z.string().min(1, 'Please select a video'),
+  focus: z.string().trim().max(500, 'Focus must be 500 characters or fewer').optional(),
+  display_name: z.string().trim().max(200, 'Name must be 200 characters or fewer').optional(),
+  model_id: z.string().optional(),
+  region: z.string().optional(),
+})
+
+const OFFSET_MESSAGE = 'Offset must be a number of seconds between -86400 and 86400'
+
+const engagementSignalSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('template'),
+    template_id: z.string().min(1, 'Please choose an engagement signal'),
+  }),
+  z.object({
+    kind: z.literal('barc'),
+    upload_id: z.string().min(1, 'Please upload a BARC file'),
+    time_column: z.string().min(1, 'Please choose the time column').max(200),
+    metric: z.string().min(1, 'Please choose the primary metric').max(200),
+    offset_sec: z.number({ invalid_type_error: OFFSET_MESSAGE }).min(-86400, OFFSET_MESSAGE).max(86400, OFFSET_MESSAGE),
+  }),
+])
+
+// The video is named either by an existing scene analysis or by a source, never both.
+export const engagementCreateSchema = z
+  .object({
+    scene_analysis_id: z.string().min(1).optional(),
+    source_type: z.enum(['upload', 'production']).optional(),
+    source_id: z.string().min(1).optional(),
+    signal: engagementSignalSchema,
+    display_name: z.string().trim().max(200, 'Name must be 200 characters or fewer').optional(),
+    model_id: z.string().optional(),
+    region: z.string().optional(),
+  })
+  .refine((value) => Boolean(value.scene_analysis_id) !== Boolean(value.source_type && value.source_id), {
+    message: 'Please select a video',
+    path: ['scene_analysis_id'],
+  })

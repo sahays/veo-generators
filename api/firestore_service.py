@@ -2,6 +2,7 @@ import os
 from typing import Any, List, Optional
 from google.cloud import firestore
 from datetime import datetime
+from insights_store import InsightsStoreMixin
 from models import (
     Project,
     ProjectStatus,
@@ -20,7 +21,7 @@ from models import (
 )
 
 
-class FirestoreService:
+class FirestoreService(InsightsStoreMixin):
     def __init__(self) -> None:
         project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
         service_name = os.getenv("SERVICE_NAME", "veo-generators")
@@ -40,6 +41,8 @@ class FirestoreService:
         self.avatars_collection = self.db.collection(f"{prefix}_avatars")
         self.avatar_turns_collection = self.db.collection(f"{prefix}_avatar_turns")
         self.shared_chats_collection = self.db.collection(f"{prefix}_shared_chats")
+        self.scene_analyses_collection = self.db.collection(f"{prefix}_scene_analyses")
+        self.engagements_collection = self.db.collection(f"{prefix}_engagements")
 
     # --- Generic CRUD helpers ---
 

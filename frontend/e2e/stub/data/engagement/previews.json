@@ -1,0 +1,111 @@
+{
+  "barc-kadak-chai-monsoon.csv": {
+    "filename": "barc-kadak-chai-monsoon.csv",
+    "row_count": 100,
+    "columns": [
+      "Date",
+      "Start Time",
+      "End Time",
+      "Duration (Mins)",
+      "Impressions ('000s)",
+      "TVR (%)",
+      "Reach ('000s)"
+    ],
+    "sample_rows": [
+      {
+        "Date": "14/07/2026",
+        "Start Time": "20:14:55.0",
+        "End Time": "20:14:55.0",
+        "Duration (Mins)": "0.01",
+        "Impressions ('000s)": "3,166",
+        "TVR (%)": "1.49",
+        "Reach ('000s)": "3,736"
+      },
+      {
+        "Date": "14/07/2026",
+        "Start Time": "20:14:55.5",
+        "End Time": "20:14:55.5",
+        "Duration (Mins)": "0.01",
+        "Impressions ('000s)": "3,176",
+        "TVR (%)": "1.50",
+        "Reach ('000s)": "3,742"
+      },
+      {
+        "Date": "14/07/2026",
+        "Start Time": "20:14:56.0",
+        "End Time": "20:14:56.0",
+        "Duration (Mins)": "0.01",
+        "Impressions ('000s)": "3,140",
+        "TVR (%)": "1.48",
+        "Reach ('000s)": "3,721"
+      },
+      {
+        "Date": "14/07/2026",
+        "Start Time": "20:14:56.5",
+        "End Time": "20:14:56.5",
+        "Duration (Mins)": "0.01",
+        "Impressions ('000s)": "3,107",
+        "TVR (%)": "1.47",
+        "Reach ('000s)": "3,705"
+      },
+      {
+        "Date": "14/07/2026",
+        "Start Time": "20:14:57.0",
+        "End Time": "20:14:57.0",
+        "Duration (Mins)": "0.01",
+        "Impressions ('000s)": "3,015",
+        "TVR (%)": "1.42",
+        "Reach ('000s)": "3,638"
+      }
+    ],
+    "time_column": "Start Time",
+    "metrics": [
+      "TVR (%)",
+      "Impressions ('000s)",
+      "Reach ('000s)"
+    ],
+    "primary_metric": "TVR (%)",
+    "duration_sec": 50.0,
+    "interval_sec": 0.5,
+    "warnings": []
+  },
+  "unmappable-notes.csv": {
+    "filename": "unmappable-notes.csv",
+    "row_count": 4,
+    "columns": [
+      "Programme",
+      "Channel",
+      "Comment"
+    ],
+    "sample_rows": [
+      {
+        "Programme": "Evening News",
+        "Channel": "Metro One",
+        "Comment": "Break two ran long by one spot"
+      },
+      {
+        "Programme": "Monsoon Special",
+        "Channel": "Rang TV",
+        "Comment": "Spot aired in the first position of the break"
+      },
+      {
+        "Programme": "Cricket Highlights",
+        "Channel": "Sports Arena 1",
+        "Comment": "Squeezed frame during the over change"
+      },
+      {
+        "Programme": "Family Drama Hour",
+        "Channel": "Ghar TV",
+        "Comment": "Rating to be confirmed by the agency"
+      }
+    ],
+    "time_column": null,
+    "metrics": [],
+    "primary_metric": null,
+    "duration_sec": 0.0,
+    "interval_sec": 0.0,
+    "warnings": [
+      "No time column was found (expected e.g. 'Start Time', 'time' or 'seconds'). Columns in the file: Programme, Channel, Comment."
+    ]
+  }
+}

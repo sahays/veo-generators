@@ -43,6 +43,7 @@ WORKDIR /app/api
 ENV PORT=8080
 ENV FASTAPI_INTERNAL_ORIGIN=http://127.0.0.1:8000
 ENV OPTIMIZE_PROMPT_MODEL=gemini-3.8-flash
+ENV VIDEO_INSIGHTS_MODEL=gemini-3.8-flash
 ENV STORYBOARD_MODEL=gemini-nano-banana-2.1
 ENV ADAPTS_MODEL=gemini-nano-banana-2.1
 ENV VIDEO_GEN_MODEL=gemini-omni-1.1-flash-preview

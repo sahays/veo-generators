@@ -11,6 +11,19 @@ from models import Project
 # round-trip, so parallelism turns a list's N sequential round-trips into ~1.
 _SIGN_MAX_WORKERS = 16
 
+# Record fields that are never returned to API readers. An invite code is the
+# app's credential: records keep the creator's code as provenance for
+# operators, and any reader of the record must not be able to pick it up.
+_PRIVATE_RECORD_FIELDS = ("invite_code",)
+
+
+def public_record_dict(record: Any) -> dict:
+    """`record.dict()` without the fields readers must never see."""
+    data = record.dict()
+    for field in _PRIVATE_RECORD_FIELDS:
+        data.pop(field, None)
+    return data
+
 
 async def sign_records_concurrently(
     records: list[Any], sign_fn: Callable
@@ -49,9 +62,10 @@ def sign_record_urls(
         update_fn: callable to persist updated cache back to Firestore.
 
     Returns:
-        Record dict with signed URL keys added and signed_urls cache removed.
+        Record dict with signed URL keys added, and with the signed_urls cache
+        and private fields (the creator's invite code) removed.
     """
-    data = record.dict()
+    data = public_record_dict(record)
     if not deps.storage_svc:
         return data
 
@@ -133,11 +147,12 @@ def sign_production_urls(production: Project, thumbnails_only: bool = False) -> 
 
     When thumbnails_only=True, only sign scene thumbnails (for list views).
     Persists updated signed URL cache back to Firestore when any URL was refreshed.
+    The creator's invite code is never included.
     """
+    data = public_record_dict(production)
     if not deps.storage_svc:
-        return production.dict()
+        return data
 
-    data = production.dict()
     cache = data.get("signed_urls") or {}
     dirty = False
 

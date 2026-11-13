@@ -8,9 +8,11 @@ from routers.core import auth, chat, diagnostics, models, pricing, system
 from routers.media import (
     adapts,
     dubbing,
+    engagement,
     key_moments,
     promo,
     reframe,
+    scene_analysis,
     thumbnails,
     uploads,
 )
@@ -24,6 +26,7 @@ _SUBMODULES = {
     "chat": chat,
     "diagnostics": diagnostics,
     "dubbing": dubbing,
+    "engagement": engagement,
     "key_moments": key_moments,
     "models": models,
     "pricing": pricing,
@@ -31,6 +34,7 @@ _SUBMODULES = {
     "promo": promo,
     "reframe": reframe,
     "render": render,
+    "scene_analysis": scene_analysis,
     "scenes": scenes,
     "system": system,
     "thumbnails": thumbnails,

@@ -42,6 +42,14 @@ from models_infra import (
     UploadRecord,
     ValidateCodeRequest,
 )
+from models_insights import (
+    ENGAGEMENT_REPORT_VERSION,
+    TIMELINE_SCHEMA_VERSION,
+    EngagementRecord,
+    EngagementSignalSpec,
+    FilmstripSpec,
+    SceneAnalysisRecord,
+)
 from models_projects import (
     CharacterProfile,
     Continuity,
@@ -96,7 +104,11 @@ __all__ = [
     "CreateInviteCodeRequest",
     "DubRecord",
     "DubVariant",
+    "ENGAGEMENT_REPORT_VERSION",
+    "EngagementRecord",
+    "EngagementSignalSpec",
     "FeaturePricing",
+    "FilmstripSpec",
     "FocalPoint",
     "GlobalStyle",
     "InviteCode",
@@ -111,6 +123,7 @@ __all__ = [
     "PromoSegment",
     "ReframeRecord",
     "Scene",
+    "SceneAnalysisRecord",
     "SceneChange",
     "SceneEvalFinding",
     "SceneMetadata",
@@ -122,6 +135,7 @@ __all__ = [
     "SystemResource",
     "SystemResourceInfo",
     "SystemResourceType",
+    "TIMELINE_SCHEMA_VERSION",
     "ThumbnailRecord",
     "ThumbnailScreenshot",
     "UploadCompleteRequest",
