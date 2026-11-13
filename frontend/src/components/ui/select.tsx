@@ -18,6 +18,9 @@ export interface SelectProps {
   label?: string
   error?: string
   className?: string
+  size?: 'sm' | 'md'
+  ariaLabel?: string
+  dataTestId?: string
 }
 
 function useSelectDismiss(containerRef: React.RefObject<HTMLDivElement | null>, setIsOpen: (open: boolean) => void): void {
@@ -102,7 +105,7 @@ const SelectDropdownMenu = ({
   </AnimatePresence>
 )
 
-export const Select = ({ value, onChange, options, placeholder = 'Select option...', label, error, className }: SelectProps) => {
+export const Select = ({ value, onChange, options, placeholder = 'Select option...', label, error, className, size = 'md', ariaLabel, dataTestId }: SelectProps) => {
   const [isOpen, setIsOpen] = useState(false)
   const [openUpwards, setOpenUpwards] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -118,17 +121,9 @@ export const Select = ({ value, onChange, options, placeholder = 'Select option.
     <div className={cn('space-y-1.5 w-full relative', className)} ref={containerRef}>
       {label && <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground ml-1">{label}</label>}
       <div className="relative">
-        <button
-          type="button"
-          onClick={handleToggle}
-          className={cn(
-            'w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm transition-all duration-200 border text-left bg-card hover:bg-muted/80 hover:border-accent/40',
-            isOpen ? 'border-accent ring-2 ring-accent/20 shadow-glow-sm' : 'border-border',
-            error && 'border-red-500/50 ring-red-500/20',
-          )}
-        >
+        <button type="button" aria-label={ariaLabel || label} data-testid={dataTestId} onClick={handleToggle} className={cn('w-full flex items-center justify-between transition-all duration-200 border text-left bg-card hover:bg-muted/80 hover:border-accent/40', size === 'sm' ? 'h-8 px-2.5 py-1 rounded-md text-xs' : 'px-3 py-2.5 rounded-lg text-sm', isOpen ? 'border-accent ring-2 ring-accent/20 shadow-glow-sm' : 'border-border', error && 'border-red-500/50 ring-red-500/20')}>
           <span className={cn('truncate', !selectedOption && 'text-muted-foreground')}>{selectedOption ? selectedOption.label : placeholder}</span>
-          <ChevronDown size={16} className={cn('text-muted-foreground transition-transform duration-200 shrink-0 ml-2', isOpen && 'rotate-180 text-accent')} />
+          <ChevronDown size={size === 'sm' ? 13 : 16} className={cn('text-muted-foreground transition-transform duration-200 shrink-0 ml-1.5', isOpen && 'rotate-180 text-accent')} />
         </button>
         <SelectDropdownMenu isOpen={isOpen} openUpwards={openUpwards} options={options} value={value} onSelect={(val) => { onChange(val); setIsOpen(false) }} />
       </div>

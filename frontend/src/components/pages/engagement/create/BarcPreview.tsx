@@ -2,7 +2,7 @@ import { useId } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { NativeSelect } from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { parseOffset, previewIssues, type BarcSelection } from '@/types/engagement/createForm'
 import type { SignalPreview } from '@/types/insights'
 import { formatSpan } from '@/types/timeline/timeFormat'
@@ -86,16 +86,12 @@ function MappingFields({ barc, preview, onChange }: MappingFieldsProps): JSX.Ele
   return (
     <div className="grid gap-3 sm:grid-cols-3">
       <div className="space-y-1">
-        <label htmlFor={`${id}-time`} className={LABEL_CLASS}>Time column</label>
-        <NativeSelect id={`${id}-time`} data-testid="barc-time-column" className="w-full" value={barc.timeColumn} onChange={(e) => onChange({ ...barc, timeColumn: e.target.value })}>
-          {preview.columns.map((column) => <option key={column} value={column}>{column}</option>)}
-        </NativeSelect>
+        <span className={LABEL_CLASS}>Time column</span>
+        <Select ariaLabel="Time column" dataTestId="barc-time-column" value={barc.timeColumn} onChange={(timeColumn) => onChange({ ...barc, timeColumn })} options={preview.columns.map((c) => ({ value: c, label: c }))} />
       </div>
       <div className="space-y-1">
-        <label htmlFor={`${id}-metric`} className={LABEL_CLASS}>Primary metric</label>
-        <NativeSelect id={`${id}-metric`} data-testid="barc-metric" className="w-full" value={barc.metric} onChange={(e) => onChange({ ...barc, metric: e.target.value })}>
-          {preview.metrics.map((metric) => <option key={metric} value={metric}>{metric}</option>)}
-        </NativeSelect>
+        <span className={LABEL_CLASS}>Primary metric</span>
+        <Select ariaLabel="Primary metric" dataTestId="barc-metric" value={barc.metric} onChange={(metric) => onChange({ ...barc, metric })} options={preview.metrics.map((m) => ({ value: m, label: m }))} />
       </div>
       <div className="space-y-1">
         <label htmlFor={`${id}-offset`} className={LABEL_CLASS}>Offset (seconds)</label>

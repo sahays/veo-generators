@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Pause, Play, Repeat, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { NativeSelect } from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { useSeek, useTimelineKit, useWorkspace } from '@/hooks/timeline/timelineContext'
 import { useClockState, useClockTime } from '@/hooks/timeline/useMediaClock'
 import { cn } from '@/lib/utils'
@@ -92,13 +92,15 @@ function RateSelect(): JSX.Element {
   const { clock } = useTimelineKit()
   const { rate } = useClockState(clock)
   return (
-    <NativeSelect aria-label="Playback speed" data-testid="player-rate" className="h-8 px-1.5 py-0 text-xs" value={String(rate)} onChange={(event) => clock.setRate(Number(event.target.value))}>
-      {RATES.map((value) => (
-        <option key={value} value={value}>
-          {value}×
-        </option>
-      ))}
-    </NativeSelect>
+    <Select
+      size="sm"
+      ariaLabel="Playback speed"
+      dataTestId="player-rate"
+      className="w-[4.25rem] shrink-0"
+      value={String(rate)}
+      onChange={(val) => clock.setRate(Number(val))}
+      options={RATES.map((value) => ({ value: String(value), label: `${value}×` }))}
+    />
   )
 }
 

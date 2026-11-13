@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { NativeSelect } from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { useSelectItem, useTimelineKit, useWorkspace } from '@/hooks/timeline/timelineContext'
 import { useClockValue } from '@/hooks/timeline/useMediaClock'
 import { useWindowedList } from '@/hooks/timeline/useWindowedList'
@@ -79,21 +79,13 @@ interface FiltersBarProps {
 }
 
 function FiltersBar({ speakers, filters, onChange, shown, total }: FiltersBarProps): JSX.Element {
+  const speakerOptions = useMemo(() => [{ value: ALL, label: 'All speakers' }, ...speakers.map((s) => ({ value: s, label: s }))], [speakers])
+  const kindOptions = useMemo(() => [{ value: ALL, label: 'All kinds' }, ...CUE_KINDS.map((k) => ({ value: k, label: k }))], [])
   return (
     <div className="flex flex-wrap items-center gap-2">
       <PanelSearch placeholder="Search transcript" className="flex-1" />
-      <NativeSelect aria-label="Filter by speaker" className="h-8 px-1.5 py-0 text-xs" value={filters.speaker} onChange={(event) => onChange({ ...filters, speaker: event.target.value })}>
-        <option value={ALL}>All speakers</option>
-        {speakers.map((speaker) => (
-          <option key={speaker} value={speaker}>{speaker}</option>
-        ))}
-      </NativeSelect>
-      <NativeSelect aria-label="Filter by cue kind" className="h-8 px-1.5 py-0 text-xs" value={filters.kind} onChange={(event) => onChange({ ...filters, kind: event.target.value })}>
-        <option value={ALL}>All kinds</option>
-        {CUE_KINDS.map((kind) => (
-          <option key={kind} value={kind}>{kind}</option>
-        ))}
-      </NativeSelect>
+      <Select size="sm" ariaLabel="Filter by speaker" className="w-36 shrink-0" value={filters.speaker} onChange={(speaker) => onChange({ ...filters, speaker })} options={speakerOptions} />
+      <Select size="sm" ariaLabel="Filter by cue kind" className="w-28 shrink-0" value={filters.kind} onChange={(kind) => onChange({ ...filters, kind })} options={kindOptions} />
       <span aria-live="polite" className="text-[10px] tabular-nums text-muted-foreground">{shown} of {total}</span>
     </div>
   )

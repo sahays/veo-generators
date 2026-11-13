@@ -5424,7 +5424,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 5 (Feature Pages & Domain Views) [engagement]",
-      "non_comment_lines": 122,
+      "non_comment_lines": 118,
       "classes": [],
       "functions": [
         "BarcPreviewProps",
@@ -6783,7 +6783,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 4 (Shared Hooks & Domain Shells)",
-      "non_comment_lines": 138,
+      "non_comment_lines": 130,
       "classes": [],
       "functions": [
         "TranscriptPanelProps",
@@ -6796,7 +6796,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 4 (Shared Hooks & Domain Shells)",
-      "non_comment_lines": 139,
+      "non_comment_lines": 141,
       "classes": [],
       "functions": [
         "PlayerControlsProps",
@@ -7096,7 +7096,7 @@
       "language": "typescript",
       "domain_package": "frontend/src/components",
       "tier": "Tier 2 (Shadcn UI Primitives)",
-      "non_comment_lines": 166,
+      "non_comment_lines": 161,
       "classes": [],
       "functions": [
         "SelectOption",

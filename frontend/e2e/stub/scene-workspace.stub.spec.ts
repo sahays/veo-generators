@@ -240,7 +240,8 @@ test('a link with ?t= and ?sel= reopens at the same moment with the item selecte
   // Looping the selected segment wraps playback back to its start.
   await page.getByTestId('player-loop').click()
   await clickRulerAt(page, 22.4)
-  await page.getByTestId('player-rate').selectOption('2')
+  await page.getByTestId('player-rate').click()
+  await page.getByRole('button', { name: '2×', exact: true }).click()
   await page.getByTestId('player-play').click()
   await expect.poll(() => videoState(page).then((v) => v.currentTime), { timeout: 8000 }).toBeLessThan(19)
   expect((await videoState(page)).currentTime).toBeGreaterThanOrEqual(17.3)

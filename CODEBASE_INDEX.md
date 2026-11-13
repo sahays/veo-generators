@@ -564,7 +564,7 @@ workers/insight_jobs
 | `frontend/src/components/pages/engagement/ReportBits.tsx` | Tier 5 (Feature Pages & Domain Views) [engagement] | 45 | `DeltaBadgeProps`, `DeltaBadge`, `SimulatedNote`, `EmptyProseProps`, `EmptyProse` |
 | `frontend/src/components/pages/engagement/SignalBadge.tsx` | Tier 5 (Feature Pages & Domain Views) [engagement] | 23 | `SignalBadgeProps`, `SignalBadge` |
 | `frontend/src/components/pages/engagement/create/BarcPanel.tsx` | Tier 5 (Feature Pages & Domain Views) [engagement] | 47 | `BarcPanelProps`, `BarcPanel` |
-| `frontend/src/components/pages/engagement/create/BarcPreview.tsx` | Tier 5 (Feature Pages & Domain Views) [engagement] | 122 | `BarcPreviewProps`, `BarcPreview` |
+| `frontend/src/components/pages/engagement/create/BarcPreview.tsx` | Tier 5 (Feature Pages & Domain Views) [engagement] | 118 | `BarcPreviewProps`, `BarcPreview` |
 | `frontend/src/components/pages/engagement/create/FormParts.tsx` | Tier 5 (Feature Pages & Domain Views) [engagement] | 42 | `FormStepProps`, `FormStep`, `Sparkline` |
 | `frontend/src/components/pages/engagement/create/SignalStep.tsx` | Tier 5 (Feature Pages & Domain Views) [engagement] | 69 | `SignalStep` |
 | `frontend/src/components/pages/engagement/create/VideoStep.tsx` | Tier 5 (Feature Pages & Domain Views) [engagement] | 130 | `VideoStepProps`, `VideoStep` |
@@ -667,8 +667,8 @@ workers/insight_jobs
 | `frontend/src/components/shared/timeline/layout.ts` | Tier 4 (Shared Hooks & Domain Shells) | 12 | `TIMELINE_GUTTER_PX`, `LANE_HEIGHT` |
 | `frontend/src/components/shared/timeline/panels/EntityBrowser.tsx` | Tier 4 (Shared Hooks & Domain Shells) | 131 | `EntityRowProps`, `EntityRow`, `EntityBrowserProps`, `EntityBrowser` |
 | `frontend/src/components/shared/timeline/panels/PanelSearch.tsx` | Tier 4 (Shared Hooks & Domain Shells) | 42 | `PanelSearchProps`, `PanelSearch`, `Highlighted` |
-| `frontend/src/components/shared/timeline/panels/TranscriptPanel.tsx` | Tier 4 (Shared Hooks & Domain Shells) | 138 | `TranscriptPanelProps`, `TranscriptPanel` |
-| `frontend/src/components/shared/timeline/player/PlayerControls.tsx` | Tier 4 (Shared Hooks & Domain Shells) | 139 | `PlayerControlsProps`, `PlayerControls` |
+| `frontend/src/components/shared/timeline/panels/TranscriptPanel.tsx` | Tier 4 (Shared Hooks & Domain Shells) | 130 | `TranscriptPanelProps`, `TranscriptPanel` |
+| `frontend/src/components/shared/timeline/player/PlayerControls.tsx` | Tier 4 (Shared Hooks & Domain Shells) | 141 | `PlayerControlsProps`, `PlayerControls` |
 | `frontend/src/components/shared/timeline/player/SyncedVideoPlayer.tsx` | Tier 4 (Shared Hooks & Domain Shells) | 35 | `SyncedVideoPlayerProps`, `SyncedVideoPlayer` |
 | `frontend/src/components/shared/timeline/record/JobProgress.tsx` | Tier 4 (Shared Hooks & Domain Shells) | 120 | `JobStage`, `JobProgressProps`, `JobProgress`, `JobRetryPanelProps`, `JobRetryPanel` |
 | `frontend/src/components/shared/timeline/record/RecordChrome.tsx` | Tier 4 (Shared Hooks & Domain Shells) | 133 | `BackLink`, `RecordStatusPill`, `DurationPill`, `RecordHeaderProps`, `RecordHeader`, `LoadingNotice` (+6) |
@@ -688,7 +688,7 @@ workers/insight_jobs
 | `frontend/src/components/ui/disclosure.tsx` | Tier 2 (Shadcn UI Primitives) | 67 | `DisclosureProps`, `Disclosure` |
 | `frontend/src/components/ui/dropdown-menu.tsx` | Tier 2 (Shadcn UI Primitives) | 50 | `DropdownMenu`, `DropdownMenuTrigger`, `DropdownMenuGroup`, `DropdownMenuContent`, `DropdownMenuItem`, `DropdownMenuLabel` (+1) |
 | `frontend/src/components/ui/input.tsx` | Tier 2 (Shadcn UI Primitives) | 37 | `InputProps`, `Input` |
-| `frontend/src/components/ui/select.tsx` | Tier 2 (Shadcn UI Primitives) | 166 | `SelectOption`, `SelectProps`, `Select`, `NativeSelectProps`, `NativeSelect` |
+| `frontend/src/components/ui/select.tsx` | Tier 2 (Shadcn UI Primitives) | 161 | `SelectOption`, `SelectProps`, `Select`, `NativeSelectProps`, `NativeSelect` |
 | `frontend/src/components/ui/sheet.tsx` | Tier 2 (Shadcn UI Primitives) | 48 | `SheetProps`, `Sheet` |
 | `frontend/src/components/ui/skeleton.tsx` | Tier 2 (Shadcn UI Primitives) | 8 | `Skeleton` |
 | `frontend/src/components/ui/switch.tsx` | Tier 2 (Shadcn UI Primitives) | 24 | `Switch` |
