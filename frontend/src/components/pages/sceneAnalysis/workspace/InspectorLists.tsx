@@ -1,8 +1,9 @@
 import { useMemo } from 'react'
 import { Badge } from '@/components/ui/badge'
-import { GlyphIcon, PanelSearch } from '@/components/shared/timeline'
+import { EntityRow, GlyphIcon, PanelSearch } from '@/components/shared/timeline'
 import { useWorkspace } from '@/hooks/timeline/timelineContext'
-import type { TimelineBeat, TimelineDoc, TimelineEvent, TimelineKeyMoment } from '@/types/insights'
+import { MAX_PINNED_ENTITIES } from '@/store/timeline/workspaceStore'
+import type { TimelineAdOpportunity, TimelineBeat, TimelineDoc, TimelineEvent, TimelineKeyMoment } from '@/types/insights'
 import { categoryLabel, glyphFor } from '@/types/timeline/glyphs'
 import { matchesQuery } from '@/types/timeline/textSearch'
 import { TimedRow, TimedSection } from './TimedList'
@@ -52,12 +53,12 @@ export function MomentsTab({ doc }: { doc: TimelineDoc }): JSX.Element {
   )
 }
 
-function IntensityMeter({ value }: { value: number | undefined }): JSX.Element | null {
+function IntensityMeter({ value, label = 'Intensity' }: { value: number | undefined; label?: string }): JSX.Element | null {
   if (value === undefined) return null
   const percent = Math.round(Math.min(Math.max(value, 0), 1) * 100)
   return (
-    <span className="mt-1 block" title={`Intensity ${percent}%`}>
-      <span className="sr-only">Intensity {percent}%</span>
+    <span className="mt-1 block" title={`${label} ${percent}%`}>
+      <span className="sr-only">{label} {percent}%</span>
       <span aria-hidden className="block h-1 w-12 overflow-hidden rounded-full bg-muted">
         <span className="block h-full rounded-full bg-accent/80" style={{ width: `${percent}%` }} />
       </span>
@@ -87,6 +88,55 @@ export function EventsTab({ doc }: { doc: TimelineDoc }): JSX.Element {
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
         <TimedSection title="Events" count={events.length}>
           {events.map((event) => <EventRow key={event.id} event={event} />)}
+        </TimedSection>
+      </div>
+    </div>
+  )
+}
+
+function AdOpportunityRow({ opportunity }: { opportunity: TimelineAdOpportunity }): JSX.Element {
+  const placement = categoryLabel(opportunity.placement_type)
+  const title = opportunity.surface_or_trigger
+    ? `${opportunity.suggested_category} · ${opportunity.surface_or_trigger}`
+    : opportunity.suggested_category
+  return (
+    <TimedRow
+      selection={{ kind: 'ad_opportunity', id: opportunity.id, label: opportunity.suggested_category, range: opportunity }}
+      title={title}
+      subtitle={opportunity.rationale}
+      leading={<Badge variant="accent">{placement}</Badge>}
+      trailing={<IntensityMeter value={opportunity.suitability} label="Suitability" />}
+    />
+  )
+}
+
+/** Object identification (`kind === 'object'`) and timestamped ad insertion / placement opportunities. */
+export function ObjectsAdsTab({ doc }: { doc: TimelineDoc }): JSX.Element {
+  const query = useWorkspace((state) => state.search)
+  const pinnedCount = useWorkspace((state) => state.pinnedEntityIds.length)
+  const opportunities = useMemo(
+    () =>
+      (doc.ad_opportunities ?? []).filter((a) =>
+        matchesQuery(query, a.suggested_category, a.surface_or_trigger, a.rationale, a.placement_type, categoryLabel(a.placement_type)),
+      ),
+    [doc, query],
+  )
+  const objects = useMemo(
+    () => doc.entities.filter((e) => e.kind === 'object' && matchesQuery(query, e.name, e.description)),
+    [doc, query],
+  )
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <PanelSearch placeholder="Search objects and ad opportunities" className="flex-1" />
+        <span aria-live="polite" className="text-[10px] tabular-nums text-muted-foreground">{pinnedCount}/{MAX_PINNED_ENTITIES} pinned</span>
+      </div>
+      <div data-testid="objects-ads-list" className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1">
+        <TimedSection title="Ad insertion opportunities" count={opportunities.length}>
+          {opportunities.map((opportunity) => <AdOpportunityRow key={opportunity.id} opportunity={opportunity} />)}
+        </TimedSection>
+        <TimedSection title="Identified objects" count={objects.length}>
+          {objects.map((entity) => <EntityRow key={entity.id} entity={entity} duration={doc.duration_sec} query={query} />)}
         </TimedSection>
       </div>
     </div>

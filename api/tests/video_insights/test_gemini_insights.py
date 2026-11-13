@@ -93,6 +93,7 @@ def test_request_asks_for_schema_constrained_low_temperature_json() -> None:
     assert config.temperature == 0.2
     assert config.max_output_tokens == 65536
     assert "narrative_beats" in config.response_schema["properties"]
+    assert "ad_opportunities" in config.response_schema["properties"]
     assert service.regions == ["us-central1"]
 
 

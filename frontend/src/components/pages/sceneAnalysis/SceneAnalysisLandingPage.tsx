@@ -16,6 +16,7 @@ const COUNT_CHIPS: { key: string; one: string; many: string }[] = [
   { key: 'emotions', one: 'emotion', many: 'emotions' },
   { key: 'key_moments', one: 'moment', many: 'moments' },
   { key: 'narrative_beats', one: 'beat', many: 'beats' },
+  { key: 'ad_opportunities', one: 'ad slot', many: 'ad slots' },
 ]
 
 interface SceneAnalysisCardProps {

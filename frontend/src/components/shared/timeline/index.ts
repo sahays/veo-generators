@@ -21,7 +21,7 @@ export { spanBox, spokenRange, type SpanBox } from './lanes/laneGeometry'
 export { SyncedVideoPlayer, type SyncedVideoPlayerProps } from './player/SyncedVideoPlayer'
 export { PlayerControls, type PlayerControlsProps } from './player/PlayerControls'
 export { TranscriptPanel, type TranscriptPanelProps } from './panels/TranscriptPanel'
-export { EntityBrowser, type EntityBrowserProps } from './panels/EntityBrowser'
+export { EntityBrowser, EntityRow, type EntityBrowserProps, type EntityRowProps } from './panels/EntityBrowser'
 export { PanelSearch, Highlighted, type PanelSearchProps } from './panels/PanelSearch'
 export { JobProgress, JobRetryPanel, type JobProgressProps, type JobRetryPanelProps, type JobStage } from './record/JobProgress'
 export {

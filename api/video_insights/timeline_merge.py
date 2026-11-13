@@ -31,7 +31,7 @@ _SEGMENT_SNAP_SEC = 0.75
 # Gaps between consecutive segments up to this long are closed.
 _SEGMENT_GAP_SEC = 1.0
 _NAME_STRIP_CHARS = " .,;:!?\"'()[]{}"
-_TEXT_DEFAULTS = {"kind": "dialogue"}
+_TEXT_DEFAULTS = {"kind": "dialogue", "placement_type": "contextual_overlay"}
 
 
 @dataclass(frozen=True)
@@ -60,6 +60,12 @@ _SPECS: dict[str, _Spec] = {
     "emotions": _Spec("emo", ("emotion",), unit="intensity", unit_default=0.5),
     "key_moments": _Spec("km", ("type", "label"), point=True),
     "narrative_beats": _Spec("nb", ("beat",), ("label",)),
+    "ad_opportunities": _Spec(
+        "ad",
+        ("suggested_category", "placement_type", "rationale"),
+        ("surface_or_trigger",),
+        unit="suitability",
+    ),
 }
 _COUNTED = (*_SPECS, "entities", "cuts")
 
@@ -433,6 +439,7 @@ def merge_windows(results: list[dict], duration_sec: float, cuts: list[float]) -
         "emotions": lists["emotions"],
         "key_moments": lists["key_moments"],
         "narrative_beats": lists["narrative_beats"],
+        "ad_opportunities": lists["ad_opportunities"],
     }
 
 

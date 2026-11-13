@@ -3,7 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { SceneAnalysisRecord } from '@/types/insights'
 import type { TimelineModel } from '@/types/timeline/model'
 import { formatSpan } from '@/types/timeline/timeFormat'
-import { EventsTab, MomentsTab } from './InspectorLists'
+import { EventsTab, MomentsTab, ObjectsAdsTab } from './InspectorLists'
 import { EmotionChart, ScreenTimeChart } from './OverviewCharts'
 
 const TAB_PANEL_CLASS = 'mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden'
@@ -52,9 +52,11 @@ export interface InspectorTabsProps {
   className?: string
 }
 
-/** Overview | Transcript | Entities | Moments | Events. The search box is shared across the tabs. */
+/** Overview | Transcript | Entities | Moments | Events | Objects & Ads. The search box is shared across the tabs. */
 export function InspectorTabs({ model, record, className }: InspectorTabsProps): JSX.Element {
   const doc = model.doc
+  const objectsAndAdsCount =
+    doc.entities.filter((e) => e.kind === 'object').length + (doc.ad_opportunities?.length ?? 0)
   return (
     <Tabs defaultValue="overview" className={className}>
       <TabsList aria-label="Inspector" className="h-auto w-full flex-wrap justify-start">
@@ -63,12 +65,14 @@ export function InspectorTabs({ model, record, className }: InspectorTabsProps):
         <TabsTrigger value="entities">Entities ({doc.entities.length})</TabsTrigger>
         <TabsTrigger value="moments">Moments ({doc.key_moments.length})</TabsTrigger>
         <TabsTrigger value="events">Events ({doc.events.length})</TabsTrigger>
+        <TabsTrigger value="objects-ads">Objects &amp; Ads ({objectsAndAdsCount})</TabsTrigger>
       </TabsList>
       <TabsContent value="overview" className={TAB_PANEL_CLASS}><OverviewTab model={model} record={record} /></TabsContent>
       <TabsContent value="transcript" className={TAB_PANEL_CLASS}><TranscriptPanel cues={model.cues} className="flex-1" /></TabsContent>
       <TabsContent value="entities" className={TAB_PANEL_CLASS}><EntityBrowser entities={doc.entities} className="flex-1" /></TabsContent>
       <TabsContent value="moments" className={TAB_PANEL_CLASS}><MomentsTab doc={doc} /></TabsContent>
       <TabsContent value="events" className={TAB_PANEL_CLASS}><EventsTab doc={doc} /></TabsContent>
+      <TabsContent value="objects-ads" className={TAB_PANEL_CLASS}><ObjectsAdsTab doc={doc} /></TabsContent>
     </Tabs>
   )
 }

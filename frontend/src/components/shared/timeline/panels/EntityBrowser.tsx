@@ -59,13 +59,13 @@ function AppearanceChips({ entity }: { entity: TimelineEntity }): JSX.Element {
   )
 }
 
-interface EntityRowProps {
+export interface EntityRowProps {
   entity: TimelineEntity
   duration: number
   query: string
 }
 
-function EntityRow({ entity, duration, query }: EntityRowProps): JSX.Element {
+export function EntityRow({ entity, duration, query }: EntityRowProps): JSX.Element {
   const share = duration > 0 ? Math.min(entity.screen_time_sec / duration, 1) : 0
   const first = entity.appearances[0]
   return (

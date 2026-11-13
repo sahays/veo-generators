@@ -79,6 +79,7 @@ export type TimelineCollectionKey =
   | 'emotions'
   | 'key_moments'
   | 'narrative_beats'
+  | 'ad_opportunities'
 
 interface CollectionCsvSpec {
   label: string
@@ -128,6 +129,21 @@ export const TIMELINE_CSV_SPECS: Record<TimelineCollectionKey, CollectionCsvSpec
     label: 'Narrative beats',
     columns: ['id', 'start_sec', 'end_sec', 'beat', 'label'],
     rows: (doc) => doc.narrative_beats.map((b) => [b.id, b.start_sec, b.end_sec, b.beat, b.label]),
+  },
+  ad_opportunities: {
+    label: 'Ad opportunities',
+    columns: ['id', 'start_sec', 'end_sec', 'placement_type', 'suggested_category', 'surface_or_trigger', 'suitability', 'rationale'],
+    rows: (doc) =>
+      (doc.ad_opportunities ?? []).map((a) => [
+        a.id,
+        a.start_sec,
+        a.end_sec,
+        a.placement_type,
+        a.suggested_category,
+        a.surface_or_trigger,
+        a.suitability,
+        a.rationale,
+      ]),
   },
 }
 

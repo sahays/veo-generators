@@ -22,7 +22,7 @@ function csvGroup(doc: TimelineDoc, stem: string): DownloadGroup {
     label: 'CSV',
     items: TIMELINE_COLLECTION_KEYS.map((key) => ({
       key,
-      label: `${TIMELINE_CSV_SPECS[key].label} (${doc[key].length})`,
+      label: `${TIMELINE_CSV_SPECS[key].label} (${(doc[key] ?? []).length})`,
       icon: Table,
       save: () => saveTextFile(`${stem}-${key}.csv`, timelineCollectionCsv(doc, key), 'text/csv'),
     })),

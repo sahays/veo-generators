@@ -79,6 +79,17 @@ def _window_raw(window: Window, hero: str, title: str = "") -> dict[str, Any]:
         ],
         "key_moments": [{"start_sec": s + 45, "type": "reveal", "label": "Twist"}],
         "narrative_beats": [{"start_sec": s, "end_sec": e, "beat": "rising_action"}],
+        "ad_opportunities": [
+            {
+                "start_sec": s + 60,
+                "end_sec": s + 75,
+                "placement_type": "virtual_placement",
+                "surface_or_trigger": "Tabletop",
+                "suggested_category": "Beverages",
+                "rationale": "Clear surface with low clutter.",
+                "suitability": 0.85,
+            }
+        ],
     }
 
 
@@ -181,6 +192,7 @@ def test_ids_are_one_based_in_start_order_and_entities_rank_by_screen_time() -> 
         "emotions": "emo",
         "key_moments": "km",
         "narrative_beats": "nb",
+        "ad_opportunities": "ad",
     }
     for name, prefix in prefixes.items():
         items = timeline[name]
@@ -273,6 +285,7 @@ def test_counts_cover_every_collection() -> None:
         "emotions": 6,
         "key_moments": 3,
         "narrative_beats": 3,
+        "ad_opportunities": 3,
         "entities": 2,
         "cuts": 3,
     }

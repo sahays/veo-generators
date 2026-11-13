@@ -71,6 +71,22 @@ export interface TimelineBeat extends TimeRange {
   label?: string
 }
 
+export type AdPlacementType =
+  | 'mid_roll_break'
+  | 'virtual_placement'
+  | 'contextual_overlay'
+  | 'product_integration'
+  | 'sponsored_moment'
+
+export interface TimelineAdOpportunity extends TimeRange {
+  id: string
+  placement_type: AdPlacementType | string
+  surface_or_trigger?: string
+  suggested_category: string
+  rationale: string
+  suitability?: number
+}
+
 export interface TimelineDoc {
   schema_version: string
   duration_sec: number
@@ -84,6 +100,7 @@ export interface TimelineDoc {
   emotions: TimelineEmotion[]
   key_moments: TimelineKeyMoment[]
   narrative_beats: TimelineBeat[]
+  ad_opportunities?: TimelineAdOpportunity[]
 }
 
 export interface FilmstripSpec {

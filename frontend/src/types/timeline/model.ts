@@ -1,5 +1,6 @@
 import type {
   TimeRange,
+  TimelineAdOpportunity,
   TimelineBeat,
   TimelineCue,
   TimelineDoc,
@@ -17,7 +18,16 @@ export interface EntityAppearance extends TimeRange {
 }
 
 /** `extremum` is a peak, valley or drop of an engagement curve; it is not part of a `TimelineDoc`. */
-export type TimelineItemKind = 'segment' | 'cue' | 'entity' | 'event' | 'emotion' | 'moment' | 'beat' | 'extremum'
+export type TimelineItemKind =
+  | 'segment'
+  | 'cue'
+  | 'entity'
+  | 'event'
+  | 'emotion'
+  | 'moment'
+  | 'beat'
+  | 'ad_opportunity'
+  | 'extremum'
 
 /** Addressable timeline item: what a selection or a deep link points at. */
 export interface TimelineItemRef {
@@ -41,6 +51,7 @@ export interface TimelineModel {
   events: IntervalIndex<TimelineEvent>
   emotions: IntervalIndex<TimelineEmotion>
   beats: IntervalIndex<TimelineBeat>
+  adOpportunities: IntervalIndex<TimelineAdOpportunity>
   moments: PointIndex<TimelineKeyMoment>
   appearances: IntervalIndex<EntityAppearance>
   entityById: Map<string, TimelineEntity>
@@ -88,6 +99,7 @@ function collectItemRefs(doc: TimelineDoc): Map<string, TimelineItemRef> {
     ...ranged('event', doc.events, (e) => e.description || e.tag),
     ...ranged('emotion', doc.emotions, (e) => e.emotion),
     ...ranged('beat', doc.narrative_beats, (b) => b.label || b.beat),
+    ...ranged('ad_opportunity', doc.ad_opportunities ?? [], (a) => a.suggested_category),
     ...doc.entities.map(entityRef),
     ...doc.key_moments.map(momentRef),
   ]
@@ -109,6 +121,7 @@ export function buildTimelineModel(doc: TimelineDoc): TimelineModel {
     events: new IntervalIndex(doc.events),
     emotions: new IntervalIndex(doc.emotions),
     beats: new IntervalIndex(doc.narrative_beats),
+    adOpportunities: new IntervalIndex(doc.ad_opportunities ?? []),
     moments: new PointIndex(doc.key_moments),
     appearances: new IntervalIndex(flattenAppearances(doc.entities)),
     entityById: new Map(doc.entities.map((e) => [e.id, e])),

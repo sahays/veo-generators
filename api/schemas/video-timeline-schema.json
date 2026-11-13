@@ -183,6 +183,44 @@
         },
         "required": ["start_sec", "end_sec", "beat"]
       }
+    },
+    "ad_opportunities": {
+      "type": "array",
+      "description": "Contextual ad insertion, virtual product placement and brand integration opportunities",
+      "items": {
+        "type": "object",
+        "properties": {
+          "start_sec": { "type": "number" },
+          "end_sec": { "type": "number" },
+          "placement_type": {
+            "type": "string",
+            "enum": [
+              "mid_roll_break",
+              "virtual_placement",
+              "contextual_overlay",
+              "product_integration",
+              "sponsored_moment"
+            ]
+          },
+          "surface_or_trigger": {
+            "type": "string",
+            "description": "On-screen object, surface or scene transition anchoring the placement"
+          },
+          "suggested_category": {
+            "type": "string",
+            "description": "Ad category or brand vertical that fits the scene"
+          },
+          "rationale": {
+            "type": "string",
+            "description": "Why this moment works for ad insertion or brand placement"
+          },
+          "suitability": {
+            "type": "number",
+            "description": "0.0 to 1.0 suitability score"
+          }
+        },
+        "required": ["start_sec", "end_sec", "placement_type", "suggested_category", "rationale"]
+      }
     }
   },
   "required": [
@@ -192,6 +230,7 @@
     "entities",
     "events",
     "emotions",
-    "key_moments"
+    "key_moments",
+    "ad_opportunities"
   ]
 }

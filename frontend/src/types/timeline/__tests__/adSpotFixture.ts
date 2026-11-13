@@ -114,6 +114,48 @@ export const AD_SPOT_TIMELINE: TimelineDoc = {
     { id: 'nb-5', start_sec: 33.5, end_sec: 39, beat: 'falling_action', label: 'The product takes the frame' },
     { id: 'nb-6', start_sec: 39, end_sec: 45, beat: 'resolution', label: 'Tagline and offer' },
   ],
+  ad_opportunities: [
+    {
+      id: 'ad-1',
+      start_sec: 7.5,
+      end_sec: 12,
+      placement_type: 'virtual_placement',
+      surface_or_trigger: 'Kitchen counter and open shelves',
+      suggested_category: 'Kitchen appliances & cookware',
+      rationale: 'Clean tiled kitchen countertop while Asha fills the kettle, with no dialogue overlap.',
+      suitability: 0.85,
+    },
+    {
+      id: 'ad-2',
+      start_sec: 12,
+      end_sec: 17.4,
+      placement_type: 'product_integration',
+      surface_or_trigger: 'Kadak Chai pack',
+      suggested_category: 'Packaged tea & monsoon snacks',
+      rationale: 'Close-up product reveal with narration naming the blend and ingredients.',
+      suitability: 0.95,
+    },
+    {
+      id: 'ad-3',
+      start_sec: 22.8,
+      end_sec: 24,
+      placement_type: 'mid_roll_break',
+      surface_or_trigger: 'Doorbell transition',
+      suggested_category: 'Rainwear & ride-hailing',
+      rationale: 'Natural scene break between the quiet kitchen ritual and the neighbour arriving soaked.',
+      suitability: 0.78,
+    },
+    {
+      id: 'ad-4',
+      start_sec: 33.5,
+      end_sec: 39,
+      placement_type: 'sponsored_moment',
+      surface_or_trigger: 'Kadak Chai pack and steel tumblers on balcony',
+      suggested_category: 'FMCG beverages',
+      rationale: 'Hero shot of the pack beside two steaming tumblers at the emotional peak.',
+      suitability: 0.92,
+    },
+  ],
 }
 
 const TIMELINE_COUNTS: Record<string, number> = {
@@ -124,6 +166,7 @@ const TIMELINE_COUNTS: Record<string, number> = {
   emotions: AD_SPOT_TIMELINE.emotions.length,
   key_moments: AD_SPOT_TIMELINE.key_moments.length,
   narrative_beats: AD_SPOT_TIMELINE.narrative_beats.length,
+  ad_opportunities: AD_SPOT_TIMELINE.ad_opportunities?.length ?? 0,
 }
 
 /** Completed record matching `AD_SPOT_TIMELINE`. */

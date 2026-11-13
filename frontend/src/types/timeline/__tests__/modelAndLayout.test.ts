@@ -21,6 +21,7 @@ describe('fixture matches the timeline.json contract', () => {
       ['emo', doc.emotions],
       ['km', doc.key_moments],
       ['nb', doc.narrative_beats],
+      ['ad', doc.ad_opportunities ?? []],
     ]
     for (const [prefix, items] of lists) {
       expect(sortedByStart(items)).toBe(true)
@@ -84,7 +85,8 @@ describe('snapshotAt', () => {
   it('indexes every item by id for selections and deep links', () => {
     expect(model.itemsById.get('km-5')).toMatchObject({ kind: 'moment', range: { start_sec: 30.9, end_sec: 30.9 } })
     expect(model.itemsById.get('ent-2')?.range).toEqual({ start_sec: 12, end_sec: 17.4 })
-    expect(model.itemsById.size).toBe(9 + 20 + 9 + 9 + 10 + 9 + 6)
+    expect(model.itemsById.get('ad-2')).toMatchObject({ kind: 'ad_opportunity', range: { start_sec: 12, end_sec: 17.4 } })
+    expect(model.itemsById.size).toBe(9 + 20 + 9 + 9 + 10 + 9 + 6 + 4)
     expect(listSpeakers(doc.cues)).toEqual(['Narrator', 'Asha', 'Mr. Rao'])
   })
 })

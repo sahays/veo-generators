@@ -30,7 +30,9 @@ ends, and the last segment ends at the range end.
 - cues: every spoken line as its own cue, verbatim and in its original language. Do not \
 summarise, merge or skip lines. Give the speaker when known. Add notable music, sound \
 effects and silences as [bracketed] descriptions.
-- entities: every notable character, object and location. List EVERY on-screen range of \
+- entities: every notable character, object and location. Always identify prominent \
+physical objects, props, products, electronics, vehicles, food/drink items and signage \
+with `kind: "object"` alongside characters and locations. List EVERY on-screen range of \
 each entity in `appearances`, one range per continuous presence. Use one consistent name \
 for the same entity throughout.
 - events: tagged stretches of action, dialogue, music, tension and similar.
@@ -38,6 +40,12 @@ for the same entity throughout.
 to 1.0 for each span.
 - key_moments: point markers for the moments that matter most.
 - narrative_beats: the story structure, where one is present.
+- ad_opportunities: concrete ad insertion, virtual product placement and brand \
+integration opportunities across this range (`mid_roll_break` at clean scene transitions, \
+`virtual_placement` on visible surfaces/tabletops/walls/vehicles, `contextual_overlay` \
+during low-clutter visual beats, `product_integration` where characters interact with \
+everyday objects/devices/beverages, and `sponsored_moment`), with `surface_or_trigger`, \
+`suggested_category`, `rationale` and `suitability` (0.0 to 1.0).
 - summary: a 3 to 6 sentence synopsis of this range. Fill content_title only if the \
 title is shown or spoken."""
 

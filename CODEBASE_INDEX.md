@@ -414,10 +414,10 @@ workers/insight_jobs
 | `api/tests/video_insights/test_engagement_gating.py` | Test Suite | 207 | `_Doc`, `_Query`, `test_only_jobs_whose_analysis_completed_are_handed_to_the_worker`, `test_a_waiting_job_is_written_once_however_often_it_is_polled`, `test_analyses_are_not_read_when_no_job_is_pending`, `test_a_waiting_job_runs_on_the_poll_after_its_analysis_completes` (+3) |
 | `api/tests/video_insights/test_engagement_processor.py` | Test Suite | 259 | `test_template_job_writes_a_full_report_and_record_summaries`, `test_model_prose_is_bound_by_id_and_never_supplies_a_number`, `test_the_model_is_given_only_ids_the_report_contains`, `test_a_template_report_is_reproducible_for_a_record_id`, `test_barc_job_parses_the_csv_with_the_records_overrides`, `test_a_retried_job_reuses_checkpoints_instead_of_paying_again` (+3) |
 | `api/tests/video_insights/test_engagement_prompts.py` | Test Suite | 149 | `test_video_text_cannot_leave_the_data_block_or_reach_the_instructions`, `test_csv_derived_signal_names_are_data_not_instructions`, `test_a_template_curve_is_never_described_as_audience_behaviour`, `test_a_measured_curve_allows_audience_hypotheses_but_not_claims`, `test_prompts_carry_every_id_the_model_must_echo_and_the_grounding_rules`, `test_schemas_take_text_and_references_only` |
-| `api/tests/video_insights/test_gemini_insights.py` | Test Suite | 166 | `_Service`, `test_windowed_call_clips_the_video_with_offsets`, `test_single_window_video_is_sent_without_offsets`, `test_first_window_of_a_long_video_is_still_clipped`, `test_request_asks_for_schema_constrained_low_temperature_json`, `test_model_is_explicit_then_env_then_default_and_never_firestore` (+11) |
+| `api/tests/video_insights/test_gemini_insights.py` | Test Suite | 167 | `_Service`, `test_windowed_call_clips_the_video_with_offsets`, `test_single_window_video_is_sent_without_offsets`, `test_first_window_of_a_long_video_is_still_clipped`, `test_request_asks_for_schema_constrained_low_temperature_json`, `test_model_is_explicit_then_env_then_default_and_never_firestore` (+11) |
 | `api/tests/video_insights/test_scene_analysis_processor.py` | Test Suite | 397 | `FakeStorage`, `FakeAI`, `good`, `truncated`, `env`, `test_completed_job_writes_timeline_summaries_and_summed_usage` (+15) |
 | `api/tests/video_insights/test_staged_processor.py` | Test Suite | 141 | `_Storage`, `_Job`, `services`, `test_stages_run_in_order_and_report_stage_status_and_progress`, `test_completion_writes_usage_subclass_fields_and_timestamp`, `test_failing_stage_stops_the_job_and_still_removes_temp_files` (+5) |
-| `api/tests/video_insights/test_timeline_merge.py` | Test Suite | 239 | `test_merge_is_identical_for_every_window_completion_order`, `test_summary_and_title_follow_video_order_not_arrival_order`, `test_duplicate_items_are_removed`, `test_entity_is_merged_across_windows_by_normalised_name_and_kind`, `test_same_name_with_a_different_kind_stays_a_separate_entity`, `test_overlapping_appearances_are_fused_before_screen_time_is_summed` (+6) |
+| `api/tests/video_insights/test_timeline_merge.py` | Test Suite | 252 | `test_merge_is_identical_for_every_window_completion_order`, `test_summary_and_title_follow_video_order_not_arrival_order`, `test_duplicate_items_are_removed`, `test_entity_is_merged_across_windows_by_normalised_name_and_kind`, `test_same_name_with_a_different_kind_stays_a_separate_entity`, `test_overlapping_appearances_are_fused_before_screen_time_is_summed` (+6) |
 | `api/tests/video_insights/test_timeline_normalize.py` | Test Suite | 194 | `test_absolute_timestamps_are_kept_as_they_are`, `test_window_relative_timestamps_are_shifted_to_absolute`, `test_both_time_bases_normalise_to_the_same_result`, `test_ambiguous_overlap_tie_is_read_as_absolute`, `test_one_vote_breaks_the_overlap_tie_towards_relative`, `test_first_window_is_never_shifted` (+7) |
 | `api/tests/video_insights/test_timeline_windows.py` | Test Suite | 100 | `test_short_video_is_one_window_covering_everything`, `test_duration_equal_to_the_cap_is_still_one_window`, `test_default_window_is_five_minutes`, `test_long_video_without_cuts_splits_evenly`, `test_random_plans_are_gap_free_non_overlapping_and_capped`, `test_boundary_snaps_to_the_nearest_cut_within_tolerance` (+9) |
 | `api/video_insights/insight_prompts.py` | Tier 2 (Core Services & Deps) | 109 | `sanitize_focus`, `build_timeline_prompt`, `data_block`, `build_engagement_explain_prompt`, `build_engagement_recommend_prompt` |
@@ -425,7 +425,7 @@ workers/insight_jobs
 | `api/video_insights/insights_store.py` | Tier 2 (Core Services & Deps) | 68 | `InsightsStoreMixin` |
 | `api/video_insights/signal_files.py` | Tier 2 (Core Services & Deps) | 69 | `SignalFileError`, `SignalFile`, `looks_like_csv`, `stored_size`, `resolve_signal_upload`, `read_signal_csv` |
 | `api/video_insights/source_resolver.py` | Tier 2 (Core Services & Deps) | 84 | `ResolvedSource`, `resolve_video_source` |
-| `api/video_insights/timeline_merge.py` | Tier 2 (Core Services & Deps) | 296 | `_Spec`, `normalize_window_result`, `combine_window_parts`, `merge_windows`, `timeline_counts` |
+| `api/video_insights/timeline_merge.py` | Tier 2 (Core Services & Deps) | 303 | `_Spec`, `normalize_window_result`, `combine_window_parts`, `merge_windows`, `timeline_counts` |
 | `api/video_insights/timeline_windows.py` | Tier 2 (Core Services & Deps) | 84 | `Window`, `covers_whole_video`, `nearest_cut`, `plan_windows`, `can_split`, `split_window` (+1) |
 | `api/video_service.py` | Tier 2 (Core Services & Deps) | 367 | `VideoService` |
 | `frontend/src/App.tsx` | Tier 6 (Next.js App Entrypoints & Root Router) | 213 | — |
@@ -603,11 +603,11 @@ workers/insight_jobs
 | `frontend/src/components/pages/reframe/components/ReframeOutputSections.tsx` | Tier 5 (Feature Pages & Domain Views) [reframe] | 312 | `ReframeSegmentItem`, `ReframeSummaryData`, `ReframeEvalReport`, `ReframeDetailRecord`, `fmtTimeSec`, `CollapsibleCard` (+2) |
 | `frontend/src/components/pages/reframe/components/ReframePipelineLinks.tsx` | Tier 5 (Feature Pages & Domain Views) [reframe] | 19 | `ReframePipelineLinks` |
 | `frontend/src/components/pages/sceneAnalysis/SceneAnalysisCreatePage.tsx` | Tier 5 (Feature Pages & Domain Views) [sceneanalysis] | 98 | `SceneAnalysisCreatePage` |
-| `frontend/src/components/pages/sceneAnalysis/SceneAnalysisLandingPage.tsx` | Tier 5 (Feature Pages & Domain Views) [sceneanalysis] | 74 | `SceneAnalysisLandingPage` |
+| `frontend/src/components/pages/sceneAnalysis/SceneAnalysisLandingPage.tsx` | Tier 5 (Feature Pages & Domain Views) [sceneanalysis] | 75 | `SceneAnalysisLandingPage` |
 | `frontend/src/components/pages/sceneAnalysis/SceneAnalysisWorkspacePage.tsx` | Tier 5 (Feature Pages & Domain Views) [sceneanalysis] | 32 | `SceneAnalysisWorkspacePage` |
 | `frontend/src/components/pages/sceneAnalysis/workspace/ExportMenu.tsx` | Tier 5 (Feature Pages & Domain Views) [sceneanalysis] | 43 | `ExportMenuProps`, `ExportMenu` |
-| `frontend/src/components/pages/sceneAnalysis/workspace/InspectorLists.tsx` | Tier 5 (Feature Pages & Domain Views) [sceneanalysis] | 86 | `MomentsTab`, `EventsTab` |
-| `frontend/src/components/pages/sceneAnalysis/workspace/InspectorTabs.tsx` | Tier 5 (Feature Pages & Domain Views) [sceneanalysis] | 66 | `InspectorTabsProps`, `InspectorTabs` |
+| `frontend/src/components/pages/sceneAnalysis/workspace/InspectorLists.tsx` | Tier 5 (Feature Pages & Domain Views) [sceneanalysis] | 133 | `MomentsTab`, `EventsTab`, `ObjectsAdsTab` |
+| `frontend/src/components/pages/sceneAnalysis/workspace/InspectorTabs.tsx` | Tier 5 (Feature Pages & Domain Views) [sceneanalysis] | 70 | `InspectorTabsProps`, `InspectorTabs` |
 | `frontend/src/components/pages/sceneAnalysis/workspace/OverviewCharts.tsx` | Tier 5 (Feature Pages & Domain Views) [sceneanalysis] | 96 | `ScreenTimeChart`, `EmotionChart` |
 | `frontend/src/components/pages/sceneAnalysis/workspace/ProcessingView.tsx` | Tier 5 (Feature Pages & Domain Views) [sceneanalysis] | 37 | `ProcessingViewProps`, `ProcessingView` |
 | `frontend/src/components/pages/sceneAnalysis/workspace/SceneTimeline.tsx` | Tier 5 (Feature Pages & Domain Views) [sceneanalysis] | 59 | `SceneTimelineProps`, `SceneTimeline` |
@@ -665,7 +665,7 @@ workers/insight_jobs
 | `frontend/src/components/shared/timeline/lanes/SegmentsLane.tsx` | Tier 4 (Shared Hooks & Domain Shells) | 66 | `SegmentsLaneProps`, `SegmentsLane` |
 | `frontend/src/components/shared/timeline/lanes/laneGeometry.ts` | Tier 4 (Shared Hooks & Domain Shells) | 19 | `SpanBox`, `spanBox`, `spokenRange` |
 | `frontend/src/components/shared/timeline/layout.ts` | Tier 4 (Shared Hooks & Domain Shells) | 12 | `TIMELINE_GUTTER_PX`, `LANE_HEIGHT` |
-| `frontend/src/components/shared/timeline/panels/EntityBrowser.tsx` | Tier 4 (Shared Hooks & Domain Shells) | 131 | `EntityBrowserProps`, `EntityBrowser` |
+| `frontend/src/components/shared/timeline/panels/EntityBrowser.tsx` | Tier 4 (Shared Hooks & Domain Shells) | 131 | `EntityRowProps`, `EntityRow`, `EntityBrowserProps`, `EntityBrowser` |
 | `frontend/src/components/shared/timeline/panels/PanelSearch.tsx` | Tier 4 (Shared Hooks & Domain Shells) | 42 | `PanelSearchProps`, `PanelSearch`, `Highlighted` |
 | `frontend/src/components/shared/timeline/panels/TranscriptPanel.tsx` | Tier 4 (Shared Hooks & Domain Shells) | 138 | `TranscriptPanelProps`, `TranscriptPanel` |
 | `frontend/src/components/shared/timeline/player/PlayerControls.tsx` | Tier 4 (Shared Hooks & Domain Shells) | 139 | `PlayerControlsProps`, `PlayerControls` |
@@ -773,7 +773,7 @@ workers/insight_jobs
 | `frontend/src/types/engagement/reportFormat.ts` | Tier 1 (Types, Schemas & Pure Utils) | 50 | `SIMULATED_LABEL`, `BARC_LABEL`, `formatValue`, `formatAxisValue`, `formatDelta`, `describeDelta` (+5) |
 | `frontend/src/types/engagement/reportModel.ts` | Tier 1 (Types, Schemas & Pure Utils) | 155 | `MetricSeries`, `ExtremumMarker`, `ExtremumWindow`, `InfluenceGroup`, `ReportModel`, `EXTREMUM_STYLE` (+6) |
 | `frontend/src/types/engagement/stepSeries.ts` | Tier 1 (Types, Schemas & Pure Utils) | 74 | `SeriesSlice`, `StepSeries`, `percentDelta` |
-| `frontend/src/types/insights.ts` | Tier 1 (Types, Schemas & Pure Utils) | 298 | `InsightSourceType`, `InsightUsage`, `CueKind`, `CueSentiment`, `EntityKind`, `TimeRange` (+37) |
+| `frontend/src/types/insights.ts` | Tier 1 (Types, Schemas & Pure Utils) | 313 | `InsightSourceType`, `InsightUsage`, `CueKind`, `CueSentiment`, `EntityKind`, `TimeRange` (+39) |
 | `frontend/src/types/keyframes.ts` | Tier 1 (Types, Schemas & Pure Utils) | 44 | `KeyframeFrameStatus`, `KeyframeSetStatus`, `KeyframeEditor`, `KEYFRAME_INSTRUCTION_MAX`, `KeyframeFrameView`, `KeyframeSetVersionView` (+3) |
 | `frontend/src/types/previz.ts` | Tier 1 (Types, Schemas & Pure Utils) | 53 | `PrevizStageStatus`, `PrevizJobStatus`, `PrevizRestyleVariant`, `PrevizRunVariant`, `PrevizStageRun`, `PrevizLayout` (+6) |
 | `frontend/src/types/productionPresets.ts` | Tier 1 (Types, Schemas & Pure Utils) | 285 | `CreativePresetOption`, `ModeFormatProfile`, `MODE_FORMAT_PROFILES`, `VISUAL_STYLE_PRESETS_UI`, `COLOR_PALETTE_PRESETS_UI`, `DIRECTOR_STYLE_PRESETS_UI` (+1) |
@@ -782,18 +782,18 @@ workers/insight_jobs
 | `frontend/src/types/runs.ts` | Tier 1 (Types, Schemas & Pure Utils) | 44 | `RunKind`, `RunStatus`, `ProgressUnit`, `RunProgress`, `RunView`, `RunAccepted` (+1) |
 | `frontend/src/types/schemas.ts` | Tier 1 (Types, Schemas & Pure Utils) | 93 | `inviteCodeFormSchema`, `InviteCodeFormValues`, `systemResourceFormSchema`, `SystemResourceFormValues`, `promoCreateSchema`, `reframeCreateSchema` (+3) |
 | `frontend/src/types/storygraph.ts` | Tier 1 (Types, Schemas & Pure Utils) | 329 | `StoryGraphStyleGuide`, `StoryGraphAttributeValue`, `StoryGraphEntity`, `StoryGraphEventEffect`, `StoryGraphEvent`, `StoryGraphAsset` (+35) |
-| `frontend/src/types/timeline/__tests__/adSpotFixture.ts` | Tier 1 (Types, Schemas & Pure Utils) | 142 | `AD_SPOT_ID`, `AD_SPOT_FILMSTRIP`, `AD_SPOT_TIMELINE`, `AD_SPOT_RECORD` |
+| `frontend/src/types/timeline/__tests__/adSpotFixture.ts` | Tier 1 (Types, Schemas & Pure Utils) | 185 | `AD_SPOT_ID`, `AD_SPOT_FILMSTRIP`, `AD_SPOT_TIMELINE`, `AD_SPOT_RECORD` |
 | `frontend/src/types/timeline/__tests__/formatAndExport.test.ts` | Tier 1 (Types, Schemas & Pure Utils) | 146 | — |
 | `frontend/src/types/timeline/__tests__/intervalIndex.test.ts` | Tier 1 (Types, Schemas & Pure Utils) | 100 | — |
-| `frontend/src/types/timeline/__tests__/modelAndLayout.test.ts` | Tier 1 (Types, Schemas & Pure Utils) | 151 | — |
+| `frontend/src/types/timeline/__tests__/modelAndLayout.test.ts` | Tier 1 (Types, Schemas & Pure Utils) | 153 | — |
 | `frontend/src/types/timeline/__tests__/searchAndShortcuts.test.ts` | Tier 1 (Types, Schemas & Pure Utils) | 82 | — |
 | `frontend/src/types/timeline/__tests__/viewport.test.ts` | Tier 1 (Types, Schemas & Pure Utils) | 108 | — |
 | `frontend/src/types/timeline/bisect.ts` | Tier 1 (Types, Schemas & Pure Utils) | 16 | `partitionPoint`, `lowerBound`, `upperBound` |
 | `frontend/src/types/timeline/downsample.ts` | Tier 1 (Types, Schemas & Pure Utils) | 51 | `SeriesPoint`, `sliceVisible`, `downsampleMinMax`, `downsampleForView`, `coverageBins` |
-| `frontend/src/types/timeline/exporters.ts` | Tier 1 (Types, Schemas & Pure Utils) | 111 | `CsvValue`, `cuesToSrt`, `cuesToVtt`, `escapeCsvCell`, `toCsv`, `TimelineCollectionKey` (+4) |
+| `frontend/src/types/timeline/exporters.ts` | Tier 1 (Types, Schemas & Pure Utils) | 127 | `CsvValue`, `cuesToSrt`, `cuesToVtt`, `escapeCsvCell`, `toCsv`, `TimelineCollectionKey` (+4) |
 | `frontend/src/types/timeline/glyphs.ts` | Tier 1 (Types, Schemas & Pure Utils) | 100 | `GlyphShape`, `Glyph`, `chartColor`, `hashString`, `glyphFor`, `cssSlug` (+3) |
 | `frontend/src/types/timeline/intervalIndex.ts` | Tier 1 (Types, Schemas & Pure Utils) | 67 | `IntervalIndex`, `PointIndex` |
-| `frontend/src/types/timeline/model.ts` | Tier 1 (Types, Schemas & Pure Utils) | 129 | `EntityAppearance`, `TimelineItemKind`, `TimelineItemRef`, `TimelineModel`, `MomentSnapshot`, `buildTimelineModel` (+3) |
+| `frontend/src/types/timeline/model.ts` | Tier 1 (Types, Schemas & Pure Utils) | 142 | `EntityAppearance`, `TimelineItemKind`, `TimelineItemRef`, `TimelineModel`, `MomentSnapshot`, `buildTimelineModel` (+3) |
 | `frontend/src/types/timeline/series.ts` | Tier 1 (Types, Schemas & Pure Utils) | 24 | `EmotionSample`, `emotionIntensitySeries` |
 | `frontend/src/types/timeline/shortcuts.ts` | Tier 1 (Types, Schemas & Pure Utils) | 36 | `ARROW_STEP_SEC`, `JKL_STEP_SEC`, `ShortcutAction`, `shortcutForKey`, `segmentJumpTarget`, `fitLabel` |
 | `frontend/src/types/timeline/stacking.ts` | Tier 1 (Types, Schemas & Pure Utils) | 72 | `PixelSpan`, `PlacedMarker`, `StackOptions`, `stackMarkers`, `StackedSpan`, `stackRanges` (+1) |

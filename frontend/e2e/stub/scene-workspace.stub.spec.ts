@@ -180,6 +180,10 @@ test('tabs, transcript search and click-to-seek, entity pinning, lane toggles', 
   await expect(page.locator('[data-lane="moments"] [data-tl-item][aria-pressed="true"]')).toHaveCount(1)
   await page.getByRole('tab', { name: /Events/ }).click()
   await expect(page.getByRole('tabpanel', { name: /Events/ }).getByRole('button', { name: /Hero shot of the pack/ })).toBeVisible()
+  await page.getByRole('tab', { name: /Objects & Ads/ }).click()
+  const objectsAdsPanel = page.getByRole('tabpanel', { name: /Objects & Ads/ })
+  await expect(objectsAdsPanel.getByRole('button', { name: /Kitchen appliances & cookware/ })).toBeVisible()
+  await expect(objectsAdsPanel.getByText('Kadak Chai pack', { exact: true })).toBeVisible()
 })
 
 test('keyboard shortcuts, lane keyboard access and hover card', async ({ page, shot }) => {
